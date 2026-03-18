@@ -1,0 +1,24 @@
+# Build artifacts
+/target/
+
+# Cargo lock (library crate — regenerated on build)
+# Uncomment the next line if this is a binary crate:
+# Cargo.lock
+
+# Editor & OS
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# VS Code extension build output
+editors/vscode/*.vsix
+editors/vscode/node_modules/
+editors/vscode/out/
+
+# Agent/AI working directories
+.agents/scratchpad/
+.gemini/

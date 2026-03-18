@@ -1,0 +1,22 @@
+{
+  "name": "ridgun-lang",
+  "displayName": "Ridgun Language",
+  "description": "Syntax highlighting for the Ridgun programming language (.rg)",
+  "version": "0.1.0",
+  "publisher": "ridgun",
+  "engines": { "vscode": "^1.75.0" },
+  "categories": ["Programming Languages"],
+  "contributes": {
+    "languages": [{
+      "id": "ridgun",
+      "aliases": ["Ridgun", "ridgun"],
+      "extensions": [".rg"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "ridgun",
+      "scopeName": "source.ridgun",
+      "path": "./syntaxes/ridgun.tmLanguage.json"
+    }]
+  }
+}

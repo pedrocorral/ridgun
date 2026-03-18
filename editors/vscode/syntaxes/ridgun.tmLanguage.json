@@ -1,0 +1,136 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Ridgun",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#fn-declaration" },
+    { "include": "#op-declaration" },
+    { "include": "#keywords" },
+    { "include": "#seq-selector" },
+    { "include": "#list-type" },
+    { "include": "#operators" },
+    { "include": "#numbers" },
+    { "include": "#types" },
+    { "include": "#punctuation" }
+  ],
+  "repository": {
+    "comment": {
+      "name": "comment.line.double-dash.ridgun",
+      "match": "--.*$"
+    },
+    "fn-declaration": {
+      "match": "\\b(fn)\\s*(::)",
+      "captures": {
+        "1": { "name": "keyword.other.fn.ridgun" },
+        "2": { "name": "punctuation.separator.type.ridgun" }
+      }
+    },
+    "op-declaration": {
+      "match": "\\b(op)\\s*(::)",
+      "captures": {
+        "1": { "name": "keyword.other.op.ridgun" },
+        "2": { "name": "punctuation.separator.type.ridgun" }
+      }
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.other.ridgun",
+          "match": "\\b(fn|op|where)\\b"
+        },
+        {
+          "name": "keyword.operator.arrow.ridgun",
+          "match": "=>"
+        },
+        {
+          "name": "keyword.operator.bind.ridgun",
+          "match": "->"
+        }
+      ]
+    },
+    "list-type": {
+      "name": "meta.type.list.ridgun",
+      "match": "\\[\\s*(Int|Real|Bool|String|Complex)\\s*\\]",
+      "captures": {
+        "1": { "name": "storage.type.ridgun" }
+      }
+    },
+    "seq-selector": {
+      "name": "variable.other.seq-bind.ridgun",
+      "comment": "Seq selectors like s(+_) use existing paren and operator rules"
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.concat.ridgun",
+          "match": "(?<=\\s)::(?=\\s)"
+        },
+        {
+          "name": "keyword.operator.arrow.ridgun",
+          "match": "->"
+        },
+        {
+          "name": "keyword.operator.arithmetic.ridgun",
+          "match": "[+\\-*/%]"
+        },
+        {
+          "name": "keyword.operator.comparison.ridgun",
+          "match": "(==|!=|<=|>=|<|>)"
+        },
+        {
+          "name": "keyword.operator.assignment.ridgun",
+          "match": "(?<!=>|->)=(?!>)"
+        },
+        {
+          "name": "keyword.operator.cons.ridgun",
+          "match": "(?<!:):(?!:)"
+        },
+        {
+          "name": "keyword.operator.pipe.ridgun",
+          "match": "^\\s*\\|"
+        }
+      ]
+    },
+    "numbers": {
+      "name": "constant.numeric.integer.ridgun",
+      "match": "\\b[0-9]+\\b"
+    },
+    "types": {
+      "name": "storage.type.ridgun",
+      "match": "\\b(Int|Real|Bool|String|Complex|Tensor|Tensor_GPU)\\b"
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.section.parens.begin.ridgun",
+          "match": "\\("
+        },
+        {
+          "name": "punctuation.section.parens.end.ridgun",
+          "match": "\\)"
+        },
+        {
+          "name": "punctuation.section.brackets.begin.ridgun",
+          "match": "\\["
+        },
+        {
+          "name": "punctuation.section.brackets.end.ridgun",
+          "match": "\\]"
+        },
+        {
+          "name": "punctuation.separator.list.ridgun",
+          "match": "\\|"
+        },
+        {
+          "name": "punctuation.separator.comma.ridgun",
+          "match": ","
+        },
+        {
+          "name": "punctuation.separator.type.ridgun",
+          "match": "::"
+        }
+      ]
+    }
+  },
+  "scopeName": "source.ridgun"
+}
