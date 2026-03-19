@@ -8,12 +8,23 @@ use crate::lexer::Token;
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     IntLit(i64),
+    StringLit(String),
+    BoolLit(bool),
+    Unit,
     Var(String),
     BinOp(BinOp, Box<Expr>, Box<Expr>),
     Call(String, Vec<Expr>),
+    Echo(Vec<Expr>),
     ListLit(Vec<Expr>),
     ListEmpty,
     SeqSelect(Box<Expr>, String),
+    Block(Vec<Statement>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Statement {
+    Let(String, Expr),    // name = expr
+    Expr(Expr),           // expression (last one = return value)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -21,6 +32,12 @@ pub enum BinOp {
     Add,
     Sub,
     Mul,
+    Div,
+    Eq,
+    Gt,
+    Lt,
+    GtEq,
+    LtEq,
     Concat,
 }
 
@@ -45,6 +62,7 @@ pub struct FnDecl {
 pub struct FnCase {
     pub patterns: Vec<Pattern>,
     pub body: Expr,
+    pub guards: Vec<(Expr, Expr)>,  // (condition, body) pairs; empty = no guards
 }
 
 #[derive(Debug, Clone)]
@@ -65,6 +83,7 @@ pub struct Program {
 enum Item {
     Decl(FnDecl),
     Def(String, FnCase),
+    Skip, // for items the parser sees but doesn't compile yet (type, import, op)
 }
 
 // ── Parser ─────────────────────────────────────────────────
@@ -84,7 +103,7 @@ impl Parser {
         self.skip_newlines();
 
         while !self.at_eof() {
-            items.push(self.parse_item());
+            items.extend(self.parse_item());
             self.skip_newlines();
         }
 
@@ -116,13 +135,219 @@ impl Parser {
         }
     }
 
+    /// Skip to end of line (for things we can't compile yet)
+    fn skip_to_newline(&mut self) {
+        while !matches!(self.peek(), Token::Newline | Token::Eof) {
+            self.advance();
+        }
+    }
+
     // ── Top-level items ────────────────────────────────────
 
-    fn parse_item(&mut self) -> Item {
+    fn parse_item(&mut self) -> Vec<Item> {
         match self.peek() {
-            Token::Fn => self.parse_fn_decl(),
-            Token::Ident(_) => self.parse_fn_case(),
-            other => panic!("Expected 'fn' or identifier, got {:?}", other),
+            Token::Fn => vec![self.parse_fn_decl()],
+            Token::Op => self.parse_op_decl(),
+            Token::Type => {
+                // Skip type definitions for now
+                self.skip_to_newline();
+                vec![Item::Skip]
+            }
+            Token::Import => {
+                // Skip import statements for now
+                self.skip_to_newline();
+                vec![Item::Skip]
+            }
+            Token::Ident(_) => vec![self.parse_fn_case()],
+            other => panic!("Expected 'fn', 'op', 'type', 'import' or identifier, got {:?}", other),
+        }
+    }
+
+    /// Parse `op :: word Type word Type ... => ReturnType` plus definitions
+    fn parse_op_decl(&mut self) -> Vec<Item> {
+        self.expect(&Token::Op);
+        self.expect(&Token::ColonColon);
+
+        let mut words: Vec<String> = Vec::new();
+        let mut param_types: Vec<String> = Vec::new();
+        // Track the template: true = type position, false = keyword position
+        let mut template: Vec<bool> = Vec::new();
+
+        // Parse interleaved words and types until => or ->
+        while !matches!(self.peek(), Token::FatArrow | Token::Arrow | Token::Newline | Token::Eof) {
+            match self.peek() {
+                Token::Ident(s) => {
+                    let s = s.clone();
+                    self.advance();
+                    if s.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                        param_types.push(s);
+                        template.push(true); // type position
+                    } else {
+                        words.push(s);
+                        template.push(false); // keyword position
+                    }
+                }
+                Token::LParen => {
+                    self.advance();
+                    self.expect(&Token::RParen);
+                    param_types.push("()".to_string());
+                    template.push(true);
+                }
+                Token::LBracket => {
+                    self.advance();
+                    let inner = match self.advance() {
+                        Token::Ident(s) => s,
+                        other => panic!("Expected type inside [...], got {:?}", other),
+                    };
+                    self.expect(&Token::RBracket);
+                    param_types.push(format!("[{}]", inner));
+                    template.push(true);
+                }
+                Token::Plus | Token::Minus | Token::Star | Token::Slash => {
+                    let sym = match self.advance() {
+                        Token::Plus => "+",
+                        Token::Minus => "-",
+                        Token::Star => "*",
+                        Token::Slash => "/",
+                        _ => unreachable!(),
+                    };
+                    words.push(sym.to_string());
+                    template.push(false);
+                }
+                _ => {
+                    self.advance(); // skip unknown tokens
+                }
+            }
+        }
+
+        // Consume => or ->
+        if matches!(self.peek(), Token::FatArrow | Token::Arrow) {
+            self.advance();
+        }
+
+        // Parse return type(s)
+        let return_type = self.parse_return_type();
+
+        // Skip additional return types on the same line
+        while matches!(self.peek(), Token::Ident(_)) {
+            let s = if let Token::Ident(s) = self.peek() { s.clone() } else { break };
+            if s.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+
+        let mangled_name = words.join("_");
+        let mut items = vec![Item::Decl(FnDecl {
+            name: mangled_name.clone(),
+            param_types,
+            return_type,
+        })];
+
+        // Now parse definition line(s) that follow
+        self.skip_newlines();
+        // Try to parse definition(s): they start with the first keyword word
+        while !self.at_eof() {
+            // Check if this line starts with the first keyword of the operator
+            if let Token::Ident(s) = self.peek() {
+                if !words.is_empty() && s == &words[0] {
+                    let case = self.parse_op_case(&words, &template);
+                    items.push(Item::Def(mangled_name.clone(), case));
+                    self.skip_newlines();
+                    continue;
+                }
+            }
+            break;
+        }
+
+        items
+    }
+
+    /// Parse an operator definition line using the known template
+    fn parse_op_case(&mut self, keywords: &[String], template: &[bool]) -> FnCase {
+        let mut patterns = Vec::new();
+        let mut keyword_idx = 0;
+
+        for &is_type in template {
+            if is_type {
+                // This position is a pattern (variable or literal)
+                let pat = match self.peek() {
+                    Token::Ident(_) => {
+                        if let Token::Ident(s) = self.advance() {
+                            if s == "_" { Pattern::Wildcard } else { Pattern::Var(s) }
+                        } else { unreachable!() }
+                    }
+                    Token::IntLit(_) => {
+                        if let Token::IntLit(n) = self.advance() { Pattern::Lit(n) }
+                        else { unreachable!() }
+                    }
+                    Token::True => { self.advance(); Pattern::Var("True".into()) }
+                    Token::False => { self.advance(); Pattern::Var("False".into()) }
+                    other => panic!("Expected pattern in op definition, got {:?}", other),
+                };
+                patterns.push(pat);
+            } else {
+                // This position is a keyword — consume and verify
+                match self.advance() {
+                    Token::Ident(s) => {
+                        if keyword_idx < keywords.len() {
+                            assert_eq!(&s, &keywords[keyword_idx],
+                                "Expected keyword '{}', got '{}'", keywords[keyword_idx], s);
+                        }
+                    }
+                    Token::Plus | Token::Minus | Token::Star | Token::Slash => {
+                        // Symbolic keyword, just consume
+                    }
+                    other => panic!("Expected keyword in op def, got {:?}", other),
+                }
+                keyword_idx += 1;
+            }
+        }
+
+        // Check for guards
+        if matches!(self.peek(), Token::Newline) {
+            let saved = self.pos;
+            self.advance();
+            if matches!(self.peek(), Token::Pipe) {
+                let guards = self.parse_guards();
+                return FnCase {
+                    patterns,
+                    body: Expr::Unit,
+                    guards,
+                };
+            } else {
+                self.pos = saved;
+            }
+        }
+
+        // No guards — parse = body
+        self.expect(&Token::Equals);
+        let body = self.parse_expr();
+        FnCase { patterns, body, guards: Vec::new() }
+    }
+
+    /// Parse return type: Int, [Int], (), etc.
+    fn parse_return_type(&mut self) -> String {
+        match self.peek() {
+            Token::LBracket => {
+                self.advance();
+                let inner = match self.advance() {
+                    Token::Ident(s) => s,
+                    other => panic!("Expected type in [...], got {:?}", other),
+                };
+                self.expect(&Token::RBracket);
+                format!("[{}]", inner)
+            }
+            Token::LParen => {
+                self.advance();
+                self.expect(&Token::RParen);
+                "()".to_string()
+            }
+            _ => match self.advance() {
+                Token::Ident(s) => s,
+                other => panic!("Expected return type, got {:?}", other),
+            },
         }
     }
 
@@ -173,6 +398,12 @@ impl Parser {
                 self.expect(&Token::RBracket);
                 format!("[{}]", inner)
             }
+            Token::LParen => {
+                // () — unit type
+                self.advance();
+                self.expect(&Token::RParen);
+                "()".to_string()
+            }
             _ => match self.advance() {
                 Token::Ident(s) => s,
                 other => panic!("Expected return type, got {:?}", other),
@@ -189,7 +420,7 @@ impl Parser {
         };
 
         let mut patterns = Vec::new();
-        while !matches!(self.peek(), Token::Equals) {
+        while !matches!(self.peek(), Token::Equals | Token::Newline | Token::Eof) {
             let pat = match self.peek() {
                 Token::IntLit(_) => {
                     if let Token::IntLit(n) = self.advance() {
@@ -252,22 +483,131 @@ impl Parser {
             patterns.push(pat);
         }
 
-        self.expect(&Token::Equals);
-        let body = self.parse_expr();
+        // Check for guards: | condition = body
+        if matches!(self.peek(), Token::Newline) {
+            // Peek past newline to see if there are guards
+            let saved = self.pos;
+            self.advance(); // consume newline
+            if matches!(self.peek(), Token::Pipe) {
+                // This is a guarded case
+                let guards = self.parse_guards();
+                return Item::Def(name, FnCase {
+                    patterns,
+                    body: Expr::Unit, // placeholder, guards hold the real bodies
+                    guards,
+                });
+            } else {
+                // Not guards, restore position
+                self.pos = saved;
+            }
+        }
 
-        Item::Def(name, FnCase { patterns, body })
+        self.expect(&Token::Equals);
+
+        // Check for multi-line body: = <newline> <indented block>
+        if matches!(self.peek(), Token::Newline) {
+            self.advance(); // consume newline
+            let body = self.parse_block();
+            Item::Def(name, FnCase { patterns, body, guards: Vec::new() })
+        } else {
+            let body = self.parse_expr();
+            Item::Def(name, FnCase { patterns, body, guards: Vec::new() })
+        }
+    }
+
+    /// Parse an indented block of statements.
+    /// Each line is either `name = expr` (let binding) or `expr` (expression).
+    /// The last expression is the return value.
+    fn parse_block(&mut self) -> Expr {
+        let mut stmts = Vec::new();
+
+        while !self.at_eof() {
+            self.skip_newlines();
+
+            // If we've reached a top-level keyword or we're past the block, stop
+            if matches!(self.peek(), Token::Fn | Token::Op | Token::Type | Token::Import | Token::Eof) {
+                break;
+            }
+
+            // Try to detect if this is a let binding: ident = expr
+            // Look ahead: if we see Ident then Equals, it's a let binding
+            if let Token::Ident(_) = self.peek() {
+                let saved = self.pos;
+                let ident = if let Token::Ident(s) = self.advance() { s } else { unreachable!() };
+
+                if matches!(self.peek(), Token::Equals) {
+                    self.advance(); // consume =
+                    let expr = self.parse_expr();
+                    stmts.push(Statement::Let(ident, expr));
+                    continue;
+                } else {
+                    // Not a let binding — restore and parse as expression
+                    self.pos = saved;
+                }
+            }
+
+            // Parse as expression statement
+            let expr = self.parse_expr();
+            stmts.push(Statement::Expr(expr));
+        }
+
+        if stmts.is_empty() {
+            Expr::Unit
+        } else {
+            Expr::Block(stmts)
+        }
+    }
+
+    /// Parse guard lines: | condition = body
+    fn parse_guards(&mut self) -> Vec<(Expr, Expr)> {
+        let mut guards = Vec::new();
+        while matches!(self.peek(), Token::Pipe) {
+            self.advance(); // consume |
+            let condition = if matches!(self.peek(), Token::Otherwise) {
+                self.advance(); // consume 'otherwise'
+                Expr::BoolLit(true) // otherwise = always true
+            } else {
+                self.parse_expr()
+            };
+            self.expect(&Token::Equals);
+            let body = self.parse_expr();
+            guards.push((condition, body));
+            self.skip_newlines();
+        }
+        guards
     }
 
     // ── Expression parsing (precedence climbing) ───────────
     //
-    // expr      = add_expr
-    // add_expr  = mul_expr (('+' | '-') mul_expr)*
-    // mul_expr  = app_expr ('*' app_expr)*
+    // expr      = cmp_expr
+    // cmp_expr  = add_expr (('==' | '>' | '<' | '>=' | '<=') add_expr)?
+    // add_expr  = mul_expr (('+' | '-' | '::') mul_expr)*
+    // mul_expr  = app_expr (('*' | '/') app_expr)*
     // app_expr  = atom+  (if multiple, first ident = function call)
-    // atom      = INT_LIT | IDENT | '(' expr ')'
+    // atom      = INT_LIT | STRING_LIT | BOOL_LIT | IDENT | '(' expr ')' | '[' ... ']'
 
     fn parse_expr(&mut self) -> Expr {
-        self.parse_add_expr()
+        self.parse_cmp_expr()
+    }
+
+    fn parse_cmp_expr(&mut self) -> Expr {
+        let left = self.parse_add_expr();
+        match self.peek() {
+            Token::EqualEqual | Token::Greater | Token::Less
+            | Token::GreaterEq | Token::LessEq => {
+                let op = match self.advance() {
+                    Token::EqualEqual => BinOp::Eq,
+                    Token::Greater => BinOp::Gt,
+                    Token::Less => BinOp::Lt,
+                    Token::GreaterEq => BinOp::GtEq,
+                    Token::LessEq => BinOp::LtEq,
+                    _ => unreachable!(),
+                };
+                let right = self.parse_add_expr();
+                Expr::BinOp(op, Box::new(left), Box::new(right))
+            }
+            _ => left,
+        }
     }
 
     fn parse_add_expr(&mut self) -> Expr {
@@ -287,10 +627,14 @@ impl Parser {
 
     fn parse_mul_expr(&mut self) -> Expr {
         let mut left = self.parse_app_expr();
-        while matches!(self.peek(), Token::Star) {
-            self.advance();
+        while matches!(self.peek(), Token::Star | Token::Slash) {
+            let op = match self.advance() {
+                Token::Star => BinOp::Mul,
+                Token::Slash => BinOp::Div,
+                _ => unreachable!(),
+            };
             let right = self.parse_app_expr();
-            left = Expr::BinOp(BinOp::Mul, Box::new(left), Box::new(right));
+            left = Expr::BinOp(op, Box::new(left), Box::new(right));
         }
         left
     }
@@ -305,6 +649,18 @@ impl Parser {
                 if self.try_parse_seq_selector(&first) {
                     return self.parse_seq_selector(first);
                 }
+            }
+        }
+
+        // Check for echo
+        if let Expr::Var(ref name) = first {
+            if name == "echo" {
+                // Parse all remaining atoms on this line as echo arguments
+                let mut args = Vec::new();
+                while self.is_atom_start() {
+                    args.push(self.parse_atom());
+                }
+                return Expr::Echo(args);
             }
         }
 
@@ -325,7 +681,9 @@ impl Parser {
     }
 
     fn is_atom_start(&self) -> bool {
-        matches!(self.peek(), Token::IntLit(_) | Token::Ident(_) | Token::LParen | Token::LBracket)
+        matches!(self.peek(),
+            Token::IntLit(_) | Token::Ident(_) | Token::LParen | Token::LBracket
+            | Token::StringLit(_) | Token::RawStringLit(_) | Token::True | Token::False)
     }
 
     /// Check if the next `(...)` is a seq selector mask (contains only +/_ tokens or indices)
@@ -334,7 +692,16 @@ impl Parser {
             match &self.tokens[self.pos + 1] {
                 Token::Plus => true,
                 Token::Ident(s) if s == "_" => true,
-                Token::IntLit(_) => true,
+                Token::IntLit(_) => {
+                    // Disambiguate: s(0 3) is a seq selector, but (0 - 3) is arithmetic.
+                    // Check what follows the int: if it's another int or ), it's a selector.
+                    if self.pos + 2 < self.tokens.len() {
+                        matches!(&self.tokens[self.pos + 2],
+                            Token::IntLit(_) | Token::RParen)
+                    } else {
+                        false
+                    }
+                }
                 _ => false,
             }
         } else {
@@ -371,6 +738,24 @@ impl Parser {
                     Expr::IntLit(n)
                 } else { unreachable!() }
             }
+            Token::StringLit(_) => {
+                if let Token::StringLit(s) = self.advance() {
+                    Expr::StringLit(s)
+                } else { unreachable!() }
+            }
+            Token::RawStringLit(_) => {
+                if let Token::RawStringLit(s) = self.advance() {
+                    Expr::StringLit(s)
+                } else { unreachable!() }
+            }
+            Token::True => {
+                self.advance();
+                Expr::BoolLit(true)
+            }
+            Token::False => {
+                self.advance();
+                Expr::BoolLit(false)
+            }
             Token::Ident(_) => {
                 if let Token::Ident(s) = self.advance() {
                     Expr::Var(s)
@@ -378,9 +763,15 @@ impl Parser {
             }
             Token::LParen => {
                 self.advance();
-                let expr = self.parse_expr();
-                self.expect(&Token::RParen);
-                expr
+                if matches!(self.peek(), Token::RParen) {
+                    // () — unit literal
+                    self.advance();
+                    Expr::Unit
+                } else {
+                    let expr = self.parse_expr();
+                    self.expect(&Token::RParen);
+                    expr
+                }
             }
             Token::LBracket => {
                 self.advance(); // consume [
@@ -421,6 +812,7 @@ impl Parser {
                 Item::Def(name, case) => {
                     defs.entry(name).or_default().push(case);
                 }
+                Item::Skip => {}
             }
         }
 
@@ -564,5 +956,70 @@ mod tests {
             Expr::SeqSelect(_, mask) => assert_eq!(mask, "0 3"),
             other => panic!("Expected SeqSelect, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn test_string_expr() {
+        let p = parse("fn :: greet => String\ngreet = \"hello world\"");
+        assert_eq!(p.functions[0].cases[0].body, Expr::StringLit("hello world".into()));
+    }
+
+    #[test]
+    fn test_bool_expr() {
+        let p = parse("fn :: t => Bool\nt = True");
+        assert_eq!(p.functions[0].cases[0].body, Expr::BoolLit(true));
+    }
+
+    #[test]
+    fn test_comparison_expr() {
+        let p = parse("fn :: cmp Int Int => Bool\ncmp a b = a == b");
+        match &p.functions[0].cases[0].body {
+            Expr::BinOp(BinOp::Eq, _, _) => {},
+            other => panic!("Expected Eq BinOp, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_echo_expr() {
+        let p = parse("fn :: greet => ()\ngreet = echo \"hello\" \"world\"");
+        match &p.functions[0].cases[0].body {
+            Expr::Echo(args) => {
+                assert_eq!(args.len(), 2);
+                assert_eq!(args[0], Expr::StringLit("hello".into()));
+                assert_eq!(args[1], Expr::StringLit("world".into()));
+            }
+            other => panic!("Expected Echo, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_unit_literal() {
+        let p = parse("fn :: noop => ()\nnoop = ()");
+        assert_eq!(p.functions[0].cases[0].body, Expr::Unit);
+    }
+
+    #[test]
+    fn test_type_skipped() {
+        let p = parse("type Result = Ok Int | Err String\nfn :: f => Int\nf = 42");
+        assert_eq!(p.functions.len(), 1);
+        assert_eq!(p.functions[0].name, "f");
+    }
+
+    #[test]
+    fn test_import_skipped() {
+        let p = parse("import test\nfn :: f => Int\nf = 42");
+        assert_eq!(p.functions.len(), 1);
+        assert_eq!(p.functions[0].name, "f");
+    }
+
+    #[test]
+    fn test_op_parsed() {
+        let p = parse("op :: add Int to Int => Int\nadd a to b = a + b\nfn :: f => Int\nf = 42");
+        // op is parsed as a function named "add_to", plus fn :: f
+        assert_eq!(p.functions.len(), 2);
+        assert_eq!(p.functions[0].name, "add_to");
+        assert_eq!(p.functions[0].decl.param_types, vec!["Int".to_string(), "Int".to_string()]);
+        assert_eq!(p.functions[0].cases.len(), 1);
+        assert_eq!(p.functions[1].name, "f");
     }
 }

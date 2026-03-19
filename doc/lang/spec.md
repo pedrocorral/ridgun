@@ -22,6 +22,83 @@ Single-line comments use `--`:
 
 ---
 
+## Strings
+
+Ridgun has two string literal types with different interpolation behavior.
+
+### Interpolated Strings (double quotes)
+
+Double-quoted strings support **inline code interpolation** using `{expr}`. The expression inside braces is evaluated and its result is inserted into the string.
+
+```ridgun
+name = "Ridgun"
+"Hello, {name}!"                         -- "Hello, Ridgun!"
+"Sum is {sum 3 4}"                       -- "Sum is 7"
+"Nested: {factorial 5} done"             -- "Nested: 120 done"
+```
+
+To include a literal brace, double it:
+
+```ridgun
+"This is {{not interpolated}}"           -- "This is {not interpolated}"
+"Use {{}} for literal braces"            -- "Use {} for literal braces"
+```
+
+### Raw Strings (single quotes)
+
+Single-quoted strings are **raw** — no interpolation is performed. All characters are treated as literal text, including braces.
+
+```ridgun
+'Hello, {name}!'                         -- "Hello, {name}!"
+'{this is just pure chars}'              -- "{this is just pure chars}"
+'No {interpolation} here'               -- "No {interpolation} here"
+```
+
+### Summary
+
+| Syntax | Interpolation | Use case |
+|---|---|---|
+| `"..."` | Yes — `{expr}` | Dynamic strings with embedded expressions |
+| `'...'` | No — all literal | Static text, templates, regex patterns |
+
+---
+
+## Program Structure
+
+All executable code in Ridgun must live inside a function or operator. The `main` function is the **required entry point** for program execution.
+
+```ridgun
+fn :: main => ()
+      main = echo "Hello, Ridgun!"
+```
+
+A Ridgun source file may contain only:
+- `import` statements
+- `type` definitions
+- `fn` and `op` declarations and definitions
+- A `main` function as the entry point
+
+No loose top-level expressions are allowed. Everything that runs must be called from `main`.
+
+### CLI Usage
+
+```
+ridgun [subcommand] <file.rg>
+```
+
+If no subcommand is given, `run` is assumed.
+
+| Subcommand | Status | Purpose |
+|---|---|---|
+| `run` | ✅ Active | Execute the program (default) |
+| `check` | 🔜 Planned | Type-check without running |
+| `compile` | 🔜 Planned | Emit bytecode `.rgc` file |
+| `fmt` | 🔜 Planned | Format source code |
+| `repl` | 🔜 Planned | Interactive REPL |
+| `test` | 🔜 Planned | Run tests with formatted output |
+
+---
+
 ## Functions
 
 Functions are declared with `fn ::` followed by a type signature, then defined by equation.
@@ -91,17 +168,17 @@ Key elements:
 
 ### Pipe Syntax for Parallelism
 
-An alternative syntax for expressing parallel execution uses `|` (pipe):
+An alternative syntax for expressing parallel execution uses `||` (double pipe):
 
 ```ridgun
 -- Another way to run two processes in parallel
 op :: another way to run two processes Conf Conf in parallel => Res, Res
       another way to run two processes a b in parallel =
-        | run my own process a
-        | run my own process b
+        || run my own process a
+        || run my own process b
 ```
 
-Each `|` line runs as an independent parallel task. Results are collected in order.
+Each `||` line runs as an independent parallel task. Results are collected in order.
 
 ### Operator Overloading
 
@@ -124,7 +201,7 @@ When symbolic operators (like `+`, `*`) appear inside natural language operator 
 | **Highest** | Symbolic operators | `*`, `/`, `+`, `-`, `%` |
 | | Function application | `f x` |
 | | Comparison | `==`, `!=`, `<`, `>` |
-| | Logical | `&&`, `\|\|`, `!` |
+| | Logical | `AND`, `OR`, `XOR`, `NOT` |
 | **Lowest** | Natural language operators | `add a to b`, `run a and b in parallel` |
 
 ### Operator Chaining
@@ -168,10 +245,52 @@ op :: <words and types mixed> => <return_type>
 | `Int` | Integer |
 | `Real` | Real number |
 | `Bool` | Boolean |
-| `String` | Text string |
+| `Char` | Single Unicode character (UTF-8) |
+| `String` | Text string (UTF-8) |
 | `Complex` | Complex number |
 | `Tensor` | Mutable N-dimensional tensor (`Real` elements, CPU) |
 | `Tensor_GPU` | Mutable N-dimensional tensor (`Real` elements, GPU) |
+
+> [!NOTE]
+> All text in Ridgun is UTF-8 encoded by default. `Char` represents a single Unicode codepoint, `String` is a sequence of `Char`.
+
+### Bool Literals
+
+`Bool` has two primitive values:
+
+```ridgun
+True                                     -- boolean true
+False                                    -- boolean false
+```
+
+`True` and `False` are constructors — they can be used in expressions, passed as arguments, and pattern-matched:
+
+```ridgun
+fn :: is_valid Int => Bool
+      is_valid n
+        | n > 0     = True
+        | otherwise = False
+```
+
+### Logical Operators
+
+Ridgun uses **word-based** logical operators instead of symbolic ones:
+
+| Operator | Meaning | Example |
+|---|---|---|
+| `AND` | Logical conjunction | `a AND b` |
+| `OR` | Logical disjunction | `a OR b` |
+| `XOR` | Exclusive or | `a XOR b` |
+| `NOT` | Logical negation | `NOT a` |
+
+```ridgun
+result = True AND False                  -- False
+result = True OR False                   -- True
+result = True XOR True                   -- False
+result = NOT False                       -- True
+```
+
+These are infix keyword operators with standard boolean semantics.
 
 ### Native Collection Types
 
@@ -240,35 +359,50 @@ m[0, 1] = 5.0                            -- set element
 m[0] = Tensor [10, 20]                   -- set entire row
 ```
 
-**Einstein notation:** Tensor products use subscript indices for automatic Einstein summation. Shared indices between operands are contracted (summed over); unshared indices remain in the result.
+**Tensor contraction (`@`):** The `@` operator performs Einstein summation. Subscript indices on each operand define the contraction: indices shared across **all** operands are summed; unique indices survive in the result.
 
 ```ridgun
 -- A has shape (s, d, f), B has shape (n, d, f)
 -- Shared indices: d, f → contracted (summed)
 -- Result T has shape (s, n)
-T = A_sdf * B_ndf
+T = A_sdf @ B_ndf
 
 -- Equivalent to: np.einsum('sdf,ndf->sn', A, B)
 ```
 
-Einstein notation works across **multiple tensors** in a single expression:
+Contraction works across **multiple tensors** in a single expression:
 
 ```ridgun
--- A has shape (a, b, c), B has shape (a, b, c), C has shape (a, b, c, d)
--- Shared indices: a, b, c → contracted
--- Result R has shape (d)
-R = A_abc * B_abc * C_abcd
+-- A(a,b,c), B(a,b,c), C(a,b,c,d)
+-- Shared: a, b, c → contracted. Result R has shape (d)
+R = A_abc @ B_abc @ C_abcd
 
 -- Equivalent to: np.einsum('abc,abc,abcd->d', A, B, C)
 ```
 
-The rule is simple: **indices appearing in all operands are summed; indices unique to one operand survive in the result.**
+**Hadamard operations (`+`, `-`, `*`, `/`):** Arithmetic operators with subscript indices perform **element-wise** operations. Matching indices align dimensions; unmatched indices are broadcast.
+
+```ridgun
+-- Element-wise multiply: same shape, same indices
+H = A_ij * B_ij                          -- shape (i, j)
+
+-- Broadcasting: B has fewer dimensions
+S = A_ij * B_j                           -- B broadcasts along i
+
+-- Element-wise add
+C = A_ij + B_ij
+
+-- Element-wise divide
+D = A_ij / B_j                           -- B broadcasts along i
+```
+
+This eliminates the need for `unsqueeze`, `expand_dims`, or manual reshaping — the indices **are** the broadcasting rules.
 
 **GPU variant:** `Tensor_GPU` places the tensor on GPU memory for accelerated computation.
 
 ```ridgun
 g = Tensor_GPU [[1, 2], [3, 4]]
-result = g_ij * g_jk               -- GPU-accelerated matrix multiply
+result = g_ij @ g_jk                     -- GPU-accelerated matrix multiply
 ```
 
 #### Sequences (`seq`)
@@ -419,15 +553,111 @@ Ridgun provides two syntactic forms for parallel execution:
 
 All computations in a `where` block execute in parallel. Results are bound to variables using `->`.
 
-### Pipe `|` Blocks
+### Pipe `||` Blocks
 
 ```ridgun
 <operator> =
-  | <computation_1>
-  | <computation_2>
+  || <computation_1>
+  || <computation_2>
 ```
 
-Each `|` line runs as a separate parallel green thread. Results are returned as a tuple in declaration order.
+Each `||` line runs as a separate parallel green thread. Results are returned as a tuple in declaration order.
+
+---
+
+## I/O Primitives
+
+Ridgun provides built-in functions for terminal output.
+
+### `echo`
+
+Prints an arbitrary number of strings to the terminal, separated by spaces, followed by a newline.
+
+```
+fn :: echo String... => ()
+```
+
+The `...` suffix on the last parameter type marks it as **variadic** — accepting one or more arguments of that type.
+
+```ridgun
+echo "hello"                            -- prints: hello
+echo "hello" "world" "!"               -- prints: hello world !
+echo "result: {result}"                 -- prints: result: 42
+```
+
+### `out`
+
+An operator that writes a string directly to the terminal and returns it (allowing chaining).
+
+```
+op :: String out => String
+```
+
+```ridgun
+"hello" out                              -- prints: hello
+"step 1 done" out                        -- prints: step 1 done
+
+-- Chaining: out returns the string, so it can be passed onward
+fn :: log_and_process String => String
+      log_and_process s = process (s out) and report
+```
+
+### Summary
+
+| Function | Type | Purpose |
+|---|---|---|
+| `echo` | `String... => ()` | Print strings with spaces and newline |
+| `out` | `String => String` | Print string, return it for chaining |
+
+---
+
+## Standard Library
+
+Libraries are imported with `import`:
+
+```ridgun
+import test
+```
+
+### Unit Testing (`lib/test.rg`)
+
+A simple test library using `echo` for terminal output.
+
+**Assertions:**
+
+| Operator | Purpose |
+|---|---|
+| `assert Int equals Int` | Integer equality |
+| `assert Real equals Real` | Real equality |
+| `assert String equals String` | String equality |
+| `assert Bool is true` | Boolean is true |
+| `assert Bool is false` | Boolean is false |
+
+**Test structure:**
+
+```ridgun
+import test
+
+fn :: main => ()
+      main =
+        describe "Arithmetic" does
+
+          test "sum adds correctly" does
+            assert (sum 3 4) equals 7
+
+          test "factorial base case" does
+            assert (factorial 0) equals 1
+```
+
+**Terminal output:**
+
+```
+═══ Arithmetic ═══
+● sum adds correctly
+  ✓ PASS
+● factorial base case
+  ✓ PASS
+```
 
 ---
 
@@ -441,10 +671,17 @@ Each `|` line runs as a separate parallel green thread. Results are returned as 
 | Operator declaration | `op :: words types words => return` | Declare a natural language operator |
 | Operator definition | `words params words = body` | Define an operator's implementation |
 | Multiple returns | `=> type, type` | Declare multiple return values |
+| Variadic parameters | `Type...` | Accept one or more arguments of a type |
 | Tensor literal | `Tensor [[1, 2], [3, 4]]` | Create an N-dimensional tensor |
 | Tensor indexing | `t[0, 1]` or `t[0][1]` | Access tensor elements |
 | Tensor mutation | `t[0, 1] = 5.0` | Mutate tensor elements in place |
-| Einstein notation | `A_ij * B_jk` | Tensor contraction over shared indices |
+| Einstein contraction | `A_ij @ B_jk` | Tensor contraction over shared indices |
+| Hadamard operation | `A_ij * B_ij` | Element-wise arithmetic with index alignment |
+| `echo` | `echo "a" "b" "c"` | Print strings to terminal |
+| `out` | `"text" out` | Output string to terminal |
 | Where block | `where expr -> var` | Parallel sub-computations with named results |
-| Pipe block | `\| expr` | Parallel execution (alternative syntax) |
+| Pipe block | `\|\| expr` | Parallel execution (alternative syntax) |
 | Operator overloading | `op :: type + type => type` | Overload existing operators for new types |
+| Bool literals | `True`, `False` | Boolean primitive values |
+| Logical operators | `AND`, `OR`, `XOR`, `NOT` | Word-based logical operators |
+| Entry point | `fn :: main => ()` | Required program entry point |

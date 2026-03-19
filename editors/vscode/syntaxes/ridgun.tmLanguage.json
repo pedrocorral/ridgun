@@ -6,6 +6,8 @@
     { "include": "#fn-declaration" },
     { "include": "#op-declaration" },
     { "include": "#keywords" },
+    { "include": "#interpolated-string" },
+    { "include": "#raw-string" },
     { "include": "#seq-selector" },
     { "include": "#list-type" },
     { "include": "#operators" },
@@ -17,6 +19,32 @@
     "comment": {
       "name": "comment.line.double-dash.ridgun",
       "match": "--.*$"
+    },
+    "interpolated-string": {
+      "name": "string.quoted.double.ridgun",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.ridgun",
+          "match": "\\{\\{|\\}\\}"
+        },
+        {
+          "name": "meta.interpolation.ridgun",
+          "begin": "\\{",
+          "end": "\\}",
+          "beginCaptures": { "0": { "name": "punctuation.section.interpolation.begin.ridgun" } },
+          "endCaptures": { "0": { "name": "punctuation.section.interpolation.end.ridgun" } },
+          "patterns": [
+            { "include": "$self" }
+          ]
+        }
+      ]
+    },
+    "raw-string": {
+      "name": "string.quoted.single.ridgun",
+      "begin": "'",
+      "end": "'"
     },
     "fn-declaration": {
       "match": "\\b(fn)\\s*(::)",
@@ -37,6 +65,14 @@
         {
           "name": "keyword.other.ridgun",
           "match": "\\b(fn|op|where)\\b"
+        },
+        {
+          "name": "constant.language.bool.ridgun",
+          "match": "\\b(True|False)\\b"
+        },
+        {
+          "name": "keyword.operator.logical.ridgun",
+          "match": "\\b(AND|OR|XOR|NOT)\\b"
         },
         {
           "name": "keyword.operator.arrow.ridgun",
@@ -71,7 +107,7 @@
         },
         {
           "name": "keyword.operator.arithmetic.ridgun",
-          "match": "[+\\-*/%]"
+          "match": "[+\\-*/%@]"
         },
         {
           "name": "keyword.operator.comparison.ridgun",
@@ -87,7 +123,7 @@
         },
         {
           "name": "keyword.operator.pipe.ridgun",
-          "match": "^\\s*\\|"
+          "match": "^\\s*\\|\\|"
         }
       ]
     },
@@ -96,8 +132,9 @@
       "match": "\\b[0-9]+\\b"
     },
     "types": {
+      "comment": "Any identifier starting with an uppercase letter is a type or constructor",
       "name": "storage.type.ridgun",
-      "match": "\\b(Int|Real|Bool|String|Complex|Tensor|Tensor_GPU)\\b"
+      "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
     },
     "punctuation": {
       "patterns": [

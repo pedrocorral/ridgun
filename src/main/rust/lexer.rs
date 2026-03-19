@@ -2,23 +2,51 @@
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
+    // Keywords
     Fn,
+    Op,
+    Type,
+    Import,
+    True,
+    False,
+    Otherwise,
+    Where,
+
+    // Punctuation
     ColonColon,
     FatArrow,
     Arrow,
     Equals,
+    EqualEqual,
     Plus,
     Minus,
     Star,
+    Slash,
+    Greater,
+    GreaterEq,
+    Less,
+    LessEq,
+    At,
     LParen,
     RParen,
     LBracket,
     RBracket,
+    LBrace,
+    RBrace,
     Pipe,
+    DoublePipe,
     Colon,
     Comma,
+
+    // Literals
     IntLit(i64),
+    StringLit(String),
+    RawStringLit(String),
+
+    // Identifiers
     Ident(String),
+
+    // Structure
     Newline,
     Eof,
 }
@@ -127,18 +155,53 @@ impl Lexer {
                 if self.peek() == Some('>') {
                     self.advance();
                     Token::FatArrow
+                } else if self.peek() == Some('=') {
+                    self.advance();
+                    Token::EqualEqual
                 } else {
                     Token::Equals
                 }
             }
+            Some('>') => {
+                self.advance();
+                if self.peek() == Some('=') {
+                    self.advance();
+                    Token::GreaterEq
+                } else {
+                    Token::Greater
+                }
+            }
+            Some('<') => {
+                self.advance();
+                if self.peek() == Some('=') {
+                    self.advance();
+                    Token::LessEq
+                } else {
+                    Token::Less
+                }
+            }
+            Some('|') => {
+                self.advance();
+                if self.peek() == Some('|') {
+                    self.advance();
+                    Token::DoublePipe
+                } else {
+                    Token::Pipe
+                }
+            }
             Some('+') => { self.advance(); Token::Plus }
             Some('*') => { self.advance(); Token::Star }
+            Some('/') => { self.advance(); Token::Slash }
+            Some('@') => { self.advance(); Token::At }
+            Some('{') => { self.advance(); Token::LBrace }
+            Some('}') => { self.advance(); Token::RBrace }
             Some('(') => { self.advance(); Token::LParen }
             Some(')') => { self.advance(); Token::RParen }
             Some('[') => { self.advance(); Token::LBracket }
             Some(']') => { self.advance(); Token::RBracket }
-            Some('|') => { self.advance(); Token::Pipe }
             Some(',') => { self.advance(); Token::Comma }
+            Some('"') => self.read_string(),
+            Some('\'') => self.read_raw_string(),
             Some(ch) if ch.is_ascii_digit() => self.read_number(),
             Some(ch) if ch.is_alphabetic() || ch == '_' => self.read_ident(),
             Some(ch) => panic!("Unexpected character: '{}'", ch),
@@ -170,8 +233,97 @@ impl Lexer {
         }
         match s.as_str() {
             "fn" => Token::Fn,
+            "op" => Token::Op,
+            "type" => Token::Type,
+            "import" => Token::Import,
+            "True" => Token::True,
+            "False" => Token::False,
+            "otherwise" => Token::Otherwise,
+            "where" => Token::Where,
             _ => Token::Ident(s),
         }
+    }
+
+    /// Read a double-quoted string: "..." with {expr} interpolation
+    /// {{ produces a literal { in the output
+    fn read_string(&mut self) -> Token {
+        self.advance(); // consume opening "
+        let mut s = String::new();
+        loop {
+            match self.peek() {
+                None => panic!("Unterminated string literal"),
+                Some('"') => {
+                    self.advance();
+                    break;
+                }
+                Some('{') => {
+                    self.advance();
+                    if self.peek() == Some('{') {
+                        // {{ => literal {
+                        self.advance();
+                        s.push('{');
+                    } else {
+                        // {expr} — include braces in the string for later processing
+                        s.push('{');
+                        while let Some(ch) = self.peek() {
+                            if ch == '}' {
+                                s.push('}');
+                                self.advance();
+                                break;
+                            }
+                            s.push(ch);
+                            self.advance();
+                        }
+                    }
+                }
+                Some('}') => {
+                    self.advance();
+                    if self.peek() == Some('}') {
+                        // }} => literal }
+                        self.advance();
+                        s.push('}');
+                    } else {
+                        s.push('}');
+                    }
+                }
+                Some('\\') => {
+                    self.advance();
+                    match self.peek() {
+                        Some('n') => { self.advance(); s.push('\n'); }
+                        Some('t') => { self.advance(); s.push('\t'); }
+                        Some('"') => { self.advance(); s.push('"'); }
+                        Some('\\') => { self.advance(); s.push('\\'); }
+                        Some(ch) => { s.push('\\'); s.push(ch); self.advance(); }
+                        None => panic!("Unterminated escape in string"),
+                    }
+                }
+                Some(ch) => {
+                    s.push(ch);
+                    self.advance();
+                }
+            }
+        }
+        Token::StringLit(s)
+    }
+
+    /// Read a single-quoted raw string: '...' — no interpolation
+    fn read_raw_string(&mut self) -> Token {
+        self.advance(); // consume opening '
+        let mut s = String::new();
+        loop {
+            match self.peek() {
+                None => panic!("Unterminated raw string literal"),
+                Some('\'') => {
+                    self.advance();
+                    break;
+                }
+                Some(ch) => {
+                    s.push(ch);
+                    self.advance();
+                }
+            }
+        }
+        Token::RawStringLit(s)
     }
 }
 
@@ -294,5 +446,104 @@ mod tests {
             Token::LParen, Token::Ident("s".into()),
             Token::RParen, Token::Eof,
         ]);
+    }
+
+    #[test]
+    fn test_at_operator() {
+        let tokens = Lexer::new("A @ B").tokenize();
+        assert_eq!(tokens, vec![
+            Token::Ident("A".into()), Token::At,
+            Token::Ident("B".into()), Token::Eof,
+        ]);
+    }
+
+    #[test]
+    fn test_string_literal() {
+        let tokens = Lexer::new("\"hello world\"").tokenize();
+        assert_eq!(tokens, vec![
+            Token::StringLit("hello world".into()), Token::Eof,
+        ]);
+    }
+
+    #[test]
+    fn test_string_interpolation() {
+        let tokens = Lexer::new("\"result: {my_func x}\"").tokenize();
+        assert_eq!(tokens, vec![
+            Token::StringLit("result: {my_func x}".into()), Token::Eof,
+        ]);
+    }
+
+    #[test]
+    fn test_string_escaped_braces() {
+        let tokens = Lexer::new("\"{{not code}}\"").tokenize();
+        assert_eq!(tokens, vec![
+            Token::StringLit("{not code}".into()), Token::Eof,
+        ]);
+    }
+
+    #[test]
+    fn test_raw_string() {
+        let tokens = Lexer::new("'hello {world}'").tokenize();
+        assert_eq!(tokens, vec![
+            Token::RawStringLit("hello {world}".into()), Token::Eof,
+        ]);
+    }
+
+    #[test]
+    fn test_raw_string_no_interpolation() {
+        let tokens = Lexer::new("'{this is just chars}'").tokenize();
+        assert_eq!(tokens, vec![
+            Token::RawStringLit("{this is just chars}".into()), Token::Eof,
+        ]);
+    }
+
+    #[test]
+    fn test_bool_literals() {
+        let tokens = Lexer::new("True False").tokenize();
+        assert_eq!(tokens, vec![
+            Token::True, Token::False, Token::Eof,
+        ]);
+    }
+
+    #[test]
+    fn test_comparison_operators() {
+        let tokens = Lexer::new("a == b > c < d >= e <= f").tokenize();
+        assert_eq!(tokens, vec![
+            Token::Ident("a".into()), Token::EqualEqual, Token::Ident("b".into()),
+            Token::Greater, Token::Ident("c".into()),
+            Token::Less, Token::Ident("d".into()),
+            Token::GreaterEq, Token::Ident("e".into()),
+            Token::LessEq, Token::Ident("f".into()),
+            Token::Eof,
+        ]);
+    }
+
+    #[test]
+    fn test_op_keyword() {
+        let tokens = Lexer::new("op :: add Int to Int => Int").tokenize();
+        assert_eq!(tokens[0], Token::Op);
+    }
+
+    #[test]
+    fn test_import_keyword() {
+        let tokens = Lexer::new("import test").tokenize();
+        assert_eq!(tokens, vec![
+            Token::Import, Token::Ident("test".into()), Token::Eof,
+        ]);
+    }
+
+    #[test]
+    fn test_guard_pipe() {
+        let tokens = Lexer::new("| a == b = True\n| otherwise = False").tokenize();
+        assert_eq!(tokens[0], Token::Pipe);
+        assert_eq!(tokens[2], Token::EqualEqual);
+        assert_eq!(tokens[4], Token::Equals);
+        assert_eq!(tokens[5], Token::True);
+    }
+
+    #[test]
+    fn test_double_pipe() {
+        let tokens = Lexer::new("|| run a").tokenize();
+        assert_eq!(tokens[0], Token::DoublePipe);
     }
 }

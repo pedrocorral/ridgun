@@ -1,19 +1,57 @@
 /// Ridgun VM — Stack machine executing bytecoded programs
 
+use std::fmt;
 use crate::compiler::{CompiledProgram, Instruction};
 
-// ── Call frame ─────────────────────────────────────────────
+// ── Value type ────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Value {
+    Int(i64),
+    Str(String),
+    Bool(bool),
+    Unit,
+}
+
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Value::Int(n) => write!(f, "{}", n),
+            Value::Str(s) => write!(f, "{}", s),
+            Value::Bool(b) => write!(f, "{}", if *b { "True" } else { "False" }),
+            Value::Unit => write!(f, "()"),
+        }
+    }
+}
+
+impl Value {
+    pub fn as_int(&self) -> i64 {
+        match self {
+            Value::Int(n) => *n,
+            other => panic!("Expected Int, got {:?}", other),
+        }
+    }
+
+    pub fn as_bool(&self) -> bool {
+        match self {
+            Value::Bool(b) => *b,
+            other => panic!("Expected Bool, got {:?}", other),
+        }
+    }
+}
+
+// ── Call frame ────────────────────────────────────────────
 
 struct CallFrame {
     function: String,
     ip: usize,
-    locals: Vec<i64>,
+    locals: Vec<Value>,
 }
 
-// ── VM ─────────────────────────────────────────────────────
+// ── VM ────────────────────────────────────────────────────
 
 pub struct VM {
-    stack: Vec<i64>,
+    stack: Vec<Value>,
     call_stack: Vec<CallFrame>,
     program: CompiledProgram,
 }
@@ -28,7 +66,7 @@ impl VM {
     }
 
     /// Call a function by name with the given arguments, returns the result.
-    pub fn call(&mut self, name: &str, args: &[i64]) -> i64 {
+    pub fn call(&mut self, name: &str, args: &[Value]) -> Value {
         let arity = self.program.functions.get(name)
             .unwrap_or_else(|| panic!("Undefined function: {}", name))
             .arity;
@@ -45,7 +83,13 @@ impl VM {
         self.run()
     }
 
-    fn run(&mut self) -> i64 {
+    /// Convenience: call with i64 args (backward compat)
+    pub fn call_ints(&mut self, name: &str, args: &[i64]) -> Value {
+        let val_args: Vec<Value> = args.iter().map(|n| Value::Int(*n)).collect();
+        self.call(name, &val_args)
+    }
+
+    fn run(&mut self) -> Value {
         loop {
             let frame = self.call_stack.last()
                 .expect("Call stack empty");
@@ -65,34 +109,108 @@ impl VM {
 
             match instr {
                 Instruction::PushInt(n) => {
-                    self.stack.push(n);
+                    self.stack.push(Value::Int(n));
+                }
+
+                Instruction::PushString(s) => {
+                    self.stack.push(Value::Str(s));
+                }
+
+                Instruction::PushBool(b) => {
+                    self.stack.push(Value::Bool(b));
+                }
+
+                Instruction::PushUnit => {
+                    self.stack.push(Value::Unit);
                 }
 
                 Instruction::LoadLocal(idx) => {
-                    let val = self.call_stack.last().unwrap().locals[idx];
+                    let val = self.call_stack.last().unwrap().locals[idx].clone();
                     self.stack.push(val);
+                }
+
+                Instruction::StoreLocal(idx) => {
+                    let val = self.stack.pop().expect("Stack underflow on StoreLocal");
+                    let locals = &mut self.call_stack.last_mut().unwrap().locals;
+                    // Grow locals vector if needed
+                    while locals.len() <= idx {
+                        locals.push(Value::Unit);
+                    }
+                    locals[idx] = val;
+                }
+
+                Instruction::Pop => {
+                    self.stack.pop().expect("Stack underflow on Pop");
                 }
 
                 Instruction::Add => {
                     let b = self.stack.pop().expect("Stack underflow");
                     let a = self.stack.pop().expect("Stack underflow");
-                    self.stack.push(a + b);
+                    self.stack.push(Value::Int(a.as_int() + b.as_int()));
                 }
 
                 Instruction::Sub => {
                     let b = self.stack.pop().expect("Stack underflow");
                     let a = self.stack.pop().expect("Stack underflow");
-                    self.stack.push(a - b);
+                    self.stack.push(Value::Int(a.as_int() - b.as_int()));
                 }
 
                 Instruction::Mul => {
                     let b = self.stack.pop().expect("Stack underflow");
                     let a = self.stack.pop().expect("Stack underflow");
-                    self.stack.push(a * b);
+                    self.stack.push(Value::Int(a.as_int() * b.as_int()));
+                }
+
+                Instruction::Div => {
+                    let b = self.stack.pop().expect("Stack underflow");
+                    let a = self.stack.pop().expect("Stack underflow");
+                    self.stack.push(Value::Int(a.as_int() / b.as_int()));
+                }
+
+                Instruction::CmpEq => {
+                    let b = self.stack.pop().expect("Stack underflow");
+                    let a = self.stack.pop().expect("Stack underflow");
+                    self.stack.push(Value::Bool(a == b));
+                }
+
+                Instruction::CmpGt => {
+                    let b = self.stack.pop().expect("Stack underflow");
+                    let a = self.stack.pop().expect("Stack underflow");
+                    self.stack.push(Value::Bool(a.as_int() > b.as_int()));
+                }
+
+                Instruction::CmpLt => {
+                    let b = self.stack.pop().expect("Stack underflow");
+                    let a = self.stack.pop().expect("Stack underflow");
+                    self.stack.push(Value::Bool(a.as_int() < b.as_int()));
+                }
+
+                Instruction::CmpGtEq => {
+                    let b = self.stack.pop().expect("Stack underflow");
+                    let a = self.stack.pop().expect("Stack underflow");
+                    self.stack.push(Value::Bool(a.as_int() >= b.as_int()));
+                }
+
+                Instruction::CmpLtEq => {
+                    let b = self.stack.pop().expect("Stack underflow");
+                    let a = self.stack.pop().expect("Stack underflow");
+                    self.stack.push(Value::Bool(a.as_int() <= b.as_int()));
+                }
+
+                Instruction::Echo(argc) => {
+                    let mut parts: Vec<String> = Vec::new();
+                    // Collect args from stack (they're pushed left-to-right)
+                    let start = self.stack.len() - argc;
+                    for i in start..self.stack.len() {
+                        parts.push(format!("{}", self.stack[i]));
+                    }
+                    self.stack.truncate(start);
+                    println!("{}", parts.join(" "));
+                    self.stack.push(Value::Unit);
                 }
 
                 Instruction::Call(name, argc) => {
-                    let mut args = vec![0i64; argc];
+                    let mut args = vec![Value::Unit; argc];
                     for i in (0..argc).rev() {
                         args[i] = self.stack.pop().expect("Stack underflow");
                     }
@@ -124,6 +242,17 @@ impl VM {
                         self.call_stack.last_mut().unwrap().ip = target;
                     }
                 }
+
+                Instruction::JumpIfFalse(target) => {
+                    let val = self.stack.pop().expect("Stack underflow");
+                    if !val.as_bool() {
+                        self.call_stack.last_mut().unwrap().ip = target;
+                    }
+                }
+
+                Instruction::Jump(target) => {
+                    self.call_stack.last_mut().unwrap().ip = target;
+                }
             }
         }
     }
@@ -136,11 +265,11 @@ mod tests {
     use crate::parser::Parser;
     use crate::compiler;
 
-    fn run(src: &str, func: &str, args: &[i64]) -> i64 {
+    fn run(src: &str, func: &str, args: &[i64]) -> Value {
         let tokens = Lexer::new(src).tokenize();
         let program = Parser::new(tokens).parse();
         let compiled = compiler::compile(&program);
-        VM::new(compiled).call(func, args)
+        VM::new(compiled).call_ints(func, args)
     }
 
     #[test]
@@ -149,7 +278,7 @@ mod tests {
             "fn :: sum Int Int => Int\nsum a b = a + b",
             "sum", &[3, 4],
         );
-        assert_eq!(result, 7);
+        assert_eq!(result, Value::Int(7));
     }
 
     #[test]
@@ -157,10 +286,10 @@ mod tests {
         let src = "fn :: factorial Int => Int\n\
                    factorial 0 = 1\n\
                    factorial n = n * factorial (n - 1)";
-        assert_eq!(run(src, "factorial", &[0]), 1);
-        assert_eq!(run(src, "factorial", &[1]), 1);
-        assert_eq!(run(src, "factorial", &[5]), 120);
-        assert_eq!(run(src, "factorial", &[10]), 3628800);
+        assert_eq!(run(src, "factorial", &[0]), Value::Int(1));
+        assert_eq!(run(src, "factorial", &[1]), Value::Int(1));
+        assert_eq!(run(src, "factorial", &[5]), Value::Int(120));
+        assert_eq!(run(src, "factorial", &[10]), Value::Int(3628800));
     }
 
     #[test]
@@ -169,9 +298,9 @@ mod tests {
                    fib 0 = 0\n\
                    fib 1 = 1\n\
                    fib n = fib (n - 1) + fib (n - 2)";
-        assert_eq!(run(src, "fib", &[0]), 0);
-        assert_eq!(run(src, "fib", &[1]), 1);
-        assert_eq!(run(src, "fib", &[5]), 5);
-        assert_eq!(run(src, "fib", &[10]), 55);
+        assert_eq!(run(src, "fib", &[0]), Value::Int(0));
+        assert_eq!(run(src, "fib", &[1]), Value::Int(1));
+        assert_eq!(run(src, "fib", &[5]), Value::Int(5));
+        assert_eq!(run(src, "fib", &[10]), Value::Int(55));
     }
 }
