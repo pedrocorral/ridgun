@@ -10,8 +10,8 @@ use ridgun::vm::{VM, Value};
 fn run_file(path: &str) -> Value {
     let source = fs::read_to_string(path)
         .unwrap_or_else(|e| panic!("Cannot read '{}': {}", path, e));
-    let tokens = Lexer::new(&source).tokenize();
-    let program = Parser::new(tokens).parse();
+    let (tokens, spans) = Lexer::new(&source).tokenize();
+    let program = Parser::new(tokens, spans).parse();
     let compiled = compiler::compile(&program);
     let mut vm = VM::new(compiled);
     vm.call("main", &[])
@@ -19,8 +19,8 @@ fn run_file(path: &str) -> Value {
 
 /// Run inline source and call main
 fn run_src(src: &str) -> Value {
-    let tokens = Lexer::new(src).tokenize();
-    let program = Parser::new(tokens).parse();
+    let (tokens, spans) = Lexer::new(src).tokenize();
+    let program = Parser::new(tokens, spans).parse();
     let compiled = compiler::compile(&program);
     let mut vm = VM::new(compiled);
     vm.call("main", &[])

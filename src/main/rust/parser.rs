@@ -1,7 +1,7 @@
 /// Ridgun Parser — Recursive descent parser producing an AST
 
 use std::collections::HashMap;
-use crate::lexer::Token;
+use crate::lexer::{Token, Span};
 
 // ── AST Types ──────────────────────────────────────────────
 
@@ -60,6 +60,7 @@ pub struct FnDecl {
 
 #[derive(Debug, Clone)]
 pub struct FnCase {
+    pub span: Span,
     pub patterns: Vec<Pattern>,
     pub body: Expr,
     pub guards: Vec<(Expr, Expr)>,  // (condition, body) pairs; empty = no guards
@@ -67,6 +68,7 @@ pub struct FnCase {
 
 #[derive(Debug, Clone)]
 pub struct FnDef {
+    pub span: Span,
     pub name: String,
     pub decl: FnDecl,
     pub cases: Vec<FnCase>,
@@ -81,7 +83,7 @@ pub struct Program {
 
 #[derive(Debug)]
 enum Item {
-    Decl(FnDecl),
+    Decl(FnDecl, Span),
     Def(String, FnCase),
     Skip, // for items the parser sees but doesn't compile yet (type, import, op)
 }
@@ -90,12 +92,18 @@ enum Item {
 
 pub struct Parser {
     tokens: Vec<Token>,
+    spans: Vec<Span>,
     pos: usize,
 }
 
 impl Parser {
-    pub fn new(tokens: Vec<Token>) -> Self {
-        Parser { tokens, pos: 0 }
+    pub fn new(tokens: Vec<Token>, spans: Vec<Span>) -> Self {
+        Parser { tokens, spans, pos: 0 }
+    }
+
+    /// Return the span for the token at the current position
+    fn current_span(&self) -> Span {
+        self.spans.get(self.pos).copied().unwrap_or(Span::new(0, 0, 0, 0))
     }
 
     pub fn parse(&mut self) -> Program {
@@ -165,6 +173,7 @@ impl Parser {
 
     /// Parse `op :: word Type word Type ... => ReturnType` plus definitions
     fn parse_op_decl(&mut self) -> Vec<Item> {
+        let span_start = self.current_span();
         self.expect(&Token::Op);
         self.expect(&Token::ColonColon);
 
@@ -239,11 +248,13 @@ impl Parser {
         }
 
         let mangled_name = words.join("_");
+        let span_end = self.current_span();
+        let span = Span::new(span_start.start_char, span_end.end_char, span_start.start_line, span_start.start_col);
         let mut items = vec![Item::Decl(FnDecl {
             name: mangled_name.clone(),
             param_types,
             return_type,
-        })];
+        }, span)];
 
         // Now parse definition line(s) that follow
         self.skip_newlines();
@@ -312,6 +323,7 @@ impl Parser {
             if matches!(self.peek(), Token::Pipe) {
                 let guards = self.parse_guards();
                 return FnCase {
+                    span: Span::new(0, 0, 0, 0),
                     patterns,
                     body: Expr::Unit,
                     guards,
@@ -324,7 +336,7 @@ impl Parser {
         // No guards — parse = body
         self.expect(&Token::Equals);
         let body = self.parse_expr();
-        FnCase { patterns, body, guards: Vec::new() }
+        FnCase { span: Span::new(0, 0, 0, 0), patterns, body, guards: Vec::new() }
     }
 
     /// Parse return type: Int, [Int], (), etc.
@@ -352,6 +364,7 @@ impl Parser {
     }
 
     fn parse_fn_decl(&mut self) -> Item {
+        let span_start = self.current_span();
         self.expect(&Token::Fn);
         self.expect(&Token::ColonColon);
 
@@ -364,8 +377,7 @@ impl Parser {
         while !matches!(self.peek(), Token::FatArrow | Token::Arrow) {
             match self.peek() {
                 Token::LBracket => {
-                    // [type] list type syntax
-                    self.advance(); // consume [
+                    self.advance();
                     let inner = match self.advance() {
                         Token::Ident(s) => s,
                         other => panic!("Expected type inside [...], got {:?}", other),
@@ -382,7 +394,6 @@ impl Parser {
             }
         }
 
-        // Accept both => and -> for return type separator
         match self.peek() {
             Token::FatArrow | Token::Arrow => { self.advance(); }
             other => panic!("Expected => or ->, got {:?}", other),
@@ -399,7 +410,6 @@ impl Parser {
                 format!("[{}]", inner)
             }
             Token::LParen => {
-                // () — unit type
                 self.advance();
                 self.expect(&Token::RParen);
                 "()".to_string()
@@ -410,7 +420,9 @@ impl Parser {
             },
         };
 
-        Item::Decl(FnDecl { name, param_types, return_type })
+        let span_end = self.current_span();
+        let span = Span::new(span_start.start_char, span_end.end_char, span_start.start_line, span_start.start_col);
+        Item::Decl(FnDecl { name, param_types, return_type }, span)
     }
 
     fn parse_fn_case(&mut self) -> Item {
@@ -492,6 +504,7 @@ impl Parser {
                 // This is a guarded case
                 let guards = self.parse_guards();
                 return Item::Def(name, FnCase {
+                    span: Span::new(0, 0, 0, 0),
                     patterns,
                     body: Expr::Unit, // placeholder, guards hold the real bodies
                     guards,
@@ -508,10 +521,10 @@ impl Parser {
         if matches!(self.peek(), Token::Newline) {
             self.advance(); // consume newline
             let body = self.parse_block();
-            Item::Def(name, FnCase { patterns, body, guards: Vec::new() })
+            Item::Def(name, FnCase { span: Span::new(0, 0, 0, 0), patterns, body, guards: Vec::new() })
         } else {
             let body = self.parse_expr();
-            Item::Def(name, FnCase { patterns, body, guards: Vec::new() })
+            Item::Def(name, FnCase { span: Span::new(0, 0, 0, 0), patterns, body, guards: Vec::new() })
         }
     }
 
@@ -803,7 +816,7 @@ impl Parser {
 
         for item in items {
             match item {
-                Item::Decl(d) => {
+                Item::Decl(d, _) => {
                     if !decls.contains_key(&d.name) {
                         order.push(d.name.clone());
                     }
@@ -820,7 +833,7 @@ impl Parser {
             .filter_map(|name| {
                 let decl = decls.remove(&name)?;
                 let cases = defs.remove(&name).unwrap_or_default();
-                Some(FnDef { name, decl, cases })
+                Some(FnDef { span: Span::new(0, 0, 0, 0), name, decl, cases })
             })
             .collect();
 
@@ -834,8 +847,8 @@ mod tests {
     use crate::lexer::Lexer;
 
     fn parse(src: &str) -> Program {
-        let tokens = Lexer::new(src).tokenize();
-        Parser::new(tokens).parse()
+        let (tokens, spans) = Lexer::new(src).tokenize();
+        Parser::new(tokens, spans).parse()
     }
 
     #[test]

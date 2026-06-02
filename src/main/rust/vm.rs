@@ -11,6 +11,7 @@ pub enum Value {
     Str(String),
     Bool(bool),
     Unit,
+    List(Vec<Value>),
 }
 
 impl fmt::Display for Value {
@@ -20,6 +21,10 @@ impl fmt::Display for Value {
             Value::Str(s) => write!(f, "{}", s),
             Value::Bool(b) => write!(f, "{}", if *b { "True" } else { "False" }),
             Value::Unit => write!(f, "()"),
+            Value::List(items) => {
+                let strs: Vec<String> = items.iter().map(|v| format!("{}", v)).collect();
+                write!(f, "[{}]", strs.join(", "))
+            }
         }
     }
 }
@@ -42,10 +47,10 @@ impl Value {
 
 // ── Call frame ────────────────────────────────────────────
 
-struct CallFrame {
-    function: String,
-    ip: usize,
-    locals: Vec<Value>,
+pub struct CallFrame {
+    pub function: String,
+    pub ip: usize,
+    pub locals: Vec<Value>,
 }
 
 // ── VM ────────────────────────────────────────────────────
@@ -197,6 +202,58 @@ impl VM {
                     self.stack.push(Value::Bool(a.as_int() <= b.as_int()));
                 }
 
+                Instruction::PushListEmpty => {
+                    self.stack.push(Value::List(Vec::new()));
+                }
+
+                Instruction::PushListConcat(n) => {
+                    let mut result = Vec::new();
+                    let start = self.stack.len() - n;
+                    for i in (start..self.stack.len()).rev() {
+                        match self.stack[i].clone() {
+                            Value::List(items) => {
+                                result.splice(0..0, items);
+                            }
+                            val => result.insert(0, val),
+                        }
+                    }
+                    self.stack.truncate(start);
+                    self.stack.push(Value::List(result));
+                }
+
+                Instruction::SeqSelectHead => {
+                    let list = self.stack.pop().expect("Stack underflow");
+                    match list {
+                        Value::List(items) => {
+                            if let Some(first) = items.into_iter().next() {
+                                self.stack.push(first);
+                            } else {
+                                self.stack.push(Value::Unit);
+                            }
+                        }
+                        other => self.stack.push(other),
+                    }
+                }
+
+                Instruction::SeqSelectRange(start, end) => {
+                    let list = self.stack.pop().expect("Stack underflow");
+                    match list {
+                        Value::List(items) => {
+                            if start <= items.len() {
+                                let selected: Vec<Value> = items.into_iter()
+                                    .enumerate()
+                                    .filter(|(i, _)| *i >= start && *i <= end)
+                                    .map(|(_, v)| v)
+                                    .collect();
+                                self.stack.push(Value::List(selected));
+                            } else {
+                                self.stack.push(Value::Unit);
+                            }
+                        }
+                        other => self.stack.push(other),
+                    }
+                }
+
                 Instruction::Echo(argc) => {
                     let mut parts: Vec<String> = Vec::new();
                     // Collect args from stack (they're pushed left-to-right)
@@ -253,6 +310,22 @@ impl VM {
                 Instruction::Jump(target) => {
                     self.call_stack.last_mut().unwrap().ip = target;
                 }
+
+                Instruction::Spawn => {
+                    self.stack.push(Value::Int(0));
+                }
+
+                Instruction::Send(_mailbox_id) => {
+                    let _val = self.stack.pop().expect("Stack underflow on Send");
+                    self.stack.push(Value::Bool(true));
+                }
+
+                Instruction::Recv(_mailbox_id) => {
+                    self.stack.push(Value::Unit);
+                }
+
+                Instruction::Join => {
+                }
             }
         }
     }
@@ -266,8 +339,8 @@ mod tests {
     use crate::compiler;
 
     fn run(src: &str, func: &str, args: &[i64]) -> Value {
-        let tokens = Lexer::new(src).tokenize();
-        let program = Parser::new(tokens).parse();
+        let (tokens, spans) = Lexer::new(src).tokenize();
+        let program = Parser::new(tokens, spans).parse();
         let compiled = compiler::compile(&program);
         VM::new(compiled).call_ints(func, args)
     }

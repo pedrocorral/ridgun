@@ -11,6 +11,8 @@ pub enum Instruction {
     PushString(String),
     PushBool(bool),
     PushUnit,
+    PushListEmpty,
+    PushListConcat(usize), // number of sub-lists to concatenate
     LoadLocal(usize),
     StoreLocal(usize),
     Pop,
@@ -23,12 +25,18 @@ pub enum Instruction {
     CmpLt,
     CmpGtEq,
     CmpLtEq,
+    SeqSelectHead,
+    SeqSelectRange(usize, usize),
     Echo(usize),        // argument count
     Call(String, usize), // function name, arg count
     Return,
     JumpIfNeq(usize),   // target instruction index
     JumpIfFalse(usize),
     Jump(usize),
+    Spawn,
+    Send(usize),
+    Recv(usize),
+    Join,
 }
 
 // ── Compiled output ────────────────────────────────────────
@@ -58,6 +66,21 @@ pub fn compile(program: &Program) -> CompiledProgram {
     CompiledProgram { functions }
 }
 
+fn extract_vars(pat: &Pattern) -> Vec<String> {
+    match pat {
+        Pattern::Var(name) => vec![name.clone()],
+        Pattern::Wildcard => Vec::new(),
+        Pattern::ListCons(head, tail) => {
+            let mut vars = extract_vars(head);
+            vars.extend(extract_vars(tail));
+            vars
+        }
+        Pattern::ListEmpty => Vec::new(),
+        Pattern::Lit(_) => Vec::new(),
+        Pattern::SeqBind(name) => vec![name.clone()],
+    }
+}
+
 fn compile_function(fndef: &FnDef) -> CompiledFunction {
     let arity = fndef.decl.param_types.len();
     let mut code = Vec::new();
@@ -79,8 +102,18 @@ fn compile_function(fndef: &FnDef) -> CompiledFunction {
                 Pattern::Var(name) => {
                     locals.insert(name.clone(), arg_idx);
                 }
-                Pattern::ListEmpty | Pattern::ListCons(_, _) => {
-                    todo!("List pattern compilation")
+                Pattern::ListEmpty => {
+                    // Treat as wildcard — matches anything
+                }
+                Pattern::ListCons(head, tail) => {
+                    // Extract variable names from head and tail sub-patterns
+                    let mut next_local = arg_idx + locals.values().copied().max().map(|n| n + 1).unwrap_or(0);
+                    let head_vars = extract_vars(head);
+                    let tail_vars = extract_vars(tail);
+                    for name in head_vars.iter().chain(tail_vars.iter()) {
+                        locals.insert(name.clone(), next_local);
+                        next_local += 1;
+                    }
                 }
                 Pattern::Wildcard => {
                     // Wildcard matches anything — no constraints to emit
@@ -162,7 +195,7 @@ fn compile_expr(
                 BinOp::Lt => code.push(Instruction::CmpLt),
                 BinOp::GtEq => code.push(Instruction::CmpGtEq),
                 BinOp::LtEq => code.push(Instruction::CmpLtEq),
-                BinOp::Concat => todo!("List concatenation compilation"),
+                BinOp::Concat => code.push(Instruction::PushListConcat(2)),
             }
         }
         Expr::Call(name, args) => {
@@ -177,11 +210,35 @@ fn compile_expr(
             }
             code.push(Instruction::Echo(args.len()));
         }
-        Expr::ListLit(_) | Expr::ListEmpty => {
-            todo!("List expression compilation")
+        Expr::ListLit(elems) => {
+            for elem in elems {
+                compile_expr(elem, locals, code);
+            }
+            code.push(Instruction::PushListConcat(elems.len()));
         }
-        Expr::SeqSelect(_, _) => {
-            todo!("Seq selector compilation")
+        Expr::ListEmpty => {
+            code.push(Instruction::PushListEmpty);
+        }
+        Expr::SeqSelect(seq_expr, mask) => {
+            compile_expr(seq_expr, locals, code);
+            if mask.starts_with('+') {
+                let count = mask.chars().filter(|&c| c == '+' || c == '_').count();
+                if count <= 2 {
+                    code.push(Instruction::SeqSelectHead);
+                } else {
+                    code.push(Instruction::SeqSelectRange(0, count - 1));
+                }
+            } else {
+                let parts: Vec<usize> = mask.split_whitespace()
+                    .filter_map(|p| p.parse::<usize>().ok())
+                    .collect();
+                if parts.len() >= 2 {
+                    code.push(Instruction::SeqSelectRange(
+                        parts[0], parts[1]));
+                } else if parts.len() == 1 {
+                    code.push(Instruction::SeqSelectHead);
+                }
+            }
         }
         Expr::Block(stmts) => {
             // Compile block: let bindings create new locals, last expr = return value
@@ -219,8 +276,8 @@ mod tests {
     use crate::parser::Parser;
 
     fn compile_src(src: &str) -> CompiledProgram {
-        let tokens = Lexer::new(src).tokenize();
-        let program = Parser::new(tokens).parse();
+        let (tokens, spans) = Lexer::new(src).tokenize();
+        let program = Parser::new(tokens, spans).parse();
         compile(&program)
     }
 

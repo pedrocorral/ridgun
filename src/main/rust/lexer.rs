@@ -1,5 +1,24 @@
 /// Ridgun Lexer — Tokenizes .rg source files
 
+/// Source location for error reporting
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Span {
+    pub start_char: usize,
+    pub end_char: usize,
+    pub start_line: usize,
+    pub start_col: usize,
+}
+
+impl Span {
+    pub fn new(start_char: usize, end_char: usize, start_line: usize, start_col: usize) -> Self {
+        Span { start_char, end_char, start_line, start_col }
+    }
+
+    pub fn len(&self) -> usize {
+        self.end_char - self.start_char
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
     // Keywords
@@ -54,6 +73,8 @@ pub enum Token {
 pub struct Lexer {
     chars: Vec<char>,
     pos: usize,
+    line: usize,
+    col: usize,
 }
 
 impl Lexer {
@@ -61,33 +82,48 @@ impl Lexer {
         Lexer {
             chars: input.chars().collect(),
             pos: 0,
+            line: 1,
+            col: 0,
         }
     }
 
-    pub fn tokenize(&mut self) -> Vec<Token> {
+    pub fn tokenize(&mut self) -> (Vec<Token>, Vec<Span>) {
         let mut tokens = Vec::new();
+        let mut spans = Vec::new();
         let mut last_was_newline = true;
 
         loop {
-            match self.next_token() {
+            let start_pos = self.pos;
+            let start_line = self.line;
+            let start_col = self.col;
+            let token = self.next_token();
+            let end_pos = self.pos;
+
+            match token {
                 Token::Eof => {
+                    let span = Span::new(start_pos, end_pos, start_line, start_col);
                     tokens.push(Token::Eof);
+                    spans.push(span);
                     break;
                 }
                 Token::Newline => {
                     if !last_was_newline {
+                        let span = Span::new(start_pos, end_pos, start_line, start_col);
                         tokens.push(Token::Newline);
+                        spans.push(span);
                         last_was_newline = true;
                     }
                 }
                 token => {
+                    let span = Span::new(start_pos, end_pos, start_line, start_col);
                     tokens.push(token);
+                    spans.push(span);
                     last_was_newline = false;
                 }
             }
         }
 
-        tokens
+        (tokens, spans)
     }
 
     fn peek(&self) -> Option<char> {
@@ -97,6 +133,12 @@ impl Lexer {
     fn advance(&mut self) -> Option<char> {
         let ch = self.chars.get(self.pos).copied();
         self.pos += 1;
+        if let Some('\n') = ch {
+            self.line += 1;
+            self.col = 0;
+        } else {
+            self.col += 1;
+        }
         ch
     }
 
@@ -333,7 +375,7 @@ mod tests {
 
     #[test]
     fn test_fn_decl() {
-        let tokens = Lexer::new("fn :: sum Int Int => Int").tokenize();
+        let (tokens, _spans) = Lexer::new("fn :: sum Int Int => Int").tokenize();
         assert_eq!(tokens, vec![
             Token::Fn, Token::ColonColon,
             Token::Ident("sum".into()), Token::Ident("Int".into()),
@@ -344,7 +386,7 @@ mod tests {
 
     #[test]
     fn test_fn_def() {
-        let tokens = Lexer::new("sum a b = a + b").tokenize();
+        let (tokens, _spans) = Lexer::new("sum a b = a + b").tokenize();
         assert_eq!(tokens, vec![
             Token::Ident("sum".into()), Token::Ident("a".into()),
             Token::Ident("b".into()), Token::Equals,
@@ -355,7 +397,7 @@ mod tests {
 
     #[test]
     fn test_pattern_match() {
-        let tokens = Lexer::new("factorial 0 = 1").tokenize();
+        let (tokens, _spans) = Lexer::new("factorial 0 = 1").tokenize();
         assert_eq!(tokens, vec![
             Token::Ident("factorial".into()), Token::IntLit(0),
             Token::Equals, Token::IntLit(1), Token::Eof,
@@ -364,13 +406,13 @@ mod tests {
 
     #[test]
     fn test_comment_skipped() {
-        let tokens = Lexer::new("-- comment\nsum a b = a + b").tokenize();
+        let (tokens, _spans) = Lexer::new("-- comment\nsum a b = a + b").tokenize();
         assert_eq!(tokens[0], Token::Ident("sum".into()));
     }
 
     #[test]
     fn test_recursive_expr() {
-        let tokens = Lexer::new("factorial n = n * factorial (n - 1)").tokenize();
+        let (tokens, _spans) = Lexer::new("factorial n = n * factorial (n - 1)").tokenize();
         assert_eq!(tokens, vec![
             Token::Ident("factorial".into()), Token::Ident("n".into()),
             Token::Equals, Token::Ident("n".into()), Token::Star,
@@ -382,7 +424,7 @@ mod tests {
 
     #[test]
     fn test_list_literal() {
-        let tokens = Lexer::new("[1, 2, 3]").tokenize();
+        let (tokens, _spans) = Lexer::new("[1, 2, 3]").tokenize();
         assert_eq!(tokens, vec![
             Token::LBracket, Token::IntLit(1), Token::Comma,
             Token::IntLit(2), Token::Comma, Token::IntLit(3),
@@ -392,7 +434,7 @@ mod tests {
 
     #[test]
     fn test_list_type() {
-        let tokens = Lexer::new("[Int]").tokenize();
+        let (tokens, _spans) = Lexer::new("[Int]").tokenize();
         assert_eq!(tokens, vec![
             Token::LBracket, Token::Ident("Int".into()),
             Token::RBracket, Token::Eof,
@@ -401,7 +443,7 @@ mod tests {
 
     #[test]
     fn test_cons_pattern() {
-        let tokens = Lexer::new("(x:xs)").tokenize();
+        let (tokens, _spans) = Lexer::new("(x:xs)").tokenize();
         assert_eq!(tokens, vec![
             Token::LParen, Token::Ident("x".into()),
             Token::Colon, Token::Ident("xs".into()),
@@ -411,7 +453,7 @@ mod tests {
 
     #[test]
     fn test_concat() {
-        let tokens = Lexer::new("a :: b").tokenize();
+        let (tokens, _spans) = Lexer::new("a :: b").tokenize();
         assert_eq!(tokens, vec![
             Token::Ident("a".into()), Token::ColonColon,
             Token::Ident("b".into()), Token::Eof,
@@ -420,7 +462,7 @@ mod tests {
 
     #[test]
     fn test_arrow() {
-        let tokens = Lexer::new("Int Int switch -> Int Int").tokenize();
+        let (tokens, _spans) = Lexer::new("Int Int switch -> Int Int").tokenize();
         assert_eq!(tokens, vec![
             Token::Ident("Int".into()), Token::Ident("Int".into()),
             Token::Ident("switch".into()), Token::Arrow,
@@ -431,7 +473,7 @@ mod tests {
 
     #[test]
     fn test_seq_selector_paren() {
-        let tokens = Lexer::new("s(+_)").tokenize();
+        let (tokens, _spans) = Lexer::new("s(+_)").tokenize();
         assert_eq!(tokens, vec![
             Token::Ident("s".into()),
             Token::LParen, Token::Plus, Token::Ident("_".into()),
@@ -441,7 +483,7 @@ mod tests {
 
     #[test]
     fn test_seq_bind_paren() {
-        let tokens = Lexer::new("(s)").tokenize();
+        let (tokens, _spans) = Lexer::new("(s)").tokenize();
         assert_eq!(tokens, vec![
             Token::LParen, Token::Ident("s".into()),
             Token::RParen, Token::Eof,
@@ -450,7 +492,7 @@ mod tests {
 
     #[test]
     fn test_at_operator() {
-        let tokens = Lexer::new("A @ B").tokenize();
+        let (tokens, _spans) = Lexer::new("A @ B").tokenize();
         assert_eq!(tokens, vec![
             Token::Ident("A".into()), Token::At,
             Token::Ident("B".into()), Token::Eof,
@@ -459,7 +501,7 @@ mod tests {
 
     #[test]
     fn test_string_literal() {
-        let tokens = Lexer::new("\"hello world\"").tokenize();
+        let (tokens, _spans) = Lexer::new("\"hello world\"").tokenize();
         assert_eq!(tokens, vec![
             Token::StringLit("hello world".into()), Token::Eof,
         ]);
@@ -467,7 +509,7 @@ mod tests {
 
     #[test]
     fn test_string_interpolation() {
-        let tokens = Lexer::new("\"result: {my_func x}\"").tokenize();
+        let (tokens, _spans) = Lexer::new("\"result: {my_func x}\"").tokenize();
         assert_eq!(tokens, vec![
             Token::StringLit("result: {my_func x}".into()), Token::Eof,
         ]);
@@ -475,7 +517,7 @@ mod tests {
 
     #[test]
     fn test_string_escaped_braces() {
-        let tokens = Lexer::new("\"{{not code}}\"").tokenize();
+        let (tokens, _spans) = Lexer::new("\"{{not code}}\"").tokenize();
         assert_eq!(tokens, vec![
             Token::StringLit("{not code}".into()), Token::Eof,
         ]);
@@ -483,7 +525,7 @@ mod tests {
 
     #[test]
     fn test_raw_string() {
-        let tokens = Lexer::new("'hello {world}'").tokenize();
+        let (tokens, _spans) = Lexer::new("'hello {world}'").tokenize();
         assert_eq!(tokens, vec![
             Token::RawStringLit("hello {world}".into()), Token::Eof,
         ]);
@@ -491,7 +533,7 @@ mod tests {
 
     #[test]
     fn test_raw_string_no_interpolation() {
-        let tokens = Lexer::new("'{this is just chars}'").tokenize();
+        let (tokens, _spans) = Lexer::new("'{this is just chars}'").tokenize();
         assert_eq!(tokens, vec![
             Token::RawStringLit("{this is just chars}".into()), Token::Eof,
         ]);
@@ -499,7 +541,7 @@ mod tests {
 
     #[test]
     fn test_bool_literals() {
-        let tokens = Lexer::new("True False").tokenize();
+        let (tokens, _spans) = Lexer::new("True False").tokenize();
         assert_eq!(tokens, vec![
             Token::True, Token::False, Token::Eof,
         ]);
@@ -507,7 +549,7 @@ mod tests {
 
     #[test]
     fn test_comparison_operators() {
-        let tokens = Lexer::new("a == b > c < d >= e <= f").tokenize();
+        let (tokens, _spans) = Lexer::new("a == b > c < d >= e <= f").tokenize();
         assert_eq!(tokens, vec![
             Token::Ident("a".into()), Token::EqualEqual, Token::Ident("b".into()),
             Token::Greater, Token::Ident("c".into()),
@@ -520,13 +562,13 @@ mod tests {
 
     #[test]
     fn test_op_keyword() {
-        let tokens = Lexer::new("op :: add Int to Int => Int").tokenize();
+        let (tokens, _spans) = Lexer::new("op :: add Int to Int => Int").tokenize();
         assert_eq!(tokens[0], Token::Op);
     }
 
     #[test]
     fn test_import_keyword() {
-        let tokens = Lexer::new("import test").tokenize();
+        let (tokens, _spans) = Lexer::new("import test").tokenize();
         assert_eq!(tokens, vec![
             Token::Import, Token::Ident("test".into()), Token::Eof,
         ]);
@@ -534,7 +576,7 @@ mod tests {
 
     #[test]
     fn test_guard_pipe() {
-        let tokens = Lexer::new("| a == b = True\n| otherwise = False").tokenize();
+        let (tokens, _spans) = Lexer::new("| a == b = True\n| otherwise = False").tokenize();
         assert_eq!(tokens[0], Token::Pipe);
         assert_eq!(tokens[2], Token::EqualEqual);
         assert_eq!(tokens[4], Token::Equals);
@@ -543,7 +585,7 @@ mod tests {
 
     #[test]
     fn test_double_pipe() {
-        let tokens = Lexer::new("|| run a").tokenize();
+        let (tokens, _spans) = Lexer::new("|| run a").tokenize();
         assert_eq!(tokens[0], Token::DoublePipe);
     }
 }

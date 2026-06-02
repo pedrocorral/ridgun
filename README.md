@@ -80,7 +80,7 @@ The `src/` layout is inspired by **Scala's sbt** — mirrored `main`/`test` tree
 
 ```
 ridgun/
-├── doc/
+├── docs/
 │   ├── lang/              # Language specification and samples
 │   ├── dev/               # Development policies and coding standards
 │   │   └── disabled/      # Future reference (out of scope)
@@ -106,13 +106,13 @@ The VM and compiler are implemented in **Rust** — chosen for its memory safety
 
 | Document | Description |
 |---|---|
-| [Language Spec](doc/lang/spec.md) | Syntax, functions, operators, parallelism primitives |
-| [Architecture](doc/etc/architecture.md) | VM internals, bytecode format, compilation pipeline |
-| [Parallelism](doc/etc/parallelism.md) | Green threads, scheduler, channels, message passing |
-| [Interop](doc/etc/interop.md) | FFI for C/C++ libraries, Python bridge via PyO3 |
-| [Process](doc/etc/process.md) | Development methodology: Spiral + V-Model + OWASP SAMM |
-| [Roadmap](doc/etc/roadmap.md) | Development phases and milestones |
-| [SAST Policy](doc/dev/sast_policy.md) | Static analysis policy and security gates |
+| [Language Spec](docs/lang/spec.md) | Syntax, functions, operators, parallelism primitives |
+| [Architecture](docs/etc/architecture.md) | VM internals, bytecode format, compilation pipeline |
+| [Parallelism](docs/etc/parallelism.md) | Green threads, scheduler, channels, message passing |
+| [Interop](docs/etc/interop.md) | FFI for C/C++ libraries, Python bridge via PyO3 |
+| [Process](docs/etc/process.md) | Development methodology: Spiral + V-Model + OWASP SAMM |
+| [Roadmap](docs/etc/roadmap.md) | Development phases and milestones |
+| [SAST Policy](docs/dev/sast_policy.md) | Static analysis policy and security gates |
 
 ## License
 
