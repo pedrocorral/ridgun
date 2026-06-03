@@ -5,7 +5,7 @@ use crate::parser::{Expr, Statement, BinOp, Pattern, FnCase, FnDef, Program};
 
 // ── Type System ──
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {
     Int,
     String,
@@ -13,6 +13,10 @@ pub enum Type {
     Unit,
     List(Box<Type>),
     Fun(Vec<Type>, Box<Type>),
+    // Type variables for generics/inference
+    TypeVar(String),
+    // Product types (tuples/structs)
+    Tuple(Vec<Type>),
 }
 
 impl std::fmt::Display for Type {
@@ -26,6 +30,11 @@ impl std::fmt::Display for Type {
             Type::Fun(params, ret) => {
                 let ps: Vec<String> = params.iter().map(|t| t.to_string()).collect();
                 write!(f, "({} => {})", ps.join(", "), ret)
+            }
+            Type::TypeVar(name) => write!(f, "{}", name),
+            Type::Tuple(types) => {
+                let ts: Vec<String> = types.iter().map(|t| t.to_string()).collect();
+                write!(f, "({})", ts.join(", "))
             }
         }
     }
@@ -92,15 +101,71 @@ fn parse_type_string(s: &str) -> Type {
         "Int" => Type::Int,
         "String" => Type::String,
         "Bool" => Type::Bool,
+        "Unit" => Type::Unit,
         "()" => Type::Unit,
         other => {
-            if let Some(inner) = other.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
+            // Check for generic type variable (starts with lowercase)
+            if other.chars().next().map(|c| c.is_ascii_lowercase()).unwrap_or(false) {
+                Type::TypeVar(other.to_string())
+            }
+            // Check for list type [T]
+            else if let Some(inner) = other.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
                 Type::List(Box::new(parse_type_string(inner)))
-            } else {
-                Type::Int
+            }
+            // Check for tuple type (T1, T2, ...)
+            else if other.starts_with('(') && other.ends_with(')') {
+                let inner = &other[1..other.len()-1];
+                let types: Vec<Type> = inner.split(',')
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty())
+                    .map(parse_type_string)
+                    .collect();
+                Type::Tuple(types)
+            }
+            else {
+                Type::TypeVar(other.to_string())
             }
         }
     }
+}
+
+// ── Type Unification (for type inference) ──
+
+/// Try to unify two types. Returns Ok(true) if unification succeeds, Ok(false) if incompatible, Err if unification would create cycle.
+fn unify(t1: &Type, t2: &Type) -> bool {
+    match (t1, t2) {
+        // Same concrete types
+        (Type::Int, Type::Int) |
+        (Type::String, Type::String) |
+        (Type::Bool, Type::Bool) |
+        (Type::Unit, Type::Unit) => true,
+        
+        // Type variables can unify with any type
+        (Type::TypeVar(_), _) | (_, Type::TypeVar(_)) => true,
+        
+        // List unification
+        (Type::List(inner1), Type::List(inner2)) => unify(inner1, inner2),
+        
+        // Tuple unification
+        (Type::Tuple(elems1), Type::Tuple(elems2)) => {
+            elems1.len() == elems2.len() && 
+            elems1.iter().zip(elems2.iter()).all(|(a, b)| unify(a, b))
+        }
+        
+        // Function unification
+        (Type::Fun(params1, ret1), Type::Fun(params2, ret2)) => {
+            params1.len() == params2.len() &&
+            params1.iter().zip(params2.iter()).all(|(a, b)| unify(a, b)) &&
+            unify(ret1, ret2)
+        }
+        
+        _ => false
+    }
+}
+
+/// Check if two types are compatible (with type variables as wildcards)
+pub fn types_compatible(t1: &Type, t2: &Type) -> bool {
+    unify(t1, t2)
 }
 
 // ── Type Checker ──
@@ -214,7 +279,7 @@ fn check_case(
 
 fn bind_pattern(pattern: &Pattern, expected_type: &Type, env: &mut TypeEnv) {
     match pattern {
-        Pattern::Wildcard | Pattern::Lit(_) => {}
+        Pattern::Wildcard | Pattern::Lit(_) | Pattern::NegLit(_) => {}
         Pattern::Var(name) => {
             env.insert_local(name.clone(), expected_type.clone());
         }
@@ -227,6 +292,26 @@ fn bind_pattern(pattern: &Pattern, expected_type: &Type, env: &mut TypeEnv) {
         }
         Pattern::SeqBind(name) => {
             env.insert_local(name.clone(), Type::Int);
+        }
+        // Advanced patterns
+        Pattern::Tuple(pats) => {
+            if let Type::Tuple(types) = expected_type {
+                for (i, pat) in pats.iter().enumerate() {
+                    let ptype = types.get(i).unwrap_or(&Type::Int);
+                    bind_pattern(pat, ptype, env);
+                }
+            }
+        }
+        Pattern::Constructor(_, args) => {
+            // For constructor patterns, bind variables in arguments
+            for arg in args {
+                bind_pattern(arg, &Type::Int, env);
+            }
+        }
+        Pattern::Record(fields) => {
+            for (_, pat) in fields {
+                bind_pattern(pat, expected_type, env);
+            }
         }
     }
 }
@@ -610,5 +695,89 @@ mod tests {
         assert!(parse_and_check(
             "fn :: sum_list [Int] => Int\nsum_list [] = 0\nsum_list (x:rest) = x + sum_list rest"
         ).is_ok());
+    }
+
+    // ── New tests for Generics and Type Inference ──
+
+    #[test]
+    fn test_generic_type_var_parsing() {
+        // Type variables starting with lowercase should be parsed as TypeVar
+        let int_ty = parse_type_string("Int");
+        assert_eq!(int_ty, Type::Int);
+
+        let typevar = parse_type_string("a");
+        assert_eq!(typevar, Type::TypeVar("a".to_string()));
+
+        let list_of_typevar = parse_type_string("[a]");
+        assert_eq!(list_of_typevar, Type::List(Box::new(Type::TypeVar("a".to_string()))));
+    }
+
+    #[test]
+    fn test_unification_basic() {
+        // Concrete types unify with themselves
+        assert!(unify(&Type::Int, &Type::Int));
+        assert!(unify(&Type::String, &Type::String));
+        assert!(unify(&Type::Bool, &Type::Bool));
+
+        // Different concrete types don't unify
+        assert!(!unify(&Type::Int, &Type::String));
+        assert!(!unify(&Type::Bool, &Type::Int));
+    }
+
+    #[test]
+    fn test_unification_with_type_vars() {
+        // Type variables unify with anything
+        assert!(unify(&Type::TypeVar("a".to_string()), &Type::Int));
+        assert!(unify(&Type::TypeVar("a".to_string()), &Type::String));
+        assert!(unify(&Type::TypeVar("a".to_string()), &Type::Bool));
+        assert!(unify(&Type::Int, &Type::TypeVar("a".to_string())));
+    }
+
+    #[test]
+    fn test_unification_lists() {
+        // Lists unify if their elements unify
+        assert!(unify(&Type::List(Box::new(Type::Int)), &Type::List(Box::new(Type::Int))));
+        assert!(unify(&Type::List(Box::new(Type::TypeVar("a".to_string()))), &Type::List(Box::new(Type::Int))));
+        
+        // Different element types don't unify (without type vars)
+        assert!(!unify(&Type::List(Box::new(Type::Int)), &Type::List(Box::new(Type::String))));
+    }
+
+    #[test]
+    fn test_unification_tuples() {
+        // Tuple type support
+        let t1 = Type::Tuple(vec![Type::Int, Type::String]);
+        let t2 = Type::Tuple(vec![Type::Int, Type::String]);
+        assert!(unify(&t1, &t2));
+
+        let t3 = Type::Tuple(vec![Type::Int, Type::Bool]);
+        assert!(!unify(&t1, &t3));
+
+        // Different arity tuples don't unify
+        let t4 = Type::Tuple(vec![Type::Int]);
+        assert!(!unify(&t1, &t4));
+    }
+
+    #[test]
+    fn test_unification_functions() {
+        let f1 = Type::Fun(vec![Type::Int, Type::String], Box::new(Type::Bool));
+        let f2 = Type::Fun(vec![Type::Int, Type::String], Box::new(Type::Bool));
+        assert!(unify(&f1, &f2));
+
+        // Different function types
+        let f3 = Type::Fun(vec![Type::Int], Box::new(Type::Bool));
+        assert!(!unify(&f1, &f3));
+    }
+
+    #[test]
+    fn test_tuple_syntax_parsing() {
+        let tuple = parse_type_string("(Int, String)");
+        assert_eq!(tuple, Type::Tuple(vec![Type::Int, Type::String]));
+
+        let triple = parse_type_string("(Int, String, Bool)");
+        assert_eq!(triple, Type::Tuple(vec![Type::Int, Type::String, Type::Bool]));
+
+        let unit = parse_type_string("()");
+        assert_eq!(unit, Type::Unit);
     }
 }

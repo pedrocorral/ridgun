@@ -49,6 +49,11 @@ pub enum Pattern {
     ListEmpty,
     ListCons(Box<Pattern>, Box<Pattern>),
     SeqBind(String),
+    // Advanced patterns
+    Tuple(Vec<Pattern>),        // (p1, p2, ...) - nested tuple patterns
+    Constructor(String, Vec<Pattern>), // TypeName(args...) - ADT constructor patterns
+    Record(Vec<(String, Pattern)>), // { field: pattern, ... } - record patterns
+    NegLit(i64),                // -5 literal patterns
 }
 
 #[derive(Debug, Clone)]
@@ -433,65 +438,7 @@ impl Parser {
 
         let mut patterns = Vec::new();
         while !matches!(self.peek(), Token::Equals | Token::Newline | Token::Eof) {
-            let pat = match self.peek() {
-                Token::IntLit(_) => {
-                    if let Token::IntLit(n) = self.advance() {
-                        Pattern::Lit(n)
-                    } else { unreachable!() }
-                }
-                Token::Ident(_) => {
-                    if let Token::Ident(s) = self.advance() {
-                        if s == "_" {
-                            Pattern::Wildcard
-                        } else {
-                            Pattern::Var(s)
-                        }
-                    } else { unreachable!() }
-                }
-                Token::LBracket => {
-                    self.advance(); // consume [
-                    if matches!(self.peek(), Token::RBracket) {
-                        // [] — empty list pattern
-                        self.advance();
-                        Pattern::ListEmpty
-                    } else {
-                        panic!("List patterns use (x:xs) syntax, not [x | rest]")
-                    }
-                }
-                Token::LParen => {
-                    self.advance(); // consume (
-                    // (x:xs) — cons pattern
-                    let head = match self.advance() {
-                        Token::Ident(s) if s == "_" => Pattern::Wildcard,
-                        Token::Ident(s) => Pattern::Var(s),
-                        Token::IntLit(n) => Pattern::Lit(n),
-                        other => panic!("Expected pattern in cons, got {:?}", other),
-                    };
-                    if matches!(self.peek(), Token::Colon) {
-                        self.advance(); // consume :
-                        let tail = match self.advance() {
-                            Token::Ident(s) if s == "_" => Pattern::Wildcard,
-                            Token::Ident(s) => Pattern::Var(s),
-                            other => panic!("Expected tail pattern, got {:?}", other),
-                        };
-                        self.expect(&Token::RParen);
-                        Pattern::ListCons(Box::new(head), Box::new(tail))
-                    } else if matches!(self.peek(), Token::RParen) {
-                        // (s) — single ident in parens = seq bind
-                        self.advance();
-                        match head {
-                            Pattern::Var(name) => Pattern::SeqBind(name),
-                            other => other, // (0) etc — just the pattern
-                        }
-                    } else {
-                        // Not a cons — it's a constructor pattern like (Ok n)
-                        // For now, just return the head pattern
-                        self.expect(&Token::RParen);
-                        head
-                    }
-                }
-                other => panic!("Expected pattern, got {:?}", other),
-            };
+            let pat = self.parse_pattern();
             patterns.push(pat);
         }
 
@@ -568,6 +515,110 @@ impl Parser {
             Expr::Unit
         } else {
             Expr::Block(stmts)
+        }
+    }
+
+    /// Parse a single pattern
+    fn parse_pattern(&mut self) -> Pattern {
+        match self.peek() {
+            // Negative literal: -5
+            Token::Minus => {
+                self.advance(); // consume -
+                match self.peek() {
+                    Token::IntLit(n) => {
+                        let value = *n;
+                        self.advance();
+                        Pattern::NegLit(-value)
+                    }
+                    _ => {
+                        // Not a negative number - treat minus as variable or error
+                        Pattern::Var("-".to_string())
+                    }
+                }
+            }
+            Token::IntLit(n) => {
+                let value = *n;
+                self.advance();
+                Pattern::Lit(value)
+            }
+            Token::True => {
+                self.advance();
+                Pattern::Var("True".to_string())
+            }
+            Token::False => {
+                self.advance();
+                Pattern::Var("False".to_string())
+            }
+            Token::Ident(_) => {
+                let s = match self.advance() {
+                    Token::Ident(s) => s,
+                    _ => unreachable!(),
+                };
+                if s == "_" {
+                    Pattern::Wildcard
+                } else {
+                    Pattern::Var(s)
+                }
+            }
+            Token::LBracket => {
+                self.advance(); // consume [
+                if matches!(self.peek(), Token::RBracket) {
+                    self.advance();
+                    Pattern::ListEmpty
+                } else {
+                    // Simple list literal pattern - for now just error or treat as wildcard
+                    panic!("List patterns use (x:xs) syntax, not [x | rest]")
+                }
+            }
+            Token::LParen => {
+                self.advance(); // consume (
+                let first_pat = self.parse_pattern();
+                
+                if matches!(self.peek(), Token::Colon) {
+                    // (x:xs) - list cons pattern
+                    self.advance(); // consume :
+                    let tail = self.parse_pattern();
+                    self.expect(&Token::RParen);
+                    Pattern::ListCons(Box::new(first_pat), Box::new(tail))
+                } else if matches!(self.peek(), Token::Comma) {
+                    // (p1, p2, ...) - tuple pattern
+                    self.advance(); // consume ,
+                    let mut tuple_pats = vec![first_pat];
+                    while matches!(self.peek(), Token::Comma) {
+                        self.advance(); // consume ,
+                        tuple_pats.push(self.parse_pattern());
+                    }
+                    self.expect(&Token::RParen);
+                    Pattern::Tuple(tuple_pats)
+                } else if matches!(self.peek(), Token::RParen) {
+                    // (p) - just parens or seq bind
+                    self.advance();
+                    match first_pat {
+                        Pattern::Var(name) => Pattern::SeqBind(name),
+                        other => other,
+                    }
+                } else {
+                    // (Constructor arg1 arg2 ...) - constructor pattern
+                    let mut args = vec![first_pat.clone()];
+                    while !matches!(self.peek(), Token::RParen | Token::Newline | Token::Eof) {
+                        if matches!(self.peek(), Token::Comma) {
+                            self.advance();
+                        }
+                        if matches!(self.peek(), Token::RParen) {
+                            break;
+                        }
+                        args.push(self.parse_pattern());
+                    }
+                    self.expect(&Token::RParen);
+                    // Create a synthetic constructor name from the first argument if it's a Var
+                    let ctor_name = match first_pat {
+                        Pattern::Var(name) => name,
+                        _ => "unknown".to_string(),
+                    };
+                    Pattern::Constructor(ctor_name, if args.len() > 1 { args[1..].to_vec() } else { vec![] })
+                }
+            }
+            other => panic!("Expected pattern, got {:?}", other),
         }
     }
 

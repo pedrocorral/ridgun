@@ -74,7 +74,8 @@ impl Scheduler {
 
     /// Pick the next thread from the ready queue and mark it running.
     /// Skips any entries left behind by block/kill operations.
-    pub fn next_thread(&mut self) -> Option<&mut GreenThread> {
+    /// Returns the thread ID and a mutable reference to the thread.
+    pub fn next_thread(&mut self) -> Option<(usize, &mut GreenThread)> {
         loop {
             let id = match self.queue.pop_front() {
                 Some(id) => id,
@@ -88,7 +89,7 @@ impl Scheduler {
             let thread = self.threads.get_mut(id).unwrap();
             thread.state = ThreadState::Running;
             self.running = Some(id);
-            return Some(thread);
+            return Some((id, thread));
         }
     }
 
@@ -114,6 +115,11 @@ impl Scheduler {
         if self.running == Some(id) {
             self.running = None;
         }
+    }
+
+    /// Get the current state of a thread.
+    pub fn get_thread_state(&self, id: usize) -> ThreadState {
+        self.threads.get(id).map(|t| t.state).unwrap_or(ThreadState::Dead)
     }
 }
 
@@ -149,9 +155,9 @@ mod tests {
         sched.spawn();
         sched.spawn();
 
-        let t0 = sched.next_thread().map(|t| t.id);
-        let t1 = sched.next_thread().map(|t| t.id);
-        let t2 = sched.next_thread().map(|t| t.id);
+        let t0 = sched.next_thread().map(|(id, _)| id);
+        let t1 = sched.next_thread().map(|(id, _)| id);
+        let t2 = sched.next_thread().map(|(id, _)| id);
 
         assert_eq!(t0, Some(0));
         assert_eq!(t1, Some(1));
@@ -166,15 +172,15 @@ mod tests {
         sched.spawn();
 
         let first = sched.next_thread().unwrap();
-        assert_eq!(first.id, 0);
+        assert_eq!(first.0, 0);
         sched.yield_thread();
 
         let second = sched.next_thread().unwrap();
-        assert_eq!(second.id, 1);
+        assert_eq!(second.0, 1);
         sched.yield_thread();
 
         let resumed = sched.next_thread().unwrap();
-        assert_eq!(resumed.id, 0);
+        assert_eq!(resumed.0, 0);
     }
 
     #[test]
@@ -186,15 +192,15 @@ mod tests {
         sched.block_thread(a);
         assert!(!sched.is_done());
         let picked = sched.next_thread().unwrap();
-        assert_eq!(picked.id, b);
+        assert_eq!(picked.0, b);
 
         sched.yield_thread();
         sched.unblock(a);
         let picked = sched.next_thread().unwrap();
         // b was yielded first, so b is ahead of a in the ready queue
-        assert_eq!(picked.id, b);
+        assert_eq!(picked.0, b);
         let picked2 = sched.next_thread().unwrap();
-        assert_eq!(picked2.id, a);
+        assert_eq!(picked2.0, a);
     }
 
     #[test]
@@ -207,7 +213,7 @@ mod tests {
         assert_eq!(sched.active_count(), 1);
 
         let remaining = sched.next_thread().unwrap();
-        assert_eq!(remaining.id, b);
+        assert_eq!(remaining.0, b);
     }
 
     #[test]

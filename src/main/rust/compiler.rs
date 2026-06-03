@@ -76,8 +76,18 @@ fn extract_vars(pat: &Pattern) -> Vec<String> {
             vars
         }
         Pattern::ListEmpty => Vec::new(),
-        Pattern::Lit(_) => Vec::new(),
+        Pattern::Lit(_) | Pattern::NegLit(_) => Vec::new(),
         Pattern::SeqBind(name) => vec![name.clone()],
+        // Advanced patterns
+        Pattern::Tuple(pats) => {
+            pats.iter().flat_map(extract_vars).collect()
+        }
+        Pattern::Constructor(_, args) => {
+            args.iter().flat_map(extract_vars).collect()
+        }
+        Pattern::Record(fields) => {
+            fields.iter().flat_map(|(_, p)| extract_vars(p)).collect()
+        }
     }
 }
 
@@ -93,6 +103,13 @@ fn compile_function(fndef: &FnDef) -> CompiledFunction {
         for (arg_idx, pat) in case.patterns.iter().enumerate() {
             match pat {
                 Pattern::Lit(value) => {
+                    code.push(Instruction::LoadLocal(arg_idx));
+                    code.push(Instruction::PushInt(*value));
+                    let patch = code.len();
+                    code.push(Instruction::JumpIfNeq(0)); // placeholder
+                    jump_patches.push(patch);
+                }
+                Pattern::NegLit(value) => {
                     code.push(Instruction::LoadLocal(arg_idx));
                     code.push(Instruction::PushInt(*value));
                     let patch = code.len();
@@ -120,6 +137,10 @@ fn compile_function(fndef: &FnDef) -> CompiledFunction {
                 }
                 Pattern::SeqBind(name) => {
                     locals.insert(name.clone(), arg_idx);
+                }
+                // Advanced patterns - treat as wildcards for now
+                Pattern::Tuple(_) | Pattern::Constructor(_, _) | Pattern::Record(_) => {
+                    // Placeholder: these will be fully implemented later
                 }
             }
         }

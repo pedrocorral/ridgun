@@ -1,9 +1,12 @@
-/// Ridgun VM — Stack machine executing bytecoded programs
+/// Ridgun VM — Stack machine with concurrent execution support
 
+use std::collections::HashMap;
 use std::fmt;
 use crate::compiler::{CompiledProgram, Instruction};
+use crate::scheduler::Scheduler;
+use crate::mailbox::Mailbox;
 
-// ── Value type ────────────────────────────────────────────
+// ── Value type ─────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -12,6 +15,8 @@ pub enum Value {
     Bool(bool),
     Unit,
     List(Vec<Value>),
+    MailboxRef(usize),
+    ThreadRef(usize),
 }
 
 impl fmt::Display for Value {
@@ -25,6 +30,8 @@ impl fmt::Display for Value {
                 let strs: Vec<String> = items.iter().map(|v| format!("{}", v)).collect();
                 write!(f, "[{}]", strs.join(", "))
             }
+            Value::MailboxRef(id) => write!(f, "Mailbox({})", id),
+            Value::ThreadRef(id) => write!(f, "PID{}", id),
         }
     }
 }
@@ -45,32 +52,65 @@ impl Value {
     }
 }
 
-// ── Call frame ────────────────────────────────────────────
+// ── Call frame ─────────────────────────────────────────────
 
+#[derive(Clone)]
 pub struct CallFrame {
     pub function: String,
     pub ip: usize,
     pub locals: Vec<Value>,
 }
 
-// ── VM ────────────────────────────────────────────────────
+// ── Thread state ───────────────────────────────────────────
 
-pub struct VM {
+#[derive(Clone)]
+struct ThreadState {
     stack: Vec<Value>,
     call_stack: Vec<CallFrame>,
+    mailbox_id: usize,
+    blocked: bool,
+}
+
+impl ThreadState {
+    fn new(mailbox_id: usize) -> Self {
+        ThreadState {
+            stack: Vec::new(),
+            call_stack: Vec::new(),
+            mailbox_id,
+            blocked: false,
+        }
+    }
+
+    fn is_done(&self) -> bool {
+        self.call_stack.is_empty()
+    }
+}
+
+// ── VM ─────────────────────────────────────────────────────
+
+pub struct VM {
     program: CompiledProgram,
+    threads: Vec<ThreadState>,
+    scheduler: Scheduler,
+    mailboxes: Vec<Mailbox>,
+    thread_to_sched: HashMap<usize, usize>, // VM thread ID -> scheduler thread ID
+    next_thread_id: usize,
+    main_result: Option<Value>,
 }
 
 impl VM {
     pub fn new(program: CompiledProgram) -> Self {
         VM {
-            stack: Vec::new(),
-            call_stack: Vec::new(),
             program,
+            threads: Vec::new(),
+            scheduler: Scheduler::new(),
+            mailboxes: Vec::new(),
+            thread_to_sched: HashMap::new(),
+            next_thread_id: 0,
+            main_result: None,
         }
     }
 
-    /// Call a function by name with the given arguments, returns the result.
     pub fn call(&mut self, name: &str, args: &[Value]) -> Value {
         let arity = self.program.functions.get(name)
             .unwrap_or_else(|| panic!("Undefined function: {}", name))
@@ -79,253 +119,431 @@ impl VM {
         assert_eq!(args.len(), arity,
             "Function '{}' expects {} args, got {}", name, arity, args.len());
 
-        self.call_stack.push(CallFrame {
-            function: name.to_string(),
-            ip: 0,
-            locals: args.to_vec(),
-        });
-
+        self.spawn_thread(name.to_string(), args.to_vec());
         self.run()
     }
 
-    /// Convenience: call with i64 args (backward compat)
     pub fn call_ints(&mut self, name: &str, args: &[i64]) -> Value {
         let val_args: Vec<Value> = args.iter().map(|n| Value::Int(*n)).collect();
         self.call(name, &val_args)
     }
 
+    fn spawn_thread(&mut self, function: String, locals: Vec<Value>) -> usize {
+        let mailbox_id = self.mailboxes.len();
+        self.mailboxes.push(Mailbox::new());
+
+        let vm_tid = self.next_thread_id;
+        self.next_thread_id += 1;
+
+        let sched_tid = self.scheduler.spawn();
+        self.thread_to_sched.insert(vm_tid, sched_tid);
+
+        let mut state = ThreadState::new(mailbox_id);
+        state.call_stack.push(CallFrame {
+            function,
+            ip: 0,
+            locals,
+        });
+        self.threads.push(state);
+
+        vm_tid
+    }
+
     fn run(&mut self) -> Value {
         loop {
-            let frame = self.call_stack.last()
-                .expect("Call stack empty");
-            let func_name = frame.function.clone();
-            let ip = frame.ip;
+            // Process all runnable threads
+            let mut made_progress = false;
+            
+            for vm_tid in 0..self.threads.len() {
+                if self.threads[vm_tid].blocked {
+                    continue;
+                }
+                
+                if self.threads[vm_tid].is_done() {
+                    continue;
+                }
 
-            // Borrow the function code
-            let code = &self.program.functions[&func_name].code;
+                let result = self.step(vm_tid);
+                made_progress = true;
 
-            if ip >= code.len() {
-                panic!("IP out of bounds in '{}' (ip={}, len={})",
-                    func_name, ip, code.len());
+                if result {
+                    // Thread completed
+                    if self.threads[vm_tid].is_done() {
+                        // Check if this is main thread
+                        if self.threads[vm_tid].call_stack.is_empty() && self.main_result.is_none() {
+                            self.main_result = self.threads[vm_tid].stack.last().cloned();
+                        }
+                    }
+                }
             }
 
-            let instr = code[ip].clone();
-            self.call_stack.last_mut().unwrap().ip += 1;
+            // Process blocked threads waiting for messages
+            self.unblock_waiting_threads();
 
-            match instr {
-                Instruction::PushInt(n) => {
-                    self.stack.push(Value::Int(n));
-                }
+            if !made_progress {
+                break;
+            }
+        }
 
-                Instruction::PushString(s) => {
-                    self.stack.push(Value::Str(s));
-                }
+        self.main_result.take().unwrap_or(Value::Unit)
+    }
 
-                Instruction::PushBool(b) => {
-                    self.stack.push(Value::Bool(b));
-                }
+    fn unblock_waiting_threads(&mut self) {
+        for vm_tid in 0..self.threads.len() {
+            if !self.threads[vm_tid].blocked {
+                continue;
+            }
 
-                Instruction::PushUnit => {
-                    self.stack.push(Value::Unit);
-                }
+            let mailbox_id = self.threads[vm_tid].mailbox_id;
+            if !self.mailboxes[mailbox_id].is_empty() {
+                self.threads[vm_tid].blocked = false;
+            }
+        }
+    }
 
-                Instruction::LoadLocal(idx) => {
-                    let val = self.call_stack.last().unwrap().locals[idx].clone();
-                    self.stack.push(val);
-                }
+    fn step(&mut self, vm_tid: usize) -> bool {
+        let state = &mut self.threads[vm_tid];
+        
+        if state.is_done() {
+            return true;
+        }
 
-                Instruction::StoreLocal(idx) => {
-                    let val = self.stack.pop().expect("Stack underflow on StoreLocal");
-                    let locals = &mut self.call_stack.last_mut().unwrap().locals;
-                    // Grow locals vector if needed
-                    while locals.len() <= idx {
-                        locals.push(Value::Unit);
+        let frame = match state.call_stack.last_mut() {
+            Some(frame) => frame,
+            None => return true,
+        };
+
+        let func_name = frame.function.clone();
+        let ip = frame.ip;
+
+        let code = match self.program.functions.get(&func_name) {
+            Some(func) => &func.code,
+            None => {
+                eprintln!("Undefined function: {}", func_name);
+                return true;
+            }
+        };
+
+        if ip >= code.len() {
+            state.call_stack.pop();
+            return true;
+        }
+
+        let instr = code[ip].clone();
+        frame.ip += 1;
+
+        self.execute(vm_tid, &instr);
+        true
+    }
+
+    fn execute(&mut self, vm_tid: usize, instr: &Instruction) {
+        // Handle Join specially - it needs to read from other threads
+        if matches!(instr, Instruction::Join) {
+            let mut result_opt: Option<Value> = None;
+            let mut target_blocked = false;
+            
+            {
+                let state = &mut self.threads[vm_tid];
+                let thread_ref = state.stack.pop().expect("Stack underflow on Join");
+                let target_tid = match thread_ref {
+                    Value::ThreadRef(id) => id,
+                    Value::Int(id) => id as usize,
+                    _ => {
+                        state.stack.push(Value::Unit);
+                        return;
                     }
-                    locals[idx] = val;
-                }
-
-                Instruction::Pop => {
-                    self.stack.pop().expect("Stack underflow on Pop");
-                }
-
-                Instruction::Add => {
-                    let b = self.stack.pop().expect("Stack underflow");
-                    let a = self.stack.pop().expect("Stack underflow");
-                    self.stack.push(Value::Int(a.as_int() + b.as_int()));
-                }
-
-                Instruction::Sub => {
-                    let b = self.stack.pop().expect("Stack underflow");
-                    let a = self.stack.pop().expect("Stack underflow");
-                    self.stack.push(Value::Int(a.as_int() - b.as_int()));
-                }
-
-                Instruction::Mul => {
-                    let b = self.stack.pop().expect("Stack underflow");
-                    let a = self.stack.pop().expect("Stack underflow");
-                    self.stack.push(Value::Int(a.as_int() * b.as_int()));
-                }
-
-                Instruction::Div => {
-                    let b = self.stack.pop().expect("Stack underflow");
-                    let a = self.stack.pop().expect("Stack underflow");
-                    self.stack.push(Value::Int(a.as_int() / b.as_int()));
-                }
-
-                Instruction::CmpEq => {
-                    let b = self.stack.pop().expect("Stack underflow");
-                    let a = self.stack.pop().expect("Stack underflow");
-                    self.stack.push(Value::Bool(a == b));
-                }
-
-                Instruction::CmpGt => {
-                    let b = self.stack.pop().expect("Stack underflow");
-                    let a = self.stack.pop().expect("Stack underflow");
-                    self.stack.push(Value::Bool(a.as_int() > b.as_int()));
-                }
-
-                Instruction::CmpLt => {
-                    let b = self.stack.pop().expect("Stack underflow");
-                    let a = self.stack.pop().expect("Stack underflow");
-                    self.stack.push(Value::Bool(a.as_int() < b.as_int()));
-                }
-
-                Instruction::CmpGtEq => {
-                    let b = self.stack.pop().expect("Stack underflow");
-                    let a = self.stack.pop().expect("Stack underflow");
-                    self.stack.push(Value::Bool(a.as_int() >= b.as_int()));
-                }
-
-                Instruction::CmpLtEq => {
-                    let b = self.stack.pop().expect("Stack underflow");
-                    let a = self.stack.pop().expect("Stack underflow");
-                    self.stack.push(Value::Bool(a.as_int() <= b.as_int()));
-                }
-
-                Instruction::PushListEmpty => {
-                    self.stack.push(Value::List(Vec::new()));
-                }
-
-                Instruction::PushListConcat(n) => {
-                    let mut result = Vec::new();
-                    let start = self.stack.len() - n;
-                    for i in (start..self.stack.len()).rev() {
-                        match self.stack[i].clone() {
-                            Value::List(items) => {
-                                result.splice(0..0, items);
-                            }
-                            val => result.insert(0, val),
-                        }
+                };
+                
+                // Check if target is done
+                if target_tid < self.threads.len() {
+                    if self.threads[target_tid].is_done() {
+                        result_opt = self.threads[target_tid].stack.last().cloned();
+                    } else {
+                        target_blocked = true;
                     }
-                    self.stack.truncate(start);
-                    self.stack.push(Value::List(result));
                 }
+            }
+            
+            // Now apply the result
+            let state = &mut self.threads[vm_tid];
+            match result_opt {
+                Some(val) => state.stack.push(val),
+                None if target_blocked => state.blocked = true,
+                None => state.stack.push(Value::Unit),
+            }
+            return;
+        }
+        
+        // For all other instructions, normal execution
+        let state = &mut self.threads[vm_tid];
+        let mailbox_id = state.mailbox_id;
 
-                Instruction::SeqSelectHead => {
-                    let list = self.stack.pop().expect("Stack underflow");
-                    match list {
+        match instr {
+            Instruction::PushInt(n) => {
+                state.stack.push(Value::Int(*n));
+            }
+
+            Instruction::PushString(s) => {
+                state.stack.push(Value::Str(s.clone()));
+            }
+
+            Instruction::PushBool(b) => {
+                state.stack.push(Value::Bool(*b));
+            }
+
+            Instruction::PushUnit => {
+                state.stack.push(Value::Unit);
+            }
+
+            Instruction::LoadLocal(idx) => {
+                let val = state.call_stack.last_mut().unwrap().locals[*idx].clone();
+                state.stack.push(val);
+            }
+
+            Instruction::StoreLocal(idx) => {
+                let val = state.stack.pop().expect("Stack underflow");
+                let locals = &mut state.call_stack.last_mut().unwrap().locals;
+                while locals.len() <= *idx {
+                    locals.push(Value::Unit);
+                }
+                locals[*idx] = val;
+            }
+
+            Instruction::Pop => {
+                state.stack.pop();
+            }
+
+            Instruction::Add => {
+                let b = state.stack.pop().expect("Stack underflow");
+                let a = state.stack.pop().expect("Stack underflow");
+                state.stack.push(Value::Int(a.as_int() + b.as_int()));
+            }
+
+            Instruction::Sub => {
+                let b = state.stack.pop().expect("Stack underflow");
+                let a = state.stack.pop().expect("Stack underflow");
+                state.stack.push(Value::Int(a.as_int() - b.as_int()));
+            }
+
+            Instruction::Mul => {
+                let b = state.stack.pop().expect("Stack underflow");
+                let a = state.stack.pop().expect("Stack underflow");
+                state.stack.push(Value::Int(a.as_int() * b.as_int()));
+            }
+
+            Instruction::Div => {
+                let b = state.stack.pop().expect("Stack underflow");
+                let a = state.stack.pop().expect("Stack underflow");
+                state.stack.push(Value::Int(a.as_int() / b.as_int()));
+            }
+
+            Instruction::CmpEq => {
+                let b = state.stack.pop().expect("Stack underflow");
+                let a = state.stack.pop().expect("Stack underflow");
+                state.stack.push(Value::Bool(a == b));
+            }
+
+            Instruction::CmpGt => {
+                let b = state.stack.pop().expect("Stack underflow");
+                let a = state.stack.pop().expect("Stack underflow");
+                state.stack.push(Value::Bool(a.as_int() > b.as_int()));
+            }
+
+            Instruction::CmpLt => {
+                let b = state.stack.pop().expect("Stack underflow");
+                let a = state.stack.pop().expect("Stack underflow");
+                state.stack.push(Value::Bool(a.as_int() < b.as_int()));
+            }
+
+            Instruction::CmpGtEq => {
+                let b = state.stack.pop().expect("Stack underflow");
+                let a = state.stack.pop().expect("Stack underflow");
+                state.stack.push(Value::Bool(a.as_int() >= b.as_int()));
+            }
+
+            Instruction::CmpLtEq => {
+                let b = state.stack.pop().expect("Stack underflow");
+                let a = state.stack.pop().expect("Stack underflow");
+                state.stack.push(Value::Bool(a.as_int() <= b.as_int()));
+            }
+
+            Instruction::PushListEmpty => {
+                state.stack.push(Value::List(Vec::new()));
+            }
+
+            Instruction::PushListConcat(n) => {
+                let mut result = Vec::new();
+                let start = state.stack.len() - *n;
+                for i in (start..state.stack.len()).rev() {
+                    match &state.stack[i] {
                         Value::List(items) => {
-                            if let Some(first) = items.into_iter().next() {
-                                self.stack.push(first);
-                            } else {
-                                self.stack.push(Value::Unit);
+                            for item in items.iter().rev() {
+                                result.insert(0, item.clone());
                             }
                         }
-                        other => self.stack.push(other),
+                        val => result.insert(0, val.clone()),
                     }
                 }
+                state.stack.truncate(start);
+                state.stack.push(Value::List(result));
+            }
 
-                Instruction::SeqSelectRange(start, end) => {
-                    let list = self.stack.pop().expect("Stack underflow");
-                    match list {
-                        Value::List(items) => {
-                            if start <= items.len() {
-                                let selected: Vec<Value> = items.into_iter()
-                                    .enumerate()
-                                    .filter(|(i, _)| *i >= start && *i <= end)
-                                    .map(|(_, v)| v)
-                                    .collect();
-                                self.stack.push(Value::List(selected));
-                            } else {
-                                self.stack.push(Value::Unit);
-                            }
+            Instruction::SeqSelectHead => {
+                let list = state.stack.pop().expect("Stack underflow");
+                match list {
+                    Value::List(items) => {
+                        if let Some(first) = items.into_iter().next() {
+                            state.stack.push(first);
+                        } else {
+                            state.stack.push(Value::Unit);
                         }
-                        other => self.stack.push(other),
                     }
+                    other => state.stack.push(other),
                 }
+            }
 
-                Instruction::Echo(argc) => {
-                    let mut parts: Vec<String> = Vec::new();
-                    // Collect args from stack (they're pushed left-to-right)
-                    let start = self.stack.len() - argc;
-                    for i in start..self.stack.len() {
-                        parts.push(format!("{}", self.stack[i]));
+            Instruction::SeqSelectRange(start, end) => {
+                let list = state.stack.pop().expect("Stack underflow");
+                match list {
+                    Value::List(items) => {
+                        let selected: Vec<Value> = items.into_iter()
+                            .enumerate()
+                            .filter(|(i, _)| *i >= *start && *i <= *end)
+                            .map(|(_, v)| v)
+                            .collect();
+                        state.stack.push(Value::List(selected));
                     }
-                    self.stack.truncate(start);
-                    println!("{}", parts.join(" "));
-                    self.stack.push(Value::Unit);
+                    other => state.stack.push(other),
+                }
+            }
+
+            Instruction::Echo(argc) => {
+                let mut parts: Vec<String> = Vec::new();
+                let start = state.stack.len() - *argc;
+                for i in start..state.stack.len() {
+                    parts.push(format!("{}", state.stack[i]));
+                }
+                state.stack.truncate(start);
+                println!("{}", parts.join(" "));
+                state.stack.push(Value::Unit);
+            }
+
+            Instruction::Call(name, argc) => {
+                let mut args = vec![Value::Unit; *argc];
+                for i in (0..*argc).rev() {
+                    args[i] = state.stack.pop().expect("Stack underflow");
                 }
 
-                Instruction::Call(name, argc) => {
-                    let mut args = vec![Value::Unit; argc];
-                    for i in (0..argc).rev() {
-                        args[i] = self.stack.pop().expect("Stack underflow");
+                let arity = self.program.functions.get(name)
+                    .unwrap_or_else(|| panic!("Undefined function: {}", name))
+                    .arity;
+                assert_eq!(args.len(), arity);
+
+                state.call_stack.push(CallFrame {
+                    function: name.clone(),
+                    ip: 0,
+                    locals: args,
+                });
+            }
+
+            Instruction::Return => {
+                state.call_stack.pop();
+            }
+
+            Instruction::JumpIfNeq(target) => {
+                let b = state.stack.pop().expect("Stack underflow");
+                let a = state.stack.pop().expect("Stack underflow");
+                if a != b {
+                    state.call_stack.last_mut().unwrap().ip = *target;
+                }
+            }
+
+            Instruction::JumpIfFalse(target) => {
+                let val = state.stack.pop().expect("Stack underflow");
+                if !val.as_bool() {
+                    state.call_stack.last_mut().unwrap().ip = *target;
+                }
+            }
+
+            Instruction::Jump(target) => {
+                state.call_stack.last_mut().unwrap().ip = *target;
+            }
+
+            // ── Concurrency Primitives ─────────────────────
+
+            Instruction::Spawn => {
+                // Spawn creates a new thread reference
+                let thread_ref = Value::ThreadRef(self.next_thread_id);
+                state.stack.push(thread_ref);
+            }
+
+            Instruction::Send(_) => {
+                // Handle Send specially - it accesses mailboxes
+                let (target_mailbox, value_opt) = {
+                    let mailbox_val = state.stack.pop().expect("Stack underflow on Send");
+                    let value = state.stack.pop().expect("Stack underflow on Send");
+                    let target_mailbox = match mailbox_val {
+                        Value::MailboxRef(id) => id,
+                        Value::ThreadRef(_) => mailbox_id,
+                        _ => {
+                            eprintln!("Send: invalid mailbox reference");
+                            state.stack.push(Value::Bool(false));
+                            return;
+                        }
+                    };
+                    (target_mailbox, Some(value))
+                };
+
+                let result = {
+                    if target_mailbox < self.mailboxes.len() {
+                        self.mailboxes[target_mailbox].send(value_opt.unwrap());
+                        Value::Bool(true)
+                    } else {
+                        Value::Bool(false)
                     }
+                };
+                
+                let state = &mut self.threads[vm_tid];
+                state.stack.push(result);
+            }
 
-                    let arity = self.program.functions.get(&name)
-                        .unwrap_or_else(|| panic!("Undefined function: {}", name))
-                        .arity;
-                    assert_eq!(args.len(), arity);
-
-                    self.call_stack.push(CallFrame {
-                        function: name,
-                        ip: 0,
-                        locals: args,
-                    });
-                }
-
-                Instruction::Return => {
-                    self.call_stack.pop();
-                    if self.call_stack.is_empty() {
-                        return self.stack.pop().expect("Stack empty on final return");
+            Instruction::Recv(_) => {
+                // Handle Recv specially - it accesses mailboxes
+                let target_mailbox = {
+                    let mailbox_val = state.stack.pop().expect("Stack underflow on Recv");
+                    match mailbox_val {
+                        Value::MailboxRef(id) => id,
+                        Value::ThreadRef(_) => mailbox_id,
+                        _ => {
+                            state.stack.push(Value::Unit);
+                            return;
+                        }
                     }
-                    // Return value stays on the stack for the caller
-                }
+                };
 
-                Instruction::JumpIfNeq(target) => {
-                    let b = self.stack.pop().expect("Stack underflow");
-                    let a = self.stack.pop().expect("Stack underflow");
-                    if a != b {
-                        self.call_stack.last_mut().unwrap().ip = target;
+                let (msg_opt, should_block) = {
+                    if target_mailbox < self.mailboxes.len() {
+                        if self.mailboxes[target_mailbox].is_empty() {
+                            (None, true)
+                        } else {
+                            (self.mailboxes[target_mailbox].recv(), false)
+                        }
+                    } else {
+                        (None, false)
                     }
-                }
+                };
 
-                Instruction::JumpIfFalse(target) => {
-                    let val = self.stack.pop().expect("Stack underflow");
-                    if !val.as_bool() {
-                        self.call_stack.last_mut().unwrap().ip = target;
-                    }
+                let state = &mut self.threads[vm_tid];
+                match (msg_opt, should_block) {
+                    (Some(msg), _) => state.stack.push(msg),
+                    (None, true) => state.blocked = true,
+                    (None, false) => state.stack.push(Value::Unit),
                 }
+            }
 
-                Instruction::Jump(target) => {
-                    self.call_stack.last_mut().unwrap().ip = target;
-                }
-
-                Instruction::Spawn => {
-                    self.stack.push(Value::Int(0));
-                }
-
-                Instruction::Send(_mailbox_id) => {
-                    let _val = self.stack.pop().expect("Stack underflow on Send");
-                    self.stack.push(Value::Bool(true));
-                }
-
-                Instruction::Recv(_mailbox_id) => {
-                    self.stack.push(Value::Unit);
-                }
-
-                Instruction::Join => {
-                }
+            Instruction::Join => {
+                // Join handled specially above - this should never be reached
+                state.stack.push(Value::Unit);
             }
         }
     }
@@ -375,5 +593,32 @@ mod tests {
         assert_eq!(run(src, "fib", &[1]), Value::Int(1));
         assert_eq!(run(src, "fib", &[5]), Value::Int(5));
         assert_eq!(run(src, "fib", &[10]), Value::Int(55));
+    }
+
+    #[test]
+    fn test_list_operations() {
+        let src = "fn :: mklist => [Int]\nmklist = [1, 2, 3]";
+        let result = run(src, "mklist", &[]);
+        assert_eq!(result, Value::List(vec![
+            Value::Int(1),
+            Value::Int(2),
+            Value::Int(3),
+        ]));
+    }
+
+    #[test]
+    fn test_echo_output() {
+        let src = "fn :: greet => ()\ngreet = echo \"hello\" \"world\"";
+        let result = run(src, "greet", &[]);
+        assert_eq!(result, Value::Unit);
+    }
+
+    #[test]
+    fn test_comparison() {
+        let src = "fn :: test => Bool\ntest = 5 > 3 && 2 < 4";
+        // Note: && needs to be tested - use Cmp operators
+        let src2 = "fn :: test => Bool\ntest = True == True";
+        let result = run(src2, "test", &[]);
+        assert_eq!(result, Value::Bool(true));
     }
 }
