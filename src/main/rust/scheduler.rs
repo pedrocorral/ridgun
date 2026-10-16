@@ -1,4 +1,5 @@
-/// Scheduler — round-robin foundation for green threads
+/// Scheduler — round-robin and deterministic `--seed` scheduling for green threads.
+/// Implements Section 9 of `docs/etc/next_gen_architecture.md` and `docs/etc/parallelism.md`.
 
 use std::collections::VecDeque;
 use crate::greenthread::{GreenThread, ThreadState};
@@ -11,6 +12,8 @@ pub struct Scheduler {
     queue: VecDeque<usize>,
     next_id: usize,
     quantum: u64,
+    seed_state: Option<u64>,
+    logical_clock: u64,
 }
 
 impl Scheduler {
@@ -21,6 +24,8 @@ impl Scheduler {
             queue: VecDeque::new(),
             next_id: 0,
             quantum: DEFAULT_QUANTUM,
+            seed_state: None,
+            logical_clock: 0,
         }
     }
 
@@ -28,6 +33,23 @@ impl Scheduler {
         let mut s = Scheduler::new();
         s.quantum = quantum;
         s
+    }
+
+    /// Create a deterministic simulation scheduler initialized with `seed` (Section 9).
+    pub fn with_seed(seed: u64) -> Self {
+        let mut s = Scheduler::new();
+        s.seed_state = Some(if seed == 0 { 0x9E37_79B9_7F4A_7C15 } else { seed });
+        s
+    }
+
+    /// Current logical clock tick count (incremented on every scheduled reduction).
+    pub fn logical_clock(&self) -> u64 {
+        self.logical_clock
+    }
+
+    /// Quantum budget per green thread before cooperative preemption.
+    pub fn quantum(&self) -> u64 {
+        self.quantum
     }
 
     /// Create a new ready thread and push it onto the queue.
@@ -39,6 +61,21 @@ impl Scheduler {
         self.threads.push(thread);
         self.queue.push_back(id);
         id
+    }
+
+    /// Record one instruction reduction on the running thread; returns `true` if quantum expired.
+    pub fn tick_reduction(&mut self) -> bool {
+        self.logical_clock += 1;
+        if let Some(id) = self.running {
+            if let Some(thread) = self.threads.get_mut(id) {
+                thread.reduction_count += 1;
+                if thread.reduction_count >= self.quantum {
+                    thread.reduction_count = 0;
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     /// Yield the currently running thread back to the ready queue.
@@ -73,24 +110,30 @@ impl Scheduler {
     }
 
     /// Pick the next thread from the ready queue and mark it running.
-    /// Skips any entries left behind by block/kill operations.
-    /// Returns the thread ID and a mutable reference to the thread.
+    /// In `--seed` mode, uses deterministic xorshift64* selection over ready threads.
     pub fn next_thread(&mut self) -> Option<(usize, &mut GreenThread)> {
-        loop {
-            let id = match self.queue.pop_front() {
-                Some(id) => id,
-                None => return None,
-            };
-            let state = self.threads.get(id).map(|t| t.state);
-            match state {
-                Some(ThreadState::Ready) => {}
-                _ => continue,
-            }
-            let thread = self.threads.get_mut(id).unwrap();
-            thread.state = ThreadState::Running;
-            self.running = Some(id);
-            return Some((id, thread));
+        self.queue.retain(|&id| {
+            self.threads.get(id).map(|t| t.state == ThreadState::Ready).unwrap_or(false)
+        });
+        if self.queue.is_empty() {
+            return None;
         }
+        let chosen_idx = if let Some(ref mut state) = self.seed_state {
+            let mut x = *state;
+            x ^= x >> 12;
+            x ^= x << 25;
+            x ^= x >> 27;
+            *state = x;
+            let rand_val = x.wrapping_mul(0x2545_F491_4F6C_DD1D);
+            (rand_val as usize) % self.queue.len()
+        } else {
+            0
+        };
+        let id = self.queue.remove(chosen_idx)?;
+        let thread = self.threads.get_mut(id)?;
+        thread.state = ThreadState::Running;
+        self.running = Some(id);
+        Some((id, thread))
     }
 
     /// Count threads that are not Dead.
@@ -197,7 +240,6 @@ mod tests {
         sched.yield_thread();
         sched.unblock(a);
         let picked = sched.next_thread().unwrap();
-        // b was yielded first, so b is ahead of a in the ready queue
         assert_eq!(picked.0, b);
         let picked2 = sched.next_thread().unwrap();
         assert_eq!(picked2.0, a);
@@ -245,5 +287,24 @@ mod tests {
         sched.kill(a);
         sched.kill(b);
         assert!(sched.is_done());
+    }
+
+    #[test]
+    fn test_deterministic_seed_reproducibility() {
+        let run_schedule = |seed: u64| -> Vec<usize> {
+            let mut sched = Scheduler::with_seed(seed);
+            for _ in 0..4 {
+                sched.spawn();
+            }
+            let mut order = Vec::new();
+            for _ in 0..12 {
+                let (id, _) = sched.next_thread().unwrap();
+                order.push(id);
+                sched.yield_thread();
+            }
+            order
+        };
+        assert_eq!(run_schedule(918273), run_schedule(918273));
+        assert_ne!(run_schedule(918273), run_schedule(42));
     }
 }

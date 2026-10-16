@@ -30,6 +30,17 @@ pub enum Token {
     False,
     Otherwise,
     Where,
+    And,
+    Or,
+    Xor,
+    Not,
+    Global,
+    Context,
+    Shared,
+    With,
+    Do,
+    Atomic,
+    Hardware,
 
     // Punctuation
     ColonColon,
@@ -37,10 +48,12 @@ pub enum Token {
     Arrow,
     Equals,
     EqualEqual,
+    NotEqual,
     Plus,
     Minus,
     Star,
     Slash,
+    Percent,
     Greater,
     GreaterEq,
     Less,
@@ -56,9 +69,11 @@ pub enum Token {
     DoublePipe,
     Colon,
     Comma,
+    Ellipsis,
 
     // Literals
     IntLit(i64),
+    RealLit(f64),
     StringLit(String),
     RawStringLit(String),
 
@@ -93,6 +108,7 @@ impl Lexer {
         let mut last_was_newline = true;
 
         loop {
+            self.skip_spaces();
             let start_pos = self.pos;
             let start_line = self.line;
             let start_col = self.col;
@@ -231,9 +247,29 @@ impl Lexer {
                     Token::Pipe
                 }
             }
+            Some('!') => {
+                self.advance();
+                if self.peek() == Some('=') {
+                    self.advance();
+                    Token::NotEqual
+                } else {
+                    panic!("Expected '=' after '!'");
+                }
+            }
+            Some('.') => {
+                self.advance();
+                if self.peek() == Some('.') && self.chars.get(self.pos + 1) == Some(&'.') {
+                    self.advance();
+                    self.advance();
+                    Token::Ellipsis
+                } else {
+                    panic!("Unexpected character: '.'");
+                }
+            }
             Some('+') => { self.advance(); Token::Plus }
             Some('*') => { self.advance(); Token::Star }
             Some('/') => { self.advance(); Token::Slash }
+            Some('%') => { self.advance(); Token::Percent }
             Some('@') => { self.advance(); Token::At }
             Some('{') => { self.advance(); Token::LBrace }
             Some('}') => { self.advance(); Token::RBrace }
@@ -251,16 +287,65 @@ impl Lexer {
     }
 
     fn read_number(&mut self) -> Token {
+        if self.peek() == Some('0') && matches!(self.chars.get(self.pos + 1), Some('x' | 'X')) {
+            self.advance();
+            self.advance();
+            let mut hex = String::new();
+            while let Some(ch) = self.peek() {
+                if ch.is_ascii_hexdigit() {
+                    hex.push(ch);
+                    self.advance();
+                } else if ch == '_' {
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+            return Token::IntLit(i64::from_str_radix(&hex, 16).unwrap_or(0));
+        }
         let mut s = String::new();
         while let Some(ch) = self.peek() {
             if ch.is_ascii_digit() {
                 s.push(ch);
                 self.advance();
+            } else if ch == '_' && self.chars.get(self.pos + 1).map(|c| c.is_ascii_digit()).unwrap_or(false) {
+                self.advance();
             } else {
                 break;
             }
         }
-        Token::IntLit(s.parse().unwrap())
+        // Check for fractional Real literal: e.g. 5.0, 3.14
+        if self.peek() == Some('.') && self.chars.get(self.pos + 1).map(|c| c.is_ascii_digit()).unwrap_or(false) {
+            s.push('.');
+            self.advance();
+            while let Some(ch) = self.peek() {
+                if ch.is_ascii_digit() {
+                    s.push(ch);
+                    self.advance();
+                } else if ch == '_' {
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+            return Token::RealLit(s.parse().unwrap());
+        }
+        // Check for byte unit suffixes: _KB, _MB, _GB
+        let mut multiplier: i64 = 1;
+        if self.peek() == Some('_') {
+            let rest: String = self.chars[self.pos..].iter().take(3).collect();
+            if rest == "_KB" {
+                self.advance(); self.advance(); self.advance();
+                multiplier = 1024;
+            } else if rest == "_MB" {
+                self.advance(); self.advance(); self.advance();
+                multiplier = 1024 * 1024;
+            } else if rest == "_GB" {
+                self.advance(); self.advance(); self.advance();
+                multiplier = 1024 * 1024 * 1024;
+            }
+        }
+        Token::IntLit(s.parse::<i64>().unwrap() * multiplier)
     }
 
     fn read_ident(&mut self) -> Token {
@@ -282,6 +367,17 @@ impl Lexer {
             "False" => Token::False,
             "otherwise" => Token::Otherwise,
             "where" => Token::Where,
+            "AND" => Token::And,
+            "OR" => Token::Or,
+            "XOR" => Token::Xor,
+            "NOT" => Token::Not,
+            "global" => Token::Global,
+            "context" => Token::Context,
+            "shared" => Token::Shared,
+            "with" => Token::With,
+            "do" => Token::Do,
+            "atomic" => Token::Atomic,
+            "hardware" => Token::Hardware,
             _ => Token::Ident(s),
         }
     }

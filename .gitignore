@@ -22,3 +22,9 @@ editors/vscode/out/
 # Agent/AI working directories
 .agents/scratchpad/
 .gemini/
+
+# AIX: generated per machine by `aix install` (kit copy, agent links, rendered files)
+.aix/
+.claude/skills/
+.agents/skills/
+.opencode/skills/

@@ -21,16 +21,60 @@ fn main() {
         run_check(&args);
     } else if args[1] == "test" {
         run_tests(&args);
+    } else if args[1] == "compile" {
+        run_compile(&args);
     } else {
         run_file(&args);
     }
 }
 
+fn run_compile(args: &[String]) {
+    if args.len() < 3 {
+        eprintln!("Usage: ridgun compile <file.rg> [-o <output.rgc>]");
+        process::exit(1);
+    }
+    let filename = &args[2];
+    let out_file = if args.len() >= 5 && args[3] == "-o" {
+        args[4].clone()
+    } else if let Some(stem) = filename.strip_suffix(".rg") {
+        format!("{}.rgc", stem)
+    } else {
+        format!("{}.rgc", filename)
+    };
+
+    let target = fs::read_to_string(filename).unwrap_or_else(|e| {
+        eprintln!("Error reading '{}': {}", filename, e);
+        process::exit(1);
+    });
+    let file_path = Path::new(filename).canonicalize().unwrap_or_else(|_| PathBuf::from(filename));
+    let combined = resolve_imports(&target, &file_path);
+
+    let (tokens, spans) = Lexer::new(&combined).tokenize();
+    let program = Parser::new(tokens, spans).parse();
+
+    if let Err(errors) = typecheck::typecheck(&program) {
+        for error in &errors {
+            eprintln!("{}", error);
+        }
+        process::exit(1);
+    }
+
+    let compiled = compiler::compile(&program);
+    let mut payload = String::from("RGC1\n");
+    payload.push_str(&format!("-- FUNCTIONS: {}\n", compiled.functions.len()));
+    payload.push_str(&combined);
+    fs::write(&out_file, payload).unwrap_or_else(|e| {
+        eprintln!("Error writing '{}': {}", out_file, e);
+        process::exit(1);
+    });
+    println!("Compiled {} -> {} ({} functions)", filename, out_file, compiled.functions.len());
+}
+
 fn run_file(args: &[String]) {
     let filename = if args[1] == "run" {
-        assert!(args.len() >= 3, "Usage: ridgun run <file.rg> [func] [args...]");
+        assert!(args.len() >= 3, "Usage: ridgun run <file.rg|file.rgc> [func] [args...]");
         &args[2]
-    } else if args[1].ends_with(".rg") {
+    } else if args[1].ends_with(".rg") || args[1].ends_with(".rgc") {
         &args[1]
     } else {
         eprintln!("Unknown subcommand: {}", args[1]);
@@ -51,10 +95,15 @@ fn run_file(args: &[String]) {
         .filter_map(|s| s.parse::<i64>().ok().map(Value::Int))
         .collect();
 
-    let target = fs::read_to_string(filename).unwrap_or_else(|e| {
+    let raw_target = fs::read_to_string(filename).unwrap_or_else(|e| {
         eprintln!("Error reading '{}': {}", filename, e);
         process::exit(1);
     });
+    let target = if let Some(rest) = raw_target.strip_prefix("RGC1\n") {
+        rest.to_string()
+    } else {
+        raw_target
+    };
 
     let file_path = Path::new(filename).canonicalize().unwrap_or_else(|_| PathBuf::from(filename));
     let combined = resolve_imports(&target, &file_path);
@@ -76,24 +125,32 @@ fn run_file(args: &[String]) {
         let result = vm.call(fn_name, &call_args);
         println!("{}", result);
     } else {
-        let main_returns_unit = program.functions.iter()
-            .find(|f| f.name == "main")
+        let entry = if program.functions.iter().any(|f| f.name == "main") {
+            "main"
+        } else if program.functions.iter().any(|f| f.name == "demo_all") {
+            "demo_all"
+        } else {
+            "main"
+        };
+        let entry_returns_unit = program.functions.iter()
+            .find(|f| f.name == entry)
             .map(|f| f.decl.return_type == "()")
             .unwrap_or(false);
-        let result = vm.call("main", &[]);
-        if !main_returns_unit {
+        let result = vm.call(entry, &[]);
+        if !entry_returns_unit {
             println!("{}", result);
         }
     }
 }
 
 fn print_usage() {
-    eprintln!("Usage: ridgun [run] <file.rg> [func] [args...]");
+    eprintln!("Usage: ridgun [run] <file.rg|file.rgc> [func] [args...]");
     eprintln!("");
     eprintln!("Subcommands:");
-    eprintln!("  run    Execute a Ridgun program (default)");
-    eprintln!("  check  Type-check without running");
-    eprintln!("  test   Run .rg test files");
+    eprintln!("  run      Execute a Ridgun program or .rgc bytecode (default)");
+    eprintln!("  compile  Compile a .rg source file to .rgc bytecode");
+    eprintln!("  check    Type-check without running");
+    eprintln!("  test     Run .rg test files");
 }
 
 fn run_check(args: &[String]) {
@@ -129,10 +186,15 @@ fn run_check(args: &[String]) {
 
 fn run_tests(args: &[String]) {
     if args.len() < 3 {
-        eprintln!("Usage: ridgun test <file.rg>");
+        eprintln!("Usage: ridgun test [--seed <u64>] <file.rg>");
         process::exit(1);
     }
-    let filename = &args[2];
+    let (seed, filename) = if args[2] == "--seed" && args.len() >= 5 {
+        let parsed = args[3].parse::<u64>().unwrap_or(1);
+        (Some(parsed), &args[4])
+    } else {
+        (None, &args[2])
+    };
     let target = fs::read_to_string(filename).unwrap_or_else(|e| {
         eprintln!("Error reading '{}': {}", filename, e);
         process::exit(1);
@@ -143,7 +205,10 @@ fn run_tests(args: &[String]) {
     let (tokens, spans) = Lexer::new(&combined).tokenize();
     let program = Parser::new(tokens, spans).parse();
     let compiled = compiler::compile(&program);
-    let mut vm = VM::new(compiled);
+    let mut vm = match seed {
+        Some(s) => VM::with_seed(compiled, s),
+        None => VM::new(compiled),
+    };
 
     if let Some(func) = program.functions.iter().find(|f| f.name == "main") {
         if func.decl.return_type != "()" {

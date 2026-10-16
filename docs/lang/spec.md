@@ -563,6 +563,18 @@ All computations in a `where` block execute in parallel. Results are bound to va
 
 Each `||` line runs as a separate parallel green thread. Results are returned as a tuple in declaration order.
 
+### Typed Channels
+
+For streaming data and producer-consumer topologies across green threads, Ridgun provides typed MPMC channels (`Channel`):
+
+| Built-in Function / Operator | Signature | Purpose |
+|---|---|---|
+| `new_channel` | `() => Channel` | Create an unbounded typed channel |
+| `new_bounded_channel` | `Int => Channel` | Create a bounded channel with backpressure capacity |
+| `send_through` | `T Channel => ()` | Send a value into a channel (blocks if bounded and full) |
+| `receive_from` | `Channel => T` | Receive the next value from a channel |
+| `try_receive_from` | `Channel => Option` | Non-blocking poll returning `Some v` or `None` |
+
 ---
 
 ## I/O Primitives

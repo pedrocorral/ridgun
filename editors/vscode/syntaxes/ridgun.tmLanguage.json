@@ -64,7 +64,11 @@
       "patterns": [
         {
           "name": "keyword.other.ridgun",
-          "match": "\\b(fn|op|where)\\b"
+          "match": "\\b(fn|op|type|import|where|otherwise)\\b"
+        },
+        {
+          "name": "support.function.builtin.ridgun",
+          "match": "\\b(echo|out|new_channel|new_bounded_channel|send_through|receive_from|try_receive_from)\\b"
         },
         {
           "name": "constant.language.bool.ridgun",

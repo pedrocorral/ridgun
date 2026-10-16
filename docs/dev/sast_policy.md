@@ -70,7 +70,7 @@ Together these provide defense-in-depth coverage that no single tool can achieve
 
 ## Related Documents
 
-- [process.md](../process.md) — OWASP SAMM verification practices
+- [process.md](../etc/process.md) — OWASP SAMM verification practices
 - [SAST task](../../tsk/static_application_security_testing.md) — Tool stack and CI integration
 - [SCA task](../../tsk/software_composition_analysis.md) — Dependency analysis
 - [Secrets scanning task](../../tsk/secrets_scanning.md) — Credential leak detection
