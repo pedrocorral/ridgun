@@ -28,3 +28,5 @@ editors/vscode/out/
 .claude/skills/
 .agents/skills/
 .opencode/skills/
+
+bin/
