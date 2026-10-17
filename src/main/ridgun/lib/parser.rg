@@ -1,7 +1,7 @@
 -- ============================================================
 -- src/main/ridgun/parser.rg
 -- Self-Hosted Recursive-Descent Parser ([RToken] => RProgram)
--- Full Ridgun v2.0 Spec: fn, op, type (sum & record), global,
+-- Full Ridgun v0.9.0 Spec: fn, op, type (sum & record), global,
 -- context, shared, hardware, @packed/@repr, tensors, einsum,
 -- hadamard, sequences/masks, where-DAG, || pipes, string interp.
 -- ============================================================

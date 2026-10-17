@@ -1,7 +1,7 @@
 -- ============================================================
 -- src/main/ridgun/compiler.rg
 -- Self-Hosted Ridgun AST-to-Bytecode & Native AOT Compiler
--- Full Ridgun v2.0 Spec: Sum & Record ADTs, Operator Overloading,
+-- Full Ridgun v0.9.0 Spec: Sum & Record ADTs, Operator Overloading,
 -- Variadics, Sequences/Masks/FlatJoin, Tensors/Einsum/Hadamard,
 -- Where-DAGs, ParPipes, Channels/Spawn/Join, Scoped Globals/Context/
 -- Shared Atomics, and Bare-Metal Hardware MMIO & Region Quotas.
@@ -1331,8 +1331,13 @@ fn rg_resolve_imports(src: &str, fpath: &Path, vis: &mut HashSet<PathBuf>) -> St
         let tr = line.trim();
         if let Some(rest) = tr.strip_prefix("import ") {
             let m = rest.trim();
-            let cand = pdir.join(format!("{}.rg", m));
-            if cand.exists() {
+            let cands = [
+                pdir.join(format!("{}.rg", m)),
+                pdir.join("../lib").join(format!("{}.rg", m)),
+                Path::new("src/main/ridgun/lib").join(format!("{}.rg", m)),
+                Path::new("src/main/ridgun").join(format!("{}.rg", m)),
+            ];
+            if let Some(cand) = cands.iter().find(|p| p.exists()) {
                 let cn = cand.canonicalize().unwrap_or_else(|_| cand.clone());
                 if vis.insert(cn.clone()) {
                     if let Ok(sub) = std::fs::read_to_string(&cn) {
@@ -1397,7 +1402,7 @@ emit_rgc_payload prog raw_src =
   fn_count = count_fn_defs prog
   ty_count = count_type_defs prog
   summaries = join_summaries (analyze_rprogram prog)
-  "RGC1\n-- SELF_HOSTED_COMPILER: ridgunc v2.0\n-- FUNCTIONS: {fn_count}\n-- TYPES: {ty_count}\n{summaries}{raw_src}"
+  "RGC1\n-- SELF_HOSTED_COMPILER: ridgunc v0.9.1\n-- FUNCTIONS: {fn_count}\n-- TYPES: {ty_count}\n{summaries}{raw_src}"
 
 fn :: emit_rgc_file String String => Int
 emit_rgc_file input_path output_path =
@@ -1427,9 +1432,10 @@ build_native_executable input_path output_bin =
 fn :: build_native_after_check RProgram String [RTypeError] => Int
 build_native_after_check prog output_bin [] =
   native_rs = emit_native_program prog
-  tmp_rs = "/tmp/_ridgunc_native_gen.rs"
+  tmp_rs = output_bin + "_gen.rs"
+  tmp_bin = output_bin + "_tmp"
   _ = write_file tmp_rs native_rs
-  cmd = "rustc --edition 2021 -O -A warnings " + tmp_rs + " -o " + output_bin + " && rm -f " + tmp_rs
+  cmd = "rustc --edition 2021 --crate-name ridgun_bin -O -A warnings " + tmp_rs + " -o " + tmp_bin + " && mv -f " + tmp_bin + " " + output_bin + "; _st=$?; rm -f " + tmp_rs + " " + tmp_bin + "; exit $_st"
   shell_exec cmd
 build_native_after_check _ _ errs =
   _ = echo (format_type_errors errs)

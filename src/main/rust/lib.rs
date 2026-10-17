@@ -35,6 +35,8 @@ fn resolve_imports_inner(source: &str, file_path: &Path, visited: &mut HashSet<P
             let name = rest.trim();
             let candidates = [
                 parent_dir.join(format!("{}.rg", name)),
+                parent_dir.join("../lib").join(format!("{}.rg", name)),
+                project_root.join("src/main/ridgun/lib").join(format!("{}.rg", name)),
                 project_root.join("src/main/ridgun").join(format!("{}.rg", name)),
                 project_root.join("lib").join(format!("{}.rg", name)),
             ];

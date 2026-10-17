@@ -1,8 +1,8 @@
 -- ============================================================
--- src/main/ridgun/ridgunc.rg
--- Self-Hosted Ridgun Compiler CLI Driver (ridgunc)
--- Modules: ast.rg, lexer.rg, parser.rg, analyzer.rg,
---          typecheck.rg, compiler.rg, vm.rg
+-- src/main/ridgun/ridgunc/main.rg
+-- Self-Hosted Ridgun Compiler CLI Driver (ridgunc v0.9.1)
+-- Shared Library (`src/main/ridgun/lib/`): ast.rg, lexer.rg,
+-- parser.rg, analyzer.rg, typecheck.rg, compiler.rg, vm.rg
 -- ============================================================
 import ast
 import lexer
@@ -19,10 +19,10 @@ strip_runner_args (_:rest) = strip_script_prefix rest
 fn :: strip_script_prefix [String] => [String]
 strip_script_prefix [] = []
 strip_script_prefix ("run":script:rest)
-  | str_contains script "ridgunc.rg" = rest
+  | (str_contains script "ridgunc.rg") OR (str_contains script "ridgunc/main.rg") = rest
   | otherwise = ["run", script] :: rest
 strip_script_prefix (first:rest)
-  | str_contains first "ridgunc.rg" = rest
+  | (str_contains first "ridgunc.rg") OR (str_contains first "ridgunc/main.rg") = rest
   | otherwise = [first] :: rest
 
 fn :: print_error_lines [String] => ()
@@ -70,12 +70,13 @@ report_build_status _ output_bin code =
 
 fn :: run_cli_run String => ()
 run_cli_run input_path =
-  status = build_native_executable input_path "/tmp/_ridgunc_run_bin"
+  _ = shell_exec "mkdir -p target"
+  status = build_native_executable input_path "target/.ridgunc_run_bin"
   exec_built_run status
 
 fn :: exec_built_run Int => ()
 exec_built_run 0 =
-  _ = shell_exec "/tmp/_ridgunc_run_bin && rm -f /tmp/_ridgunc_run_bin"
+  _ = shell_exec "./target/.ridgunc_run_bin; _st=$?; rm -f target/.ridgunc_run_bin; exit $_st"
   ()
 exec_built_run _ = ()
 
@@ -100,7 +101,7 @@ run_self_hosted_pipeline_demo =
 
 fn :: run_cli_version => ()
 run_cli_version =
-  echo "ridgunc 2.0.0 (self-hosted Ridgun compiler, x86_64-unknown-linux-gnu)"
+  echo "ridgunc 0.9.1 (self-hosted Ridgun compiler, x86_64-unknown-linux-gnu)"
 
 fn :: run_cli_help => ()
 run_cli_help =

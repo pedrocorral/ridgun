@@ -1,6 +1,6 @@
 -- ============================================================
 -- src/main/ridgun/typecheck.rg
--- Self-Hosted Ridgun v2.0 Type Checker
+-- Self-Hosted Ridgun v0.9.0 Type Checker
 -- Validates:
 -- - Function & Operator Signatures, Arities, and Return Types
 -- - Sum ADTs, Product Record Constructors & Field Accessors

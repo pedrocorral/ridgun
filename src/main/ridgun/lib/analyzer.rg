@@ -1,6 +1,6 @@
 -- ============================================================
 -- src/main/ridgun/analyzer.rg
--- Self-Hosted Ridgun v2.0 Static Analyzer
+-- Self-Hosted Ridgun v0.9.0 Static Analyzer
 -- Implements:
 -- 1. Bottom-up interprocedural mutation effect inference (EffReadOnly / EffMutates)
 -- 2. 4-Tier AST Execution Strategy classification (InlineSequential,

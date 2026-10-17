@@ -861,8 +861,8 @@ fn test_all_example_rg_files_typecheck_and_run() {
 
 #[test]
 fn test_self_hosted_ridgun_compiler_pipeline() {
-    let path = std::path::Path::new("src/main/ridgun/ridgunc.rg");
-    let raw = std::fs::read_to_string(path).expect("Failed to read ridgunc.rg");
+    let path = std::path::Path::new("src/main/ridgun/ridgunc/main.rg");
+    let raw = std::fs::read_to_string(path).expect("Failed to read ridgunc/main.rg");
     let combined = ridgun::resolve_imports(&raw, path);
     let (tokens, spans) = Lexer::new(&combined).tokenize();
     let program = Parser::new(tokens, spans).parse();

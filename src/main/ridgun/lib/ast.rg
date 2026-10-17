@@ -1,7 +1,7 @@
 -- ============================================================
 -- src/main/ridgun/ast.rg
 -- Token, AST, Type System, Analyzer, and Bytecode ADTs
--- for the Self-Hosted Ridgun Compiler (100% v2.0 Spec)
+-- for the Self-Hosted Ridgun Compiler (100% v0.9.0 Spec)
 -- ============================================================
 
 -- 1. Lexical Tokens produced by lexer.rg
@@ -22,7 +22,7 @@ type RWhereBind = WhereBind RExpr String [Int]
 -- 6. Guarded branch (| cond = body)
 type RGuard = GuardBranch RExpr RExpr
 
--- 7. Expressions (Full Ridgun v2.0 AST)
+-- 7. Expressions (Full Ridgun v0.9.0 AST)
 type RExpr = EInt Int | EReal String | EStr String | EStrInterp [RExpr] | EBool Bool | EUnit | EVar String | ENot RExpr | EOut RExpr | EBin RBinOp RExpr RExpr | ECall String [RExpr] | EEcho [RExpr] | EList [RExpr] | ETuple [RExpr] | ETensor [RExpr] | EEinsum [RExpr] [String] | EHadamard RBinOp RExpr String RExpr String | EIndex RExpr [RExpr] | EIndexAssign String [RExpr] RExpr | ESeqSelect RExpr String | EBlock [RStmt] | EWhere RExpr [RWhereBind] | EParPipe [RExpr] | EWithCtx String RExpr RExpr | EWithRegion Int RExpr | EAtomicUpdate String RExpr | ELoadContext String RExpr | ELoadShared String RExpr
 
 -- 8. Function Case & Function Definition

@@ -6,10 +6,10 @@ fn :: project_name => String
 project_name = "ridgunc"
 
 fn :: project_version => String
-project_version = "2.0.0"
+project_version = "0.9.1"
 
 fn :: main_entry => String
-main_entry = "src/main/ridgun/ridgunc.rg"
+main_entry = "src/main/ridgun/ridgunc/main.rg"
 
 fn :: source_dir => String
 source_dir = "src/main/ridgun"

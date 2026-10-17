@@ -1,6 +1,6 @@
 -- ============================================================
 -- src/main/ridgun/lexer.rg
--- Self-Hosted Ridgun Lexer (Full v2.0 Spec Scanner)
+-- Self-Hosted Ridgun Lexer (Full v0.9.0 Spec Scanner)
 -- Supports: Keywords, Identifiers, Int, Hex (0x...), Byte Units
 -- (_KB/_MB/_GB), Real (f64), Interpolated Strings, Raw Strings,
 -- Attributes (@), Ellipsis (...), and Operators.

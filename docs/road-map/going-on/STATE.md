@@ -6,24 +6,24 @@ agent_runtime: gemini
 # Session state — read this first when resuming
 
 ## Where we are (3 lines max)
-- Active `TASK-0004`: Built the self-hosted Ridgun v2.0 compiler & VM (`src/main/ridgun/ridgunc.rg`) and the `stable` interactive/batch build tool (`src/main/ridgun/stable.rg`, `build.rg`), 100% written in Ridgun and compiled by `./target/ridgunc` to `./target/stable`.
-- Verified 3-stage native ELF bootstrap (`Stage 1 == Stage 2` byte-for-byte identical) and verified `./target/stable` (`check`, `compile`, `test`, `built`/`build`, `run`, `info`, interactive shell).
+- Active `TASK-0004`: Migrated the self-hosted Ridgun v0.9.1 compiler and `stable` v0.9.1 build tool to the multi-executable layout (`src/main/ridgun/lib/`, `src/main/ridgun/ridgunc/main.rg`, `src/main/ridgun/stable/main.rg`).
+- Verified `./target/stable` v0.9.1 (`check`, `compile`, `test`, `built`/`build [target]`, `run [target]`, `info`, interactive shell) and `import` resolution from `src/main/ridgun/lib/`.
 ## Files to load for the active task (nothing else)
-- `src/main/ridgun/stable.rg`
+- `src/main/ridgun/stable/main.rg`
+- `src/main/ridgun/ridgunc/main.rg`
 - `build.rg`
-- `src/main/ridgun/ridgunc.rg`
-- `src/main/ridgun/compiler.rg`
-- `src/main/ridgun/typecheck.rg`
-- `src/main/ridgun/analyzer.rg`
-- `src/main/ridgun/parser.rg`
-- `src/main/ridgun/lexer.rg`
-- `src/main/ridgun/vm.rg`
+- `src/main/ridgun/lib/compiler.rg`
+- `src/main/ridgun/lib/typecheck.rg`
+- `src/main/ridgun/lib/analyzer.rg`
+- `src/main/ridgun/lib/parser.rg`
+- `src/main/ridgun/lib/lexer.rg`
+- `src/main/ridgun/lib/vm.rg`
 ## Last verified facts (tests green? migrations applied? env?)
-- `./target/stable test`: 4/4 Ridgun test suites passed (`test_basics.rg`, `test_core_language.rg`, `test_parallel_and_tensors.rg`, `test_strings.rg`).
-- `./target/stable check`: 9/9 modules in `src/main/ridgun/` checked with 0 errors.
-- `cargo test`: 162 passed (117 unit + 45 integration), 0 warnings.
+- `./target/stable check`: 9/9 modules in `src/main/ridgun/` (`lib/*.rg`, `ridgunc/main.rg`, `stable/main.rg`) checked with 0 errors.
+- `./target/stable info`: detects `Executables: ridgunc stable` and `Shared Lib: src/main/ridgun/lib/` at v0.9.1.
+- `aix docs validate` & `aix lessons check`: 0 errors, 0 warnings.
 ## Immediate next action
-- Present `stable` (100% written in Ridgun) and its interactive/batch workflow to the user.
+- Present the v0.9.1 multi-executable layout (`lib/` + parallel executable folders) to the user.
 ## Blockers / questions for the user
 - None.
 
