@@ -1,6 +1,6 @@
 -- ============================================================
 -- src/main/ridgun/stable/main.rg
--- `stable` v0.9.1 — The Interactive Build Tool for Ridgun (100% Ridgun)
+-- `stable` v0.9.2 — The Interactive Build Tool for Ridgun (100% Ridgun)
 -- Inspired by Scala's sbt: parses `build.rg` using the Ridgun
 -- compiler AST, supports `src/main/ridgun/lib/` + parallel
 -- executable folders (`src/main/ridgun/<target>/main.rg`),
@@ -104,7 +104,7 @@ extract_fn_str_body (_:rest) target default_val =
 
 fn :: load_build_config String => StableConfig
 load_build_config build_path
-  | NOT (file_exists build_path) = ProjectConfig "ridgunc" "0.9.1" "src/main/ridgun/ridgunc/main.rg" "src/main/ridgun" "src/test/ridgun" "target"
+  | NOT (file_exists build_path) = ProjectConfig "ridgunc" "0.9.2" "src/main/ridgun/ridgunc/main.rg" "src/main/ridgun" "src/test/ridgun" "target"
   | otherwise = parse_build_config_src (read_file build_path)
 
 fn :: parse_build_config_src String => StableConfig
@@ -116,7 +116,7 @@ parse_build_config_src src =
 fn :: extract_config_from_prog RProgram => StableConfig
 extract_config_from_prog (Program fns _) =
   name = extract_fn_str_body fns "project_name" "ridgunc"
-  ver = extract_fn_str_body fns "project_version" "0.9.1"
+  ver = extract_fn_str_body fns "project_version" "0.9.2"
   entry = extract_fn_str_body fns "main_entry" "src/main/ridgun/ridgunc/main.rg"
   sdir = extract_fn_str_body fns "source_dir" "src/main/ridgun"
   tdir = extract_fn_str_body fns "test_dir" "src/test/ridgun"
@@ -386,10 +386,10 @@ execute_command cfg ("help":_) = (True, cfg, run_task_help)
 execute_command cfg ("-h":_) = (True, cfg, run_task_help)
 execute_command cfg ("--help":_) = (True, cfg, run_task_help)
 execute_command cfg ("version":_) =
-  _ = echo "stable 0.9.1 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
+  _ = echo "stable 0.9.2 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
   (True, cfg, 0)
 execute_command cfg ("-v":_) =
-  _ = echo "stable 0.9.1 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
+  _ = echo "stable 0.9.2 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
   (True, cfg, 0)
 execute_command cfg ("info":_) = (True, cfg, run_task_info cfg)
 execute_command cfg ("status":_) = (True, cfg, run_task_info cfg)
@@ -432,7 +432,7 @@ repl_continue (True, next_cfg, _) =
 
 fn :: start_interactive_shell StableConfig => ()
 start_interactive_shell (ProjectConfig name ver entry sdir tdir out_dir) =
-  _ = echo "[info] Welcome to stable 0.9.1 (Ridgun Build Tool — 100% Ridgun)"
+  _ = echo "[info] Welcome to stable 0.9.2 (Ridgun Build Tool — 100% Ridgun)"
   _ = echo "[info] Loading project definition from build.rg ..."
   _ = echo "[info] Set current project to '{name}' v{ver} (main: {entry})"
   _ = echo "[info] Commands: 'built' (or 'build'), 'run', 'test', 'check', 'compile', 'clean', 'info', 'exit'"

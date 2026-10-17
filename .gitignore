@@ -24,7 +24,8 @@ editors/vscode/out/
 .gemini/
 
 # AIX: generated per machine by `aix install` (kit copy, agent links, rendered files)
-.aix/
+.aix/*
+!.aix/custom/
 .claude/skills/
 .agents/skills/
 .opencode/skills/

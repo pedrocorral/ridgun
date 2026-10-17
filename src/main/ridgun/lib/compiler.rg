@@ -1402,7 +1402,7 @@ emit_rgc_payload prog raw_src =
   fn_count = count_fn_defs prog
   ty_count = count_type_defs prog
   summaries = join_summaries (analyze_rprogram prog)
-  "RGC1\n-- SELF_HOSTED_COMPILER: ridgunc v0.9.1\n-- FUNCTIONS: {fn_count}\n-- TYPES: {ty_count}\n{summaries}{raw_src}"
+  "RGC1\n-- SELF_HOSTED_COMPILER: ridgunc v0.9.2\n-- FUNCTIONS: {fn_count}\n-- TYPES: {ty_count}\n{summaries}{raw_src}"
 
 fn :: emit_rgc_file String String => Int
 emit_rgc_file input_path output_path =

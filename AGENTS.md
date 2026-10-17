@@ -41,3 +41,7 @@ Several agents may share this repository: a task is taken with `aix task start I
 Docs use the front-matter in `.aix/meta-docs/conventions/document-format.md`. Commits: `<type>(<scope>): <summary> [IDs]`.
 Task report: what changed · IDs touched · tests · security rows still open · next step.
 
+## Scoped instructions
+Read these before working on matching files:
+- `custom/languages/ridgun` (when touching **/*.rg, build.rg): read `.aix/custom/instructions/languages/ridgun.md` — Use when writing, refactoring, or reviewing Ridgun (.rg) source files or build.rg: syntax rules, type signatures, guards, ADTs, parallel where-DAGs, regions, and stable/ridgunc verification.
+

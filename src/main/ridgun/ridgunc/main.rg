@@ -1,6 +1,6 @@
 -- ============================================================
 -- src/main/ridgun/ridgunc/main.rg
--- Self-Hosted Ridgun Compiler CLI Driver (ridgunc v0.9.1)
+-- Self-Hosted Ridgun Compiler CLI Driver (ridgunc v0.9.2)
 -- Shared Library (`src/main/ridgun/lib/`): ast.rg, lexer.rg,
 -- parser.rg, analyzer.rg, typecheck.rg, compiler.rg, vm.rg
 -- ============================================================
@@ -101,7 +101,7 @@ run_self_hosted_pipeline_demo =
 
 fn :: run_cli_version => ()
 run_cli_version =
-  echo "ridgunc 0.9.1 (self-hosted Ridgun compiler, x86_64-unknown-linux-gnu)"
+  echo "ridgunc 0.9.2 (self-hosted Ridgun compiler, x86_64-unknown-linux-gnu)"
 
 fn :: run_cli_help => ()
 run_cli_help =
