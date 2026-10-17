@@ -157,7 +157,7 @@ fn :: tok_ident String Int Int => (RToken, Int)
         (classify_word word, end_id)
 
 fn :: lex_one_tok String Int Int Int Int => (RToken, Int)
-      lex_one_tok src    pos len c   c2
+      lex_one_tok src pos len c c2
         | c == 10 = (TokNewline, pos + 1)
         | c == 45 AND c2 == 62 = (TokArrow, pos + 2)
         | c == 58 AND c2 == 58 = (TokColonColon, pos + 2)
@@ -192,7 +192,7 @@ fn :: lex_one_tok String Int Int Int Int => (RToken, Int)
         | otherwise = (TokNewline, pos + 1)
 
 fn :: lex_loop String Int Int [RToken] => [RToken]
-      lex_loop src    pos len acc =
+      lex_loop src    pos len acc      =
         p = skip_ws src pos len
         lex_loop_at src p len acc
 

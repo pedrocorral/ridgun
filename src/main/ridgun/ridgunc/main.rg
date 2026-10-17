@@ -16,8 +16,8 @@ fn :: strip_runner_args [String] => [String]
       strip_runner_args []       =  []
       strip_runner_args (_:rest) =  strip_script_prefix rest
 
-fn :: strip_script_prefix [String]            => [String]
-      strip_script_prefix []                  =  []
+fn :: strip_script_prefix [String]     => [String]
+      strip_script_prefix []           =  []
       strip_script_prefix ("run":script:rest)
         | (str_contains script "ridgunc.rg") OR (str_contains script "ridgunc/main.rg") = rest
         | otherwise = ["run", script] :: rest
@@ -40,14 +40,14 @@ fn :: run_cli_check String     => ()
         report_check_result input_path prog errs
 
 fn :: report_check_result String     RProgram [RTypeError] => ()
-      report_check_result input_path prog     [] =
+      report_check_result input_path prog     []           =
         fn_c = count_fn_defs prog
         ty_c = count_type_defs prog
         summaries = analyze_rprogram prog
         echo "[ridgunc check] {input_path}: {fn_c} function(s), {ty_c} type(s)"
         echo "[ridgunc check] Type checking & static analysis passed — 0 error(s)."
         echo "[ridgunc check] Static strategies:" summaries
-      report_check_result input_path _        errs =
+      report_check_result input_path _        errs         =
         err_c = type_err_count errs
         _ = print_error_lines (format_type_errors errs)
         echo "[ridgunc check] {input_path}: {err_c} error(s) found."
@@ -63,7 +63,7 @@ fn :: run_cli_build String     String     => ()
         report_build_status input_path output_bin status
 
 fn :: report_build_status String     String     Int  => ()
-      report_build_status input_path output_bin 0 =
+      report_build_status input_path output_bin 0    =
         echo "[ridgunc build] Native ELF executable created: {input_path} -> {output_bin}"
       report_build_status _          output_bin code =
         echo "[ridgunc build] Failed to build {output_bin} (exit code {code})"
@@ -75,7 +75,7 @@ fn :: run_cli_run String     => ()
         exec_built_run status
 
 fn :: exec_built_run Int => ()
-      exec_built_run 0 =
+      exec_built_run 0   =
         _ = shell_exec "./target/.ridgunc_run_bin; _st=$?; rm -f target/.ridgunc_run_bin; exit $_st"
         ()
       exec_built_run _   =  ()
@@ -115,21 +115,21 @@ fn :: run_cli_help => ()
         echo "  version | -v | --version       Show compiler version"
         echo "  help    | -h | --help          Show this help message"
 
-fn :: dispatch_cli [String]                                 => ()
-      dispatch_cli []                                       =  run_self_hosted_pipeline_demo
-      dispatch_cli ("version":_)                            =  run_cli_version
-      dispatch_cli ("-v":_)                                 =  run_cli_version
-      dispatch_cli ("--version":_)                          =  run_cli_version
-      dispatch_cli ("help":_)                               =  run_cli_help
-      dispatch_cli ("-h":_)                                 =  run_cli_help
-      dispatch_cli ("--help":_)                             =  run_cli_help
-      dispatch_cli ("run":input_path:_)                     =  run_cli_run input_path
-      dispatch_cli ("check":input_path:_)                   =  run_cli_check input_path
-      dispatch_cli ("compile":input_path:"-o":output_rgc:_) =  run_cli_compile input_path output_rgc
-      dispatch_cli ("compile":input_path:_)                 =  run_cli_compile input_path "{input_path}c"
-      dispatch_cli ("build":input_path:"-o":output_bin:_)   =  run_cli_build input_path output_bin
-      dispatch_cli ("build":input_path:_)                   =  run_cli_build input_path "a.out"
-      dispatch_cli _                                        =  run_self_hosted_pipeline_demo
+fn :: dispatch_cli [String]        => ()
+      dispatch_cli []              =  run_self_hosted_pipeline_demo
+      dispatch_cli ("version":_)   =  run_cli_version
+      dispatch_cli ("-v":_)        =  run_cli_version
+      dispatch_cli ("--version":_) =  run_cli_version
+      dispatch_cli ("help":_)      =  run_cli_help
+      dispatch_cli ("-h":_)        =  run_cli_help
+      dispatch_cli ("--help":_)    =  run_cli_help
+      dispatch_cli ("run":input_path:_) = run_cli_run input_path
+      dispatch_cli ("check":input_path:_) = run_cli_check input_path
+      dispatch_cli ("compile":input_path:"-o":output_rgc:_) = run_cli_compile input_path output_rgc
+      dispatch_cli ("compile":input_path:_) = run_cli_compile input_path "{input_path}c"
+      dispatch_cli ("build":input_path:"-o":output_bin:_) = run_cli_build input_path output_bin
+      dispatch_cli ("build":input_path:_) = run_cli_build input_path "a.out"
+      dispatch_cli _               =  run_self_hosted_pipeline_demo
 
 fn :: main => ()
       main =

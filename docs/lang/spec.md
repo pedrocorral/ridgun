@@ -708,13 +708,14 @@ fn :: main => ()
    - Each `fn ::` or `op ::` declaration starts an alignment group spanning its signature, its pattern-matching clauses, and its `where` bindings, ending at the next top-level declaration (`fn`, `op`, `type`, `import`, `global`, `context`, `shared`, `hardware`, `@`).
 2. **Column Alignment of LHS Tokens ($C_0 = 6$)**:
    - `fn :: ` and `op :: ` are 6 characters wide, so token $0$ of the signature LHS starts at column $C_0 = 6$.
-   - Each token slot $i \in [0, N-1]$ before `=>`/`->` (treating `"..."`, `'...'`, `[...]`, and `(...)` as single tokens) has width $W_i = \max(\text{len}(\text{sig\_tok}_i), \max_{\text{clause}} \text{len}(\text{clause\_tok}_i))$ and starts at column $C_i = C_{i-1} + W_{i-1} + 1$.
+   - Each token slot $i \in [0, N-1]$ before `=>`/`->` (treating `"..."`, `'...'`, `[...]`, and `(...)` as single tokens) has width $W_i = \max(\text{len}(\text{sig\_tok}_i), \max_{\text{clause} : \text{len}(\text{clause\_tok}_i) \le 18} \text{len}(\text{clause\_tok}_i))$ and starts at column $C_i = C_{i-1} + W_{i-1} + 1$. Clause patterns wider than `18` characters are treated as outliers: they do not stretch $W_i$ for the rest of the group and simply overflow on their own line with 1 space.
    - Matching definition clauses are indented to column $6$ ($C_0$) so the function name or operator words and every argument pattern align vertically beneath their corresponding signature slots.
 3. **Vertical Alignment of `=>`, `=`, and `->` ($C_{\text{arrow}}$)**:
    - Let $C_{\text{arrow}} = \max\big(C_{N-1} + W_{N-1} + 1,\; \max_{\text{where}}(10 + \text{len}(\text{where\_lhs}) + 1)\big)$ and $C_{\text{ret}} = C_{\text{arrow}} + \text{len}(\text{arrow}) + 1$.
    - In the signature, `=>` is placed at $C_{\text{arrow}}$ and the return type at $C_{\text{ret}}$.
-   - In single-line clauses (`<lhs> = <rhs>`), `=` is placed at $C_{\text{arrow}}$ and `<rhs>` starts at $C_{\text{ret}}$. In multi-line block clauses ending with `=`, a single space precedes `=` (`" ="`).
+   - In both single-line clauses (`<lhs> = <rhs>`) and multi-line block clauses (`<lhs> =`), `=` is placed at $C_{\text{arrow}}$ (aligned directly beneath `=>`); in single-line clauses, `<rhs>` starts at $C_{\text{ret}}$.
    - In `where` bindings (`<lhs> -> <rhs>`), `<lhs>` starts at column $10$ (`6 + 2*2`), `->` is placed at $C_{\text{arrow}}$, and `<rhs>` starts at $C_{\text{ret}}$.
+   - **Compact Fallback (`> 4` Parameters or `> 80` Columns)**: If a declaration has more than `4` parameter slots or its aligned signature line would exceed `80` characters, horizontal column padding is disabled for that group and tokens are separated by a single space (`" "`) while preserving column-6 clause indentation.
 4. **Structural Indentation (2-Space Offset)**:
    - Top-level declarations (`fn`, `op`, `type`, `import`, `global`, `context`, `shared`, `hardware`, `@`): column `0`.
    - Function/operator clauses under a signature: column `6`.

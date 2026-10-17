@@ -75,8 +75,8 @@ fn :: fmt_trim_right String => String
 fn :: fmt_trim String => String
       fmt_trim s      =  fmt_trim_left (fmt_trim_right s)
 
-fn :: fmt_split_raw_lines_loop String Int Int Int        Int      [String] => [String]
-      fmt_split_raw_lines_loop s      pos len line_start quote_st acc
+fn :: fmt_split_raw_lines_loop String Int Int Int Int [String] => [String]
+      fmt_split_raw_lines_loop s pos len line_start quote_st acc
         | pos >= len AND line_start == len = acc
         | pos >= len = acc :: [fmt_trim_right (str_slice s line_start len)]
         | quote_st == 34 AND (str_char_at s pos) == 92 = fmt_split_raw_lines_loop s (pos + 2) len line_start 34 acc
@@ -118,7 +118,7 @@ fn :: fmt_find_comment_col String Int Int => Int
         | otherwise = fmt_find_comment_col s (pos + 1) len
 
 fn :: fmt_strip_comment String => String
-      fmt_strip_comment line =
+      fmt_strip_comment line   =
         c_col = fmt_find_comment_col line 0 (str_len line)
         fmt_strip_comment_at line c_col
 
@@ -127,7 +127,7 @@ fn :: fmt_strip_comment_at String Int   => String
       fmt_strip_comment_at line   c_col =  fmt_trim_right (str_slice line 0 c_col)
 
 fn :: fmt_extract_comment String => String
-      fmt_extract_comment line =
+      fmt_extract_comment line   =
         c_col = fmt_find_comment_col line 0 (str_len line)
         fmt_extract_comment_at line c_col
 
@@ -170,7 +170,7 @@ fn :: fmt_scan_token_end String Int Int Int => Int
         | otherwise = fmt_scan_word_end s pos len 0
 
 fn :: fmt_scan_tokens_loop String Int Int [FmtToken] => [FmtToken]
-      fmt_scan_tokens_loop s      pos len acc =
+      fmt_scan_tokens_loop s      pos len acc        =
         p = fmt_skip_hspace s pos len
         fmt_scan_tokens_at s p len acc
 
@@ -179,8 +179,8 @@ fn :: fmt_scan_tokens_at String Int Int [FmtToken] => [FmtToken]
         | p >= len = acc
         | otherwise = fmt_scan_tokens_at_step s p len acc (fmt_scan_token_end s p len (str_char_at s p))
 
-fn :: fmt_scan_tokens_at_step String Int Int [FmtToken] Int   => [FmtToken]
-      fmt_scan_tokens_at_step s      p   len acc        end_p =
+fn :: fmt_scan_tokens_at_step String Int Int [FmtToken] Int => [FmtToken]
+      fmt_scan_tokens_at_step s p len acc end_p =
         tok_s = str_slice s p end_p
         fmt_scan_tokens_loop s end_p len (acc :: [FmtTok tok_s p])
 
@@ -189,28 +189,28 @@ fn :: fmt_scan_tokens String => [FmtToken]
 
 -- ── Signature Parsing (`fn ::` / `op ::`) ────────────────────
 
-fn :: fmt_split_sig_arrow [FmtToken]              [String] => (Bool, [String], String, Int)
-      fmt_split_sig_arrow []                      _        =  (False, [], "", 0)
+fn :: fmt_split_sig_arrow [FmtToken] [String] => (Bool, [String], String, Int)
+      fmt_split_sig_arrow []         _        =  (False, [], "", 0)
       fmt_split_sig_arrow ((FmtTok tok col):rest) lhs_acc
         | tok == "=>" OR tok == "->" = (True, lhs_acc, tok, col)
         | otherwise = fmt_split_sig_arrow rest (lhs_acc :: [tok])
 
 fn :: fmt_parse_sig_line String => FmtSig
-      fmt_parse_sig_line line =
+      fmt_parse_sig_line line   =
         clean = fmt_strip_comment line
         cmt = fmt_extract_comment line
         toks = fmt_scan_tokens clean
         fmt_parse_sig_tokens clean cmt toks
 
-fn :: fmt_parse_sig_tokens String String [FmtToken]                             => FmtSig
+fn :: fmt_parse_sig_tokens String String [FmtToken] => FmtSig
       fmt_parse_sig_tokens clean  cmt    ((FmtTok kind _):(FmtTok "::" _):rest)
         | kind == "fn" OR kind == "op" = fmt_finish_sig_parse clean cmt kind (fmt_split_sig_arrow rest [])
-      fmt_parse_sig_tokens _      _      _                                      =  NoSig
+      fmt_parse_sig_tokens _      _      _          =  NoSig
 
-fn :: fmt_finish_sig_parse String String String (Bool, [String], String, Int)        => FmtSig
-      fmt_finish_sig_parse _      _      _      (False, _, _, _)                     =  NoSig
-      fmt_finish_sig_parse _      _      _      (True, [], _, _)                     =  NoSig
-      fmt_finish_sig_parse clean  cmt    kind   (True, lhs_strs, arrow_s, arrow_col) =
+fn :: fmt_finish_sig_parse String String String (Bool, [String], String, Int) => FmtSig
+      fmt_finish_sig_parse _ _ _ (False, _, _, _) = NoSig
+      fmt_finish_sig_parse _ _ _ (True, [], _, _) = NoSig
+      fmt_finish_sig_parse clean cmt kind (True, lhs_strs, arrow_s, arrow_col) =
         ret_start = arrow_col + (str_len arrow_s)
         ret_core = fmt_trim (str_slice clean ret_start (str_len clean))
         ret_full = fmt_append_comment ret_core cmt
@@ -224,7 +224,7 @@ fn :: fmt_append_comment String String => String
 -- ── Clause & `where` Binding Recognition ─────────────────────
 
 fn :: fmt_is_top_decl_line String => Bool
-      fmt_is_top_decl_line line =
+      fmt_is_top_decl_line line   =
         tr = fmt_trim line
         toks = fmt_scan_tokens (fmt_strip_comment tr)
         fmt_is_top_decl_toks tr toks
@@ -238,7 +238,7 @@ fn :: fmt_is_top_decl_toks String [FmtToken]       => Bool
 
 fn :: fmt_is_sig_type_tok String => Bool
       fmt_is_sig_type_tok ""     =  False
-      fmt_is_sig_type_tok tok =
+      fmt_is_sig_type_tok tok    =
         ch = str_char_at tok 0
         (ch >= 65 AND ch <= 90) OR ch == 91 OR ch == 40
 
@@ -258,36 +258,36 @@ fn :: fmt_clause_matches_sig String [String] [String]   => Bool
         (fmt_str_list_len clause_lhs) == (fmt_str_list_len sig_lhs) AND (fmt_op_tokens_match sig_lhs clause_lhs)
       fmt_clause_matches_sig _      _        _          =  False
 
-fn :: fmt_split_clause_eq [FmtToken]            [String] => ([String], Bool, Int)
-      fmt_split_clause_eq []                    lhs_acc  =  (lhs_acc, False, 0)
-      fmt_split_clause_eq ((FmtTok "=" col):_)  lhs_acc  =  (lhs_acc, True, col)
-      fmt_split_clause_eq ((FmtTok tok _):rest) lhs_acc  =  fmt_split_clause_eq rest (lhs_acc :: [tok])
+fn :: fmt_split_clause_eq [FmtToken] [String] => ([String], Bool, Int)
+      fmt_split_clause_eq []         lhs_acc  =  (lhs_acc, False, 0)
+      fmt_split_clause_eq ((FmtTok "=" col):_) lhs_acc = (lhs_acc, True, col)
+      fmt_split_clause_eq ((FmtTok tok _):rest) lhs_acc = fmt_split_clause_eq rest (lhs_acc :: [tok])
 
 fn :: fmt_next_nonblank_is_guard [String] => Bool
       fmt_next_nonblank_is_guard []       =  False
-      fmt_next_nonblank_is_guard (l:ls) =
+      fmt_next_nonblank_is_guard (l:ls)   =
         clean = fmt_trim (fmt_strip_comment l)
         fmt_check_guard_line clean ls
 
 fn :: fmt_check_guard_line String [String] => Bool
       fmt_check_guard_line ""     ls       =  fmt_next_nonblank_is_guard ls
-      fmt_check_guard_line clean  _ =
+      fmt_check_guard_line clean  _        =
         (str_starts_with clean "|") AND (NOT (str_starts_with clean "||"))
 
-fn :: fmt_parse_clause_line FmtSig                           String Bool          => FmtClause
-      fmt_parse_clause_line NoSig                            _      _             =  NoClause
-      fmt_parse_clause_line (SigInfo kind sig_lhs _ _ _ _ _) line   next_is_guard
+fn :: fmt_parse_clause_line FmtSig String Bool          => FmtClause
+      fmt_parse_clause_line NoSig  _      _             =  NoClause
+      fmt_parse_clause_line (SigInfo kind sig_lhs _ _ _ _ _) line next_is_guard
         | str_contains line (char_from_code 10) = NoClause
         | otherwise = fmt_parse_clause_clean kind sig_lhs line (fmt_strip_comment line) (fmt_trim (fmt_strip_comment line)) next_is_guard
 
-fn :: fmt_parse_clause_clean String [String] String String String Bool          => FmtClause
-      fmt_parse_clause_clean _      _        _      _      ""     _             =  NoClause
-      fmt_parse_clause_clean kind   sig_lhs  line   clean  tr     next_is_guard
+fn :: fmt_parse_clause_clean String [String] String String String Bool => FmtClause
+      fmt_parse_clause_clean _ _ _ _ "" _ = NoClause
+      fmt_parse_clause_clean kind sig_lhs line clean tr next_is_guard
         | (str_starts_with tr "|") OR (str_starts_with tr "--") OR (fmt_is_top_decl_line tr) = NoClause
         | otherwise = fmt_check_clause_split kind sig_lhs line next_is_guard (fmt_split_clause_eq (fmt_scan_tokens clean) [])
 
-fn :: fmt_check_clause_split String [String] String Bool          ([String], Bool, Int)        => FmtClause
-      fmt_check_clause_split kind   sig_lhs  line   next_is_guard (clause_lhs, has_eq, eq_col)
+fn :: fmt_check_clause_split String [String] String Bool ([String], Bool, Int) => FmtClause
+      fmt_check_clause_split kind sig_lhs line next_is_guard (clause_lhs, has_eq, eq_col)
         | (fmt_clause_matches_sig kind sig_lhs clause_lhs) AND (has_eq OR next_is_guard) = fmt_build_clause_info line clause_lhs has_eq eq_col
         | otherwise = NoClause
 
@@ -295,17 +295,17 @@ fn :: fmt_build_clause_info String [String]   Bool  Int    => FmtClause
       fmt_build_clause_info line   clause_lhs True  eq_col =
         rhs = fmt_trim (str_slice line (eq_col + 1) (str_len line))
         ClauseInfo clause_lhs True rhs
-      fmt_build_clause_info _      clause_lhs False _ =
+      fmt_build_clause_info _      clause_lhs False _      =
         ClauseInfo clause_lhs False ""
 
-fn :: fmt_find_where_arrow [FmtToken]            => Int
-      fmt_find_where_arrow []                    =  -1
-      fmt_find_where_arrow ((FmtTok "->" col):_) =  col
-      fmt_find_where_arrow (_:rest)              =  fmt_find_where_arrow rest
+fn :: fmt_find_where_arrow [FmtToken] => Int
+      fmt_find_where_arrow []         =  -1
+      fmt_find_where_arrow ((FmtTok "->" col):_) = col
+      fmt_find_where_arrow (_:rest)   =  fmt_find_where_arrow rest
 
 fn :: fmt_parse_where_line String Bool  => FmtWhereBind
       fmt_parse_where_line _      False =  NoWhereBind
-      fmt_parse_where_line line   True =
+      fmt_parse_where_line line   True  =
         clean = fmt_strip_comment line
         tr = fmt_trim clean
         fmt_parse_where_clean line clean tr
@@ -334,10 +334,15 @@ fn :: fmt_map_str_lens [String] => [Int]
       fmt_map_str_lens []       =  []
       fmt_map_str_lens (s:ss)   =  [str_len s] :: (fmt_map_str_lens ss)
 
+fn :: fmt_slot_width Int Int   => Int
+      fmt_slot_width w   s_len
+        | s_len > 18 = w
+        | otherwise = fmt_max w s_len
+
 fn :: fmt_max_widths [Int]  [String] => [Int]
       fmt_max_widths []     _        =  []
       fmt_max_widths ws     []       =  ws
-      fmt_max_widths (w:ws) (s:ss)   =  [fmt_max w (str_len s)] :: (fmt_max_widths ws ss)
+      fmt_max_widths (w:ws) (s:ss)   =  [fmt_slot_width w (str_len s)] :: (fmt_max_widths ws ss)
 
 fn :: fmt_build_col_starts [Int]  Int     => [Int]
       fmt_build_col_starts []     _       =  []
@@ -347,61 +352,78 @@ fn :: fmt_end_col [Int]  Int     => Int
       fmt_end_col []     cur_col =  cur_col
       fmt_end_col (w:ws) cur_col =  fmt_end_col ws (cur_col + w + 1)
 
-fn :: fmt_scan_group_widths FmtSig [String]    [Int]  Int       Bool     => ([Int], Int)
-      fmt_scan_group_widths _      []          widths max_where _        =  (widths, max_where)
-      fmt_scan_group_widths sig    (line:rest) widths max_where in_where =
+fn :: fmt_scan_group_widths FmtSig [String] [Int] Int Bool => ([Int], Int)
+      fmt_scan_group_widths _ [] widths max_where _ = (widths, max_where)
+      fmt_scan_group_widths sig (line:rest) widths max_where in_where =
         tr_clean = fmt_trim (fmt_strip_comment line)
         next_is_guard = fmt_next_nonblank_is_guard rest
         cl = fmt_parse_clause_line sig line next_is_guard
         wb = fmt_parse_where_line line in_where
         fmt_scan_group_step sig tr_clean rest widths max_where in_where cl wb
 
-fn :: fmt_scan_group_step FmtSig String   [String] [Int]  Int       Bool     FmtClause              FmtWhereBind            => ([Int], Int)
-      fmt_scan_group_step sig    _        rest     widths max_where _        (ClauseInfo c_lhs _ _) _ =
+fn :: fmt_scan_group_step FmtSig String [String] [Int] Int Bool FmtClause FmtWhereBind => ([Int], Int)
+      fmt_scan_group_step sig _ rest widths max_where _ (ClauseInfo c_lhs _ _) _ =
         fmt_scan_group_widths sig rest (fmt_max_widths widths c_lhs) max_where False
-      fmt_scan_group_step sig    _        rest     widths max_where in_where NoClause               (WhereBindInfo w_lhs _) =
+      fmt_scan_group_step sig _ rest widths max_where in_where NoClause (WhereBindInfo w_lhs _) =
         w_end = 10 + (str_len w_lhs) + 1
         fmt_scan_group_widths sig rest widths (fmt_max max_where w_end) in_where
-      fmt_scan_group_step sig    tr_clean rest     widths max_where in_where NoClause               NoWhereBind
+      fmt_scan_group_step sig tr_clean rest widths max_where in_where NoClause NoWhereBind
         | tr_clean == "where" = fmt_scan_group_widths sig rest widths max_where True
         | str_starts_with tr_clean "|" = fmt_scan_group_widths sig rest widths max_where False
         | otherwise = fmt_scan_group_widths sig rest widths max_where in_where
 
-fn :: fmt_compute_group_geometry FmtSig                                      [String]    => FmtSig
-      fmt_compute_group_geometry NoSig                                       _           =  NoSig
+fn :: fmt_compute_group_geometry FmtSig [String]    => FmtSig
+      fmt_compute_group_geometry NoSig  _           =  NoSig
       fmt_compute_group_geometry (SigInfo kind lhs_strs arrow_s ret_s _ _ _) group_lines =
         init_widths = fmt_map_str_lens lhs_strs
         base_sig = SigInfo kind lhs_strs arrow_s ret_s [] 0 0
         scan_res = fmt_scan_group_widths base_sig group_lines init_widths 0 False
         fmt_finish_group_geometry kind lhs_strs arrow_s ret_s scan_res
 
-fn :: fmt_finish_group_geometry String [String] String  String ([Int], Int)        => FmtSig
-      fmt_finish_group_geometry kind   lhs_strs arrow_s ret_s  (widths, max_where) =
+fn :: fmt_count_op_params [String]   => Int
+      fmt_count_op_params []         =  0
+      fmt_count_op_params (tok:rest)
+        | fmt_is_sig_type_tok tok = 1 + (fmt_count_op_params rest)
+        | otherwise = fmt_count_op_params rest
+
+fn :: fmt_count_sig_params String [String] => Int
+      fmt_count_sig_params "fn"   lhs_strs =  (fmt_str_list_len lhs_strs) - 1
+      fmt_count_sig_params _      lhs_strs =  fmt_count_op_params lhs_strs
+
+fn :: fmt_finish_group_geometry String [String] String String ([Int], Int) => FmtSig
+      fmt_finish_group_geometry kind lhs_strs arrow_s ret_s (widths, max_where) =
         sig_cols = fmt_build_col_starts widths 6
         end_col = fmt_end_col widths 6
         arrow_col = fmt_max end_col max_where
         ret_col = arrow_col + (str_len arrow_s) + 1
-        SigInfo kind lhs_strs arrow_s ret_s sig_cols arrow_col ret_col
+        total_sig_len = ret_col + (str_len ret_s)
+        num_params = fmt_count_sig_params kind lhs_strs
+        fmt_select_group_geometry kind lhs_strs arrow_s ret_s sig_cols arrow_col ret_col num_params total_sig_len
+
+fn :: fmt_select_group_geometry String [String] String String [Int] Int Int Int Int => FmtSig
+      fmt_select_group_geometry kind lhs_strs arrow_s ret_s sig_cols arrow_col ret_col num_params total_sig_len
+        | num_params > 4 OR total_sig_len > 80 = SigInfo kind lhs_strs arrow_s ret_s [] 0 0
+        | otherwise = SigInfo kind lhs_strs arrow_s ret_s sig_cols arrow_col ret_col
 
 -- ── Line Formatting Functions ────────────────────────────────
 
 fn :: fmt_pad_lhs_tokens [String]   [Int]    Int String => String
       fmt_pad_lhs_tokens []         _        _   acc    =  acc
-      fmt_pad_lhs_tokens (tok:rest) sig_cols idx acc =
+      fmt_pad_lhs_tokens (tok:rest) sig_cols idx acc    =
         target_col = fmt_int_at sig_cols idx
         pad_n = fmt_max 1 (target_col - (str_len acc))
         fmt_pad_lhs_tokens rest sig_cols (idx + 1) (acc + (fmt_spaces pad_n) + tok)
 
-fn :: fmt_format_sig_line FmtSig                                                                  => String
-      fmt_format_sig_line NoSig                                                                   =  ""
-      fmt_format_sig_line (SigInfo _ [] _ _ _ _ _)                                                =  ""
+fn :: fmt_format_sig_line FmtSig => String
+      fmt_format_sig_line NoSig  =  ""
+      fmt_format_sig_line (SigInfo _ [] _ _ _ _ _) = ""
       fmt_format_sig_line (SigInfo kind (first_tok:rest_toks) arrow_s ret_s sig_cols arrow_col _) =
         lhs_out = fmt_pad_lhs_tokens rest_toks sig_cols 1 (kind + " :: " + first_tok)
         pad_arrow = fmt_max 1 (arrow_col - (str_len lhs_out))
         lhs_out + (fmt_spaces pad_arrow) + arrow_s + " " + ret_s
 
-fn :: fmt_format_clause_line FmtSig                                       [String]              Bool   String => String
-      fmt_format_clause_line _                                            []                    _      _      =  ""
+fn :: fmt_format_clause_line FmtSig [String] Bool   String => String
+      fmt_format_clause_line _      []       _      _      =  ""
       fmt_format_clause_line (SigInfo _ _ _ _ sig_cols arrow_col ret_col) (first_tok:rest_toks) has_eq rhs =
         lhs_out = fmt_pad_lhs_tokens rest_toks sig_cols 1 ("      " + first_tok)
         fmt_finish_clause_rhs lhs_out has_eq rhs arrow_col ret_col
@@ -409,18 +431,20 @@ fn :: fmt_format_clause_line FmtSig                                       [Strin
 fn :: fmt_format_clause_line_fallback [String] => String
       fmt_format_clause_line_fallback _        =  ""
 
-fn :: fmt_finish_clause_rhs String  Bool  String Int       Int     => String
-      fmt_finish_clause_rhs lhs_out False _      _         _       =  lhs_out
-      fmt_finish_clause_rhs lhs_out True  ""     _         _       =  lhs_out + " ="
-      fmt_finish_clause_rhs lhs_out True  rhs    arrow_col ret_col =
+fn :: fmt_finish_clause_rhs String Bool String Int Int => String
+      fmt_finish_clause_rhs lhs_out False _ _ _ = lhs_out
+      fmt_finish_clause_rhs lhs_out True "" arrow_col _ =
+        pad_eq = fmt_max 1 (arrow_col - (str_len lhs_out))
+        lhs_out + (fmt_spaces pad_eq) + "="
+      fmt_finish_clause_rhs lhs_out True rhs arrow_col ret_col =
         pad_eq = fmt_max 1 (arrow_col - (str_len lhs_out))
         with_eq = lhs_out + (fmt_spaces pad_eq) + "="
         pad_rhs = fmt_max 1 (ret_col - (str_len with_eq))
         with_eq + (fmt_spaces pad_rhs) + rhs
 
-fn :: fmt_format_where_line FmtSig                                String String => String
-      fmt_format_where_line NoSig                                 lhs    rhs    =  "          " + lhs + " -> " + rhs
-      fmt_format_where_line (SigInfo _ _ _ _ _ arrow_col ret_col) lhs    rhs =
+fn :: fmt_format_where_line FmtSig String String => String
+      fmt_format_where_line NoSig  lhs    rhs    =  "          " + lhs + " -> " + rhs
+      fmt_format_where_line (SigInfo _ _ _ _ _ arrow_col ret_col) lhs rhs =
         lhs_out = "          " + lhs
         pad_arrow = fmt_max 1 (arrow_col - (str_len lhs_out))
         with_arrow = lhs_out + (fmt_spaces pad_arrow) + "->"
@@ -444,9 +468,9 @@ fn :: fmt_check_block_opener String Int => Bool
         | len >= 3 AND (str_slice clean (len - 3) len) == " do" = True
         | otherwise = False
 
-fn :: fmt_format_group_body FmtSig [String]    Int         String    Bool     => [String]
-      fmt_format_group_body _      []          _           _         _        =  []
-      fmt_format_group_body geom   (line:rest) prev_indent prev_text in_where =
+fn :: fmt_format_group_body FmtSig [String] Int String Bool => [String]
+      fmt_format_group_body _ [] _ _ _ = []
+      fmt_format_group_body geom (line:rest) prev_indent prev_text in_where =
         tr = fmt_trim line
         tr_clean = fmt_trim (fmt_strip_comment line)
         orig_indent = fmt_leading_indent line
@@ -455,18 +479,18 @@ fn :: fmt_format_group_body FmtSig [String]    Int         String    Bool     =>
         wb = fmt_parse_where_line line in_where
         fmt_format_group_line geom line tr tr_clean orig_indent rest prev_indent prev_text in_where cl wb
 
-fn :: fmt_format_group_line FmtSig String String String   Int [String] Int         String    Bool     FmtClause                     FmtWhereBind                => [String]
-      fmt_format_group_line geom   _      ""     _        _   rest     prev_indent prev_text in_where _                             _ =
+fn :: fmt_format_group_line FmtSig String String String Int [String] Int String Bool FmtClause FmtWhereBind => [String]
+      fmt_format_group_line geom _ "" _ _ rest prev_indent prev_text in_where _ _ =
         [""] :: (fmt_format_group_body geom rest prev_indent prev_text in_where)
-      fmt_format_group_line geom   _      tr     _        0   rest     prev_indent prev_text in_where _                             _
+      fmt_format_group_line geom _ tr _ 0 rest prev_indent prev_text in_where _ _
         | str_starts_with tr "--" = [tr] :: (fmt_format_group_body geom rest prev_indent prev_text in_where)
-      fmt_format_group_line geom   _      _      _        _   rest     _           _         _        (ClauseInfo c_lhs has_eq rhs) _ =
+      fmt_format_group_line geom _ _ _ _ rest _ _ _ (ClauseInfo c_lhs has_eq rhs) _ =
         f_line = fmt_format_clause_line geom c_lhs has_eq rhs
         [f_line] :: (fmt_format_group_body geom rest 6 f_line False)
-      fmt_format_group_line geom   _      _      _        _   rest     _           _         in_where NoClause                      (WhereBindInfo w_lhs w_rhs) =
+      fmt_format_group_line geom _ _ _ _ rest _ _ in_where NoClause (WhereBindInfo w_lhs w_rhs) =
         f_line = fmt_format_where_line geom w_lhs w_rhs
         [f_line] :: (fmt_format_group_body geom rest 10 f_line in_where)
-      fmt_format_group_line geom   _      tr     tr_clean _   rest     prev_indent prev_text in_where NoClause                      NoWhereBind
+      fmt_format_group_line geom _ tr tr_clean _ rest prev_indent prev_text in_where NoClause NoWhereBind
         | tr_clean == "where" = ["        " + tr] :: (fmt_format_group_body geom rest 8 "where" True)
         | str_starts_with tr_clean "|" = ["        " + tr] :: (fmt_format_group_body geom rest 8 tr False)
         | str_starts_with tr "--" = [fmt_indent_body_line prev_indent prev_text tr] :: (fmt_format_group_body geom rest prev_indent prev_text in_where)
@@ -478,7 +502,7 @@ fn :: fmt_next_body_indent Int         String    => Int
         | otherwise = prev_indent
 
 fn :: fmt_indent_body_line Int         String    String => String
-      fmt_indent_body_line prev_indent prev_text tr =
+      fmt_indent_body_line prev_indent prev_text tr     =
         ind = fmt_next_body_indent prev_indent prev_text
         (fmt_spaces ind) + tr
 
@@ -496,15 +520,15 @@ fn :: fmt_format_top_lines [String]    Int         String    => [String]
         sig = fmt_parse_sig_line line
         fmt_dispatch_top_line line rest prev_indent prev_text sig
 
-fn :: fmt_dispatch_top_line String [String] Int         String    FmtSig                                                 => [String]
-      fmt_dispatch_top_line _      rest     _           _         (SigInfo kind lhs_strs arrow_s ret_s cols a_col r_col) =
+fn :: fmt_dispatch_top_line String [String] Int String FmtSig => [String]
+      fmt_dispatch_top_line _ rest _ _ (SigInfo kind lhs_strs arrow_s ret_s cols a_col r_col) =
         grp_split = fmt_take_group_lines rest []
         fmt_run_sig_group (SigInfo kind lhs_strs arrow_s ret_s cols a_col r_col) grp_split
-      fmt_dispatch_top_line line   rest     prev_indent prev_text NoSig =
+      fmt_dispatch_top_line line rest prev_indent prev_text NoSig =
         tr = fmt_trim line
         fmt_format_non_sig_top tr rest prev_indent prev_text
 
-fn :: fmt_run_sig_group FmtSig  ([String], [String])   => [String]
+fn :: fmt_run_sig_group FmtSig  ([String], [String]) => [String]
       fmt_run_sig_group raw_sig (grp_lines, rem_lines) =
         geom = fmt_compute_group_geometry raw_sig grp_lines
         sig_line = fmt_format_sig_line geom
@@ -523,7 +547,7 @@ fn :: fmt_format_non_sig_top String [String] Int         String    => [String]
 -- ── Public Entry Point (`format ridgun source`) ──────────────
 
 op :: format ridgun source String => String
-      format ridgun source src =
+      format ridgun source src    =
         raw_lines = fmt_split_raw_lines src
         formatted_lines = fmt_format_top_lines raw_lines 0 ""
         fmt_join_lines formatted_lines

@@ -28,8 +28,9 @@ Ridgun's column-aligned signatures (`fn ::` / `op ::`), pattern clauses, and `wh
 ### 2. LHS Column Geometry (Base Column = 6)
 - Both `fn :: ` and `op :: ` occupy 6 characters, placing token $0$ of the signature LHS at column $C_0 = 6$.
 - Let $N$ be the number of LHS tokens before `=>` / `->` in the signature.
-- For each column index $i \in [0, N-1]$, the column width $W_i$ is the maximum character length of token $i$ across the signature and all matching definition clauses in the group:
-  $$W_i = \max\left(\text{len}(\text{sig\_tok}_i),\; \max_{\text{clause}} \text{len}(\text{clause\_tok}_i)\right)$$
+- For each column index $i \in [0, N-1]$, the column width $W_i$ is initialized to $\text{len}(\text{sig\_tok}_i)$ and expanded across matching definition clauses **only for clause pattern tokens with $\text{len}(\text{clause\_tok}_i) \le 18$**:
+  $$W_i = \max\left(\text{len}(\text{sig\_tok}_i),\; \max_{\substack{\text{clause} \\ \text{len}(\text{clause\_tok}_i) \le 18}} \text{len}(\text{clause\_tok}_i)\right)$$
+- Input patterns wider than `18` characters (such as deep nested ADT deconstructions) are treated as **outliers**: they do not stretch $W_i$ for the signature or the remaining clauses, and simply overflow on their own line with a single space (`" "`) before the next token.
 - The starting column $C_i$ for token $i$ is:
   $$C_0 = 6, \qquad C_i = C_{i-1} + W_{i-1} + 1 \quad (i \ge 1)$$
 - Matching definition clauses start at column $C_0 = 6$ (aligned directly beneath the first token after `fn :: ` / `op :: `), with each argument pattern $i$ placed at column $C_i$.
@@ -42,8 +43,9 @@ Ridgun's column-aligned signatures (`fn ::` / `op ::`), pattern clauses, and `wh
   $$C_{\text{ret}} = C_{\text{arrow}} + \text{len}(\text{sig\_arrow}) + 1$$
 - **Signature line**: `=>` (or `->`) starts at $C_{\text{arrow}}$ and the return type starts at $C_{\text{ret}}$.
 - **Single-line clause (`<lhs> = <rhs>`)**: `=` is placed at $C_{\text{arrow}}$ and `<rhs>` starts at $C_{\text{ret}}$ (aligned under the return type).
-- **Multi-line block clause (`<lhs> =`)**: When `=` is at the end of the line (followed by an indented block on the next line), `=` is separated from the last LHS token by a single space (`" ="`).
+- **Multi-line block clause (`<lhs> =`)**: When `=` is at the end of the line (followed by an indented block on the next line), `=` is also placed at $C_{\text{arrow}}$ (aligned directly beneath `=>`).
 - **`where` binding (`<lhs> -> <rhs>`)**: `<lhs>` starts at column 10, `->` starts at $C_{\text{arrow}}$, and `<rhs>` starts at $C_{\text{ret}}$.
+- **Compact Fallback for Wide or High-Arity Signatures (`num_params > 4` or `total_sig_len > 80`)**: When a signature has more than `4` parameter slots or its aligned signature line (`ret_col + len(ret_type)`) would exceed `80` columns, horizontal column padding is disabled for that group: the signature, its clauses (still starting at column `6`), and its `where` bindings (still starting at column `10`) separate tokens with a single space (`" "`).
 
 ### 4. Structural Indentation (Offset = 2 Spaces)
 - **Column 0**: Top-level declarations (`fn ::`, `op ::`, `type`, `import`, `global`, `context`, `shared`, `hardware`, `@`).
