@@ -939,10 +939,17 @@ impl Parser {
                 let first_pat = self.parse_pattern();
 
                 if matches!(self.peek(), Token::Colon) {
-                    self.advance();
-                    let tail = self.parse_pattern();
+                    let mut cons_pats = vec![first_pat];
+                    while matches!(self.peek(), Token::Colon) {
+                        self.advance();
+                        cons_pats.push(self.parse_pattern());
+                    }
                     self.expect(&Token::RParen);
-                    Pattern::ListCons(Box::new(first_pat), Box::new(tail))
+                    let mut acc = cons_pats.pop().unwrap();
+                    while let Some(head) = cons_pats.pop() {
+                        acc = Pattern::ListCons(Box::new(head), Box::new(acc));
+                    }
+                    acc
                 } else if matches!(self.peek(), Token::Comma) {
                     let mut tuple_pats = vec![first_pat];
                     while matches!(self.peek(), Token::Comma) {
@@ -1309,7 +1316,14 @@ impl Parser {
             }
             Token::StringLit(_) => {
                 if let Token::StringLit(s) = self.advance() {
-                    if tok_span.len() == s.chars().count() + 2 && s.contains('{') && s.contains('}') {
+                    let escaped_count = s
+                        .chars()
+                        .filter(|&c| c == '\n' || c == '\t' || c == '"' || c == '\\')
+                        .count();
+                    if tok_span.len() == s.chars().count() + escaped_count + 2
+                        && s.contains('{')
+                        && s.contains('}')
+                    {
                         Self::parse_interpolated_parts(&s)
                     } else {
                         Expr::StringLit(s)

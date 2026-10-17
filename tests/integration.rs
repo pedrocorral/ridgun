@@ -859,5 +859,46 @@ fn test_all_example_rg_files_typecheck_and_run() {
     }
 }
 
+#[test]
+fn test_self_hosted_ridgun_compiler_pipeline() {
+    let path = std::path::Path::new("src/main/ridgun/ridgunc.rg");
+    let raw = std::fs::read_to_string(path).expect("Failed to read ridgunc.rg");
+    let combined = ridgun::resolve_imports(&raw, path);
+    let (tokens, spans) = Lexer::new(&combined).tokenize();
+    let program = Parser::new(tokens, spans).parse();
+    if let Err(errs) = ridgun::typecheck::typecheck(&program) {
+        panic!("Self-hosted compiler typecheck failed: {:?}", errs);
+    }
+    let compiled = compiler::compile(&program);
+    let mut vm = VM::new(compiled);
 
+    // Evaluate recursive and multi-statement Ridgun code inside the self-hosted compiler + VM
+    let sample = "fn :: fact Int => Int\nfact 0 = 1\nfact n = n * (fact (n - 1))\n\nfn :: fib Int => Int\nfib 0 = 0\nfib 1 = 1\nfib n = (fib (n - 1)) + (fib (n - 2))\n\nfn :: compute Int => Int\ncompute x =\n  a = fact x\n  b = fib 10\n  a + b\n";
+    let r_fact6 = vm.call(
+        "eval_source_in_ridgun_vm",
+        &[
+            Value::Str(sample.to_string()),
+            Value::Str("fact".to_string()),
+            Value::List(vec![Value::Int(6)]),
+        ],
+    );
+    assert_eq!(r_fact6, Value::Int(720));
 
+    let r_comp5 = vm.call(
+        "eval_source_in_ridgun_vm",
+        &[
+            Value::Str(sample.to_string()),
+            Value::Str("compute".to_string()),
+            Value::List(vec![Value::Int(5)]),
+        ],
+    );
+    assert_eq!(r_comp5, Value::Int(175));
+
+    // Verify self-hosted lexer + parser + typechecker + static analyzer on negative cases
+    let bad_cycle = "fn :: bad Int => Int\nbad x = a + b\n  where\n    b + 1 -> a\n    a + 1 -> b\n";
+    let toks_cycle = vm.call("tokenize_src", &[Value::Str(bad_cycle.to_string())]);
+    let prog_cycle = vm.call("parse_tokens", &[toks_cycle]);
+    let errs_cycle = vm.call("typecheck_program", &[prog_cycle]);
+    let err_count_cycle = vm.call("type_err_count", &[errs_cycle]);
+    assert!(matches!(err_count_cycle, Value::Int(n) if n > 0));
+}

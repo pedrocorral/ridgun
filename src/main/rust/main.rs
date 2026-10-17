@@ -121,7 +121,7 @@ fn run_file(args: &[String]) {
     let compiled = compiler::compile(&program);
     let mut vm = VM::new(compiled);
 
-    if let Some(ref fn_name) = func_name {
+    if let Some(ref fn_name) = func_name.as_ref().filter(|n| program.functions.iter().any(|f| &f.name == *n)) {
         let result = vm.call(fn_name, &call_args);
         println!("{}", result);
     } else {
@@ -224,54 +224,6 @@ fn run_tests(args: &[String]) {
     process::exit(0);
 }
 
-/// Resolve `import <name>` lines by prepending the contents of `lib/<name>.rg`
 fn resolve_imports(source: &str, file_path: &Path) -> String {
-    let project_root = find_project_root(file_path);
-    let mut imports = String::new();
-    let mut main_source = String::new();
-
-    for line in source.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("import ") {
-            let name = trimmed.strip_prefix("import ").unwrap().trim();
-            let lib_path = project_root.join("lib").join(format!("{}.rg", name));
-            match fs::read_to_string(&lib_path) {
-                Ok(lib_src) => {
-                    imports.push_str(&lib_src);
-                    imports.push('\n');
-                }
-                Err(e) => {
-                    eprintln!("Warning: cannot import '{}' from {:?}: {}", name, lib_path, e);
-                }
-            }
-            // Comment out the import line so the parser skips it
-            main_source.push_str("-- ");
-            main_source.push_str(line);
-            main_source.push('\n');
-        } else {
-            main_source.push_str(line);
-            main_source.push('\n');
-        }
-    }
-
-    format!("{}{}", imports, main_source)
-}
-
-/// Walk up from file path to find project root (directory containing Cargo.toml)
-fn find_project_root(file_path: &Path) -> PathBuf {
-    let mut dir = file_path.parent().unwrap_or(Path::new(".")).to_path_buf();
-    loop {
-        if dir.join("Cargo.toml").exists() {
-            return dir;
-        }
-        if let Some(parent) = dir.parent() {
-            if parent == dir {
-                break;
-            }
-            dir = parent.to_path_buf();
-        } else {
-            break;
-        }
-    }
-    env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+    ridgun::resolve_imports(source, file_path)
 }

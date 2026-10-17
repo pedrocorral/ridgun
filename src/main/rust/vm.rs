@@ -20,6 +20,7 @@ pub enum Value {
     Bool(bool),
     Unit,
     List(Vec<Value>),
+    ListSlice(std::rc::Rc<Vec<Value>>, usize),
     Tuple(Vec<Value>),
     Adt(String, Vec<Value>),
     Tensor(Vec<usize>, Vec<f64>),
@@ -44,6 +45,11 @@ impl fmt::Display for Value {
             Value::Bool(b) => write!(f, "{}", if *b { "True" } else { "False" }),
             Value::Unit => write!(f, "()"),
             Value::List(items) => {
+                let strs: Vec<String> = items.iter().map(|v| format!("{}", v)).collect();
+                write!(f, "[{}]", strs.join(", "))
+            }
+            Value::ListSlice(rc, start) => {
+                let items = &rc[(*start).min(rc.len())..];
                 let strs: Vec<String> = items.iter().map(|v| format!("{}", v)).collect();
                 write!(f, "[{}]", strs.join(", "))
             }
@@ -141,6 +147,9 @@ impl ThreadState {
     }
 
     fn record_alloc(&mut self, val: Value) {
+        if self.region_limit_stack.is_empty() && self.region.used_bytes() >= self.region.quota_bytes() {
+            return;
+        }
         if self.region.alloc_value(val).is_err() {
             if let Some((_, ref mut oom)) = self.region_limit_stack.last_mut() {
                 *oom = true;
@@ -215,7 +224,10 @@ impl VM {
         }
 
         let entry_tid = self.spawn_thread_with_context(name.to_string(), args.to_vec(), HashMap::new());
-        self.run(entry_tid)
+        match self.run(entry_tid) {
+            Value::ListSlice(rc, start) => Value::List(rc[start.min(rc.len())..].to_vec()),
+            other => other,
+        }
     }
 
     pub fn call_ints(&mut self, name: &str, args: &[i64]) -> Value {
@@ -400,6 +412,15 @@ impl VM {
             }
         }
 
+        if sym == "+" {
+            if let (Value::Str(s1), Value::Str(s2)) = (&a, &b) {
+                let joined = Value::Str(format!("{}{}", s1, s2));
+                state.record_alloc(joined.clone());
+                state.stack.push(joined);
+                return;
+            }
+        }
+
         if let (Value::Tensor(s1, d1), Value::Tensor(_, d2)) = (&a, &b) {
             let out: Vec<f64> = d1
                 .iter()
@@ -443,6 +464,146 @@ impl VM {
                 _ => 0,
             };
             state.stack.push(Value::Int(n));
+        }
+    }
+
+    fn eval_intrinsic(name: &str, args: &[Value]) -> Option<Value> {
+        match name {
+            "str_len" => {
+                let s = match args.first()? {
+                    Value::Str(s) => s,
+                    _ => return Some(Value::Int(0)),
+                };
+                let len = if s.is_ascii() {
+                    s.len()
+                } else {
+                    s.chars().count()
+                };
+                Some(Value::Int(len as i64))
+            }
+            "str_char_at" => {
+                let s = match args.first()? {
+                    Value::Str(s) => s,
+                    _ => return Some(Value::Int(-1)),
+                };
+                let idx = args.get(1)?.as_int();
+                if idx < 0 {
+                    return Some(Value::Int(-1));
+                }
+                let code = if s.is_ascii() {
+                    s.as_bytes().get(idx as usize).map(|&b| b as i64).unwrap_or(-1)
+                } else {
+                    s.chars().nth(idx as usize).map(|c| c as i64).unwrap_or(-1)
+                };
+                Some(Value::Int(code))
+            }
+            "str_slice" => {
+                let s = match args.first()? {
+                    Value::Str(s) => s,
+                    _ => return Some(Value::Str(String::new())),
+                };
+                let start = args.get(1)?.as_int().max(0) as usize;
+                let end = args.get(2)?.as_int().max(0) as usize;
+                if s.is_ascii() {
+                    let s_clamped = start.min(s.len());
+                    let e_clamped = end.min(s.len()).max(s_clamped);
+                    Some(Value::Str(s[s_clamped..e_clamped].to_string()))
+                } else {
+                    let chars: Vec<char> = s.chars().collect();
+                    let s_clamped = start.min(chars.len());
+                    let e_clamped = end.min(chars.len()).max(s_clamped);
+                    let sub: String = chars[s_clamped..e_clamped].iter().collect();
+                    Some(Value::Str(sub))
+                }
+            }
+            "char_from_code" => {
+                let code = args.first()?.as_int();
+                let ch = std::char::from_u32(code.max(0) as u32).unwrap_or('\0');
+                Some(Value::Str(ch.to_string()))
+            }
+            "str_concat" => {
+                let a = match args.first()? {
+                    Value::Str(s) => s.clone(),
+                    other => format!("{}", other),
+                };
+                let b = match args.get(1)? {
+                    Value::Str(s) => s.clone(),
+                    other => format!("{}", other),
+                };
+                Some(Value::Str(format!("{}{}", a, b)))
+            }
+            "int_to_str" => {
+                let n = args.first()?.as_int();
+                Some(Value::Str(n.to_string()))
+            }
+            "str_to_int" => {
+                let s = match args.first()? {
+                    Value::Str(s) => s.trim(),
+                    _ => "0",
+                };
+                let cleaned = s.replace('_', "");
+                let val = if let Some(hex) = cleaned.strip_prefix("0x").or_else(|| cleaned.strip_prefix("0X")) {
+                    i64::from_str_radix(hex, 16).unwrap_or(0)
+                } else {
+                    cleaned.parse::<i64>().unwrap_or(0)
+                };
+                Some(Value::Int(val))
+            }
+            "str_starts_with" => {
+                let s = match args.first()? {
+                    Value::Str(s) => s,
+                    _ => return Some(Value::Bool(false)),
+                };
+                let prefix = match args.get(1)? {
+                    Value::Str(p) => p,
+                    _ => return Some(Value::Bool(false)),
+                };
+                Some(Value::Bool(s.starts_with(prefix.as_str())))
+            }
+            "str_contains" => {
+                let s = match args.first()? {
+                    Value::Str(s) => s,
+                    _ => return Some(Value::Bool(false)),
+                };
+                let needle = match args.get(1)? {
+                    Value::Str(n) => n,
+                    _ => return Some(Value::Bool(false)),
+                };
+                Some(Value::Bool(s.contains(needle.as_str())))
+            }
+            "read_file" => {
+                let path = match args.first()? {
+                    Value::Str(p) => p,
+                    _ => return Some(Value::Str(String::new())),
+                };
+                let raw = std::fs::read_to_string(path).unwrap_or_default();
+                let content = crate::resolve_imports(&raw, std::path::Path::new(path));
+                Some(Value::Str(content))
+            }
+            "write_file" => {
+                if let (Some(Value::Str(path)), Some(Value::Str(content))) = (args.first(), args.get(1)) {
+                    let _ = std::fs::write(path, content);
+                }
+                Some(Value::Unit)
+            }
+            "shell_exec" => {
+                let cmd = match args.first()? {
+                    Value::Str(c) => c,
+                    _ => return Some(Value::Int(-1)),
+                };
+                let status = std::process::Command::new("sh")
+                    .arg("-c")
+                    .arg(cmd)
+                    .status()
+                    .map(|s| s.code().unwrap_or(-1) as i64)
+                    .unwrap_or(-1);
+                Some(Value::Int(status))
+            }
+            "cli_args" => {
+                let raw_args: Vec<Value> = std::env::args().map(Value::Str).collect();
+                Some(Value::List(raw_args))
+            }
+            _ => None,
         }
     }
 
@@ -550,21 +711,61 @@ impl VM {
                 }
             }
             Instruction::LoadLocal(idx) => {
-                let val = state
-                    .call_stack
-                    .last()
-                    .unwrap()
-                    .locals
-                    .get(*idx)
-                    .cloned()
-                    .unwrap_or(Value::Int(0));
+                let frame = state.call_stack.last().unwrap();
+                let is_large_list = matches!(frame.locals.get(*idx), Some(Value::List(v)) if v.len() > 8);
+                let can_move = if is_large_list {
+                    if let Some(cf) = self.program.functions.get(&frame.function) {
+                        let mut move_ok = false;
+                        for op in &cf.code[frame.ip..] {
+                            match op {
+                                Instruction::Return => {
+                                    move_ok = true;
+                                    break;
+                                }
+                                Instruction::StoreLocal(s) if s == idx => {
+                                    move_ok = true;
+                                    break;
+                                }
+                                Instruction::LoadLocal(s) if s == idx => break,
+                                Instruction::PackSeq(a, b) if *idx >= *a && *idx < *b => break,
+                                Instruction::Jump(_)
+                                | Instruction::JumpIfFalse(_)
+                                | Instruction::JumpIfNeq(_)
+                                | Instruction::JumpIfEmpty(_)
+                                | Instruction::JumpIfNotEmpty(_)
+                                | Instruction::JumpIfNotAdt(..) => break,
+                                _ => {}
+                            }
+                        }
+                        move_ok
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+                let val = if can_move {
+                    std::mem::replace(
+                        &mut state.call_stack.last_mut().unwrap().locals[*idx],
+                        Value::Unit,
+                    )
+                } else {
+                    state
+                        .call_stack
+                        .last()
+                        .unwrap()
+                        .locals
+                        .get(*idx)
+                        .cloned()
+                        .unwrap_or(Value::Int(0))
+                };
                 state.stack.push(val);
             }
             Instruction::StoreLocal(idx) => {
                 let val = state.stack.pop().expect("Stack underflow");
                 let locals = &mut state.call_stack.last_mut().unwrap().locals;
                 while locals.len() <= *idx {
-                    locals.push(Value::Unit);
+                    locals.push(Value::Int(0));
                 }
                 locals[*idx] = val;
             }
@@ -652,6 +853,13 @@ impl VM {
                 for i in (0..*argc).rev() {
                     args[i] = state.stack.pop().expect("Stack underflow");
                 }
+                if !self.program.functions.contains_key(name) {
+                    if let Some(res) = Self::eval_intrinsic(name, &args) {
+                        state.record_alloc(res.clone());
+                        state.stack.push(res);
+                        return;
+                    }
+                }
                 let func = self
                     .program
                     .functions
@@ -665,7 +873,7 @@ impl VM {
                     } else {
                         Vec::new()
                     };
-                    if rest.len() == 1 && matches!(rest[0], Value::List(_)) {
+                    if rest.len() == 1 && matches!(rest[0], Value::List(_) | Value::ListSlice(..)) {
                         args.push(rest.into_iter().next().unwrap());
                     } else {
                         args.push(Value::List(rest));
@@ -681,8 +889,8 @@ impl VM {
 
                 assert_eq!(args.len(), func.arity, "Arity mismatch in call to '{}'", name);
 
-                let is_tail_self_call = if let Some(caller) = state.call_stack.last() {
-                    caller.function == *name
+                let is_tail_call = if let Some(caller) = state.call_stack.last() {
+                    (caller.function == *name || state.region_limit_stack.is_empty())
                         && self
                             .program
                             .functions
@@ -694,10 +902,11 @@ impl VM {
                     false
                 };
 
-                if is_tail_self_call {
+                if is_tail_call {
                     let wm = state.call_stack.last().unwrap().region_watermark;
                     let _ = state.region.reset_to(wm, vm_tid);
                     let caller = state.call_stack.last_mut().unwrap();
+                    caller.function = name.clone();
                     caller.ip = 0;
                     caller.locals = args;
                 } else {
@@ -742,15 +951,39 @@ impl VM {
                 state.stack.push(Value::List(Vec::new()));
             }
             Instruction::PushListConcat(n) => {
-                let mut result = Vec::new();
                 let start = state.stack.len() - *n;
-                for i in start..state.stack.len() {
-                    match &state.stack[i] {
-                        Value::List(items) => result.extend(items.iter().cloned()),
-                        val => result.push(val.clone()),
+                if *n == 2 {
+                    if let Some(Value::ListSlice(rc, idx)) = state.stack.last().cloned() {
+                        if idx > 0 {
+                            let first_elem = match &state.stack[start] {
+                                Value::List(v) if v.len() == 1 => Some(&v[0]),
+                                other if !matches!(other, Value::List(_) | Value::ListSlice(..)) => Some(other),
+                                _ => None,
+                            };
+                            if let Some(fe) = first_elem {
+                                if rc.get(idx - 1) == Some(fe) {
+                                    state.stack.truncate(start);
+                                    state.stack.push(Value::ListSlice(rc, idx - 1));
+                                    return true;
+                                }
+                            }
+                        }
                     }
                 }
-                state.stack.truncate(start);
+                let mut iter = state.stack.drain(start..);
+                let mut result = match iter.next() {
+                    Some(Value::List(items)) => items,
+                    Some(Value::ListSlice(rc, idx)) => rc[idx.min(rc.len())..].to_vec(),
+                    Some(val) => vec![val],
+                    None => Vec::new(),
+                };
+                for val in iter {
+                    match val {
+                        Value::List(items) => result.extend(items),
+                        Value::ListSlice(rc, idx) => result.extend_from_slice(&rc[idx.min(rc.len())..]),
+                        other => result.push(other),
+                    }
+                }
                 let val = Value::List(result);
                 state.record_alloc(val.clone());
                 state.stack.push(val);
@@ -762,6 +995,7 @@ impl VM {
                 for v in [a, b] {
                     match v {
                         Value::Tuple(elems) | Value::List(elems) => items.extend(elems),
+                        Value::ListSlice(rc, idx) => items.extend_from_slice(&rc[idx.min(rc.len())..]),
                         single => items.push(single),
                     }
                 }
@@ -771,7 +1005,7 @@ impl VM {
             }
             Instruction::PackSeq(start_slot, end_slot) => {
                 let locals = &state.call_stack.last().unwrap().locals;
-                if let Some(first @ (Value::List(_) | Value::Tuple(_))) = locals.get(*start_slot) {
+                if let Some(first @ (Value::List(_) | Value::ListSlice(..) | Value::Tuple(_))) = locals.get(*start_slot) {
                     if *end_slot <= *start_slot + 1 {
                         state.stack.push(first.clone());
                         return true;
@@ -787,6 +1021,7 @@ impl VM {
                 let seq = state.stack.pop().expect("Stack underflow");
                 let items = match seq {
                     Value::List(v) | Value::Tuple(v) => v,
+                    Value::ListSlice(rc, idx) => rc[idx.min(rc.len())..].to_vec(),
                     other => vec![other],
                 };
                 let selected: Vec<Value> = mask
@@ -805,6 +1040,7 @@ impl VM {
                 let seq = state.stack.pop().expect("Stack underflow");
                 let items = match seq {
                     Value::List(v) | Value::Tuple(v) => v,
+                    Value::ListSlice(rc, idx) => rc[idx.min(rc.len())..].to_vec(),
                     other => vec![other],
                 };
                 let selected: Vec<Value> = indices
@@ -821,6 +1057,7 @@ impl VM {
                 let val = state.stack.pop().expect("Stack underflow");
                 let is_empty = match val {
                     Value::List(ref items) => items.is_empty(),
+                    Value::ListSlice(ref rc, start) => start >= rc.len(),
                     _ => true,
                 };
                 if is_empty {
@@ -831,6 +1068,7 @@ impl VM {
                 let val = state.stack.pop().expect("Stack underflow");
                 let is_empty = match val {
                     Value::List(ref items) => items.is_empty(),
+                    Value::ListSlice(ref rc, start) => start >= rc.len(),
                     _ => false,
                 };
                 if !is_empty {
@@ -841,17 +1079,26 @@ impl VM {
                 let val = state.stack.pop().expect("Stack underflow");
                 match val {
                     Value::List(items) => state.stack.push(items.into_iter().next().unwrap_or(Value::Unit)),
+                    Value::ListSlice(rc, start) => state.stack.push(rc.get(start).cloned().unwrap_or(Value::Unit)),
                     other => state.stack.push(other),
                 }
             }
             Instruction::ListTail => {
                 let val = state.stack.pop().expect("Stack underflow");
                 match val {
-                    Value::List(mut items) => {
-                        if !items.is_empty() {
-                            items.remove(0);
+                    Value::List(items) => {
+                        if items.len() <= 1 {
+                            state.stack.push(Value::List(Vec::new()));
+                        } else {
+                            state.stack.push(Value::ListSlice(std::rc::Rc::new(items), 1));
                         }
-                        state.stack.push(Value::List(items));
+                    }
+                    Value::ListSlice(rc, start) => {
+                        if start + 1 >= rc.len() {
+                            state.stack.push(Value::List(Vec::new()));
+                        } else {
+                            state.stack.push(Value::ListSlice(rc, start + 1));
+                        }
                     }
                     _ => state.stack.push(Value::List(Vec::new())),
                 }
@@ -868,6 +1115,9 @@ impl VM {
                 match tup {
                     Value::Tuple(items) | Value::List(items) => {
                         state.stack.push(items.get(*idx).cloned().unwrap_or(Value::Unit));
+                    }
+                    Value::ListSlice(rc, start) => {
+                        state.stack.push(rc.get(start + *idx).cloned().unwrap_or(Value::Unit));
                     }
                     other => state.stack.push(other),
                 }

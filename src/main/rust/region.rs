@@ -195,6 +195,7 @@ pub fn estimate_value_bytes(val: &Value) -> usize {
         Value::List(items) | Value::Tuple(items) => {
             16 + items.iter().map(estimate_value_bytes).sum::<usize>()
         }
+        Value::ListSlice(_, _) => 16,
         Value::Adt(_, fields) => {
             16 + fields.iter().map(estimate_value_bytes).sum::<usize>()
         }

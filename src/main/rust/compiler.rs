@@ -459,6 +459,8 @@ fn compile_expr(
                 code.push(Instruction::MailboxNew);
             } else if name == "new_channel" || name == "channel" {
                 code.push(Instruction::ChanNew);
+            } else if name == "cli_args" {
+                code.push(Instruction::Call("cli_args".to_string(), 0));
             } else {
                 panic!("Undefined variable: {}", name);
             }

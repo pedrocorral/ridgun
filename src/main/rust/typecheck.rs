@@ -241,6 +241,19 @@ pub fn typecheck(program: &Program) -> Result<(), Vec<TypeError>> {
         "receive_from_timeout".to_string(),
         Type::Fun(vec![Type::Int, Type::Int], Box::new(Type::TypeVar("Option".into()))),
     );
+    env.insert_function("str_len".to_string(), Type::Fun(vec![Type::String], Box::new(Type::Int)));
+    env.insert_function("str_char_at".to_string(), Type::Fun(vec![Type::String, Type::Int], Box::new(Type::Int)));
+    env.insert_function("str_slice".to_string(), Type::Fun(vec![Type::String, Type::Int, Type::Int], Box::new(Type::String)));
+    env.insert_function("char_from_code".to_string(), Type::Fun(vec![Type::Int], Box::new(Type::String)));
+    env.insert_function("str_concat".to_string(), Type::Fun(vec![Type::String, Type::String], Box::new(Type::String)));
+    env.insert_function("int_to_str".to_string(), Type::Fun(vec![Type::Int], Box::new(Type::String)));
+    env.insert_function("str_to_int".to_string(), Type::Fun(vec![Type::String], Box::new(Type::Int)));
+    env.insert_function("str_starts_with".to_string(), Type::Fun(vec![Type::String, Type::String], Box::new(Type::Bool)));
+    env.insert_function("str_contains".to_string(), Type::Fun(vec![Type::String, Type::String], Box::new(Type::Bool)));
+    env.insert_function("read_file".to_string(), Type::Fun(vec![Type::String], Box::new(Type::String)));
+    env.insert_function("write_file".to_string(), Type::Fun(vec![Type::String, Type::String], Box::new(Type::Unit)));
+    env.insert_function("shell_exec".to_string(), Type::Fun(vec![Type::String], Box::new(Type::Int)));
+    env.insert_local("cli_args".to_string(), Type::List(Box::new(Type::String)));
 
     for tdef in &program.types {
         let adt_ty = parse_type_string(&tdef.name);
@@ -803,6 +816,9 @@ fn check_binop(
             }
             if (left == &Type::Real || is_poly(left)) && (right == &Type::Real || is_poly(right)) {
                 return Type::Real;
+            }
+            if *op == BinOp::Add && (left == &Type::String || is_poly(left)) && (right == &Type::String || is_poly(right)) {
+                return Type::String;
             }
             if let (Type::Tensor(d1), Type::Tensor(_)) = (left, right) {
                 return Type::Tensor(d1.clone());

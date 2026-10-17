@@ -19,3 +19,9 @@ Preferences and guidelines for AI agents working on the Ridgun project.
 
 - **Every change must be documented.** Any change to the language (syntax, types, operators, keywords), functionality, or features must be properly documented **before or alongside** the implementation. Never leave a feature undocumented.
 - Update all relevant files: `doc/lang/spec.md`, `doc/lang/samples.rg`, syntax highlighting grammar, and README as needed.
+
+## Git Commits
+
+- Always write commit messages in **English**.
+- Always use `user.name = "Pedro Corral"` and `user.email = "pedro@obdin.com"` when creating git commits.
+
