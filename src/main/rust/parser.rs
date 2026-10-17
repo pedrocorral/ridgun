@@ -394,20 +394,9 @@ impl Parser {
                     words.push("with".to_string());
                     template.push(false);
                 }
-                Token::LParen => {
-                    self.advance();
-                    self.expect(&Token::RParen);
-                    param_types.push("()".to_string());
-                    template.push(true);
-                }
-                Token::LBracket => {
-                    self.advance();
-                    let inner = match self.advance() {
-                        Token::Ident(s) => s,
-                        other => panic!("Expected type inside [...], got {:?}", other),
-                    };
-                    self.expect(&Token::RBracket);
-                    param_types.push(format!("[{}]", inner));
+                Token::LParen | Token::LBracket => {
+                    let ty = self.parse_return_type();
+                    param_types.push(ty);
                     template.push(true);
                 }
                 Token::Plus | Token::Minus | Token::Star | Token::Slash | Token::Percent => {
@@ -1585,27 +1574,34 @@ impl Parser {
             }
             Expr::Call(fn_name, args) => {
                 if !arities.contains_key(fn_name) {
+                    let mut full_spine = Vec::new();
                     if fn_name != "__chain__" {
-                        let mut candidate_words = vec![fn_name.clone()];
-                        let mut operand_args = Vec::new();
-                        for arg in args.iter() {
-                            if let Expr::Var(w) = arg {
-                                let test_prefix = format!("{}_{}", candidate_words.join("_"), w);
-                                let matches_op = arities.keys().any(|k| {
-                                    k == &test_prefix || k.starts_with(&format!("{}_", test_prefix))
-                                });
-                                if matches_op {
-                                    candidate_words.push(w.clone());
-                                    continue;
-                                }
+                        full_spine.push(Expr::Var(fn_name.clone()));
+                    }
+                    full_spine.extend(args.iter().cloned());
+                    let mut candidate_words: Vec<String> = Vec::new();
+                    let mut operand_args = Vec::new();
+                    for arg in full_spine.iter() {
+                        if let Expr::Var(w) = arg {
+                            let test_prefix = if candidate_words.is_empty() {
+                                w.clone()
+                            } else {
+                                format!("{}_{}", candidate_words.join("_"), w)
+                            };
+                            let matches_op = arities.keys().any(|k| {
+                                k == &test_prefix || k.starts_with(&format!("{}_", test_prefix))
+                            });
+                            if matches_op {
+                                candidate_words.push(w.clone());
+                                continue;
                             }
-                            operand_args.push(arg.clone());
                         }
-                        let mangled = candidate_words.join("_");
-                        if arities.contains_key(&mangled) {
-                            *fn_name = mangled;
-                            *args = operand_args;
-                        }
+                        operand_args.push(arg.clone());
+                    }
+                    let mangled = candidate_words.join("_");
+                    if arities.get(&mangled) == Some(&operand_args.len()) {
+                        *fn_name = mangled;
+                        *args = operand_args;
                     }
                     if !arities.contains_key(fn_name) {
                         let mut spine = Vec::new();

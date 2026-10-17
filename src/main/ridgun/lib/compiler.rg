@@ -15,803 +15,803 @@ import typecheck
 -- ── Local Variable Table Helpers ────────────────────────────
 
 fn :: list_str_len [String] => Int
-list_str_len [] = 0
-list_str_len (_:xs) = 1 + (list_str_len xs)
+      list_str_len []       =  0
+      list_str_len (_:xs)   =  1 + (list_str_len xs)
 
 fn :: pat_list_len [RPattern] => Int
-pat_list_len [] = 0
-pat_list_len (_:xs) = 1 + (pat_list_len xs)
+      pat_list_len []         =  0
+      pat_list_len (_:xs)     =  1 + (pat_list_len xs)
 
 fn :: find_local_idx [String] String Int => Int
-find_local_idx [] _ _ = -1
-find_local_idx (x:xs) target idx
-  | x == target = idx
-  | otherwise = find_local_idx xs target (idx + 1)
+      find_local_idx []       _      _   =  -1
+      find_local_idx (x:xs)   target idx
+        | x == target = idx
+        | otherwise = find_local_idx xs target (idx + 1)
 
 fn :: lookup_local [String] String => Int
-lookup_local locals name = find_local_idx locals name 0
+      lookup_local locals   name   =  find_local_idx locals name 0
 
 fn :: ensure_local [String] String => ([String], Int)
-ensure_local locals name =
-  existing = lookup_local locals name
-  ensure_local_branch locals name existing
+      ensure_local locals   name =
+        existing = lookup_local locals name
+        ensure_local_branch locals name existing
 
-fn :: ensure_local_branch [String] String Int => ([String], Int)
-ensure_local_branch locals name existing
-  | existing >= 0 = (locals, existing)
-  | otherwise = (locals :: [name], list_str_len locals)
+fn :: ensure_local_branch [String] String Int      => ([String], Int)
+      ensure_local_branch locals   name   existing
+        | existing >= 0 = (locals, existing)
+        | otherwise = (locals :: [name], list_str_len locals)
 
 fn :: rinstr_len [RInstr] => Int
-rinstr_len [] = 0
-rinstr_len (_:xs) = 1 + (rinstr_len xs)
+      rinstr_len []       =  0
+      rinstr_len (_:xs)   =  1 + (rinstr_len xs)
 
 -- ── Pattern Binding & Match Emission (Bytecode) ─────────────
 
-fn :: bind_pat_vars [RPattern] Int [String] => [String]
-bind_pat_vars [] _ locals = locals
-bind_pat_vars ((PatVar v):ps) idx locals =
-  bind_pat_vars ps (idx + 1) (locals :: [v])
-bind_pat_vars ((PatSeqBind v):ps) idx locals =
-  bind_pat_vars ps (idx + 1) (locals :: [v])
-bind_pat_vars (_:ps) idx locals =
-  bind_pat_vars ps (idx + 1) (locals :: ['_arg_' + (int_to_str idx)])
+fn :: bind_pat_vars [RPattern]          Int [String] => [String]
+      bind_pat_vars []                  _   locals   =  locals
+      bind_pat_vars ((PatVar v):ps)     idx locals =
+        bind_pat_vars ps (idx + 1) (locals :: [v])
+      bind_pat_vars ((PatSeqBind v):ps) idx locals =
+        bind_pat_vars ps (idx + 1) (locals :: [v])
+      bind_pat_vars (_:ps)              idx locals =
+        bind_pat_vars ps (idx + 1) (locals :: ['_arg_' + (int_to_str idx)])
 
-fn :: emit_pat_checks [RPattern] Int Int => [RInstr]
-emit_pat_checks [] _ _ = []
-emit_pat_checks ((PatInt n):ps) slot fail_ip =
-  [BLoadLocal slot, BPushInt n, BJumpIfNeq fail_ip] :: (emit_pat_checks ps (slot + 1) fail_ip)
-emit_pat_checks ((PatReal r):ps) slot fail_ip =
-  [BLoadLocal slot, BPushReal r, BJumpIfNeq fail_ip] :: (emit_pat_checks ps (slot + 1) fail_ip)
-emit_pat_checks ((PatStr s):ps) slot fail_ip =
-  [BLoadLocal slot, BPushStr s, BJumpIfNeq fail_ip] :: (emit_pat_checks ps (slot + 1) fail_ip)
-emit_pat_checks ((PatBool b):ps) slot fail_ip =
-  [BLoadLocal slot, BPushBool b, BJumpIfNeq fail_ip] :: (emit_pat_checks ps (slot + 1) fail_ip)
-emit_pat_checks (PatEmpty:ps) slot fail_ip =
-  [BLoadLocal slot, BJumpIfNotEmpty fail_ip] :: (emit_pat_checks ps (slot + 1) fail_ip)
-emit_pat_checks (_:ps) slot fail_ip =
-  emit_pat_checks ps (slot + 1) fail_ip
+fn :: emit_pat_checks [RPattern]       Int  Int     => [RInstr]
+      emit_pat_checks []               _    _       =  []
+      emit_pat_checks ((PatInt n):ps)  slot fail_ip =
+        [BLoadLocal slot, BPushInt n, BJumpIfNeq fail_ip] :: (emit_pat_checks ps (slot + 1) fail_ip)
+      emit_pat_checks ((PatReal r):ps) slot fail_ip =
+        [BLoadLocal slot, BPushReal r, BJumpIfNeq fail_ip] :: (emit_pat_checks ps (slot + 1) fail_ip)
+      emit_pat_checks ((PatStr s):ps)  slot fail_ip =
+        [BLoadLocal slot, BPushStr s, BJumpIfNeq fail_ip] :: (emit_pat_checks ps (slot + 1) fail_ip)
+      emit_pat_checks ((PatBool b):ps) slot fail_ip =
+        [BLoadLocal slot, BPushBool b, BJumpIfNeq fail_ip] :: (emit_pat_checks ps (slot + 1) fail_ip)
+      emit_pat_checks (PatEmpty:ps)    slot fail_ip =
+        [BLoadLocal slot, BJumpIfNotEmpty fail_ip] :: (emit_pat_checks ps (slot + 1) fail_ip)
+      emit_pat_checks (_:ps)           slot fail_ip =
+        emit_pat_checks ps (slot + 1) fail_ip
 
 -- ── Expression Lowering to [RInstr] ─────────────────────────
 
-fn :: compile_binop RBinOp => RInstr
-compile_binop OpAdd = BAdd
-compile_binop OpSub = BSub
-compile_binop OpMul = BMul
-compile_binop OpDiv = BDiv
-compile_binop OpMod = BMod
-compile_binop OpEq = BCmpEq
-compile_binop OpNeq = BCmpNeq
-compile_binop OpGt = BCmpGt
-compile_binop OpLt = BCmpLt
-compile_binop OpGtEq = BCmpGtEq
-compile_binop OpLtEq = BCmpLtEq
-compile_binop OpAnd = BAnd
-compile_binop OpOr = BOr
-compile_binop OpXor = BXor
-compile_binop OpConcat = BListConcat 2
-compile_binop OpFlatJoin = BSeqFlatJoin
-compile_binop OpMatMul = BMul
+fn :: compile_binop RBinOp     => RInstr
+      compile_binop OpAdd      =  BAdd
+      compile_binop OpSub      =  BSub
+      compile_binop OpMul      =  BMul
+      compile_binop OpDiv      =  BDiv
+      compile_binop OpMod      =  BMod
+      compile_binop OpEq       =  BCmpEq
+      compile_binop OpNeq      =  BCmpNeq
+      compile_binop OpGt       =  BCmpGt
+      compile_binop OpLt       =  BCmpLt
+      compile_binop OpGtEq     =  BCmpGtEq
+      compile_binop OpLtEq     =  BCmpLtEq
+      compile_binop OpAnd      =  BAnd
+      compile_binop OpOr       =  BOr
+      compile_binop OpXor      =  BXor
+      compile_binop OpConcat   =  BListConcat 2
+      compile_binop OpFlatJoin =  BSeqFlatJoin
+      compile_binop OpMatMul   =  BMul
 
-fn :: compile_rexpr RExpr [String] => ([RInstr], [String])
-compile_rexpr (EInt n) locals = ([BPushInt n], locals)
-compile_rexpr (EReal r) locals = ([BPushReal r], locals)
-compile_rexpr (EStr s) locals = ([BPushStr s], locals)
-compile_rexpr (EStrInterp parts) locals =
-  p_res = compile_rexpr_list parts locals
-  append_instr (BStrInterp (rexpr_list_len parts)) p_res
-compile_rexpr (EBool b) locals = ([BPushBool b], locals)
-compile_rexpr EUnit locals = ([BPushUnit], locals)
-compile_rexpr (EVar name) locals =
-  idx = lookup_local locals name
-  compile_var_lookup name idx locals
-compile_rexpr (ENot inner) locals =
-  r1 = compile_rexpr inner locals
-  append_instr BNot r1
-compile_rexpr (EOut inner) locals =
-  r1 = compile_rexpr inner locals
-  append_instr BOut r1
-compile_rexpr (EBin bop l r) locals =
-  r1 = compile_rexpr l locals
-  compile_bin_rhs bop r r1
-compile_rexpr (ECall fname args) locals =
-  args_res = compile_rexpr_list args locals
-  append_instr (BCall fname (rexpr_list_len args)) args_res
-compile_rexpr (EEcho args) locals =
-  args_res = compile_rexpr_list args locals
-  append_instr (BEcho (rexpr_list_len args)) args_res
-compile_rexpr (EList elems) locals =
-  elems_res = compile_rexpr_list elems locals
-  append_instr (BListConcat (rexpr_list_len elems)) elems_res
-compile_rexpr (ETuple elems) locals =
-  elems_res = compile_rexpr_list elems locals
-  append_instr (BMakeTuple (rexpr_list_len elems)) elems_res
-compile_rexpr (ETensor elems) locals =
-  elems_res = compile_rexpr_list elems locals
-  append_instr (BMakeTensor (rexpr_list_len elems)) elems_res
-compile_rexpr (EEinsum es subs) locals =
-  es_res = compile_rexpr_list es locals
-  append_instr (BTensorEinsum subs) es_res
-compile_rexpr (EHadamard bop l s1 r s2) locals =
-  r1 = compile_rexpr l locals
-  r2 = compile_rexpr_after r r1
-  append_instr (BTensorHadamard bop s1 s2) r2
-compile_rexpr (EIndex base idxs) locals =
-  b_res = compile_rexpr base locals
-  i_res = compile_rexpr_list_after idxs b_res
-  append_instr (BTensorGet (rexpr_list_len idxs)) i_res
-compile_rexpr (EIndexAssign target idxs val_e) locals =
-  slot_res = ensure_local locals target
-  compile_index_assign_bc slot_res idxs val_e
-compile_rexpr (ESeqSelect base mask) locals =
-  b_res = compile_rexpr base locals
-  append_instr (BSeqSelectMask mask) b_res
-compile_rexpr (EBlock stmts) locals =
-  compile_rblock stmts locals
-compile_rexpr (EWhere body binds) locals =
-  w_res = compile_where_list binds locals
-  compile_where_body body w_res
-compile_rexpr (EParPipe branches) locals =
-  b_res = compile_rexpr_list branches locals
-  append_instr (BMakeTuple (rexpr_list_len branches)) b_res
-compile_rexpr (EWithCtx ctx_name val_e body) locals =
-  v_res = compile_rexpr val_e locals
-  v_push = append_instr (BPushCtx ctx_name) v_res
-  b_res = compile_rexpr_after body v_push
-  append_instr (BPopCtx ctx_name) b_res
-compile_rexpr (EWithRegion quota body) locals =
-  b_res = compile_rexpr body locals
-  wrap_region_bc quota b_res
-compile_rexpr (EAtomicUpdate var_name val_e) locals =
-  v_res = compile_rexpr val_e locals
-  append_instr (BAtomicStore var_name) v_res
-compile_rexpr (ELoadContext ctx_name def_e) locals =
-  d_res = compile_rexpr def_e locals
-  append_instr (BLoadCtx ctx_name) d_res
-compile_rexpr (ELoadShared var_name def_e) locals =
-  d_res = compile_rexpr def_e locals
-  append_instr (BLoadShared var_name) d_res
+fn :: compile_rexpr RExpr                            [String] => ([RInstr], [String])
+      compile_rexpr (EInt n)                         locals   =  ([BPushInt n], locals)
+      compile_rexpr (EReal r)                        locals   =  ([BPushReal r], locals)
+      compile_rexpr (EStr s)                         locals   =  ([BPushStr s], locals)
+      compile_rexpr (EStrInterp parts)               locals =
+        p_res = compile_rexpr_list parts locals
+        append_instr (BStrInterp (rexpr_list_len parts)) p_res
+      compile_rexpr (EBool b)                        locals   =  ([BPushBool b], locals)
+      compile_rexpr EUnit                            locals   =  ([BPushUnit], locals)
+      compile_rexpr (EVar name)                      locals =
+        idx = lookup_local locals name
+        compile_var_lookup name idx locals
+      compile_rexpr (ENot inner)                     locals =
+        r1 = compile_rexpr inner locals
+        append_instr BNot r1
+      compile_rexpr (EOut inner)                     locals =
+        r1 = compile_rexpr inner locals
+        append_instr BOut r1
+      compile_rexpr (EBin bop l r)                   locals =
+        r1 = compile_rexpr l locals
+        compile_bin_rhs bop r r1
+      compile_rexpr (ECall fname args)               locals =
+        args_res = compile_rexpr_list args locals
+        append_instr (BCall fname (rexpr_list_len args)) args_res
+      compile_rexpr (EEcho args)                     locals =
+        args_res = compile_rexpr_list args locals
+        append_instr (BEcho (rexpr_list_len args)) args_res
+      compile_rexpr (EList elems)                    locals =
+        elems_res = compile_rexpr_list elems locals
+        append_instr (BListConcat (rexpr_list_len elems)) elems_res
+      compile_rexpr (ETuple elems)                   locals =
+        elems_res = compile_rexpr_list elems locals
+        append_instr (BMakeTuple (rexpr_list_len elems)) elems_res
+      compile_rexpr (ETensor elems)                  locals =
+        elems_res = compile_rexpr_list elems locals
+        append_instr (BMakeTensor (rexpr_list_len elems)) elems_res
+      compile_rexpr (EEinsum es subs)                locals =
+        es_res = compile_rexpr_list es locals
+        append_instr (BTensorEinsum subs) es_res
+      compile_rexpr (EHadamard bop l s1 r s2)        locals =
+        r1 = compile_rexpr l locals
+        r2 = compile_rexpr_after r r1
+        append_instr (BTensorHadamard bop s1 s2) r2
+      compile_rexpr (EIndex base idxs)               locals =
+        b_res = compile_rexpr base locals
+        i_res = compile_rexpr_list_after idxs b_res
+        append_instr (BTensorGet (rexpr_list_len idxs)) i_res
+      compile_rexpr (EIndexAssign target idxs val_e) locals =
+        slot_res = ensure_local locals target
+        compile_index_assign_bc slot_res idxs val_e
+      compile_rexpr (ESeqSelect base mask)           locals =
+        b_res = compile_rexpr base locals
+        append_instr (BSeqSelectMask mask) b_res
+      compile_rexpr (EBlock stmts)                   locals =
+        compile_rblock stmts locals
+      compile_rexpr (EWhere body binds)              locals =
+        w_res = compile_where_list binds locals
+        compile_where_body body w_res
+      compile_rexpr (EParPipe branches)              locals =
+        b_res = compile_rexpr_list branches locals
+        append_instr (BMakeTuple (rexpr_list_len branches)) b_res
+      compile_rexpr (EWithCtx ctx_name val_e body)   locals =
+        v_res = compile_rexpr val_e locals
+        v_push = append_instr (BPushCtx ctx_name) v_res
+        b_res = compile_rexpr_after body v_push
+        append_instr (BPopCtx ctx_name) b_res
+      compile_rexpr (EWithRegion quota body)         locals =
+        b_res = compile_rexpr body locals
+        wrap_region_bc quota b_res
+      compile_rexpr (EAtomicUpdate var_name val_e)   locals =
+        v_res = compile_rexpr val_e locals
+        append_instr (BAtomicStore var_name) v_res
+      compile_rexpr (ELoadContext ctx_name def_e)    locals =
+        d_res = compile_rexpr def_e locals
+        append_instr (BLoadCtx ctx_name) d_res
+      compile_rexpr (ELoadShared var_name def_e)     locals =
+        d_res = compile_rexpr def_e locals
+        append_instr (BLoadShared var_name) d_res
 
 fn :: compile_rexpr_after RExpr ([RInstr], [String]) => ([RInstr], [String])
-compile_rexpr_after e (c1, locals1) =
-  r2 = compile_rexpr e locals1
-  merge_code_pair c1 r2
+      compile_rexpr_after e     (c1, locals1) =
+        r2 = compile_rexpr e locals1
+        merge_code_pair c1 r2
 
 fn :: compile_rexpr_list_after [RExpr] ([RInstr], [String]) => ([RInstr], [String])
-compile_rexpr_list_after es (c1, locals1) =
-  r2 = compile_rexpr_list es locals1
-  merge_code_pair c1 r2
+      compile_rexpr_list_after es      (c1, locals1) =
+        r2 = compile_rexpr_list es locals1
+        merge_code_pair c1 r2
 
 fn :: compile_index_assign_bc ([String], Int) [RExpr] RExpr => ([RInstr], [String])
-compile_index_assign_bc (locals1, slot) idxs val_e =
-  i_res = compile_rexpr_list idxs locals1
-  v_res = compile_rexpr_after val_e i_res
-  finish_index_assign_bc slot (rexpr_list_len idxs) v_res
+      compile_index_assign_bc (locals1, slot) idxs    val_e =
+        i_res = compile_rexpr_list idxs locals1
+        v_res = compile_rexpr_after val_e i_res
+        finish_index_assign_bc slot (rexpr_list_len idxs) v_res
 
-fn :: finish_index_assign_bc Int Int ([RInstr], [String]) => ([RInstr], [String])
-finish_index_assign_bc slot ndim (code, locals2) =
-  ([BLoadLocal slot] :: code :: [BTensorSet ndim, BStoreLocal slot, BPushUnit], locals2)
+fn :: finish_index_assign_bc Int  Int  ([RInstr], [String]) => ([RInstr], [String])
+      finish_index_assign_bc slot ndim (code, locals2) =
+        ([BLoadLocal slot] :: code :: [BTensorSet ndim, BStoreLocal slot, BPushUnit], locals2)
 
-fn :: wrap_region_bc Int ([RInstr], [String]) => ([RInstr], [String])
-wrap_region_bc quota (b_code, locals1) =
-  ([BEnterRegion quota] :: b_code :: [BExitRegion], locals1)
+fn :: wrap_region_bc Int   ([RInstr], [String]) => ([RInstr], [String])
+      wrap_region_bc quota (b_code, locals1) =
+        ([BEnterRegion quota] :: b_code :: [BExitRegion], locals1)
 
 fn :: compile_var_lookup String Int [String] => ([RInstr], [String])
-compile_var_lookup name idx locals
-  | idx >= 0 = ([BLoadLocal idx], locals)
-  | otherwise = ([BCall name 0], locals)
+      compile_var_lookup name   idx locals
+        | idx >= 0 = ([BLoadLocal idx], locals)
+        | otherwise = ([BCall name 0], locals)
 
 fn :: append_instr RInstr ([RInstr], [String]) => ([RInstr], [String])
-append_instr ins (code, locals) = (code :: [ins], locals)
+      append_instr ins    (code, locals)       =  (code :: [ins], locals)
 
 fn :: compile_bin_rhs RBinOp RExpr ([RInstr], [String]) => ([RInstr], [String])
-compile_bin_rhs bop r (l_code, locals1) =
-  r_res = compile_rexpr r locals1
-  merge_bin_code (compile_binop bop) l_code r_res
+      compile_bin_rhs bop    r     (l_code, locals1) =
+        r_res = compile_rexpr r locals1
+        merge_bin_code (compile_binop bop) l_code r_res
 
 fn :: merge_bin_code RInstr [RInstr] ([RInstr], [String]) => ([RInstr], [String])
-merge_bin_code ins l_code (r_code, locals2) =
-  (l_code :: r_code :: [ins], locals2)
+      merge_bin_code ins    l_code   (r_code, locals2) =
+        (l_code :: r_code :: [ins], locals2)
 
 fn :: rexpr_list_len [RExpr] => Int
-rexpr_list_len [] = 0
-rexpr_list_len (_:xs) = 1 + (rexpr_list_len xs)
+      rexpr_list_len []      =  0
+      rexpr_list_len (_:xs)  =  1 + (rexpr_list_len xs)
 
 fn :: compile_rexpr_list [RExpr] [String] => ([RInstr], [String])
-compile_rexpr_list [] locals = ([], locals)
-compile_rexpr_list (e:es) locals =
-  r1 = compile_rexpr e locals
-  compile_rexpr_list_cont es r1
+      compile_rexpr_list []      locals   =  ([], locals)
+      compile_rexpr_list (e:es)  locals =
+        r1 = compile_rexpr e locals
+        compile_rexpr_list_cont es r1
 
 fn :: compile_rexpr_list_cont [RExpr] ([RInstr], [String]) => ([RInstr], [String])
-compile_rexpr_list_cont es (c1, locals1) =
-  r2 = compile_rexpr_list es locals1
-  merge_code_pair c1 r2
+      compile_rexpr_list_cont es      (c1, locals1) =
+        r2 = compile_rexpr_list es locals1
+        merge_code_pair c1 r2
 
 fn :: merge_code_pair [RInstr] ([RInstr], [String]) => ([RInstr], [String])
-merge_code_pair c1 (c2, locals2) = (c1 :: c2, locals2)
+      merge_code_pair c1       (c2, locals2)        =  (c1 :: c2, locals2)
 
-fn :: compile_rblock [RStmt] [String] => ([RInstr], [String])
-compile_rblock [] locals = ([BPushUnit], locals)
-compile_rblock ((StmtExpr e):[]) locals = compile_rexpr e locals
-compile_rblock ((StmtLet v e):rest) locals =
-  e_res = compile_rexpr e locals
-  compile_rblock_after_let v rest e_res
-compile_rblock ((StmtAtomic v e):rest) locals =
-  e_res = compile_rexpr (EAtomicUpdate v e) locals
-  compile_rblock_after_expr rest e_res
-compile_rblock ((StmtIndexAssign t idxs e):rest) locals =
-  e_res = compile_rexpr (EIndexAssign t idxs e) locals
-  compile_rblock_after_expr rest e_res
-compile_rblock ((StmtExpr e):rest) locals =
-  e_res = compile_rexpr e locals
-  compile_rblock_after_expr rest e_res
+fn :: compile_rblock [RStmt]                           [String] => ([RInstr], [String])
+      compile_rblock []                                locals   =  ([BPushUnit], locals)
+      compile_rblock ((StmtExpr e):[])                 locals   =  compile_rexpr e locals
+      compile_rblock ((StmtLet v e):rest)              locals =
+        e_res = compile_rexpr e locals
+        compile_rblock_after_let v rest e_res
+      compile_rblock ((StmtAtomic v e):rest)           locals =
+        e_res = compile_rexpr (EAtomicUpdate v e) locals
+        compile_rblock_after_expr rest e_res
+      compile_rblock ((StmtIndexAssign t idxs e):rest) locals =
+        e_res = compile_rexpr (EIndexAssign t idxs e) locals
+        compile_rblock_after_expr rest e_res
+      compile_rblock ((StmtExpr e):rest)               locals =
+        e_res = compile_rexpr e locals
+        compile_rblock_after_expr rest e_res
 
 fn :: compile_rblock_after_let String [RStmt] ([RInstr], [String]) => ([RInstr], [String])
-compile_rblock_after_let v rest (e_code, locals1) =
-  slot_res = ensure_local locals1 v
-  compile_rblock_store_let rest e_code slot_res
+      compile_rblock_after_let v      rest    (e_code, locals1) =
+        slot_res = ensure_local locals1 v
+        compile_rblock_store_let rest e_code slot_res
 
 fn :: compile_rblock_store_let [RStmt] [RInstr] ([String], Int) => ([RInstr], [String])
-compile_rblock_store_let [] e_code (locals2, slot) =
-  (e_code :: [BStoreLocal slot, BLoadLocal slot], locals2)
-compile_rblock_store_let rest e_code (locals2, slot) =
-  r_more = compile_rblock rest locals2
-  merge_code_pair (e_code :: [BStoreLocal slot]) r_more
+      compile_rblock_store_let []      e_code   (locals2, slot) =
+        (e_code :: [BStoreLocal slot, BLoadLocal slot], locals2)
+      compile_rblock_store_let rest    e_code   (locals2, slot) =
+        r_more = compile_rblock rest locals2
+        merge_code_pair (e_code :: [BStoreLocal slot]) r_more
 
 fn :: compile_rblock_after_expr [RStmt] ([RInstr], [String]) => ([RInstr], [String])
-compile_rblock_after_expr [] (e_code, locals1) = (e_code, locals1)
-compile_rblock_after_expr rest (e_code, locals1) =
-  r_more = compile_rblock rest locals1
-  merge_code_pair (e_code :: [BPop]) r_more
+      compile_rblock_after_expr []      (e_code, locals1)    =  (e_code, locals1)
+      compile_rblock_after_expr rest    (e_code, locals1) =
+        r_more = compile_rblock rest locals1
+        merge_code_pair (e_code :: [BPop]) r_more
 
-fn :: compile_where_list [RWhereBind] [String] => ([RInstr], [String])
-compile_where_list [] locals = ([], locals)
-compile_where_list ((WhereBind e v _):wbs) locals =
-  e_res = compile_rexpr e locals
-  compile_where_list_step v wbs e_res
+fn :: compile_where_list [RWhereBind]            [String] => ([RInstr], [String])
+      compile_where_list []                      locals   =  ([], locals)
+      compile_where_list ((WhereBind e v _):wbs) locals =
+        e_res = compile_rexpr e locals
+        compile_where_list_step v wbs e_res
 
 fn :: compile_where_list_step String [RWhereBind] ([RInstr], [String]) => ([RInstr], [String])
-compile_where_list_step v wbs (e_code, locals1) =
-  slot_res = ensure_local locals1 v
-  compile_where_store wbs e_code slot_res
+      compile_where_list_step v      wbs          (e_code, locals1) =
+        slot_res = ensure_local locals1 v
+        compile_where_store wbs e_code slot_res
 
 fn :: compile_where_store [RWhereBind] [RInstr] ([String], Int) => ([RInstr], [String])
-compile_where_store wbs e_code (locals2, slot) =
-  more = compile_where_list wbs locals2
-  merge_code_pair (e_code :: [BStoreLocal slot]) more
+      compile_where_store wbs          e_code   (locals2, slot) =
+        more = compile_where_list wbs locals2
+        merge_code_pair (e_code :: [BStoreLocal slot]) more
 
 fn :: compile_where_body RExpr ([RInstr], [String]) => ([RInstr], [String])
-compile_where_body body (w_code, locals1) =
-  b_res = compile_rexpr body locals1
-  merge_code_pair w_code b_res
+      compile_where_body body  (w_code, locals1) =
+        b_res = compile_rexpr body locals1
+        merge_code_pair w_code b_res
 
 -- ── Function & Case Lowering (Bytecode) ─────────────────────
 
-fn :: compile_guards [RGuard] [String] Int => [RInstr]
-compile_guards [] _ _ = []
-compile_guards ((GuardBranch cond body):gs) locals base_ip =
-  c_res = compile_rexpr cond locals
-  b_res = compile_rexpr body locals
-  emit_guard_branch gs locals base_ip c_res b_res
+fn :: compile_guards [RGuard]                     [String] Int     => [RInstr]
+      compile_guards []                           _        _       =  []
+      compile_guards ((GuardBranch cond body):gs) locals   base_ip =
+        c_res = compile_rexpr cond locals
+        b_res = compile_rexpr body locals
+        emit_guard_branch gs locals base_ip c_res b_res
 
-fn :: emit_guard_branch [RGuard] [String] Int ([RInstr], [String]) ([RInstr], [String]) => [RInstr]
-emit_guard_branch gs locals base_ip (c_code, _) (b_code, _) =
-  next_guard_ip = base_ip + (rinstr_len c_code) + 1 + (rinstr_len b_code) + 1
-  this_guard = c_code :: [BJumpIfFalse next_guard_ip] :: b_code :: [BReturn]
-  this_guard :: (compile_guards gs locals next_guard_ip)
+fn :: emit_guard_branch [RGuard] [String] Int     ([RInstr], [String]) ([RInstr], [String]) => [RInstr]
+      emit_guard_branch gs       locals   base_ip (c_code, _)          (b_code, _) =
+        next_guard_ip = base_ip + (rinstr_len c_code) + 1 + (rinstr_len b_code) + 1
+        this_guard = c_code :: [BJumpIfFalse next_guard_ip] :: b_code :: [BReturn]
+        this_guard :: (compile_guards gs locals next_guard_ip)
 
-fn :: compile_single_case RFnCase Int => [RInstr]
-compile_single_case (FnCase pats guards body) base_ip =
-  locals = bind_pat_vars pats 0 []
-  compile_case_inner pats guards body locals base_ip
+fn :: compile_single_case RFnCase                   Int     => [RInstr]
+      compile_single_case (FnCase pats guards body) base_ip =
+        locals = bind_pat_vars pats 0 []
+        compile_case_inner pats guards body locals base_ip
 
-fn :: compile_case_inner [RPattern] [RGuard] RExpr [String] Int => [RInstr]
-compile_case_inner pats [] body locals base_ip =
-  b_res = compile_rexpr body locals
-  finish_case_with_body pats base_ip b_res
-compile_case_inner pats guards _ locals base_ip =
-  p_pre = emit_pat_checks pats 0 0
-  g_code = compile_guards guards locals (base_ip + (rinstr_len p_pre))
-  fail_ip = base_ip + (rinstr_len p_pre) + (rinstr_len g_code)
-  p_checks = emit_pat_checks pats 0 fail_ip
-  p_checks :: g_code
+fn :: compile_case_inner [RPattern] [RGuard] RExpr [String] Int     => [RInstr]
+      compile_case_inner pats       []       body  locals   base_ip =
+        b_res = compile_rexpr body locals
+        finish_case_with_body pats base_ip b_res
+      compile_case_inner pats       guards   _     locals   base_ip =
+        p_pre = emit_pat_checks pats 0 0
+        g_code = compile_guards guards locals (base_ip + (rinstr_len p_pre))
+        fail_ip = base_ip + (rinstr_len p_pre) + (rinstr_len g_code)
+        p_checks = emit_pat_checks pats 0 fail_ip
+        p_checks :: g_code
 
-fn :: finish_case_with_body [RPattern] Int ([RInstr], [String]) => [RInstr]
-finish_case_with_body pats base_ip (b_code, _) =
-  p_pre = emit_pat_checks pats 0 0
-  fail_ip = base_ip + (rinstr_len p_pre) + (rinstr_len b_code) + 1
-  p_checks = emit_pat_checks pats 0 fail_ip
-  p_checks :: b_code :: [BReturn]
+fn :: finish_case_with_body [RPattern] Int     ([RInstr], [String]) => [RInstr]
+      finish_case_with_body pats       base_ip (b_code, _) =
+        p_pre = emit_pat_checks pats 0 0
+        fail_ip = base_ip + (rinstr_len p_pre) + (rinstr_len b_code) + 1
+        p_checks = emit_pat_checks pats 0 fail_ip
+        p_checks :: b_code :: [BReturn]
 
-fn :: compile_cases_seq [RFnCase] Int => [RInstr]
-compile_cases_seq [] _ = []
-compile_cases_seq (c:cs) base_ip =
-  c_code = compile_single_case c base_ip
-  next_ip = base_ip + (rinstr_len c_code)
-  c_code :: (compile_cases_seq cs next_ip)
+fn :: compile_cases_seq [RFnCase] Int     => [RInstr]
+      compile_cases_seq []        _       =  []
+      compile_cases_seq (c:cs)    base_ip =
+        c_code = compile_single_case c base_ip
+        next_ip = base_ip + (rinstr_len c_code)
+        c_code :: (compile_cases_seq cs next_ip)
 
-fn :: compile_rfndef RFnDef => RCompiledFn
-compile_rfndef (FnDef name params _ cases) =
-  arity = list_str_len params
-  code = compile_cases_seq cases 0
-  CompiledFn name arity code
+fn :: compile_rfndef RFnDef                      => RCompiledFn
+      compile_rfndef (FnDef name params _ cases) =
+        arity = list_str_len params
+        code = compile_cases_seq cases 0
+        CompiledFn name arity code
 
 fn :: compile_rfndef_list [RFnDef] => [RCompiledFn]
-compile_rfndef_list [] = []
-compile_rfndef_list (f:fs) = [compile_rfndef f] :: (compile_rfndef_list fs)
+      compile_rfndef_list []       =  []
+      compile_rfndef_list (f:fs)   =  [compile_rfndef f] :: (compile_rfndef_list fs)
 
-fn :: compile_rprogram RProgram => RCompiledProg
-compile_rprogram (Program fns _) =
-  CompiledProg (compile_rfndef_list fns)
+fn :: compile_rprogram RProgram        => RCompiledProg
+      compile_rprogram (Program fns _) =
+        CompiledProg (compile_rfndef_list fns)
 
 -- ── Pre-Codegen Normalization (Variadic Packing & Tuple-Chain Unpacking) ──
 
 type RCgSig = CgSig String Int Bool
 
 fn :: str_ends_with_dots String => Bool
-str_ends_with_dots s =
-  len = str_len s
-  len > 3 AND (str_slice s (len - 3) len) == "..."
+      str_ends_with_dots s =
+        len = str_len s
+        len > 3 AND (str_slice s (len - 3) len) == "..."
 
 fn :: params_has_variadic [String] => Bool
-params_has_variadic [] = False
-params_has_variadic (p:[]) = str_ends_with_dots p
-params_has_variadic (_:ps) = params_has_variadic ps
+      params_has_variadic []       =  False
+      params_has_variadic (p:[])   =  str_ends_with_dots p
+      params_has_variadic (_:ps)   =  params_has_variadic ps
 
-fn :: infer_fndef_arity [String] [RFnCase] => Int
-infer_fndef_arity params ((FnCase ((PatSeqBind _):[]) _ _):_) = list_str_len params
-infer_fndef_arity _ ((FnCase pats _ _):_) = pat_list_len pats
-infer_fndef_arity params [] = list_str_len params
+fn :: infer_fndef_arity [String] [RFnCase]                            => Int
+      infer_fndef_arity params   ((FnCase ((PatSeqBind _):[]) _ _):_) =  list_str_len params
+      infer_fndef_arity _        ((FnCase pats _ _):_)                =  pat_list_len pats
+      infer_fndef_arity params   []                                   =  list_str_len params
 
-fn :: build_cg_sigs [RFnDef] => [RCgSig]
-build_cg_sigs [] = []
-build_cg_sigs ((FnDef name params _ cases):fs) =
-  [CgSig name (infer_fndef_arity params cases) (params_has_variadic params)] :: (build_cg_sigs fs)
+fn :: build_cg_sigs [RFnDef]                         => [RCgSig]
+      build_cg_sigs []                               =  []
+      build_cg_sigs ((FnDef name params _ cases):fs) =
+        [CgSig name (infer_fndef_arity params cases) (params_has_variadic params)] :: (build_cg_sigs fs)
 
-fn :: lookup_cg_sig [RCgSig] String => (Bool, Int, Bool)
-lookup_cg_sig [] _ = (False, 0, False)
-lookup_cg_sig ((CgSig name arity is_var):rest) target
-  | name == target = (True, arity, is_var)
-  | otherwise = lookup_cg_sig rest target
+fn :: lookup_cg_sig [RCgSig]                         String => (Bool, Int, Bool)
+      lookup_cg_sig []                               _      =  (False, 0, False)
+      lookup_cg_sig ((CgSig name arity is_var):rest) target
+        | name == target = (True, arity, is_var)
+        | otherwise = lookup_cg_sig rest target
 
-fn :: prep_expr RExpr [RCgSig] => RExpr
-prep_expr (ENot inner) sigs = ENot (prep_expr inner sigs)
-prep_expr (EOut inner) sigs = EOut (prep_expr inner sigs)
-prep_expr (EBin bop l r) sigs = EBin bop (prep_expr l sigs) (prep_expr r sigs)
-prep_expr (ECall fname args) sigs =
-  p_args = prep_expr_list args sigs
-  prep_call fname p_args (lookup_cg_sig sigs fname)
-prep_expr (EEcho args) sigs = EEcho (prep_expr_list args sigs)
-prep_expr (EStrInterp parts) sigs = EStrInterp (prep_expr_list parts sigs)
-prep_expr (EList elems) sigs = EList (prep_expr_list elems sigs)
-prep_expr (ETuple elems) sigs = ETuple (prep_expr_list elems sigs)
-prep_expr (ETensor elems) sigs = ETensor (prep_expr_list elems sigs)
-prep_expr (EEinsum es subs) sigs = EEinsum (prep_expr_list es sigs) subs
-prep_expr (EHadamard bop l s1 r s2) sigs = EHadamard bop (prep_expr l sigs) s1 (prep_expr r sigs) s2
-prep_expr (EIndex base idxs) sigs = EIndex (prep_expr base sigs) (prep_expr_list idxs sigs)
-prep_expr (EIndexAssign t idxs v) sigs = EIndexAssign t (prep_expr_list idxs sigs) (prep_expr v sigs)
-prep_expr (ESeqSelect b m) sigs = ESeqSelect (prep_expr b sigs) m
-prep_expr (EBlock stmts) sigs = EBlock (prep_stmt_list stmts sigs)
-prep_expr (EWhere body binds) sigs = EWhere (prep_expr body sigs) (prep_where_list binds sigs)
-prep_expr (EParPipe branches) sigs = EParPipe (prep_expr_list branches sigs)
-prep_expr (EWithCtx c v b) sigs = EWithCtx c (prep_expr v sigs) (prep_expr b sigs)
-prep_expr (EWithRegion q b) sigs = EWithRegion q (prep_expr b sigs)
-prep_expr (EAtomicUpdate v e) sigs = EAtomicUpdate v (prep_expr e sigs)
-prep_expr (ELoadContext c e) sigs = ELoadContext c (prep_expr e sigs)
-prep_expr (ELoadShared v e) sigs = ELoadShared v (prep_expr e sigs)
-prep_expr (EVar v) sigs = prep_var v (lookup_cg_sig sigs v)
-prep_expr e _ = e
+fn :: prep_expr RExpr                     [RCgSig] => RExpr
+      prep_expr (ENot inner)              sigs     =  ENot (prep_expr inner sigs)
+      prep_expr (EOut inner)              sigs     =  EOut (prep_expr inner sigs)
+      prep_expr (EBin bop l r)            sigs     =  EBin bop (prep_expr l sigs) (prep_expr r sigs)
+      prep_expr (ECall fname args)        sigs =
+        p_args = prep_expr_list args sigs
+        prep_call fname p_args (lookup_cg_sig sigs fname)
+      prep_expr (EEcho args)              sigs     =  EEcho (prep_expr_list args sigs)
+      prep_expr (EStrInterp parts)        sigs     =  EStrInterp (prep_expr_list parts sigs)
+      prep_expr (EList elems)             sigs     =  EList (prep_expr_list elems sigs)
+      prep_expr (ETuple elems)            sigs     =  ETuple (prep_expr_list elems sigs)
+      prep_expr (ETensor elems)           sigs     =  ETensor (prep_expr_list elems sigs)
+      prep_expr (EEinsum es subs)         sigs     =  EEinsum (prep_expr_list es sigs) subs
+      prep_expr (EHadamard bop l s1 r s2) sigs     =  EHadamard bop (prep_expr l sigs) s1 (prep_expr r sigs) s2
+      prep_expr (EIndex base idxs)        sigs     =  EIndex (prep_expr base sigs) (prep_expr_list idxs sigs)
+      prep_expr (EIndexAssign t idxs v)   sigs     =  EIndexAssign t (prep_expr_list idxs sigs) (prep_expr v sigs)
+      prep_expr (ESeqSelect b m)          sigs     =  ESeqSelect (prep_expr b sigs) m
+      prep_expr (EBlock stmts)            sigs     =  EBlock (prep_stmt_list stmts sigs)
+      prep_expr (EWhere body binds)       sigs     =  EWhere (prep_expr body sigs) (prep_where_list binds sigs)
+      prep_expr (EParPipe branches)       sigs     =  EParPipe (prep_expr_list branches sigs)
+      prep_expr (EWithCtx c v b)          sigs     =  EWithCtx c (prep_expr v sigs) (prep_expr b sigs)
+      prep_expr (EWithRegion q b)         sigs     =  EWithRegion q (prep_expr b sigs)
+      prep_expr (EAtomicUpdate v e)       sigs     =  EAtomicUpdate v (prep_expr e sigs)
+      prep_expr (ELoadContext c e)        sigs     =  ELoadContext c (prep_expr e sigs)
+      prep_expr (ELoadShared v e)         sigs     =  ELoadShared v (prep_expr e sigs)
+      prep_expr (EVar v)                  sigs     =  prep_var v (lookup_cg_sig sigs v)
+      prep_expr e                         _        =  e
 
 fn :: prep_var String (Bool, Int, Bool) => RExpr
-prep_var v (True, 0, False) = ECall v []
-prep_var v _ = EVar v
+      prep_var v      (True, 0, False)  =  ECall v []
+      prep_var v      _                 =  EVar v
 
-fn :: prep_call String [RExpr] (Bool, Int, Bool) => RExpr
-prep_call fname args (True, arity, True)
-  | arity <= 1 = ECall fname [EList args]
-  | otherwise = ECall fname ((take_exprs args (arity - 1)) :: [EList (drop_exprs args (arity - 1))])
-prep_call fname (single_arg:[]) (True, 2, False) =
-  ECall "__unpack2__" [EVar fname, single_arg]
-prep_call fname args _ = ECall fname args
+fn :: prep_call String [RExpr]         (Bool, Int, Bool)   => RExpr
+      prep_call fname  args            (True, arity, True)
+        | arity <= 1 = ECall fname [EList args]
+        | otherwise = ECall fname ((take_exprs args (arity - 1)) :: [EList (drop_exprs args (arity - 1))])
+      prep_call fname  (single_arg:[]) (True, 2, False) =
+        ECall "__unpack2__" [EVar fname, single_arg]
+      prep_call fname  args            _                   =  ECall fname args
 
 fn :: prep_expr_list [RExpr] [RCgSig] => [RExpr]
-prep_expr_list [] _ = []
-prep_expr_list (e:es) sigs = [prep_expr e sigs] :: (prep_expr_list es sigs)
+      prep_expr_list []      _        =  []
+      prep_expr_list (e:es)  sigs     =  [prep_expr e sigs] :: (prep_expr_list es sigs)
 
-fn :: prep_stmt_list [RStmt] [RCgSig] => [RStmt]
-prep_stmt_list [] _ = []
-prep_stmt_list ((StmtLet v e):ss) sigs = [StmtLet v (prep_expr e sigs)] :: (prep_stmt_list ss sigs)
-prep_stmt_list ((StmtExpr e):ss) sigs = [StmtExpr (prep_expr e sigs)] :: (prep_stmt_list ss sigs)
-prep_stmt_list ((StmtAtomic v e):ss) sigs = [StmtAtomic v (prep_expr e sigs)] :: (prep_stmt_list ss sigs)
-prep_stmt_list ((StmtIndexAssign t idxs e):ss) sigs = [StmtIndexAssign t (prep_expr_list idxs sigs) (prep_expr e sigs)] :: (prep_stmt_list ss sigs)
+fn :: prep_stmt_list [RStmt]                         [RCgSig] => [RStmt]
+      prep_stmt_list []                              _        =  []
+      prep_stmt_list ((StmtLet v e):ss)              sigs     =  [StmtLet v (prep_expr e sigs)] :: (prep_stmt_list ss sigs)
+      prep_stmt_list ((StmtExpr e):ss)               sigs     =  [StmtExpr (prep_expr e sigs)] :: (prep_stmt_list ss sigs)
+      prep_stmt_list ((StmtAtomic v e):ss)           sigs     =  [StmtAtomic v (prep_expr e sigs)] :: (prep_stmt_list ss sigs)
+      prep_stmt_list ((StmtIndexAssign t idxs e):ss) sigs     =  [StmtIndexAssign t (prep_expr_list idxs sigs) (prep_expr e sigs)] :: (prep_stmt_list ss sigs)
 
-fn :: prep_where_list [RWhereBind] [RCgSig] => [RWhereBind]
-prep_where_list [] _ = []
-prep_where_list ((WhereBind e v idxs):wbs) sigs = [WhereBind (prep_expr e sigs) v idxs] :: (prep_where_list wbs sigs)
+fn :: prep_where_list [RWhereBind]               [RCgSig] => [RWhereBind]
+      prep_where_list []                         _        =  []
+      prep_where_list ((WhereBind e v idxs):wbs) sigs     =  [WhereBind (prep_expr e sigs) v idxs] :: (prep_where_list wbs sigs)
 
-fn :: prep_guard_list [RGuard] [RCgSig] => [RGuard]
-prep_guard_list [] _ = []
-prep_guard_list ((GuardBranch c b):gs) sigs = [GuardBranch (prep_expr c sigs) (prep_expr b sigs)] :: (prep_guard_list gs sigs)
+fn :: prep_guard_list [RGuard]               [RCgSig] => [RGuard]
+      prep_guard_list []                     _        =  []
+      prep_guard_list ((GuardBranch c b):gs) sigs     =  [GuardBranch (prep_expr c sigs) (prep_expr b sigs)] :: (prep_guard_list gs sigs)
 
-fn :: prep_case_list [RFnCase] [RCgSig] => [RFnCase]
-prep_case_list [] _ = []
-prep_case_list ((FnCase pats guards body):cs) sigs =
-  [FnCase pats (prep_guard_list guards sigs) (prep_expr body sigs)] :: (prep_case_list cs sigs)
+fn :: prep_case_list [RFnCase]                      [RCgSig] => [RFnCase]
+      prep_case_list []                             _        =  []
+      prep_case_list ((FnCase pats guards body):cs) sigs =
+        [FnCase pats (prep_guard_list guards sigs) (prep_expr body sigs)] :: (prep_case_list cs sigs)
 
-fn :: prep_fndef_list [RFnDef] [RCgSig] => [RFnDef]
-prep_fndef_list [] _ = []
-prep_fndef_list ((FnDef name params ret_ty cases):fs) sigs =
-  [FnDef name params ret_ty (prep_case_list cases sigs)] :: (prep_fndef_list fs sigs)
+fn :: prep_fndef_list [RFnDef]                              [RCgSig] => [RFnDef]
+      prep_fndef_list []                                    _        =  []
+      prep_fndef_list ((FnDef name params ret_ty cases):fs) sigs =
+        [FnDef name params ret_ty (prep_case_list cases sigs)] :: (prep_fndef_list fs sigs)
 
 -- ── Native Code Generator (RProgram => Standalone Native Code) ──
 
 fn :: mangle_fn_name String => String
-mangle_fn_name "+" = "rg_fn___op_add"
-mangle_fn_name "-" = "rg_fn___op_sub"
-mangle_fn_name "*" = "rg_fn___op_mul"
-mangle_fn_name "/" = "rg_fn___op_div"
-mangle_fn_name "%" = "rg_fn___op_mod"
-mangle_fn_name name = "rg_fn_" + name
+      mangle_fn_name "+"    =  "rg_fn___op_add"
+      mangle_fn_name "-"    =  "rg_fn___op_sub"
+      mangle_fn_name "*"    =  "rg_fn___op_mul"
+      mangle_fn_name "/"    =  "rg_fn___op_div"
+      mangle_fn_name "%"    =  "rg_fn___op_mod"
+      mangle_fn_name name   =  "rg_fn_" + name
 
 fn :: escape_char_rust Int => String
-escape_char_rust c
-  | c == 92 = (char_from_code 92) + (char_from_code 92)
-  | c == 34 = (char_from_code 92) + (char_from_code 34)
-  | c == 10 = (char_from_code 92) + "n"
-  | c == 13 = (char_from_code 92) + "r"
-  | c == 9 = (char_from_code 92) + "t"
-  | otherwise = char_from_code c
+      escape_char_rust c
+        | c == 92 = (char_from_code 92) + (char_from_code 92)
+        | c == 34 = (char_from_code 92) + (char_from_code 34)
+        | c == 10 = (char_from_code 92) + "n"
+        | c == 13 = (char_from_code 92) + "r"
+        | c == 9 = (char_from_code 92) + "t"
+        | otherwise = char_from_code c
 
 fn :: needs_escape String => Bool
-needs_escape s =
-  (str_contains s (char_from_code 92)) OR (str_contains s (char_from_code 34)) OR (str_contains s (char_from_code 10)) OR (str_contains s (char_from_code 13)) OR (str_contains s (char_from_code 9))
+      needs_escape s =
+        (str_contains s (char_from_code 92)) OR (str_contains s (char_from_code 34)) OR (str_contains s (char_from_code 10)) OR (str_contains s (char_from_code 13)) OR (str_contains s (char_from_code 9))
 
-fn :: escape_rust_range String Int Int => String
-escape_rust_range s start end
-  | end <= start = ""
-  | NOT (needs_escape (str_slice s start end)) = str_slice s start end
-  | (end - start) == 1 = escape_char_rust (str_char_at s start)
-  | otherwise = (escape_rust_range s start ((start + end) / 2)) + (escape_rust_range s ((start + end) / 2) end)
+fn :: escape_rust_range String Int   Int => String
+      escape_rust_range s      start end
+        | end <= start = ""
+        | NOT (needs_escape (str_slice s start end)) = str_slice s start end
+        | (end - start) == 1 = escape_char_rust (str_char_at s start)
+        | otherwise = (escape_rust_range s start ((start + end) / 2)) + (escape_rust_range s ((start + end) / 2) end)
 
 fn :: escape_rust_str String => String
-escape_rust_str s = escape_rust_range s 0 (str_len s)
+      escape_rust_str s      =  escape_rust_range s 0 (str_len s)
 
-fn :: find_char_from String Int Int Int => Int
-find_char_from s pos len target_ch
-  | pos >= len = len
-  | (str_char_at s pos) == target_ch = pos
-  | otherwise = find_char_from s (pos + 1) len target_ch
+fn :: find_char_from String Int Int Int       => Int
+      find_char_from s      pos len target_ch
+        | pos >= len = len
+        | (str_char_at s pos) == target_ch = pos
+        | otherwise = find_char_from s (pos + 1) len target_ch
 
 fn :: emit_interp_loop String Int Int [String] => String
-emit_interp_loop s pos len locals
-  | pos >= len = 'rg_str("")'
-  | otherwise = emit_interp_at s pos len locals (find_char_from s pos len 123)
+      emit_interp_loop s      pos len locals
+        | pos >= len = 'rg_str("")'
+        | otherwise = emit_interp_at s pos len locals (find_char_from s pos len 123)
 
-fn :: emit_interp_at String Int Int [String] Int => String
-emit_interp_at s pos len locals open_idx
-  | open_idx >= len = 'rg_str("' + (escape_rust_str (str_slice s pos len)) + '")'
-  | otherwise = emit_interp_close s pos len locals open_idx (find_char_from s (open_idx + 1) len 125)
+fn :: emit_interp_at String Int Int [String] Int      => String
+      emit_interp_at s      pos len locals   open_idx
+        | open_idx >= len = 'rg_str("' + (escape_rust_str (str_slice s pos len)) + '")'
+        | otherwise = emit_interp_close s pos len locals open_idx (find_char_from s (open_idx + 1) len 125)
 
-fn :: emit_interp_close String Int Int [String] Int Int => String
-emit_interp_close s pos len locals open_idx close_idx
-  | close_idx >= len = 'rg_str("' + (escape_rust_str (str_slice s pos len)) + '")'
-  | otherwise = emit_interp_check s pos len locals open_idx close_idx (str_slice s (open_idx + 1) close_idx)
+fn :: emit_interp_close String Int Int [String] Int      Int       => String
+      emit_interp_close s      pos len locals   open_idx close_idx
+        | close_idx >= len = 'rg_str("' + (escape_rust_str (str_slice s pos len)) + '")'
+        | otherwise = emit_interp_check s pos len locals open_idx close_idx (str_slice s (open_idx + 1) close_idx)
 
-fn :: emit_interp_check String Int Int [String] Int Int String => String
-emit_interp_check s pos len locals open_idx close_idx cand
-  | (lookup_local locals cand) >= 0 = 'rg_fn_str_concat(rg_str("' + (escape_rust_str (str_slice s pos open_idx)) + '"), rg_fn_str_concat(rg_to_str(&lv_' + cand + '), ' + (emit_interp_loop s (close_idx + 1) len locals) + '))'
-  | otherwise = 'rg_fn_str_concat(rg_str("' + (escape_rust_str (str_slice s pos (open_idx + 1))) + '"), ' + (emit_interp_loop s (open_idx + 1) len locals) + ')'
+fn :: emit_interp_check String Int Int [String] Int      Int       String => String
+      emit_interp_check s      pos len locals   open_idx close_idx cand
+        | (lookup_local locals cand) >= 0 = 'rg_fn_str_concat(rg_str("' + (escape_rust_str (str_slice s pos open_idx)) + '"), rg_fn_str_concat(rg_to_str(&lv_' + cand + '), ' + (emit_interp_loop s (close_idx + 1) len locals) + '))'
+        | otherwise = 'rg_fn_str_concat(rg_str("' + (escape_rust_str (str_slice s pos (open_idx + 1))) + '"), ' + (emit_interp_loop s (open_idx + 1) len locals) + ')'
 
 fn :: emit_str_lit String [String] => String
-emit_str_lit s [] = 'rg_str("' + (escape_rust_str s) + '")'
-emit_str_lit s locals
-  | str_contains s (char_from_code 123) = emit_interp_loop s 0 (str_len s) locals
-  | otherwise = 'rg_str("' + (escape_rust_str s) + '")'
+      emit_str_lit s      []       =  'rg_str("' + (escape_rust_str s) + '")'
+      emit_str_lit s      locals
+        | str_contains s (char_from_code 123) = emit_interp_loop s 0 (str_len s) locals
+        | otherwise = 'rg_str("' + (escape_rust_str s) + '")'
 
 -- ── Pattern Lowering to Native Rust Conditions & Bindings ───
 
-fn :: emit_pat_cond RPattern String => String
-emit_pat_cond PatWild _ = 'true'
-emit_pat_cond (PatVar _) _ = 'true'
-emit_pat_cond (PatSeqBind _) _ = 'true'
-emit_pat_cond (PatInt n) scrut = 'rg_match_int(' + scrut + ', ' + (int_to_str n) + ')'
-emit_pat_cond (PatReal r) scrut = 'rg_match_real(' + scrut + ', ' + r + ')'
-emit_pat_cond (PatStr s) scrut = 'rg_match_str(' + scrut + ', "' + (escape_rust_str s) + '")'
-emit_pat_cond (PatBool True) scrut = 'rg_match_bool(' + scrut + ', true)'
-emit_pat_cond (PatBool False) scrut = 'rg_match_bool(' + scrut + ', false)'
-emit_pat_cond PatEmpty scrut = 'rg_is_empty(' + scrut + ')'
-emit_pat_cond (PatCons h t) scrut =
-  '(rg_is_non_empty(' + scrut + ') && ' + (emit_pat_cond h ('(&rg_list_head(' + scrut + '))')) + ' && ' + (emit_pat_cond t ('(&rg_list_tail(' + scrut + '))')) + ')'
-emit_pat_cond (PatTuple ps) scrut =
-  '(rg_is_tuple(' + scrut + ', ' + (int_to_str (pat_list_len ps)) + ') && ' + (emit_tuple_pat_conds ps scrut 0) + ')'
-emit_pat_cond (PatCtor ctor args) scrut =
-  '(rg_is_adt(' + scrut + ', "' + ctor + '", ' + (int_to_str (pat_list_len args)) + ') && ' + (emit_adt_pat_conds args scrut 0) + ')'
+fn :: emit_pat_cond RPattern            String => String
+      emit_pat_cond PatWild             _      =  'true'
+      emit_pat_cond (PatVar _)          _      =  'true'
+      emit_pat_cond (PatSeqBind _)      _      =  'true'
+      emit_pat_cond (PatInt n)          scrut  =  'rg_match_int(' + scrut + ', ' + (int_to_str n) + ')'
+      emit_pat_cond (PatReal r)         scrut  =  'rg_match_real(' + scrut + ', ' + r + ')'
+      emit_pat_cond (PatStr s)          scrut  =  'rg_match_str(' + scrut + ', "' + (escape_rust_str s) + '")'
+      emit_pat_cond (PatBool True)      scrut  =  'rg_match_bool(' + scrut + ', true)'
+      emit_pat_cond (PatBool False)     scrut  =  'rg_match_bool(' + scrut + ', false)'
+      emit_pat_cond PatEmpty            scrut  =  'rg_is_empty(' + scrut + ')'
+      emit_pat_cond (PatCons h t)       scrut =
+        '(rg_is_non_empty(' + scrut + ') && ' + (emit_pat_cond h ('(&rg_list_head(' + scrut + '))')) + ' && ' + (emit_pat_cond t ('(&rg_list_tail(' + scrut + '))')) + ')'
+      emit_pat_cond (PatTuple ps)       scrut =
+        '(rg_is_tuple(' + scrut + ', ' + (int_to_str (pat_list_len ps)) + ') && ' + (emit_tuple_pat_conds ps scrut 0) + ')'
+      emit_pat_cond (PatCtor ctor args) scrut =
+        '(rg_is_adt(' + scrut + ', "' + ctor + '", ' + (int_to_str (pat_list_len args)) + ') && ' + (emit_adt_pat_conds args scrut 0) + ')'
 
 fn :: emit_tuple_pat_conds [RPattern] String Int => String
-emit_tuple_pat_conds [] _ _ = 'true'
-emit_tuple_pat_conds (p:ps) scrut idx =
-  sub_scrut = '(&rg_tuple_get(' + scrut + ', ' + (int_to_str idx) + '))'
-  (emit_pat_cond p sub_scrut) + ' && ' + (emit_tuple_pat_conds ps scrut (idx + 1))
+      emit_tuple_pat_conds []         _      _   =  'true'
+      emit_tuple_pat_conds (p:ps)     scrut  idx =
+        sub_scrut = '(&rg_tuple_get(' + scrut + ', ' + (int_to_str idx) + '))'
+        (emit_pat_cond p sub_scrut) + ' && ' + (emit_tuple_pat_conds ps scrut (idx + 1))
 
 fn :: emit_adt_pat_conds [RPattern] String Int => String
-emit_adt_pat_conds [] _ _ = 'true'
-emit_adt_pat_conds (p:ps) scrut idx =
-  sub_scrut = '(&rg_adt_field(' + scrut + ', ' + (int_to_str idx) + '))'
-  (emit_pat_cond p sub_scrut) + ' && ' + (emit_adt_pat_conds ps scrut (idx + 1))
+      emit_adt_pat_conds []         _      _   =  'true'
+      emit_adt_pat_conds (p:ps)     scrut  idx =
+        sub_scrut = '(&rg_adt_field(' + scrut + ', ' + (int_to_str idx) + '))'
+        (emit_pat_cond p sub_scrut) + ' && ' + (emit_adt_pat_conds ps scrut (idx + 1))
 
 fn :: emit_pat_list_cond [RPattern] Int => String
-emit_pat_list_cond [] _ = 'true'
-emit_pat_list_cond (p:[]) idx = emit_pat_cond p ('&_arg_' + (int_to_str idx))
-emit_pat_list_cond (p:ps) idx =
-  (emit_pat_cond p ('&_arg_' + (int_to_str idx))) + ' && ' + (emit_pat_list_cond ps (idx + 1))
+      emit_pat_list_cond []         _   =  'true'
+      emit_pat_list_cond (p:[])     idx =  emit_pat_cond p ('&_arg_' + (int_to_str idx))
+      emit_pat_list_cond (p:ps)     idx =
+        (emit_pat_cond p ('&_arg_' + (int_to_str idx))) + ' && ' + (emit_pat_list_cond ps (idx + 1))
 
-fn :: emit_seq_arg_clones Int Int => String
-emit_seq_arg_clones idx arity
-  | idx >= arity = ""
-  | (idx + 1) == arity = '_arg_' + (int_to_str idx) + '.clone()'
-  | otherwise = '_arg_' + (int_to_str idx) + '.clone(), ' + (emit_seq_arg_clones (idx + 1) arity)
+fn :: emit_seq_arg_clones Int Int   => String
+      emit_seq_arg_clones idx arity
+        | idx >= arity = ""
+        | (idx + 1) == arity = '_arg_' + (int_to_str idx) + '.clone()'
+        | otherwise = '_arg_' + (int_to_str idx) + '.clone(), ' + (emit_seq_arg_clones (idx + 1) arity)
 
-fn :: emit_pat_binds RPattern String => String
-emit_pat_binds (PatVar v) scrut = "    let lv_" + v + ": RVal = (" + scrut + ").clone();\n"
-emit_pat_binds (PatSeqBind v) scrut = "    let lv_" + v + ": RVal = (" + scrut + ").clone();\n"
-emit_pat_binds (PatCons h t) scrut =
-  (emit_pat_binds h ('(&rg_list_head(' + scrut + '))')) + (emit_pat_binds t ('(&rg_list_tail(' + scrut + '))'))
-emit_pat_binds (PatTuple ps) scrut = emit_tuple_pat_binds ps scrut 0
-emit_pat_binds (PatCtor _ args) scrut = emit_adt_pat_binds args scrut 0
-emit_pat_binds _ _ = ""
+fn :: emit_pat_binds RPattern         String => String
+      emit_pat_binds (PatVar v)       scrut  =  "    let lv_" + v + ": RVal = (" + scrut + ").clone();\n"
+      emit_pat_binds (PatSeqBind v)   scrut  =  "    let lv_" + v + ": RVal = (" + scrut + ").clone();\n"
+      emit_pat_binds (PatCons h t)    scrut =
+        (emit_pat_binds h ('(&rg_list_head(' + scrut + '))')) + (emit_pat_binds t ('(&rg_list_tail(' + scrut + '))'))
+      emit_pat_binds (PatTuple ps)    scrut  =  emit_tuple_pat_binds ps scrut 0
+      emit_pat_binds (PatCtor _ args) scrut  =  emit_adt_pat_binds args scrut 0
+      emit_pat_binds _                _      =  ""
 
 fn :: emit_tuple_pat_binds [RPattern] String Int => String
-emit_tuple_pat_binds [] _ _ = ""
-emit_tuple_pat_binds (p:ps) scrut idx =
-  sub_scrut = '(&rg_tuple_get(' + scrut + ', ' + (int_to_str idx) + '))'
-  (emit_pat_binds p sub_scrut) + (emit_tuple_pat_binds ps scrut (idx + 1))
+      emit_tuple_pat_binds []         _      _   =  ""
+      emit_tuple_pat_binds (p:ps)     scrut  idx =
+        sub_scrut = '(&rg_tuple_get(' + scrut + ', ' + (int_to_str idx) + '))'
+        (emit_pat_binds p sub_scrut) + (emit_tuple_pat_binds ps scrut (idx + 1))
 
 fn :: emit_adt_pat_binds [RPattern] String Int => String
-emit_adt_pat_binds [] _ _ = ""
-emit_adt_pat_binds (p:ps) scrut idx =
-  sub_scrut = '(&rg_adt_field(' + scrut + ', ' + (int_to_str idx) + '))'
-  (emit_pat_binds p sub_scrut) + (emit_adt_pat_binds ps scrut (idx + 1))
+      emit_adt_pat_binds []         _      _   =  ""
+      emit_adt_pat_binds (p:ps)     scrut  idx =
+        sub_scrut = '(&rg_adt_field(' + scrut + ', ' + (int_to_str idx) + '))'
+        (emit_pat_binds p sub_scrut) + (emit_adt_pat_binds ps scrut (idx + 1))
 
-fn :: emit_pat_list_binds [RPattern] Int Int => String
-emit_pat_list_binds [] _ _ = ""
-emit_pat_list_binds ((PatSeqBind v):[]) _ arity =
-  "    let lv_" + v + ": RVal = rg_pack_seq(vec![" + (emit_seq_arg_clones 0 arity) + "]);\n"
-emit_pat_list_binds (p:ps) idx arity =
-  (emit_pat_binds p ('&_arg_' + (int_to_str idx))) + (emit_pat_list_binds ps (idx + 1) arity)
+fn :: emit_pat_list_binds [RPattern]          Int Int   => String
+      emit_pat_list_binds []                  _   _     =  ""
+      emit_pat_list_binds ((PatSeqBind v):[]) _   arity =
+        "    let lv_" + v + ": RVal = rg_pack_seq(vec![" + (emit_seq_arg_clones 0 arity) + "]);\n"
+      emit_pat_list_binds (p:ps)              idx arity =
+        (emit_pat_binds p ('&_arg_' + (int_to_str idx))) + (emit_pat_list_binds ps (idx + 1) arity)
 
-fn :: collect_pat_vars RPattern [String] => [String]
-collect_pat_vars (PatVar v) acc = acc :: [v]
-collect_pat_vars (PatSeqBind v) acc = acc :: [v]
-collect_pat_vars (PatCons h t) acc = collect_pat_vars t (collect_pat_vars h acc)
-collect_pat_vars (PatTuple ps) acc = collect_pat_list_vars ps acc
-collect_pat_vars (PatCtor _ args) acc = collect_pat_list_vars args acc
-collect_pat_vars _ acc = acc
+fn :: collect_pat_vars RPattern         [String] => [String]
+      collect_pat_vars (PatVar v)       acc      =  acc :: [v]
+      collect_pat_vars (PatSeqBind v)   acc      =  acc :: [v]
+      collect_pat_vars (PatCons h t)    acc      =  collect_pat_vars t (collect_pat_vars h acc)
+      collect_pat_vars (PatTuple ps)    acc      =  collect_pat_list_vars ps acc
+      collect_pat_vars (PatCtor _ args) acc      =  collect_pat_list_vars args acc
+      collect_pat_vars _                acc      =  acc
 
 fn :: collect_pat_list_vars [RPattern] [String] => [String]
-collect_pat_list_vars [] acc = acc
-collect_pat_list_vars (p:ps) acc = collect_pat_list_vars ps (collect_pat_vars p acc)
+      collect_pat_list_vars []         acc      =  acc
+      collect_pat_list_vars (p:ps)     acc      =  collect_pat_list_vars ps (collect_pat_vars p acc)
 
 -- ── Expression & Statement Lowering to Native Rust ──────────
 
 fn :: binop_op_tag RBinOp => String
-binop_op_tag OpAdd = "+"
-binop_op_tag OpSub = "-"
-binop_op_tag OpMul = "*"
-binop_op_tag OpDiv = "/"
-binop_op_tag OpMod = "%"
-binop_op_tag _ = "+"
+      binop_op_tag OpAdd  =  "+"
+      binop_op_tag OpSub  =  "-"
+      binop_op_tag OpMul  =  "*"
+      binop_op_tag OpDiv  =  "/"
+      binop_op_tag OpMod  =  "%"
+      binop_op_tag _      =  "+"
 
-fn :: emit_binop_rust RBinOp String String => String
-emit_binop_rust OpAdd lc rc = 'rg_add(' + lc + ', ' + rc + ')'
-emit_binop_rust OpSub lc rc = 'rg_sub(' + lc + ', ' + rc + ')'
-emit_binop_rust OpMul lc rc = 'rg_mul(' + lc + ', ' + rc + ')'
-emit_binop_rust OpDiv lc rc = 'rg_div(' + lc + ', ' + rc + ')'
-emit_binop_rust OpMod lc rc = 'rg_mod(' + lc + ', ' + rc + ')'
-emit_binop_rust OpEq lc rc = 'RVal::Bool((' + lc + ') == (' + rc + '))'
-emit_binop_rust OpNeq lc rc = 'RVal::Bool((' + lc + ') != (' + rc + '))'
-emit_binop_rust OpGt lc rc = 'rg_cmp_gt(&(' + lc + '), &(' + rc + '))'
-emit_binop_rust OpLt lc rc = 'rg_cmp_lt(&(' + lc + '), &(' + rc + '))'
-emit_binop_rust OpGtEq lc rc = 'rg_cmp_gte(&(' + lc + '), &(' + rc + '))'
-emit_binop_rust OpLtEq lc rc = 'rg_cmp_lte(&(' + lc + '), &(' + rc + '))'
-emit_binop_rust OpAnd lc rc = 'RVal::Bool(rg_as_bool(&(' + lc + ')) && rg_as_bool(&(' + rc + ')))'
-emit_binop_rust OpOr lc rc = 'RVal::Bool(rg_as_bool(&(' + lc + ')) || rg_as_bool(&(' + rc + ')))'
-emit_binop_rust OpXor lc rc = 'RVal::Bool(rg_as_bool(&(' + lc + ')) ^ rg_as_bool(&(' + rc + ')))'
-emit_binop_rust OpConcat lc rc = 'rg_list_concat(' + lc + ', ' + rc + ')'
-emit_binop_rust OpFlatJoin lc rc = 'rg_seq_flat_join(' + lc + ', ' + rc + ')'
-emit_binop_rust OpMatMul lc rc = 'rg_einsum(&[' + lc + ', ' + rc + '], &["ij", "jk"])'
+fn :: emit_binop_rust RBinOp     String String => String
+      emit_binop_rust OpAdd      lc     rc     =  'rg_add(' + lc + ', ' + rc + ')'
+      emit_binop_rust OpSub      lc     rc     =  'rg_sub(' + lc + ', ' + rc + ')'
+      emit_binop_rust OpMul      lc     rc     =  'rg_mul(' + lc + ', ' + rc + ')'
+      emit_binop_rust OpDiv      lc     rc     =  'rg_div(' + lc + ', ' + rc + ')'
+      emit_binop_rust OpMod      lc     rc     =  'rg_mod(' + lc + ', ' + rc + ')'
+      emit_binop_rust OpEq       lc     rc     =  'RVal::Bool((' + lc + ') == (' + rc + '))'
+      emit_binop_rust OpNeq      lc     rc     =  'RVal::Bool((' + lc + ') != (' + rc + '))'
+      emit_binop_rust OpGt       lc     rc     =  'rg_cmp_gt(&(' + lc + '), &(' + rc + '))'
+      emit_binop_rust OpLt       lc     rc     =  'rg_cmp_lt(&(' + lc + '), &(' + rc + '))'
+      emit_binop_rust OpGtEq     lc     rc     =  'rg_cmp_gte(&(' + lc + '), &(' + rc + '))'
+      emit_binop_rust OpLtEq     lc     rc     =  'rg_cmp_lte(&(' + lc + '), &(' + rc + '))'
+      emit_binop_rust OpAnd      lc     rc     =  'RVal::Bool(rg_as_bool(&(' + lc + ')) && rg_as_bool(&(' + rc + ')))'
+      emit_binop_rust OpOr       lc     rc     =  'RVal::Bool(rg_as_bool(&(' + lc + ')) || rg_as_bool(&(' + rc + ')))'
+      emit_binop_rust OpXor      lc     rc     =  'RVal::Bool(rg_as_bool(&(' + lc + ')) ^ rg_as_bool(&(' + rc + ')))'
+      emit_binop_rust OpConcat   lc     rc     =  'rg_list_concat(' + lc + ', ' + rc + ')'
+      emit_binop_rust OpFlatJoin lc     rc     =  'rg_seq_flat_join(' + lc + ', ' + rc + ')'
+      emit_binop_rust OpMatMul   lc     rc     =  'rg_einsum(&[' + lc + ', ' + rc + '], &["ij", "jk"])'
 
 fn :: emit_str_csv [String] => String
-emit_str_csv [] = ""
-emit_str_csv (s:[]) = '"' + (escape_rust_str s) + '"'
-emit_str_csv (s:ss) = '"' + (escape_rust_str s) + '", ' + (emit_str_csv ss)
+      emit_str_csv []       =  ""
+      emit_str_csv (s:[])   =  '"' + (escape_rust_str s) + '"'
+      emit_str_csv (s:ss)   =  '"' + (escape_rust_str s) + '", ' + (emit_str_csv ss)
 
-fn :: emit_int_rval_csv [Int] => String
-emit_int_rval_csv [] = ""
-emit_int_rval_csv (n:[]) = 'RVal::Int(' + (int_to_str n) + ')'
-emit_int_rval_csv (n:ns) = 'RVal::Int(' + (int_to_str n) + '), ' + (emit_int_rval_csv ns)
+fn :: emit_int_rval_csv [Int]  => String
+      emit_int_rval_csv []     =  ""
+      emit_int_rval_csv (n:[]) =  'RVal::Int(' + (int_to_str n) + ')'
+      emit_int_rval_csv (n:ns) =  'RVal::Int(' + (int_to_str n) + '), ' + (emit_int_rval_csv ns)
 
 fn :: format_real_lit String => String
-format_real_lit r
-  | str_contains r "." = r + "f64"
-  | otherwise = r + ".0f64"
+      format_real_lit r
+        | str_contains r "." = r + "f64"
+        | otherwise = r + ".0f64"
 
-fn :: emit_native_expr RExpr [String] => String
-emit_native_expr (EInt n) _ = 'RVal::Int(' + (int_to_str n) + ')'
-emit_native_expr (EReal r) _ = 'RVal::Real(' + (format_real_lit r) + ')'
-emit_native_expr (EStr s) locals = emit_str_lit s locals
-emit_native_expr (EStrInterp parts) locals = 'rg_str_interp(&[' + (emit_native_expr_csv parts locals) + '])'
-emit_native_expr (EBool True) _ = 'RVal::Bool(true)'
-emit_native_expr (EBool False) _ = 'RVal::Bool(false)'
-emit_native_expr EUnit _ = 'RVal::Unit'
-emit_native_expr (EVar name) locals = emit_native_var name locals
-emit_native_expr (ENot inner) locals = 'RVal::Bool(!rg_as_bool(&(' + (emit_native_expr inner locals) + ')))'
-emit_native_expr (EOut inner) locals = 'rg_out(' + (emit_native_expr inner locals) + ')'
-emit_native_expr (EBin bop l r) locals =
-  emit_binop_rust bop (emit_native_expr l locals) (emit_native_expr r locals)
-emit_native_expr (ECall "__unpack2__" ((EVar fn_target):single_arg:[])) locals =
-  '{ let _u = ' + (emit_native_expr single_arg locals) + '; ' + (mangle_fn_name fn_target) + '(rg_tuple_get(&_u, 0), rg_tuple_get(&_u, 1)) }'
-emit_native_expr (ECall fname []) locals
-  | (lookup_local locals fname) >= 0 = 'lv_' + fname + '.clone()'
-  | otherwise = (mangle_fn_name fname) + '()'
-emit_native_expr (ECall fname args) locals
-  | is_upper_ident fname = 'rg_adt("' + fname + '", vec![' + (emit_native_expr_csv args locals) + '])'
-  | otherwise = (mangle_fn_name fname) + '(' + (emit_native_expr_csv args locals) + ')'
-emit_native_expr (EEcho args) locals = 'rg_echo(&[' + (emit_native_expr_csv args locals) + '])'
-emit_native_expr (EList elems) locals = 'rg_list(vec![' + (emit_native_expr_csv elems locals) + '])'
-emit_native_expr (ETuple elems) locals = 'rg_tuple(vec![' + (emit_native_expr_csv elems locals) + '])'
-emit_native_expr (ETensor elems) locals = 'rg_tensor(vec![' + (emit_native_expr_csv elems locals) + '])'
-emit_native_expr (EEinsum es subs) locals =
-  'rg_einsum(&[' + (emit_native_expr_csv es locals) + '], &[' + (emit_str_csv subs) + '])'
-emit_native_expr (EHadamard bop l s1 r s2) locals =
-  'rg_hadamard("' + (binop_op_tag bop) + '", &(' + (emit_native_expr l locals) + '), "' + s1 + '", &(' + (emit_native_expr r locals) + '), "' + s2 + '")'
-emit_native_expr (EIndex base idxs) locals =
-  'rg_index(&(' + (emit_native_expr base locals) + '), &[' + (emit_native_expr_csv idxs locals) + '])'
-emit_native_expr (EIndexAssign target idxs val_e) locals =
-  'rg_index_set(lv_' + target + '.clone(), &[' + (emit_native_expr_csv idxs locals) + '], ' + (emit_native_expr val_e locals) + ')'
-emit_native_expr (ESeqSelect base mask) locals =
-  'rg_seq_select(&(' + (emit_native_expr base locals) + '), "' + (escape_rust_str mask) + '")'
-emit_native_expr (EBlock stmts) locals = '{' + "\n" + (emit_native_stmts stmts locals) + "\n" + '}'
-emit_native_expr (EWhere body binds) locals = '{' + "\n" + (emit_native_where binds body locals) + "\n" + '}'
-emit_native_expr (EParPipe branches) locals = 'rg_tuple(vec![' + (emit_native_expr_csv branches locals) + '])'
-emit_native_expr (EWithCtx ctx_name val_e body) locals =
-  'rg_with_ctx("' + ctx_name + '", ' + (emit_native_expr val_e locals) + ', || ' + (emit_native_expr body locals) + ')'
-emit_native_expr (EWithRegion quota body) locals =
-  'rg_with_region_limit(' + (int_to_str quota) + 'usize, || ' + (emit_native_expr body locals) + ')'
-emit_native_expr (EAtomicUpdate var_name val_e) locals =
-  'rg_store_shared("' + var_name + '", ' + (emit_native_expr val_e locals) + ')'
-emit_native_expr (ELoadContext ctx_name def_e) locals =
-  'rg_load_ctx("' + ctx_name + '", || ' + (emit_native_expr def_e locals) + ')'
-emit_native_expr (ELoadShared var_name def_e) locals =
-  'rg_load_shared("' + var_name + '", || ' + (emit_native_expr def_e locals) + ')'
+fn :: emit_native_expr RExpr                                                  [String] => String
+      emit_native_expr (EInt n)                                               _        =  'RVal::Int(' + (int_to_str n) + ')'
+      emit_native_expr (EReal r)                                              _        =  'RVal::Real(' + (format_real_lit r) + ')'
+      emit_native_expr (EStr s)                                               locals   =  emit_str_lit s locals
+      emit_native_expr (EStrInterp parts)                                     locals   =  'rg_str_interp(&[' + (emit_native_expr_csv parts locals) + '])'
+      emit_native_expr (EBool True)                                           _        =  'RVal::Bool(true)'
+      emit_native_expr (EBool False)                                          _        =  'RVal::Bool(false)'
+      emit_native_expr EUnit                                                  _        =  'RVal::Unit'
+      emit_native_expr (EVar name)                                            locals   =  emit_native_var name locals
+      emit_native_expr (ENot inner)                                           locals   =  'RVal::Bool(!rg_as_bool(&(' + (emit_native_expr inner locals) + ')))'
+      emit_native_expr (EOut inner)                                           locals   =  'rg_out(' + (emit_native_expr inner locals) + ')'
+      emit_native_expr (EBin bop l r)                                         locals =
+        emit_binop_rust bop (emit_native_expr l locals) (emit_native_expr r locals)
+      emit_native_expr (ECall "__unpack2__" ((EVar fn_target):single_arg:[])) locals =
+        '{ let _u = ' + (emit_native_expr single_arg locals) + '; ' + (mangle_fn_name fn_target) + '(rg_tuple_get(&_u, 0), rg_tuple_get(&_u, 1)) }'
+      emit_native_expr (ECall fname [])                                       locals
+        | (lookup_local locals fname) >= 0 = 'lv_' + fname + '.clone()'
+        | otherwise = (mangle_fn_name fname) + '()'
+      emit_native_expr (ECall fname args)                                     locals
+        | is_upper_ident fname = 'rg_adt("' + fname + '", vec![' + (emit_native_expr_csv args locals) + '])'
+        | otherwise = (mangle_fn_name fname) + '(' + (emit_native_expr_csv args locals) + ')'
+      emit_native_expr (EEcho args)                                           locals   =  'rg_echo(&[' + (emit_native_expr_csv args locals) + '])'
+      emit_native_expr (EList elems)                                          locals   =  'rg_list(vec![' + (emit_native_expr_csv elems locals) + '])'
+      emit_native_expr (ETuple elems)                                         locals   =  'rg_tuple(vec![' + (emit_native_expr_csv elems locals) + '])'
+      emit_native_expr (ETensor elems)                                        locals   =  'rg_tensor(vec![' + (emit_native_expr_csv elems locals) + '])'
+      emit_native_expr (EEinsum es subs)                                      locals =
+        'rg_einsum(&[' + (emit_native_expr_csv es locals) + '], &[' + (emit_str_csv subs) + '])'
+      emit_native_expr (EHadamard bop l s1 r s2)                              locals =
+        'rg_hadamard("' + (binop_op_tag bop) + '", &(' + (emit_native_expr l locals) + '), "' + s1 + '", &(' + (emit_native_expr r locals) + '), "' + s2 + '")'
+      emit_native_expr (EIndex base idxs)                                     locals =
+        'rg_index(&(' + (emit_native_expr base locals) + '), &[' + (emit_native_expr_csv idxs locals) + '])'
+      emit_native_expr (EIndexAssign target idxs val_e)                       locals =
+        'rg_index_set(lv_' + target + '.clone(), &[' + (emit_native_expr_csv idxs locals) + '], ' + (emit_native_expr val_e locals) + ')'
+      emit_native_expr (ESeqSelect base mask)                                 locals =
+        'rg_seq_select(&(' + (emit_native_expr base locals) + '), "' + (escape_rust_str mask) + '")'
+      emit_native_expr (EBlock stmts)                                         locals   =  '{' + "\n" + (emit_native_stmts stmts locals) + "\n" + '}'
+      emit_native_expr (EWhere body binds)                                    locals   =  '{' + "\n" + (emit_native_where binds body locals) + "\n" + '}'
+      emit_native_expr (EParPipe branches)                                    locals   =  'rg_tuple(vec![' + (emit_native_expr_csv branches locals) + '])'
+      emit_native_expr (EWithCtx ctx_name val_e body)                         locals =
+        'rg_with_ctx("' + ctx_name + '", ' + (emit_native_expr val_e locals) + ', || ' + (emit_native_expr body locals) + ')'
+      emit_native_expr (EWithRegion quota body)                               locals =
+        'rg_with_region_limit(' + (int_to_str quota) + 'usize, || ' + (emit_native_expr body locals) + ')'
+      emit_native_expr (EAtomicUpdate var_name val_e)                         locals =
+        'rg_store_shared("' + var_name + '", ' + (emit_native_expr val_e locals) + ')'
+      emit_native_expr (ELoadContext ctx_name def_e)                          locals =
+        'rg_load_ctx("' + ctx_name + '", || ' + (emit_native_expr def_e locals) + ')'
+      emit_native_expr (ELoadShared var_name def_e)                           locals =
+        'rg_load_shared("' + var_name + '", || ' + (emit_native_expr def_e locals) + ')'
 
 fn :: emit_native_var String [String] => String
-emit_native_var name locals
-  | (lookup_local locals name) >= 0 = 'lv_' + name + '.clone()'
-  | is_upper_ident name = 'rg_adt0("' + name + '")'
-  | otherwise = (mangle_fn_name name) + '()'
+      emit_native_var name   locals
+        | (lookup_local locals name) >= 0 = 'lv_' + name + '.clone()'
+        | is_upper_ident name = 'rg_adt0("' + name + '")'
+        | otherwise = (mangle_fn_name name) + '()'
 
 fn :: emit_native_expr_csv [RExpr] [String] => String
-emit_native_expr_csv [] _ = ""
-emit_native_expr_csv (e:[]) locals = emit_native_expr e locals
-emit_native_expr_csv (e:es) locals =
-  (emit_native_expr e locals) + ', ' + (emit_native_expr_csv es locals)
+      emit_native_expr_csv []      _        =  ""
+      emit_native_expr_csv (e:[])  locals   =  emit_native_expr e locals
+      emit_native_expr_csv (e:es)  locals =
+        (emit_native_expr e locals) + ', ' + (emit_native_expr_csv es locals)
 
-fn :: emit_native_stmts [RStmt] [String] => String
-emit_native_stmts [] _ = 'RVal::Unit'
-emit_native_stmts ((StmtExpr e):[]) locals = '    ' + (emit_native_expr e locals)
-emit_native_stmts ((StmtAtomic v e):[]) locals =
-  '    rg_store_shared("' + v + '", ' + (emit_native_expr e locals) + ')'
-emit_native_stmts ((StmtIndexAssign t idxs e):[]) locals =
-  "    let lv_" + t + ": RVal = rg_index_set(lv_" + t + ", &[" + (emit_native_expr_csv idxs locals) + "], " + (emit_native_expr e locals) + ");\n    RVal::Unit"
-emit_native_stmts ((StmtLet v e):[]) locals
-  | v == "_" = "    let _ = " + (emit_native_expr e locals) + ";\n    RVal::Unit"
-  | otherwise = "    let lv_" + v + ": RVal = " + (emit_native_expr e locals) + ";\n    lv_" + v
-emit_native_stmts ((StmtLet v e):rest) locals
-  | v == "_" = "    let _ = " + (emit_native_expr e locals) + ";\n" + (emit_native_stmts rest locals)
-  | otherwise = "    let lv_" + v + ": RVal = " + (emit_native_expr e locals) + ";\n" + (emit_native_stmts rest (locals :: [v]))
-emit_native_stmts ((StmtAtomic v e):rest) locals =
-  '    let _ = rg_store_shared("' + v + '", ' + (emit_native_expr e locals) + ');' + "\n" + (emit_native_stmts rest locals)
-emit_native_stmts ((StmtIndexAssign t idxs e):rest) locals =
-  "    let lv_" + t + ": RVal = rg_index_set(lv_" + t + ", &[" + (emit_native_expr_csv idxs locals) + "], " + (emit_native_expr e locals) + ");\n" + (emit_native_stmts rest locals)
-emit_native_stmts ((StmtExpr e):rest) locals =
-  "    let _ = " + (emit_native_expr e locals) + ";\n" + (emit_native_stmts rest locals)
+fn :: emit_native_stmts [RStmt]                           [String] => String
+      emit_native_stmts []                                _        =  'RVal::Unit'
+      emit_native_stmts ((StmtExpr e):[])                 locals   =  '    ' + (emit_native_expr e locals)
+      emit_native_stmts ((StmtAtomic v e):[])             locals =
+        '    rg_store_shared("' + v + '", ' + (emit_native_expr e locals) + ')'
+      emit_native_stmts ((StmtIndexAssign t idxs e):[])   locals =
+        "    let lv_" + t + ": RVal = rg_index_set(lv_" + t + ", &[" + (emit_native_expr_csv idxs locals) + "], " + (emit_native_expr e locals) + ");\n    RVal::Unit"
+      emit_native_stmts ((StmtLet v e):[])                locals
+        | v == "_" = "    let _ = " + (emit_native_expr e locals) + ";\n    RVal::Unit"
+        | otherwise = "    let lv_" + v + ": RVal = " + (emit_native_expr e locals) + ";\n    lv_" + v
+      emit_native_stmts ((StmtLet v e):rest)              locals
+        | v == "_" = "    let _ = " + (emit_native_expr e locals) + ";\n" + (emit_native_stmts rest locals)
+        | otherwise = "    let lv_" + v + ": RVal = " + (emit_native_expr e locals) + ";\n" + (emit_native_stmts rest (locals :: [v]))
+      emit_native_stmts ((StmtAtomic v e):rest)           locals =
+        '    let _ = rg_store_shared("' + v + '", ' + (emit_native_expr e locals) + ');' + "\n" + (emit_native_stmts rest locals)
+      emit_native_stmts ((StmtIndexAssign t idxs e):rest) locals =
+        "    let lv_" + t + ": RVal = rg_index_set(lv_" + t + ", &[" + (emit_native_expr_csv idxs locals) + "], " + (emit_native_expr e locals) + ");\n" + (emit_native_stmts rest locals)
+      emit_native_stmts ((StmtExpr e):rest)               locals =
+        "    let _ = " + (emit_native_expr e locals) + ";\n" + (emit_native_stmts rest locals)
 
-fn :: emit_native_where [RWhereBind] RExpr [String] => String
-emit_native_where [] body locals = '    ' + (emit_native_expr body locals)
-emit_native_where ((WhereBind e v []):wbs) body locals =
-  "    let lv_" + v + ": RVal = " + (emit_native_expr e locals) + ";\n" + (emit_native_where wbs body (locals :: [v]))
-emit_native_where ((WhereBind e v idxs):wbs) body locals =
-  "    let lv_" + v + ": RVal = rg_index_set(lv_" + v + ", &[" + (emit_int_rval_csv idxs) + "], " + (emit_native_expr e locals) + ");\n" + (emit_native_where wbs body locals)
+fn :: emit_native_where [RWhereBind]               RExpr [String] => String
+      emit_native_where []                         body  locals   =  '    ' + (emit_native_expr body locals)
+      emit_native_where ((WhereBind e v []):wbs)   body  locals =
+        "    let lv_" + v + ": RVal = " + (emit_native_expr e locals) + ";\n" + (emit_native_where wbs body (locals :: [v]))
+      emit_native_where ((WhereBind e v idxs):wbs) body  locals =
+        "    let lv_" + v + ": RVal = rg_index_set(lv_" + v + ", &[" + (emit_int_rval_csv idxs) + "], " + (emit_native_expr e locals) + ");\n" + (emit_native_where wbs body locals)
 
 -- ── Function, Record Field Accessor & Dispatch Table Emission ──
 
-fn :: emit_native_guards [RGuard] [String] => String
-emit_native_guards [] _ = ""
-emit_native_guards ((GuardBranch cond body):gs) locals =
-  '    if rg_as_bool(&(' + (emit_native_expr cond locals) + ')) {' + "\n      return " + (emit_native_expr body locals) + ";\n    " + '}' + "\n" + (emit_native_guards gs locals)
+fn :: emit_native_guards [RGuard]                     [String] => String
+      emit_native_guards []                           _        =  ""
+      emit_native_guards ((GuardBranch cond body):gs) locals =
+        '    if rg_as_bool(&(' + (emit_native_expr cond locals) + ')) {' + "\n      return " + (emit_native_expr body locals) + ";\n    " + '}' + "\n" + (emit_native_guards gs locals)
 
-fn :: emit_native_case RFnCase Int => String
-emit_native_case (FnCase pats [] body) arity =
-  cond = emit_pat_list_cond pats 0
-  binds = emit_pat_list_binds pats 0 arity
-  locals = collect_pat_list_vars pats []
-  '  if ' + cond + ' {' + "\n" + binds + "    return " + (emit_native_expr body locals) + ";\n  " + '}' + "\n"
-emit_native_case (FnCase pats guards _) arity =
-  cond = emit_pat_list_cond pats 0
-  binds = emit_pat_list_binds pats 0 arity
-  locals = collect_pat_list_vars pats []
-  '  if ' + cond + ' {' + "\n" + binds + (emit_native_guards guards locals) + '  }' + "\n"
+fn :: emit_native_case RFnCase                Int   => String
+      emit_native_case (FnCase pats [] body)  arity =
+        cond = emit_pat_list_cond pats 0
+        binds = emit_pat_list_binds pats 0 arity
+        locals = collect_pat_list_vars pats []
+        '  if ' + cond + ' {' + "\n" + binds + "    return " + (emit_native_expr body locals) + ";\n  " + '}' + "\n"
+      emit_native_case (FnCase pats guards _) arity =
+        cond = emit_pat_list_cond pats 0
+        binds = emit_pat_list_binds pats 0 arity
+        locals = collect_pat_list_vars pats []
+        '  if ' + cond + ' {' + "\n" + binds + (emit_native_guards guards locals) + '  }' + "\n"
 
-fn :: emit_native_cases [RFnCase] Int => String
-emit_native_cases [] _ = ""
-emit_native_cases (c:cs) arity = (emit_native_case c arity) + (emit_native_cases cs arity)
+fn :: emit_native_cases [RFnCase] Int   => String
+      emit_native_cases []        _     =  ""
+      emit_native_cases (c:cs)    arity =  (emit_native_case c arity) + (emit_native_cases cs arity)
 
-fn :: emit_param_sig Int Int => String
-emit_param_sig idx arity
-  | idx >= arity = ""
-  | (idx + 1) == arity = '_arg_' + (int_to_str idx) + ': RVal'
-  | otherwise = '_arg_' + (int_to_str idx) + ': RVal, ' + (emit_param_sig (idx + 1) arity)
+fn :: emit_param_sig Int Int   => String
+      emit_param_sig idx arity
+        | idx >= arity = ""
+        | (idx + 1) == arity = '_arg_' + (int_to_str idx) + ': RVal'
+        | otherwise = '_arg_' + (int_to_str idx) + ': RVal, ' + (emit_param_sig (idx + 1) arity)
 
-fn :: emit_native_fndef RFnDef => String
-emit_native_fndef (FnDef name params _ cases) =
-  arity = infer_fndef_arity params cases
-  sig = emit_param_sig 0 arity
-  'fn ' + (mangle_fn_name name) + '(' + sig + ') -> RVal {' + "\n" + (emit_native_cases cases arity) + "  RVal::Unit\n" + '}' + "\n\n"
+fn :: emit_native_fndef RFnDef                      => String
+      emit_native_fndef (FnDef name params _ cases) =
+        arity = infer_fndef_arity params cases
+        sig = emit_param_sig 0 arity
+        'fn ' + (mangle_fn_name name) + '(' + sig + ') -> RVal {' + "\n" + (emit_native_cases cases arity) + "  RVal::Unit\n" + '}' + "\n\n"
 
 fn :: emit_native_fndef_list [RFnDef] => String
-emit_native_fndef_list [] = ""
-emit_native_fndef_list (f:fs) = (emit_native_fndef f) + (emit_native_fndef_list fs)
+      emit_native_fndef_list []       =  ""
+      emit_native_fndef_list (f:fs)   =  (emit_native_fndef f) + (emit_native_fndef_list fs)
 
-fn :: emit_record_accessors [RField] Int [String] => (String, [String])
-emit_record_accessors [] _ emitted = ("", emitted)
-emit_record_accessors ((TypeField fname _):fs) idx emitted
-  | (lookup_local emitted fname) >= 0 = emit_record_accessors fs (idx + 1) emitted
-  | otherwise = prepend_code_str ('fn rg_fn_' + fname + '(_arg_0: RVal) -> RVal { rg_adt_field(&_arg_0, ' + (int_to_str idx) + ') }' + "\n") (emit_record_accessors fs (idx + 1) (emitted :: [fname]))
+fn :: emit_record_accessors [RField]                 Int [String] => (String, [String])
+      emit_record_accessors []                       _   emitted  =  ("", emitted)
+      emit_record_accessors ((TypeField fname _):fs) idx emitted
+        | (lookup_local emitted fname) >= 0 = emit_record_accessors fs (idx + 1) emitted
+        | otherwise = prepend_code_str ('fn rg_fn_' + fname + '(_arg_0: RVal) -> RVal { rg_adt_field(&_arg_0, ' + (int_to_str idx) + ') }' + "\n") (emit_record_accessors fs (idx + 1) (emitted :: [fname]))
 
 fn :: prepend_code_str String (String, [String]) => (String, [String])
-prepend_code_str s (rest_s, emitted) = (s + rest_s, emitted)
+      prepend_code_str s      (rest_s, emitted)  =  (s + rest_s, emitted)
 
-fn :: emit_typedef_accessors [RTypeDef] [String] => String
-emit_typedef_accessors [] _ = ""
-emit_typedef_accessors ((TypeDef _ _ []):ts) emitted = emit_typedef_accessors ts emitted
-emit_typedef_accessors ((TypeDef _ _ fields):ts) emitted =
-  r1 = emit_record_accessors fields 0 emitted
-  emit_typedef_accessors_cont ts r1
+fn :: emit_typedef_accessors [RTypeDef]                [String] => String
+      emit_typedef_accessors []                        _        =  ""
+      emit_typedef_accessors ((TypeDef _ _ []):ts)     emitted  =  emit_typedef_accessors ts emitted
+      emit_typedef_accessors ((TypeDef _ _ fields):ts) emitted =
+        r1 = emit_record_accessors fields 0 emitted
+        emit_typedef_accessors_cont ts r1
 
 fn :: emit_typedef_accessors_cont [RTypeDef] (String, [String]) => String
-emit_typedef_accessors_cont ts (code1, emitted1) =
-  code1 + (emit_typedef_accessors ts emitted1)
+      emit_typedef_accessors_cont ts         (code1, emitted1) =
+        code1 + (emit_typedef_accessors ts emitted1)
 
-fn :: collect_fn_names [RFnDef] => [String]
-collect_fn_names [] = []
-collect_fn_names ((FnDef name _ _ _):fs) = [name] :: (collect_fn_names fs)
+fn :: collect_fn_names [RFnDef]                => [String]
+      collect_fn_names []                      =  []
+      collect_fn_names ((FnDef name _ _ _):fs) =  [name] :: (collect_fn_names fs)
 
-fn :: emit_spawn_arms [RFnDef] => String
-emit_spawn_arms [] = ""
-emit_spawn_arms ((FnDef name params _ cases):fs)
-  | (infer_fndef_arity params cases) == 1 = '        "' + (escape_rust_str name) + '" => ' + (mangle_fn_name name) + '(arg),' + "\n" + (emit_spawn_arms fs)
-  | otherwise = emit_spawn_arms fs
+fn :: emit_spawn_arms [RFnDef]                         => String
+      emit_spawn_arms []                               =  ""
+      emit_spawn_arms ((FnDef name params _ cases):fs)
+        | (infer_fndef_arity params cases) == 1 = '        "' + (escape_rust_str name) + '" => ' + (mangle_fn_name name) + '(arg),' + "\n" + (emit_spawn_arms fs)
+        | otherwise = emit_spawn_arms fs
 
-fn :: emit_binop_overload_arms [RFnDef] => String
-emit_binop_overload_arms [] = ""
-emit_binop_overload_arms ((FnDef name params _ cases):fs)
-  | (name == "+" OR name == "-" OR name == "*" OR name == "/" OR name == "%") AND (infer_fndef_arity params cases) == 2 = '        "' + name + '" => ' + (mangle_fn_name name) + '(a, b),' + "\n" + (emit_binop_overload_arms fs)
-  | otherwise = emit_binop_overload_arms fs
+fn :: emit_binop_overload_arms [RFnDef]                         => String
+      emit_binop_overload_arms []                               =  ""
+      emit_binop_overload_arms ((FnDef name params _ cases):fs)
+        | (name == "+" OR name == "-" OR name == "*" OR name == "/" OR name == "%") AND (infer_fndef_arity params cases) == 2 = '        "' + name + '" => ' + (mangle_fn_name name) + '(a, b),' + "\n" + (emit_binop_overload_arms fs)
+        | otherwise = emit_binop_overload_arms fs
 
 fn :: emit_dispatch_tables [RFnDef] => String
-emit_dispatch_tables fns =
-  'fn rg_dispatch_spawn(fn_name: &str, arg: RVal) -> RVal {' + "\n" + '    match fn_name {' + "\n" + (emit_spawn_arms fns) + '        _ => RVal::Unit,' + "\n" + '    }' + "\n" + '}' + "\n\n" + 'fn rg_dispatch_binop(op: &str, a: RVal, b: RVal) -> RVal {' + "\n" + '    match op {' + "\n" + (emit_binop_overload_arms fns) + '        _ => RVal::Unit,' + "\n" + '    }' + "\n" + '}' + "\n\n"
+      emit_dispatch_tables fns =
+        'fn rg_dispatch_spawn(fn_name: &str, arg: RVal) -> RVal {' + "\n" + '    match fn_name {' + "\n" + (emit_spawn_arms fns) + '        _ => RVal::Unit,' + "\n" + '    }' + "\n" + '}' + "\n\n" + 'fn rg_dispatch_binop(op: &str, a: RVal, b: RVal) -> RVal {' + "\n" + '    match op {' + "\n" + (emit_binop_overload_arms fns) + '        _ => RVal::Unit,' + "\n" + '    }' + "\n" + '}' + "\n\n"
 
-fn :: find_entry_fn_name [RFnDef] String => String
-find_entry_fn_name [] fallback = fallback
-find_entry_fn_name ((FnDef name params _ cases):fs) fallback
-  | name == "main" = "main"
-  | name == "demo_all" = "demo_all"
-  | (infer_fndef_arity params cases) == 0 = find_entry_fn_name fs name
-  | otherwise = find_entry_fn_name fs fallback
+fn :: find_entry_fn_name [RFnDef]                         String   => String
+      find_entry_fn_name []                               fallback =  fallback
+      find_entry_fn_name ((FnDef name params _ cases):fs) fallback
+        | name == "main" = "main"
+        | name == "demo_all" = "demo_all"
+        | (infer_fndef_arity params cases) == 0 = find_entry_fn_name fs name
+        | otherwise = find_entry_fn_name fs fallback
 
 fn :: emit_runtime_preamble => String
-emit_runtime_preamble = '#![allow(unused_variables, dead_code, non_snake_case, unused_parens)]
+      emit_runtime_preamble = '#![allow(unused_variables, dead_code, non_snake_case, unused_parens)]
 use std::sync::Arc as Rc;
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -1357,6 +1357,9 @@ fn rg_resolve_imports(src: &str, fpath: &Path, vis: &mut HashSet<PathBuf>) -> St
 fn rg_fn_read_file(p: RVal) -> RVal {
     let path_str = match &p { RVal::Str(s) => s.as_str(), _ => "" };
     let raw = std::fs::read_to_string(path_str).unwrap_or_default();
+    if !path_str.ends_with(".rg") {
+        return RVal::Str(Rc::new(raw));
+    }
     let fp = Path::new(path_str);
     let mut vis = HashSet::new();
     if let Ok(c) = fp.canonicalize() { vis.insert(c); }
@@ -1380,63 +1383,63 @@ fn rg_fn_cli_args() -> RVal {
 }
 '
 
-fn :: emit_native_program RProgram => String
-emit_native_program (Program raw_fns tys) =
-  sigs = build_cg_sigs raw_fns
-  fns = prep_fndef_list raw_fns sigs
-  preamble = emit_runtime_preamble
-  acc_defs = emit_typedef_accessors tys (collect_fn_names fns)
-  fn_defs = emit_native_fndef_list fns
-  dispatches = emit_dispatch_tables fns
-  entry = find_entry_fn_name fns "main"
-  preamble + acc_defs + fn_defs + dispatches + 'fn main() {' + "\n" + '  let _ = std::thread::Builder::new().stack_size(268435456).spawn(|| { let _ = ' + (mangle_fn_name entry) + '(); }).unwrap().join();' + "\n" + '}' + "\n"
+fn :: emit_native_program RProgram              => String
+      emit_native_program (Program raw_fns tys) =
+        sigs = build_cg_sigs raw_fns
+        fns = prep_fndef_list raw_fns sigs
+        preamble = emit_runtime_preamble
+        acc_defs = emit_typedef_accessors tys (collect_fn_names fns)
+        fn_defs = emit_native_fndef_list fns
+        dispatches = emit_dispatch_tables fns
+        entry = find_entry_fn_name fns "main"
+        preamble + acc_defs + fn_defs + dispatches + 'fn main() {' + "\n" + '  let _ = std::thread::Builder::new().stack_size(268435456).spawn(|| { let _ = ' + (mangle_fn_name entry) + '(); }).unwrap().join();' + "\n" + '}' + "\n"
 
 -- ── Bytecode (.rgc) & Native Executable Emission ────────────
 
 fn :: join_summaries [String] => String
-join_summaries [] = ""
-join_summaries (s:ss) = "-- SUMMARY: {s}\n" + (join_summaries ss)
+      join_summaries []       =  ""
+      join_summaries (s:ss)   =  "-- SUMMARY: {s}\n" + (join_summaries ss)
 
-fn :: emit_rgc_payload RProgram String => String
-emit_rgc_payload prog raw_src =
-  fn_count = count_fn_defs prog
-  ty_count = count_type_defs prog
-  summaries = join_summaries (analyze_rprogram prog)
-  "RGC1\n-- SELF_HOSTED_COMPILER: ridgunc v0.9.2\n-- FUNCTIONS: {fn_count}\n-- TYPES: {ty_count}\n{summaries}{raw_src}"
+fn :: emit_rgc_payload RProgram String  => String
+      emit_rgc_payload prog     raw_src =
+        fn_count = count_fn_defs prog
+        ty_count = count_type_defs prog
+        summaries = join_summaries (analyze_rprogram prog)
+        "RGC1\n-- SELF_HOSTED_COMPILER: ridgunc v0.9.3\n-- FUNCTIONS: {fn_count}\n-- TYPES: {ty_count}\n{summaries}{raw_src}"
 
-fn :: emit_rgc_file String String => Int
-emit_rgc_file input_path output_path =
-  raw_src = read_file input_path
-  toks = tokenize_src raw_src
-  prog = parse_tokens toks
-  errs = typecheck_program prog
-  emit_rgc_after_check prog raw_src output_path errs
+fn :: emit_rgc_file String     String      => Int
+      emit_rgc_file input_path output_path =
+        raw_src = read_file input_path
+        toks = tokenize_src raw_src
+        prog = parse_tokens toks
+        errs = typecheck_program prog
+        emit_rgc_after_check prog raw_src output_path errs
 
-fn :: emit_rgc_after_check RProgram String String [RTypeError] => Int
-emit_rgc_after_check prog raw_src output_path [] =
-  payload = emit_rgc_payload prog raw_src
-  _ = write_file output_path payload
-  count_fn_defs prog
-emit_rgc_after_check _ _ _ errs =
-  _ = echo (format_type_errors errs)
-  0 - (type_err_count errs)
+fn :: emit_rgc_after_check RProgram String  String      [RTypeError] => Int
+      emit_rgc_after_check prog     raw_src output_path [] =
+        payload = emit_rgc_payload prog raw_src
+        _ = write_file output_path payload
+        count_fn_defs prog
+      emit_rgc_after_check _        _       _           errs =
+        _ = echo (format_type_errors errs)
+        0 - (type_err_count errs)
 
-fn :: build_native_executable String String => Int
-build_native_executable input_path output_bin =
-  raw_src = read_file input_path
-  toks = tokenize_src raw_src
-  prog = parse_tokens toks
-  errs = typecheck_program prog
-  build_native_after_check prog output_bin errs
+fn :: build_native_executable String     String     => Int
+      build_native_executable input_path output_bin =
+        raw_src = read_file input_path
+        toks = tokenize_src raw_src
+        prog = parse_tokens toks
+        errs = typecheck_program prog
+        build_native_after_check prog output_bin errs
 
-fn :: build_native_after_check RProgram String [RTypeError] => Int
-build_native_after_check prog output_bin [] =
-  native_rs = emit_native_program prog
-  tmp_rs = output_bin + "_gen.rs"
-  tmp_bin = output_bin + "_tmp"
-  _ = write_file tmp_rs native_rs
-  cmd = "rustc --edition 2021 --crate-name ridgun_bin -O -A warnings " + tmp_rs + " -o " + tmp_bin + " && mv -f " + tmp_bin + " " + output_bin + "; _st=$?; rm -f " + tmp_rs + " " + tmp_bin + "; exit $_st"
-  shell_exec cmd
-build_native_after_check _ _ errs =
-  _ = echo (format_type_errors errs)
-  1
+fn :: build_native_after_check RProgram String     [RTypeError] => Int
+      build_native_after_check prog     output_bin [] =
+        native_rs = emit_native_program prog
+        tmp_rs = output_bin + "_gen.rs"
+        tmp_bin = output_bin + "_tmp"
+        _ = write_file tmp_rs native_rs
+        cmd = "rustc --edition 2021 --crate-name ridgun_bin -O -A warnings " + tmp_rs + " -o " + tmp_bin + " && mv -f " + tmp_bin + " " + output_bin + "; _st=$?; rm -f " + tmp_rs + " " + tmp_bin + "; exit $_st"
+        shell_exec cmd
+      build_native_after_check _        _          errs =
+        _ = echo (format_type_errors errs)
+        1

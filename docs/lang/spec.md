@@ -697,3 +697,27 @@ fn :: main => ()
 | Bool literals | `True`, `False` | Boolean primitive values |
 | Logical operators | `AND`, `OR`, `XOR`, `NOT` | Word-based logical operators |
 | Entry point | `fn :: main => ()` | Required program entry point |
+
+---
+
+## Canonical Source Code Formatting (`stable format` & Editor Tooling)
+
+> **Aesthetic Only — Not a Compiler Requirement (`FR-TOOL-001`)**: Ridgun's lexer and parser are insensitive to horizontal column alignment. Unaligned and column-aligned `.rg` source files are 100% equivalent to `ridgunc`. The rules below define the **canonical aesthetic layout** applied by `stable format` and GNU Emacs `ridgun-mode` (`C-c C-f`).
+
+1. **Alignment Group per Signature (`fn ::` / `op ::`)**:
+   - Each `fn ::` or `op ::` declaration starts an alignment group spanning its signature, its pattern-matching clauses, and its `where` bindings, ending at the next top-level declaration (`fn`, `op`, `type`, `import`, `global`, `context`, `shared`, `hardware`, `@`).
+2. **Column Alignment of LHS Tokens ($C_0 = 6$)**:
+   - `fn :: ` and `op :: ` are 6 characters wide, so token $0$ of the signature LHS starts at column $C_0 = 6$.
+   - Each token slot $i \in [0, N-1]$ before `=>`/`->` (treating `"..."`, `'...'`, `[...]`, and `(...)` as single tokens) has width $W_i = \max(\text{len}(\text{sig\_tok}_i), \max_{\text{clause}} \text{len}(\text{clause\_tok}_i))$ and starts at column $C_i = C_{i-1} + W_{i-1} + 1$.
+   - Matching definition clauses are indented to column $6$ ($C_0$) so the function name or operator words and every argument pattern align vertically beneath their corresponding signature slots.
+3. **Vertical Alignment of `=>`, `=`, and `->` ($C_{\text{arrow}}$)**:
+   - Let $C_{\text{arrow}} = \max\big(C_{N-1} + W_{N-1} + 1,\; \max_{\text{where}}(10 + \text{len}(\text{where\_lhs}) + 1)\big)$ and $C_{\text{ret}} = C_{\text{arrow}} + \text{len}(\text{arrow}) + 1$.
+   - In the signature, `=>` is placed at $C_{\text{arrow}}$ and the return type at $C_{\text{ret}}$.
+   - In single-line clauses (`<lhs> = <rhs>`), `=` is placed at $C_{\text{arrow}}$ and `<rhs>` starts at $C_{\text{ret}}$. In multi-line block clauses ending with `=`, a single space precedes `=` (`" ="`).
+   - In `where` bindings (`<lhs> -> <rhs>`), `<lhs>` starts at column $10$ (`6 + 2*2`), `->` is placed at $C_{\text{arrow}}$, and `<rhs>` starts at $C_{\text{ret}}$.
+4. **Structural Indentation (2-Space Offset)**:
+   - Top-level declarations (`fn`, `op`, `type`, `import`, `global`, `context`, `shared`, `hardware`, `@`): column `0`.
+   - Function/operator clauses under a signature: column `6`.
+   - Guards (`| cond = expr`), parallel pipes (`|| expr`), and `where`: column `8` (`6 + 2`).
+   - Block body lines following a line ending in `=`, `where`, or `do`: `prev_indent + 2`.
+

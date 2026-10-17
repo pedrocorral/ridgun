@@ -25,10 +25,10 @@ quoted     = "she said \"hello\""       -- escaped quote
 
 -- String-taking functions
 fn :: greet String => ()
-      greet name = echo "Hello, {name}!"
+      greet name   =  echo "Hello, {name}!"
 
 fn :: show_pair String String => ()
-      show_pair a b = echo "{a} and {b}"
+      show_pair a      b      =  echo "{a} and {b}"
 
 fn :: main => ()
       main =

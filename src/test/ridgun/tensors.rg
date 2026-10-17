@@ -8,7 +8,7 @@
 v = Tensor [1, 2, 3]                    -- 1D vector, shape: (3)
 m = Tensor [[1, 2], [5, 3]]             -- 2D matrix, shape: (2, 2)
 t = Tensor [[[1, 2], [3, 4]],           -- 3D tensor, shape: (2, 2, 2)
-             [[5, 6], [7, 8]]]
+[[5, 6], [7, 8]]]
 
 -- Indexing (chained or comma-separated)
 val = m[0][1]                            -- 2.0
@@ -38,10 +38,10 @@ result = g_ij * g_jk                     -- GPU-accelerated matmul
 
 -- Functions over tensors
 fn :: dot_product [Real] [Real] => Real
-      dot_product (a) (b)        =  a_i * b_i      -- Einstein sum over i
+      dot_product (a)    (b)    =  a_i * b_i      -- Einstein sum over i
 
 fn :: matrix_mul [[Real]] [[Real]] => [[Real]]
-      matrix_mul (A) (B)                =  A_ij * B_jk  -- result shape (i, k)
+      matrix_mul (A)      (B)      =  A_ij * B_jk  -- result shape (i, k)
 
 fn :: scale Real [[Real]] => [[Real]]
-      scale c (M)              =  c * M_ij          -- scalar broadcast
+      scale c    (M)      =  c * M_ij          -- scalar broadcast

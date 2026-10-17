@@ -7,22 +7,22 @@ import test
 -- ── Functions under test ────────────────────────────────────
 
 fn :: sum Int Int => Int
-      sum a b = a + b
+      sum a   b   =  a + b
 
 fn :: factorial Int => Int
-      factorial 0 = 1
-      factorial n = n * factorial (n - 1)
+      factorial 0   =  1
+      factorial n   =  n * factorial (n - 1)
 
 fn :: fib Int => Int
-      fib 0 = 0
-      fib 1 = 1
-      fib n = fib (n - 1) + fib (n - 2)
+      fib 0   =  0
+      fib 1   =  1
+      fib n   =  fib (n - 1) + fib (n - 2)
 
 fn :: double Int => Int
-      double x = x + x
+      double x   =  x + x
 
 fn :: quadruple Int => Int
-      quadruple x = double (double x)
+      quadruple x   =  double (double x)
 
 -- ── Tests ───────────────────────────────────────────────────
 

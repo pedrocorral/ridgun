@@ -69,9 +69,11 @@ Reading budget: `docs/lang/spec.md` (only when a construct is unfamiliar), `buil
   ```
   Construct with `Point 3.0 4.0`; access fields via auto-generated functions `x pt`, `y pt`.
 - **Low-level Layout Attributes**: `@packed`, `@repr(C)`, `@align(64)` before `type`.
-- **Operator Overloading & Mixfix (`op ::`)**:
-  - Binary overload: `op :: (a: Vec2) + (b: Vec2) => Vec2` followed by `(Vec2 x1 y1) + (Vec2 x2 y2) = Vec2 (x1 + x2) (y1 + y2)`.
-  - Mixfix operator: `op :: clamp (x: Int) between (lo: Int) and (hi: Int) => Int`.
+- **Operator Overloading & Natural-Language Mixfix (`op ::`)**:
+  - Prefix, infix, postfix, or mixfix: `op :: execute command [String] on StableConfig => (Bool, StableConfig, Int)` or `op :: file String exists => Bool`.
+  - Parameter slots in `op ::` can be uppercase type names (`Int`, `String`, `StableConfig`), list types (`[String]`), or tuple types (`(Bool, String)`).
+  - Longest-match resolution: if `op :: a b c d`, `op :: a b`, and `op :: c d` exist, `a b c d` calls `a_b_c_d`; use parentheses `a b (c d)` to pass the result of `c d` into `a b`.
+  - Never use reserved lexer keywords (`fn`, `op`, `type`, `import`, `where`, `otherwise`, `do`, `atomic`) as operator keyword words (`with` is explicitly allowed).
 
 ## 4. Parallelism, Tensors, Concurrency & Memory Regions
 - **Parallel Producer-Consumer `where` DAGs**:
@@ -118,6 +120,7 @@ Reading budget: `docs/lang/spec.md` (only when a construct is unfamiliar), `buil
 
 ## 6. Verification Procedure
 1. Place shared modules in `src/main/ridgun/lib/` and executable entrypoints in `src/main/ridgun/<target>/main.rg`.
-2. Run `./target/stable check` to typecheck and run static analysis across all modules (`0 errors`).
-3. Run `./target/stable test` to compile and execute all `src/test/ridgun/test_*.rg` suites.
-4. If compiler/tool sources changed, run `./target/stable built` (or `./target/stable built <target>`) to rebuild native binaries in `target/`.
+2. Run `./target/stable format [file...]` to apply canonical aesthetic column-alignment formatting (`FR-TOOL-001`, aesthetic only — not enforced by `ridgunc`).
+3. Run `./target/stable check` to typecheck and run static analysis across all modules (`0 errors`).
+4. Run `./target/stable test` to compile and execute all `src/test/ridgun/test_*.rg` suites.
+5. If compiler/tool sources changed, run `./target/stable built` (or `./target/stable built <target>`) to rebuild native binaries in `target/`.

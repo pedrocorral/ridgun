@@ -4,7 +4,7 @@
 
 -- Simple two-argument function
 fn :: sum Int Int => Int
-      sum a b     =  a + b
+      sum a   b   =  a + b
 
 -- Recursive with pattern matching
 fn :: factorial Int => Int
@@ -18,14 +18,14 @@ fn :: fib Int => Int
       fib n   =  fib (n - 1) + fib (n - 2)
 
 -- Reverse a list
-fn :: reverse [Int] => [Int]
-      reverse []     = []
-      reverse (x:xs) = reverse xs :: [x]
+fn :: reverse [Int]  => [Int]
+      reverse []     =  []
+      reverse (x:xs) =  reverse xs :: [x]
 
 -- Length of a list
-fn :: list_length [Int] => Int
-      list_length []     = 0
-      list_length (_:xs) = 1 + list_length xs
+fn :: list_length [Int]  => Int
+      list_length []     =  0
+      list_length (_:xs) =  1 + list_length xs
 
 -- Sequence selector: extract first element via seq binding
 fn :: first_of_seq Int Int => Int
