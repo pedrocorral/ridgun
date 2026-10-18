@@ -4,7 +4,7 @@ Vale, ya te he convencido en el Capítulo 00 de que no estamos locos por crear R
 
 > *"Muy bonito el discurso de las tablas y los 16 núcleos, pero enséñame código de verdad. ¿Cuánto tarda uno en escribir algo que funcione sin pelearse con el compilador?"*
 
-Cero coma cinco segundos. Vamos al grano.
+Venga, ¡al turrón!
 
 ---
 
