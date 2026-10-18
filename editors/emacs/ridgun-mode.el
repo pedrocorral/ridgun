@@ -41,6 +41,7 @@
 
 ;;; Code:
 
+(require 'cl-lib)
 (require 'compile)
 (require 'subr-x)
 
@@ -120,11 +121,18 @@
   "Boolean constants in Ridgun.")
 
 (defconst ridgun-builtins
-  '("echo" "out" "spawn" "channel" "send" "to" "receive" "from" "timeout"
+  '("echo" "out" "spawn" "join" "channel" "send" "to" "receive" "from" "timeout"
     "new_channel" "new_bounded_channel" "send_through" "receive_from" "try_receive_from"
-    "length" "abs" "read_file" "write_file" "shell_exec" "cli_args"
+    "chan_send" "chan_recv" "chan_try_recv" "receive_from_timeout"
+    "length" "abs" "read_file" "load_rg_source" "read_bytes" "write_bytes"
+    "write_file" "shell_exec" "cli_args"
+    "map" "seq_map" "filter" "seq_filter" "fold"
+    "list_dir" "file_lstat" "sha256_file" "sha256_str" "sys_mkdir" "sys_chmod"
+    "sys_exec" "sys_chdir" "sys_getcwd" "sys_getenv" "sys_setenv" "sys_exit"
+    "sys_getuid" "sys_getgid" "sys_username" "sys_user_groups" "sys_lookup_uid_gid"
+    "sys_setresgid" "sys_setgroups" "sys_setresuid" "sys_execve" "sys_read_pass"
     "str_len" "str_char_at" "str_slice" "str_concat" "int_to_str" "str_to_int"
-    "str_starts_with" "str_contains" "char_from_code")
+    "str_starts_with" "str_contains" "char_from_code" "trim_str" "list_str_len")
   "Built-in functions and concurrency/system primitives in Ridgun.")
 
 (defconst ridgun-builtin-types
@@ -140,20 +148,24 @@
     ("@\\(?:packed\\|repr([^)\n]+)\\)" . font-lock-preprocessor-face)
 
     ;; 2. Function, operator, type, and state declarations:
-    ;;    fn :: name, type :: Name, global :: name, context :: name, shared :: name, hardware :: name
+    ;;    fn :: name, type Name =, global :: name, context :: name, shared :: name, hardware :: name
     ("\\_<\\(fn\\|global\\|context\\|shared\\|hardware\\)[ \t]*\\(::\\)[ \t]*\\([a-z_][A-Za-z0-9_]*\\)"
      (1 font-lock-keyword-face)
      (2 font-lock-builtin-face)
      (3 font-lock-function-name-face))
 
-    ("\\_<\\(type\\)[ \t]*\\(::\\)[ \t]*\\([A-Z][A-Za-z0-9_]*\\)"
+    ("\\_<\\(type\\)[ \t]+\\(?:\\(::\\)[ \t]*\\)?\\([A-Z][A-Za-z0-9_]*\\)"
      (1 font-lock-keyword-face)
-     (2 font-lock-builtin-face)
+     (2 font-lock-builtin-face nil t)
      (3 font-lock-type-face))
 
     ("\\_<\\(op\\)[ \t]*\\(::\\)"
      (1 font-lock-keyword-face)
      (2 font-lock-builtin-face))
+
+    ;; 2b. Prefixless top-level signature line: `func_name ... => Ret`
+    ("^\\([a-z_][A-Za-z0-9_]*\\)\\_>[^\n=]*=>"
+     (1 font-lock-function-name-face))
 
     ;; 3. Function definition clause: `func_name arg1 arg2 =`
     ("^[ \t]*\\([a-z_][A-Za-z0-9_]*\\)\\_>[^\n=|]*[=|]"
@@ -173,7 +185,7 @@
     ;; 7. Built-in functions & concurrency/IO primitives
     (,(regexp-opt ridgun-builtins 'symbols) . font-lock-builtin-face)
 
-    ;; 8. Built-in types & ADT constructors / User types (Uppercase identifiers)
+    ;; 8. Built-in types & ADT constructors / User types / Polymorphic type vars (Uppercase identifiers)
     (,(regexp-opt ridgun-builtin-types 'symbols) . font-lock-type-face)
     ("\\_<[A-Z][A-Za-z0-9_]*\\_>" . font-lock-type-face)
 
@@ -237,53 +249,109 @@
           (push (cons (substring line start i) start) tokens))))
     (nreverse tokens)))
 
+(defun ridgun--sig-type-token-p (tok-str)
+  "Return non-nil if TOK-STR in a signature is a type placeholder."
+  (and (> (length tok-str) 0)
+       (let ((ch (aref tok-str 0)))
+         (or (and (>= ch ?A) (<= ch ?Z))
+             (memq ch '(?\[ ?\())))))
+
+(defun ridgun--bare-fn-lhs-p (lhs-strs)
+  "Return non-nil if LHS-STRS is a prefixless function signature (`name T1 T2')."
+  (and lhs-strs
+       (not (ridgun--sig-type-token-p (car lhs-strs)))
+       (cl-every #'ridgun--sig-type-token-p (cdr lhs-strs))))
+
 (defun ridgun--parse-fn-sig-line (line)
-  "If LINE is a `fn :: ...' or `op :: ...' signature, return its parsed plist."
-  (when (string-match-p "^[ \t]*\\(?:fn\\|op\\)[ \t]*::" line)
-    (let* ((clean (replace-regexp-in-string "[ \t]*--.*$" "" line))
-           (toks (ridgun--scan-tokens-with-cols clean)))
-      (when (and (>= (length toks) 4)
-                 (member (car (nth 0 toks)) '("fn" "op"))
-                 (equal (car (nth 1 toks)) "::"))
-        (let ((kind (car (nth 0 toks)))
-              (name (car (nth 2 toks)))
-              (lhs-toks nil)
-              (arrow-tok nil)
-              (rest (nthcdr 2 toks)))
-          (while (and rest (not arrow-tok))
-            (let ((tok (car rest)))
-              (if (member (car tok) '("=>" "->"))
-                  (setq arrow-tok tok)
-                (push tok lhs-toks)))
-            (setq rest (cdr rest)))
-          (setq lhs-toks (nreverse lhs-toks))
-          (when arrow-tok
-            (let* ((arrow-end (+ (cdr arrow-tok) (length (car arrow-tok))))
-                   (ret-str (string-trim (substring clean arrow-end))))
-              (list :kind kind
-                    :name name
-                    :name-col 6
-                    :lhs-strs (mapcar #'car lhs-toks)
-                    :arrow-str (car arrow-tok)
-                    :ret-str ret-str))))))))
+  "If LINE is a `fn ::', `op ::', or prefixless signature, return its plist."
+  (let* ((clean (replace-regexp-in-string "[ \t]*--.*$" "" line))
+         (toks (ridgun--scan-tokens-with-cols clean)))
+    (cond
+     ;; 1. Explicit `fn :: ...' or `op :: ...'
+     ((and (>= (length toks) 4)
+           (member (car (nth 0 toks)) '("fn" "op"))
+           (equal (car (nth 1 toks)) "::"))
+      (let ((kind (car (nth 0 toks)))
+            (name (car (nth 2 toks)))
+            (lhs-toks nil)
+            (arrow-tok nil)
+            (rest (nthcdr 2 toks)))
+        (while (and rest (not arrow-tok))
+          (let ((tok (car rest)))
+            (if (member (car tok) '("=>" "->"))
+                (setq arrow-tok tok)
+              (push tok lhs-toks)))
+          (setq rest (cdr rest)))
+        (setq lhs-toks (nreverse lhs-toks))
+        (when (and arrow-tok lhs-toks)
+          (let* ((arrow-end (+ (cdr arrow-tok) (length (car arrow-tok))))
+                 (ret-str (string-trim (substring clean arrow-end))))
+            (list :kind kind
+                  :name name
+                  :name-col 6
+                  :lhs-strs (mapcar #'car lhs-toks)
+                  :arrow-str (car arrow-tok)
+                  :ret-str ret-str)))))
+     ;; 2. Prefixless top-level signature at column 0 (`name T1 => Ret` or `a op b => Ret`)
+     ((and (>= (length toks) 2)
+           (zerop (cdr (nth 0 toks)))
+           (not (member (car (nth 0 toks))
+                        '("fn" "op" "type" "import" "global" "context" "shared" "hardware")))
+           (not (string-prefix-p "@" (car (nth 0 toks))))
+           (not (string-prefix-p "|" (car (nth 0 toks)))))
+      (let ((lhs-toks nil)
+            (arrow-tok nil)
+            (rest toks))
+        (while (and rest (not arrow-tok))
+          (let ((tok (car rest)))
+            (if (equal (car tok) "=>")
+                (setq arrow-tok tok)
+              (push tok lhs-toks)))
+          (setq rest (cdr rest)))
+        (setq lhs-toks (nreverse lhs-toks))
+        (when (and arrow-tok lhs-toks)
+          (let* ((lhs-strs (mapcar #'car lhs-toks))
+                 (kind (if (ridgun--bare-fn-lhs-p lhs-strs) "bare_fn" "bare_op"))
+                 (arrow-end (+ (cdr arrow-tok) (length (car arrow-tok))))
+                 (ret-str (string-trim (substring clean arrow-end))))
+            (list :kind kind
+                  :name (car lhs-strs)
+                  :name-col 0
+                  :lhs-strs lhs-strs
+                  :arrow-str (car arrow-tok)
+                  :ret-str ret-str))))))))
+
+(defun ridgun--top-decl-line-p (line)
+  "Return non-nil if LINE starts a new top-level declaration."
+  (or (string-match-p
+       "^[ \t]*\\(?:fn\\|op\\|type\\|import\\|global\\|context\\|shared\\|hardware\\|@\\)\\_>"
+       line)
+      (not (null (ridgun--parse-fn-sig-line line)))))
 
 (defun ridgun--find-enclosing-sig-bol ()
-  "Return the line-beginning-position of the enclosing `fn ::' or `op ::' line."
+  "Return the line-beginning-position of the enclosing signature line."
   (save-excursion
     (beginning-of-line)
-    (if (looking-at-p "^[ \t]*\\(?:fn\\|op\\)[ \t]*::")
-        (point)
-      (let ((sig-bol nil)
-            (stop nil))
-        (while (and (not sig-bol) (not stop) (not (bobp)))
-          (forward-line -1)
-          (cond
-           ((looking-at-p "^[ \t]*\\(?:fn\\|op\\)[ \t]*::")
-            (setq sig-bol (point)))
-           ((looking-at-p
-             "^[ \t]*\\(?:type\\|import\\|global\\|context\\|shared\\|hardware\\)\\_>")
-            (setq stop t))))
-        sig-bol))))
+    (let ((cur-line (buffer-substring-no-properties
+                     (line-beginning-position)
+                     (line-end-position))))
+      (if (ridgun--parse-fn-sig-line cur-line)
+          (point)
+        (let ((sig-bol nil)
+              (stop nil))
+          (while (and (not sig-bol) (not stop) (not (bobp)))
+            (forward-line -1)
+            (let ((l (buffer-substring-no-properties
+                      (line-beginning-position)
+                      (line-end-position))))
+              (cond
+               ((ridgun--parse-fn-sig-line l)
+                (setq sig-bol (point)))
+               ((string-match-p
+                 "^[ \t]*\\(?:type\\|import\\|global\\|context\\|shared\\|hardware\\)\\_>"
+                 l)
+                (setq stop t)))))
+          sig-bol)))))
 
 (defun ridgun--next-nonblank-starts-with-guard-p ()
   "Return non-nil if the next non-blank line starts with a guard `|'."
@@ -301,21 +369,15 @@
             (setq is-guard (string-match-p "^[ \t]*|[^|]" line)))))
       is-guard)))
 
-(defun ridgun--sig-type-token-p (tok-str)
-  "Return non-nil if TOK-STR in a signature is a type placeholder."
-  (and (> (length tok-str) 0)
-       (let ((ch (aref tok-str 0)))
-         (or (and (>= ch ?A) (<= ch ?Z))
-             (memq ch '(?\[ ?\())))))
-
 (defun ridgun--clause-matches-sig-p (sig clause-lhs)
   "Return non-nil if CLAUSE-LHS token strings belong to a clause of SIG."
   (and clause-lhs
        (let ((kind (plist-get sig :kind))
              (sig-lhs (plist-get sig :lhs-strs)))
-         (if (equal kind "fn")
-             (equal (car clause-lhs) (car sig-lhs))
-           ;; For `op ::', length matches and all operator/keyword tokens match
+         (if (member kind '("fn" "bare_fn"))
+             (and (= (length clause-lhs) (length sig-lhs))
+                  (equal (car clause-lhs) (car sig-lhs)))
+           ;; For `op ::' or `bare_op', length matches and all operator/keyword tokens match
            (and (= (length clause-lhs) (length sig-lhs))
                 (let ((ok t)
                       (s-rest sig-lhs)
@@ -332,34 +394,39 @@
 
 (defun ridgun--parse-clause-line (sig line)
   "If LINE is a clause of SIG, return (:lhs-strs LIST :has-eq BOOL :rhs STR)."
-  (let ((toks (ridgun--scan-tokens-with-cols line)))
-    (when toks
-      (let ((clause-lhs nil)
-            (eq-tok nil)
-            (rest toks))
-        (while (and rest (not eq-tok))
-          (if (equal (car (car rest)) "=")
-              (setq eq-tok (car rest))
-            (push (car (car rest)) clause-lhs))
-          (setq rest (cdr rest)))
-        (setq clause-lhs (nreverse clause-lhs))
-        (when (and (ridgun--clause-matches-sig-p sig clause-lhs)
-                   (or eq-tok (ridgun--next-nonblank-starts-with-guard-p)))
-          (let ((rhs (if eq-tok
-                         (string-trim (substring line (+ (cdr eq-tok) 1)))
-                       "")))
-            (list :lhs-strs clause-lhs
-                  :has-eq (not (null eq-tok))
-                  :rhs rhs)))))))
+  (let* ((clean (replace-regexp-in-string "[ \t]*--.*$" "" line))
+         (trimmed (string-trim clean)))
+    (when (and (not (string-empty-p trimmed))
+               (not (string-prefix-p "|" trimmed))
+               (not (string-prefix-p "--" trimmed))
+               (not (ridgun--top-decl-line-p line)))
+      (let ((toks (ridgun--scan-tokens-with-cols clean)))
+        (when toks
+          (let ((clause-lhs nil)
+                (eq-tok nil)
+                (rest toks))
+            (while (and rest (not eq-tok))
+              (if (equal (car (car rest)) "=")
+                  (setq eq-tok (car rest))
+                (push (car (car rest)) clause-lhs))
+              (setq rest (cdr rest)))
+            (setq clause-lhs (nreverse clause-lhs))
+            (when (and (ridgun--clause-matches-sig-p sig clause-lhs)
+                       (or eq-tok (ridgun--next-nonblank-starts-with-guard-p)))
+              (let ((rhs (if eq-tok
+                             (string-trim (substring line (+ (cdr eq-tok) 1)))
+                           "")))
+                (list :lhs-strs clause-lhs
+                      :has-eq (not (null eq-tok))
+                      :rhs rhs)))))))))
 
 (defun ridgun--parse-where-binding-line (line)
   "If LINE is a `where' binding `<lhs> -> <rhs>', return (:lhs STR :rhs STR)."
   (let* ((clean (replace-regexp-in-string "[ \t]*--.*$" "" line))
          (trimmed (string-trim clean)))
     (when (and (not (string-empty-p trimmed))
-               (not (string-match-p
-                     "^\\(?:fn\\|op\\|type\\|import\\|global\\|context\\|shared\\|hardware\\|where\\)\\_>"
-                     trimmed))
+               (not (ridgun--top-decl-line-p line))
+               (not (string-match-p "^where\\_>" trimmed))
                (not (string-match-p "^|" trimmed)))
       (let ((toks (ridgun--scan-tokens-with-cols clean))
             (arrow-tok nil))
@@ -368,7 +435,7 @@
             (setq arrow-tok tok)))
         (when arrow-tok
           (let ((lhs (string-trim (substring clean 0 (cdr arrow-tok))))
-                (rhs (string-trim (substring clean (+ (cdr arrow-tok) 2)))))
+                (rhs (string-trim (substring line (+ (cdr arrow-tok) 2)))))
             (when (and (not (string-empty-p lhs))
                        (not (string-empty-p rhs)))
               (list :lhs lhs :rhs rhs))))))))
@@ -383,10 +450,10 @@
            (sig (ridgun--parse-fn-sig-line sig-line)))
       (when sig
         (let* ((lhs-strs (plist-get sig :lhs-strs))
+               (base-col (or (plist-get sig :name-col) 6))
                (ncols (length lhs-strs))
                (widths (vconcat (mapcar #'length lhs-strs)))
-               (where-indent (+ (or (plist-get sig :name-col) 6)
-                                (* 2 ridgun-indent-offset)))
+               (where-indent (+ base-col (* 2 ridgun-indent-offset)))
                (max-where-end 0)
                (stop nil))
           ;; Scan all clauses and `where' bindings belonging to this signature
@@ -394,9 +461,7 @@
             (let ((line (buffer-substring-no-properties
                          (line-beginning-position)
                          (line-end-position))))
-              (if (string-match-p
-                   "^[ \t]*\\(?:fn\\|op\\|type\\|import\\|global\\|context\\|shared\\|hardware\\|@\\)\\_>"
-                   line)
+              (if (ridgun--top-decl-line-p line)
                   (setq stop t)
                 (let ((clause (ridgun--parse-clause-line sig line))
                       (wb (ridgun--parse-where-binding-line line)))
@@ -416,7 +481,7 @@
                                   1)))))))))
           ;; Build column start positions from widths
           (let ((col-starts nil)
-                (cur-col 6)
+                (cur-col base-col)
                 (idx 0))
             (while (< idx ncols)
               (push cur-col col-starts)
@@ -428,7 +493,7 @@
                    (arrow-col (max cur-col max-where-end))
                    (ret-col (+ arrow-col (length arrow-str) 1))
                    (total-sig-len (+ ret-col (length ret-str)))
-                   (num-params (if (equal (plist-get sig :kind) "fn")
+                   (num-params (if (member (plist-get sig :kind) '("fn" "bare_fn"))
                                    (1- ncols)
                                  (cl-count-if #'ridgun--sig-type-token-p lhs-strs))))
               (if (or (> num-params 4) (> total-sig-len 80))
@@ -442,14 +507,17 @@
               sig)))))))
 
 (defun ridgun--format-sig-line (sig)
-  "Format the `fn ::' or `op ::' signature line using SIG's group geometry."
+  "Format the signature line using SIG's group geometry."
   (let* ((kind (plist-get sig :kind))
          (lhs-strs (plist-get sig :lhs-strs))
          (sig-cols (plist-get sig :sig-cols))
          (arrow-str (plist-get sig :arrow-str))
          (arrow-col (plist-get sig :arrow-col))
          (ret-str (plist-get sig :ret-str))
-         (out (concat kind " :: " (car lhs-strs)))
+         (prefix (if (member kind '("bare_fn" "bare_op"))
+                     (car lhs-strs)
+                   (concat kind " :: " (car lhs-strs))))
+         (out prefix)
          (idx 1))
     (dolist (tok-str (cdr lhs-strs))
       (let* ((target-col (nth idx sig-cols))
@@ -461,7 +529,7 @@
     out))
 
 (defun ridgun--format-fn-clause-line (sig line)
-  "Format `fn ::' or `op ::' clause LINE aligned to SIG's group columns."
+  "Format clause LINE aligned to SIG's group columns."
   (let ((clause (ridgun--parse-clause-line sig line)))
     (when clause
       (let* ((clause-lhs (plist-get clause :lhs-strs))
@@ -470,7 +538,8 @@
              (sig-cols (plist-get sig :sig-cols))
              (arrow-col (plist-get sig :arrow-col))
              (ret-col (plist-get sig :ret-col))
-             (first-col (or (car sig-cols) 6))
+             (base-col (or (plist-get sig :name-col) 6))
+             (first-col (or (car sig-cols) base-col))
              (out (concat (make-string first-col ?\s) (car clause-lhs)))
              (idx 1))
         (dolist (tok-str (cdr clause-lhs))
@@ -482,7 +551,7 @@
           (let ((spaces-before-eq (if arrow-col (max 1 (- arrow-col (length out))) 1)))
             (setq out (concat out (make-string spaces-before-eq ?\s) "="))
             (unless (string-empty-p rhs)
-              (let ((spaces-after-eq (if ret-col (max 1 (- ret-col (length out))) 2)))
+              (let ((spaces-after-eq (if ret-col (max 1 (- ret-col (length out))) 1)))
                 (setq out (concat out (make-string spaces-after-eq ?\s) rhs))))))
         out))))
 
@@ -518,9 +587,7 @@
         (let ((line (buffer-substring-no-properties
                      (line-beginning-position)
                      (line-end-position))))
-          (if (string-match-p
-               "^[ \t]*\\(?:fn\\|op\\|type\\|import\\|global\\|context\\|shared\\|hardware\\|@\\)\\_>"
-               line)
+          (if (ridgun--top-decl-line-p line)
               (setq stop t)
             (let ((formatted-line (or (ridgun--format-fn-clause-line sig line)
                                       (ridgun--format-where-binding-line sig line))))
@@ -554,8 +621,8 @@
          (sig-bol (ridgun--find-enclosing-sig-bol))
          (sig (when sig-bol (ridgun--compute-group-geometry sig-bol))))
     (cond
-     ;; Case 1: Current line is a `fn ::' or `op ::' signature line
-     ((and sig (string-match-p "^\\(?:fn\\|op\\)[ \t]*::" cur-text))
+     ;; Case 1: Current line is a `fn ::', `op ::', or prefixless signature line
+     ((and sig (ridgun--parse-fn-sig-line line))
       (let ((formatted-sig (ridgun--format-sig-line sig))
             (offset (- (point) (line-beginning-position))))
         (unless (equal line formatted-sig)
@@ -563,7 +630,7 @@
           (insert formatted-sig))
         (goto-char (min (line-end-position) (+ (line-beginning-position) offset)))))
 
-     ;; Case 2: Current line is a clause of the enclosing `fn ::' or `op ::'
+     ;; Case 2: Current line is a clause of the enclosing signature
      ((and sig (ridgun--parse-clause-line sig line))
       (let ((formatted-clause (ridgun--format-fn-clause-line sig line))
             (offset (- (point) (line-beginning-position))))
@@ -596,9 +663,7 @@
              (target-indent
               (cond
                ;; Top-level declarations at column 0
-               ((string-match-p
-                 "^\\(?:fn\\|op\\|type\\|import\\|global\\|context\\|shared\\|hardware\\)\\_>"
-                 cur-text)
+               ((ridgun--top-decl-line-p line)
                 0)
                ;; `where' keyword line indents one level under the function name
                ((string-match-p "^where\\_>" cur-text)
@@ -606,11 +671,11 @@
                ;; Guard lines (`| cond = ...`) or parallel pipes (`|| ...`)
                ((string-match-p "^||?[ \t]+" cur-text)
                 (+ fn-base-col ridgun-indent-offset))
-               ;; Previous line is `fn ::` or `op ::` signature
-               ((string-match-p "^[ \t]*\\(?:fn\\|op\\)[ \t]*::" prev-text)
+               ;; Previous line is a signature line
+               ((ridgun--parse-fn-sig-line prev-text)
                 fn-base-col)
                ;; Previous line opens a block (`=`, `where`, `do`)
-               ((string-match-p "\\(?:=\\|\\_<where\\|\\_<do\\)[ \t]*\\(?:--.*\\)?$" prev-text)
+               ((string-match-p "\\(?:[^=!<>]=\\|^=\\|\\_<where\\|\\_<do\\)[ \t]*\\(?:--.*\\)?$" prev-text)
                 (+ prev-indent ridgun-indent-offset))
                ;; Otherwise preserve previous non-blank line's indentation
                (t prev-indent))))
@@ -724,8 +789,8 @@
   "Keymap for `ridgun-mode'.")
 
 (defvar ridgun-imenu-generic-expression
-  '(("Functions" "^fn\\s-*::\\s-*\\([a-z_][A-Za-z0-9_]*\\)" 1)
-    ("Types" "^type\\s-*::\\s-*\\([A-Z][A-Za-z0-9_]*\\)" 1)
+  '(("Functions" "^\\(?:fn\\s-*::\\s-*\\)?\\([a-z_][A-Za-z0-9_]*\\)[^\n=]*=>" 1)
+    ("Types" "^type\\s-+\\(?:\\s-*::\\s-*\\)?\\([A-Z][A-Za-z0-9_]*\\)" 1)
     ("Operators" "^op\\s-*::\\s-*\\(.+\\)\\s-*=>" 1)
     ("State & Hardware" "^\\(?:global\\|context\\|shared\\|hardware\\)\\s-*::\\s-*\\([a-z_][A-Za-z0-9_]*\\)" 1))
   "Imenu generic expressions for `ridgun-mode'.")
@@ -738,11 +803,10 @@
         (let* ((line (buffer-substring-no-properties
                       (line-beginning-position)
                       (line-end-position)))
-               (cur-text (string-trim line))
                (sig-bol (ridgun--find-enclosing-sig-bol))
                (sig (when sig-bol (ridgun--compute-group-geometry sig-bol))))
           (when (and sig
-                     (not (string-match-p "^\\(?:fn\\|op\\)[ \t]*::" cur-text))
+                     (not (ridgun--parse-fn-sig-line line))
                      (or (ridgun--parse-clause-line sig line)
                          (ridgun--parse-where-binding-line line)))
             (ridgun-indent-line)))))))
