@@ -4,6 +4,7 @@
 -- Full Ridgun v0.9.0 Spec: fn, op, type (sum & record), global,
 -- context, shared, hardware, @packed/@repr, tensors, einsum,
 -- hadamard, sequences/masks, where-DAG, || pipes, string interp.
+-- @implements FR-COMP-001
 -- ============================================================
 import ast
 import lexer
@@ -136,8 +137,21 @@ fn :: parse_type_tuple_rest (String, [RToken]) => (String, [RToken])
       parse_type_tuple_rest (acc, (TokComma:rest)) =
         p2 = parse_type_tok rest
         merge_type_tuple acc p2
+      parse_type_tuple_rest (acc, (TokFatArrow:rest)) =
+        p_ret = parse_type_tok rest
+        merge_type_fn acc p_ret
+      parse_type_tuple_rest (acc, (TokArrow:rest)) =
+        p_ret = parse_type_tok rest
+        merge_type_fn acc p_ret
+      parse_type_tuple_rest (acc, ((TokIdent s):rest)) =
+        p2 = parse_type_tok ([TokIdent s] :: rest)
+        merge_type_tuple acc p2
       parse_type_tuple_rest (acc, (TokRParen:rest)) = ("(" + acc + ")", rest)
       parse_type_tuple_rest (acc, rest)        =  ("(" + acc + ")", rest)
+
+fn :: merge_type_fn String (String, [RToken]) => (String, [RToken])
+      merge_type_fn acc    (ret_ty, (TokRParen:rest)) = ("(" + acc + " => " + ret_ty + ")", rest)
+      merge_type_fn acc    (ret_ty, rest)     =  ("(" + acc + " => " + ret_ty + ")", rest)
 
 fn :: merge_type_tuple String (String, [RToken]) => (String, [RToken])
       merge_type_tuple acc    (next_ty, rest)    =
@@ -1258,9 +1272,39 @@ fn :: is_std_builtin String            => Bool
       is_std_builtin "char_from_code"  =  True
       is_std_builtin "trim_str"        =  True
       is_std_builtin "read_file"       =  True
+      is_std_builtin "load_rg_source"  =  True
+      is_std_builtin "read_bytes"      =  True
+      is_std_builtin "write_bytes"     =  True
       is_std_builtin "write_file"      =  True
       is_std_builtin "shell_exec"      =  True
       is_std_builtin "list_str_len"    =  True
+      is_std_builtin "map"             =  True
+      is_std_builtin "seq_map"         =  True
+      is_std_builtin "filter"          =  True
+      is_std_builtin "seq_filter"      =  True
+      is_std_builtin "fold"            =  True
+      is_std_builtin "list_dir"        =  True
+      is_std_builtin "file_lstat"      =  True
+      is_std_builtin "sha256_file"     =  True
+      is_std_builtin "sha256_str"      =  True
+      is_std_builtin "sys_mkdir"       =  True
+      is_std_builtin "sys_chmod"       =  True
+      is_std_builtin "sys_exec"        =  True
+      is_std_builtin "sys_chdir"       =  True
+      is_std_builtin "sys_getcwd"      =  True
+      is_std_builtin "sys_getenv"      =  True
+      is_std_builtin "sys_setenv"      =  True
+      is_std_builtin "sys_exit"        =  True
+      is_std_builtin "sys_getuid"      =  True
+      is_std_builtin "sys_getgid"      =  True
+      is_std_builtin "sys_username"    =  True
+      is_std_builtin "sys_user_groups" =  True
+      is_std_builtin "sys_lookup_uid_gid" = True
+      is_std_builtin "sys_setresgid"   =  True
+      is_std_builtin "sys_setgroups"   =  True
+      is_std_builtin "sys_setresuid"   =  True
+      is_std_builtin "sys_execve"      =  True
+      is_std_builtin "sys_read_pass"   =  True
       is_std_builtin _                 =  False
 
 fn :: norm_call String  [RExpr] [RArityEntry] => RExpr

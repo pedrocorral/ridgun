@@ -5,6 +5,9 @@
 -- Variadics, Sequences/Masks/FlatJoin, Tensors/Einsum/Hadamard,
 -- Where-DAGs, ParPipes, Channels/Spawn/Join, Scoped Globals/Context/
 -- Shared Atomics, and Bare-Metal Hardware MMIO & Region Quotas.
+-- @implements FR-COMP-001
+-- @implements FR-VM-001
+-- @implements FR-VM-002
 -- ============================================================
 import ast
 import lexer
@@ -653,6 +656,10 @@ fn :: emit_native_expr RExpr              [String] => String
       emit_native_expr (ECall fname [])   locals
         | (lookup_local locals fname) >= 0 = 'lv_' + fname + '.clone()'
         | otherwise = (mangle_fn_name fname) + '()'
+      emit_native_expr (ECall fname (a1:[])) locals
+        | (lookup_local locals fname) >= 0 = 'rg_call1(&lv_' + fname + ', ' + (emit_native_expr a1 locals) + ')'
+      emit_native_expr (ECall fname (a1:a2:[])) locals
+        | (lookup_local locals fname) >= 0 = 'rg_call2(&lv_' + fname + ', ' + (emit_native_expr a1 locals) + ', ' + (emit_native_expr a2 locals) + ')'
       emit_native_expr (ECall fname args) locals
         | is_upper_ident fname = 'rg_adt("' + fname + '", vec![' + (emit_native_expr_csv args locals) + '])'
         | otherwise = (mangle_fn_name fname) + '(' + (emit_native_expr_csv args locals) + ')'
@@ -684,11 +691,23 @@ fn :: emit_native_expr RExpr              [String] => String
       emit_native_expr (ELoadShared var_name def_e) locals =
         'rg_load_shared("' + var_name + '", || ' + (emit_native_expr def_e locals) + ')'
 
+fn :: is_zero_arg_builtin_var String        => Bool
+      is_zero_arg_builtin_var "cli_args"    =  True
+      is_zero_arg_builtin_var "new_mailbox" =  True
+      is_zero_arg_builtin_var "mailbox"     =  True
+      is_zero_arg_builtin_var "new_channel" =  True
+      is_zero_arg_builtin_var "channel"     =  True
+      is_zero_arg_builtin_var "sys_getcwd"  =  True
+      is_zero_arg_builtin_var "sys_getuid"  =  True
+      is_zero_arg_builtin_var "sys_getgid"  =  True
+      is_zero_arg_builtin_var _             =  False
+
 fn :: emit_native_var String [String] => String
       emit_native_var name   locals
         | (lookup_local locals name) >= 0 = 'lv_' + name + '.clone()'
         | is_upper_ident name = 'rg_adt0("' + name + '")'
-        | otherwise = (mangle_fn_name name) + '()'
+        | is_zero_arg_builtin_var name = (mangle_fn_name name) + '()'
+        | otherwise = 'rg_str("' + (escape_rust_str name) + '")'
 
 fn :: emit_native_expr_csv [RExpr] [String] => String
       emit_native_expr_csv []      _        =  ""
@@ -792,6 +811,12 @@ fn :: emit_spawn_arms [RFnDef] => String
         | (infer_fndef_arity params cases) == 1 = '        "' + (escape_rust_str name) + '" => ' + (mangle_fn_name name) + '(arg),' + "\n" + (emit_spawn_arms fs)
         | otherwise = emit_spawn_arms fs
 
+fn :: emit_call2_arms [RFnDef] => String
+      emit_call2_arms []       =  ""
+      emit_call2_arms ((FnDef name params _ cases):fs)
+        | (infer_fndef_arity params cases) == 2 = '        "' + (escape_rust_str name) + '" => ' + (mangle_fn_name name) + '(a, b),' + "\n" + (emit_call2_arms fs)
+        | otherwise = emit_call2_arms fs
+
 fn :: emit_binop_overload_arms [RFnDef] => String
       emit_binop_overload_arms []       =  ""
       emit_binop_overload_arms ((FnDef name params _ cases):fs)
@@ -800,7 +825,7 @@ fn :: emit_binop_overload_arms [RFnDef] => String
 
 fn :: emit_dispatch_tables [RFnDef] => String
       emit_dispatch_tables fns      =
-        'fn rg_dispatch_spawn(fn_name: &str, arg: RVal) -> RVal {' + "\n" + '    match fn_name {' + "\n" + (emit_spawn_arms fns) + '        _ => RVal::Unit,' + "\n" + '    }' + "\n" + '}' + "\n\n" + 'fn rg_dispatch_binop(op: &str, a: RVal, b: RVal) -> RVal {' + "\n" + '    match op {' + "\n" + (emit_binop_overload_arms fns) + '        _ => RVal::Unit,' + "\n" + '    }' + "\n" + '}' + "\n\n"
+        'fn rg_dispatch_spawn(fn_name: &str, arg: RVal) -> RVal {' + "\n" + '    match fn_name {' + "\n" + (emit_spawn_arms fns) + '        _ => RVal::Unit,' + "\n" + '    }' + "\n" + '}' + "\n\n" + 'fn rg_dispatch_call2(fn_name: &str, a: RVal, b: RVal) -> RVal {' + "\n" + '    match fn_name {' + "\n" + (emit_call2_arms fns) + '        _ => RVal::Unit,' + "\n" + '    }' + "\n" + '}' + "\n\n" + 'fn rg_dispatch_binop(op: &str, a: RVal, b: RVal) -> RVal {' + "\n" + '    match op {' + "\n" + (emit_binop_overload_arms fns) + '        _ => RVal::Unit,' + "\n" + '    }' + "\n" + '}' + "\n\n"
 
 fn :: find_entry_fn_name [RFnDef] String   => String
       find_entry_fn_name []       fallback =  fallback
@@ -1354,16 +1379,168 @@ fn rg_resolve_imports(src: &str, fpath: &Path, vis: &mut HashSet<PathBuf>) -> St
     format!("{}{}", imps, body)
 }
 
+fn rg_call1(f: &RVal, a: RVal) -> RVal {
+    let fname = match f { RVal::Str(s) => s.as_str(), _ => "" };
+    rg_dispatch_spawn(fname, a)
+}
+
+fn rg_call2(f: &RVal, a: RVal, b: RVal) -> RVal {
+    let fname = match f { RVal::Str(s) => s.as_str(), _ => "" };
+    rg_dispatch_call2(fname, a, b)
+}
+
+fn rg_fn_seq_map(f: RVal, xs: RVal) -> RVal {
+    let fname = match &f { RVal::Str(s) => s.as_str(), _ => "" };
+    match xs {
+        RVal::List(rc, st) => {
+            let slice = &rc[st.min(rc.len())..];
+            let out: Vec<RVal> = slice.iter().map(|v| rg_dispatch_spawn(fname, v.clone())).collect();
+            rg_list(out)
+        }
+        _ => rg_list(Vec::new()),
+    }
+}
+
+fn rg_fn_map(f: RVal, xs: RVal) -> RVal {
+    let fname = match &f { RVal::Str(s) => s.as_str().to_string(), _ => String::new() };
+    match xs {
+        RVal::List(rc, st) => {
+            let slice = &rc[st.min(rc.len())..];
+            if slice.len() < 4 {
+                let out: Vec<RVal> = slice.iter().map(|v| rg_dispatch_spawn(&fname, v.clone())).collect();
+                return rg_list(out);
+            }
+            let n_workers = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).min(slice.len()).max(1);
+            let chunk_sz = (slice.len() + n_workers - 1) / n_workers;
+            let mut out = Vec::with_capacity(slice.len());
+            std::thread::scope(|s| {
+                let mut handles = Vec::new();
+                for chunk in slice.chunks(chunk_sz) {
+                    let fn_c = fname.clone();
+                    let items: Vec<RVal> = chunk.to_vec();
+                    handles.push(s.spawn(move || {
+                        items.into_iter().map(|v| rg_dispatch_spawn(&fn_c, v)).collect::<Vec<RVal>>()
+                    }));
+                }
+                for h in handles {
+                    if let Ok(part) = h.join() { out.extend(part); }
+                }
+            });
+            rg_list(out)
+        }
+        _ => rg_list(Vec::new()),
+    }
+}
+
+fn rg_fn_seq_filter(f: RVal, xs: RVal) -> RVal {
+    let fname = match &f { RVal::Str(s) => s.as_str(), _ => "" };
+    match xs {
+        RVal::List(rc, st) => {
+            let slice = &rc[st.min(rc.len())..];
+            let out: Vec<RVal> = slice.iter().filter(|v| rg_as_bool(&rg_dispatch_spawn(fname, (*v).clone()))).cloned().collect();
+            rg_list(out)
+        }
+        _ => rg_list(Vec::new()),
+    }
+}
+
+fn rg_fn_filter(f: RVal, xs: RVal) -> RVal {
+    let fname = match &f { RVal::Str(s) => s.as_str().to_string(), _ => String::new() };
+    match xs {
+        RVal::List(rc, st) => {
+            let slice = &rc[st.min(rc.len())..];
+            if slice.len() < 4 {
+                let out: Vec<RVal> = slice.iter().filter(|v| rg_as_bool(&rg_dispatch_spawn(&fname, (*v).clone()))).cloned().collect();
+                return rg_list(out);
+            }
+            let n_workers = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).min(slice.len()).max(1);
+            let chunk_sz = (slice.len() + n_workers - 1) / n_workers;
+            let mut out = Vec::new();
+            std::thread::scope(|s| {
+                let mut handles = Vec::new();
+                for chunk in slice.chunks(chunk_sz) {
+                    let fn_c = fname.clone();
+                    let items: Vec<RVal> = chunk.to_vec();
+                    handles.push(s.spawn(move || {
+                        items.into_iter().filter(|v| rg_as_bool(&rg_dispatch_spawn(&fn_c, v.clone()))).collect::<Vec<RVal>>()
+                    }));
+                }
+                for h in handles {
+                    if let Ok(part) = h.join() { out.extend(part); }
+                }
+            });
+            rg_list(out)
+        }
+        _ => rg_list(Vec::new()),
+    }
+}
+
+fn rg_fn_fold(f: RVal, init: RVal, xs: RVal) -> RVal {
+    let fname = match &f { RVal::Str(s) => s.as_str(), _ => "" };
+    let mut acc = init;
+    if let RVal::List(rc, st) = xs {
+        for v in &rc[st.min(rc.len())..] {
+            acc = rg_dispatch_call2(fname, acc, v.clone());
+        }
+    }
+    acc
+}
+
+fn rg_read_raw_string(path_str: &str) -> String {
+    let bytes = if path_str == "-" || path_str == "/dev/stdin" {
+        use std::io::Read;
+        let mut buf = Vec::new();
+        let _ = std::io::stdin().read_to_end(&mut buf);
+        buf
+    } else {
+        std::fs::read(path_str).unwrap_or_default()
+    };
+    match String::from_utf8(bytes) {
+        Ok(s) => s,
+        Err(e) => e.into_bytes().into_iter().map(|b| b as char).collect(),
+    }
+}
+
 fn rg_fn_read_file(p: RVal) -> RVal {
     let path_str = match &p { RVal::Str(s) => s.as_str(), _ => "" };
+    RVal::Str(Rc::new(rg_read_raw_string(path_str)))
+}
+
+fn rg_fn_load_rg_source(p: RVal) -> RVal {
+    let path_str = match &p { RVal::Str(s) => s.as_str(), _ => "" };
     let raw = std::fs::read_to_string(path_str).unwrap_or_default();
-    if !path_str.ends_with(".rg") {
-        return RVal::Str(Rc::new(raw));
-    }
     let fp = Path::new(path_str);
     let mut vis = HashSet::new();
     if let Ok(c) = fp.canonicalize() { vis.insert(c); }
     RVal::Str(Rc::new(rg_resolve_imports(&raw, fp, &mut vis)))
+}
+
+fn rg_fn_read_bytes(p: RVal) -> RVal {
+    let path_str = match &p { RVal::Str(s) => s.as_str(), _ => "" };
+    let bytes = if path_str == "-" || path_str == "/dev/stdin" {
+        use std::io::Read;
+        let mut buf = Vec::new();
+        let _ = std::io::stdin().read_to_end(&mut buf);
+        buf
+    } else {
+        std::fs::read(path_str).unwrap_or_default()
+    };
+    let out: Vec<RVal> = bytes.into_iter().map(|b| RVal::Int(b as i64)).collect();
+    rg_list(out)
+}
+
+fn rg_fn_write_bytes(p: RVal, bs: RVal) -> RVal {
+    let path_str = match &p { RVal::Str(s) => s.as_str(), _ => "" };
+    if let RVal::List(rc, st) = bs {
+        let raw: Vec<u8> = rc[st.min(rc.len())..].iter().map(|v| (rg_as_int(v) & 0xFF) as u8).collect();
+        if path_str == "-" || path_str == "/dev/stdout" {
+            use std::io::Write;
+            let _ = std::io::stdout().write_all(&raw);
+        } else {
+            let _ = std::fs::write(path_str, &raw);
+        }
+    }
+    RVal::Unit
 }
 
 fn rg_fn_write_file(p: RVal, c: RVal) -> RVal {
@@ -1380,6 +1557,322 @@ fn rg_fn_shell_exec(cmd: RVal) -> RVal {
 fn rg_fn_cli_args() -> RVal {
     let v: Vec<RVal> = std::env::args().map(|s| RVal::Str(Rc::new(s))).collect();
     RVal::List(Rc::new(v), 0)
+}
+
+fn rg_fn_list_dir(p: RVal) -> RVal {
+    let path_str = match &p { RVal::Str(s) => s.as_str(), _ => "." };
+    let mut names: Vec<String> = Vec::new();
+    if let Ok(rd) = std::fs::read_dir(path_str) {
+        for entry in rd.flatten() {
+            if let Some(n) = entry.file_name().to_str() {
+                names.push(n.to_string());
+            }
+        }
+    }
+    names.sort();
+    rg_list(names.into_iter().map(|s| RVal::Str(Rc::new(s))).collect())
+}
+
+fn rg_lookup_id_name(file_path: &str, id: u32) -> String {
+    let id_str = id.to_string();
+    if let Ok(content) = std::fs::read_to_string(file_path) {
+        for line in content.lines() {
+            let parts: Vec<&str> = line.split(":").collect();
+            if parts.len() >= 3 && parts[2] == id_str {
+                return parts[0].to_string();
+            }
+        }
+    }
+    id_str
+}
+
+fn rg_fn_file_lstat(p: RVal) -> RVal {
+    use std::os::unix::fs::{MetadataExt, FileTypeExt};
+    let path_str = match &p { RVal::Str(s) => s.as_str(), _ => "" };
+    match std::fs::symlink_metadata(path_str) {
+        Ok(meta) => {
+            let ft = meta.file_type();
+            let kind = if ft.is_dir() { "dir" }
+                else if ft.is_symlink() { "link" }
+                else if ft.is_fifo() { "fifo" }
+                else if ft.is_socket() { "sock" }
+                else if ft.is_block_device() { "block" }
+                else if ft.is_char_device() { "char" }
+                else { "file" };
+            let mode = (meta.mode() & 0o7777) as i64;
+            let nlink = meta.nlink() as i64;
+            let size = meta.len() as i64;
+            let owner = rg_lookup_id_name("/etc/passwd", meta.uid());
+            let group = rg_lookup_id_name("/etc/group", meta.gid());
+            let mtime = meta.mtime();
+            let link_target = if ft.is_symlink() {
+                std::fs::read_link(path_str).ok().and_then(|pb| pb.to_str().map(|s| s.to_string())).unwrap_or_default()
+            } else {
+                String::new()
+            };
+            rg_tuple(vec![
+                RVal::Bool(true),
+                rg_str(kind),
+                RVal::Int(mode),
+                RVal::Int(nlink),
+                RVal::Int(size),
+                rg_str(&owner),
+                rg_str(&group),
+                RVal::Int(mtime),
+                rg_str(&link_target),
+            ])
+        }
+        Err(_) => rg_tuple(vec![
+            RVal::Bool(false),
+            rg_str(""),
+            RVal::Int(0),
+            RVal::Int(0),
+            RVal::Int(0),
+            rg_str(""),
+            rg_str(""),
+            RVal::Int(0),
+            rg_str(""),
+        ]),
+    }
+}
+
+fn rg_sha256_bytes(data: &[u8]) -> String {
+    const K: [u32; 64] = [
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+        0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+        0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+        0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+        0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+        0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+        0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+    ];
+    let mut h: [u32; 8] = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+    let bit_len = (data.len() as u64).wrapping_mul(8);
+    let mut msg = data.to_vec();
+    msg.push(0x80);
+    while (msg.len() % 64) != 56 { msg.push(0); }
+    msg.extend_from_slice(&bit_len.to_be_bytes());
+    for chunk in msg.chunks_exact(64) {
+        let mut w = [0u32; 64];
+        for i in 0..16 {
+            w[i] = u32::from_be_bytes([chunk[i*4], chunk[i*4+1], chunk[i*4+2], chunk[i*4+3]]);
+        }
+        for i in 16..64 {
+            let s0 = w[i-15].rotate_right(7) ^ w[i-15].rotate_right(18) ^ (w[i-15] >> 3);
+            let s1 = w[i-2].rotate_right(17) ^ w[i-2].rotate_right(19) ^ (w[i-2] >> 10);
+            w[i] = w[i-16].wrapping_add(s0).wrapping_add(w[i-7]).wrapping_add(s1);
+        }
+        let (mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut hh) = (h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7]);
+        for i in 0..64 {
+            let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
+            let ch = (e & f) ^ ((!e) & g);
+            let temp1 = hh.wrapping_add(s1).wrapping_add(ch).wrapping_add(K[i]).wrapping_add(w[i]);
+            let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
+            let maj = (a & b) ^ (a & c) ^ (b & c);
+            let temp2 = s0.wrapping_add(maj);
+            hh = g; g = f; f = e; e = d.wrapping_add(temp1); d = c; c = b; b = a; a = temp1.wrapping_add(temp2);
+        }
+        h[0] = h[0].wrapping_add(a); h[1] = h[1].wrapping_add(b); h[2] = h[2].wrapping_add(c); h[3] = h[3].wrapping_add(d);
+        h[4] = h[4].wrapping_add(e); h[5] = h[5].wrapping_add(f); h[6] = h[6].wrapping_add(g); h[7] = h[7].wrapping_add(hh);
+    }
+    format!("{:08x}{:08x}{:08x}{:08x}{:08x}{:08x}{:08x}{:08x}", h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7])
+}
+
+fn rg_fn_sha256_file(p: RVal) -> RVal {
+    let path_str = match &p { RVal::Str(s) => s.as_str(), _ => "" };
+    let bytes = std::fs::read(path_str).unwrap_or_default();
+    rg_str(&rg_sha256_bytes(&bytes))
+}
+
+fn rg_fn_sha256_str(s: RVal) -> RVal {
+    let st = match &s { RVal::Str(v) => v.as_bytes(), _ => &[] };
+    rg_str(&rg_sha256_bytes(st))
+}
+
+fn rg_fn_sys_mkdir(p: RVal, mode: RVal) -> RVal {
+    use std::os::unix::fs::PermissionsExt;
+    let path_str = match &p { RVal::Str(s) => s.as_str(), _ => "" };
+    let m = (rg_as_int(&mode) & 0o7777) as u32;
+    if std::fs::create_dir_all(path_str).is_ok() {
+        let _ = std::fs::set_permissions(path_str, std::fs::Permissions::from_mode(m));
+        RVal::Int(0)
+    } else {
+        RVal::Int(-1)
+    }
+}
+
+fn rg_fn_sys_chmod(p: RVal, mode: RVal) -> RVal {
+    use std::os::unix::fs::PermissionsExt;
+    let path_str = match &p { RVal::Str(s) => s.as_str(), _ => "" };
+    let m = (rg_as_int(&mode) & 0o7777) as u32;
+    if std::fs::set_permissions(path_str, std::fs::Permissions::from_mode(m)).is_ok() {
+        RVal::Int(0)
+    } else {
+        RVal::Int(-1)
+    }
+}
+
+fn rg_extract_str_vec(v: &RVal) -> Vec<String> {
+    match v {
+        RVal::List(rc, st) => rc[(*st).min(rc.len())..].iter().map(|x| format!("{}", x)).collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn rg_fn_sys_exec(prog: RVal, args: RVal, env_list: RVal) -> RVal {
+    let prog_str = match &prog { RVal::Str(s) => s.as_str(), _ => "" };
+    let arg_vec = rg_extract_str_vec(&args);
+    let env_vec = rg_extract_str_vec(&env_list);
+    let mut cmd = std::process::Command::new(prog_str);
+    cmd.args(&arg_vec);
+    for kv in env_vec {
+        if let Some((k, v)) = kv.split_once("=") {
+            cmd.env(k, v);
+        }
+    }
+    let st = cmd.status().map(|s| s.code().unwrap_or(1) as i64).unwrap_or(-1);
+    RVal::Int(st)
+}
+
+fn rg_fn_sys_chdir(p: RVal) -> RVal {
+    let path_str = match &p { RVal::Str(s) => s.as_str(), _ => "." };
+    if std::env::set_current_dir(path_str).is_ok() { RVal::Int(0) } else { RVal::Int(-1) }
+}
+
+fn rg_fn_sys_getcwd() -> RVal {
+    let cwd = std::env::current_dir().ok().and_then(|p| p.to_str().map(|s| s.to_string())).unwrap_or_default();
+    rg_str(&cwd)
+}
+
+fn rg_fn_sys_getenv(k: RVal) -> RVal {
+    let key = match &k { RVal::Str(s) => s.as_str(), _ => "" };
+    let val = std::env::var(key).unwrap_or_default();
+    rg_str(&val)
+}
+
+fn rg_fn_sys_setenv(k: RVal, v: RVal) -> RVal {
+    if let (RVal::Str(ks), RVal::Str(vs)) = (k, v) {
+        std::env::set_var(ks.as_str(), vs.as_str());
+        RVal::Int(0)
+    } else {
+        RVal::Int(-1)
+    }
+}
+
+fn rg_fn_sys_exit(code: RVal) -> RVal {
+    std::process::exit(rg_as_int(&code) as i32);
+}
+
+extern "C" {
+    fn getuid() -> u32;
+    fn getgid() -> u32;
+    fn setresgid(rgid: u32, egid: u32, sgid: u32) -> i32;
+    fn setresuid(ruid: u32, euid: u32, suid: u32) -> i32;
+    fn setgroups(size: usize, list: *const u32) -> i32;
+}
+
+fn rg_fn_sys_getuid() -> RVal { RVal::Int(unsafe { getuid() } as i64) }
+fn rg_fn_sys_getgid() -> RVal { RVal::Int(unsafe { getgid() } as i64) }
+
+fn rg_fn_sys_username(uid: RVal) -> RVal {
+    let u = rg_as_int(&uid).max(0) as u32;
+    rg_str(&rg_lookup_id_name("/etc/passwd", u))
+}
+
+fn rg_fn_sys_lookup_uid_gid(user: RVal) -> RVal {
+    let uname = match &user { RVal::Str(s) => s.as_str(), _ => "" };
+    if let Ok(content) = std::fs::read_to_string("/etc/passwd") {
+        for line in content.lines() {
+            let parts: Vec<&str> = line.split(":").collect();
+            if parts.len() >= 4 && parts[0] == uname {
+                let u = parts[2].parse::<i64>().unwrap_or(-1);
+                let g = parts[3].parse::<i64>().unwrap_or(-1);
+                return rg_tuple(vec![RVal::Int(u), RVal::Int(g)]);
+            }
+        }
+    }
+    rg_tuple(vec![RVal::Int(-1), RVal::Int(-1)])
+}
+
+fn rg_fn_sys_user_groups(user: RVal) -> RVal {
+    let uname = match &user { RVal::Str(s) => s.as_str(), _ => "" };
+    let mut groups: Vec<String> = Vec::new();
+    let mut pri_gid: Option<u32> = None;
+    if let Ok(content) = std::fs::read_to_string("/etc/passwd") {
+        for line in content.lines() {
+            let parts: Vec<&str> = line.split(":").collect();
+            if parts.len() >= 4 && parts[0] == uname {
+                pri_gid = parts[3].parse::<u32>().ok();
+                break;
+            }
+        }
+    }
+    if let Ok(content) = std::fs::read_to_string("/etc/group") {
+        for line in content.lines() {
+            let parts: Vec<&str> = line.split(":").collect();
+            if parts.len() >= 4 {
+                let gname = parts[0];
+                let gid_ok = pri_gid.map(|g| parts[2] == g.to_string()).unwrap_or(false);
+                let mem_ok = parts[3].split(",").any(|m| m == uname);
+                if (gid_ok || mem_ok) && !groups.contains(&gname.to_string()) {
+                    groups.push(gname.to_string());
+                }
+            }
+        }
+    }
+    rg_list(groups.into_iter().map(|s| RVal::Str(Rc::new(s))).collect())
+}
+
+fn rg_fn_sys_setresgid(gid: RVal) -> RVal {
+    let g = rg_as_int(&gid) as u32;
+    RVal::Int(unsafe { setresgid(g, g, g) } as i64)
+}
+
+fn rg_fn_sys_setgroups(gids: RVal) -> RVal {
+    let gs: Vec<u32> = match &gids {
+        RVal::List(rc, st) => rc[(*st).min(rc.len())..].iter().map(|v| rg_as_int(v) as u32).collect(),
+        _ => Vec::new(),
+    };
+    RVal::Int(unsafe { setgroups(gs.len(), gs.as_ptr()) } as i64)
+}
+
+fn rg_fn_sys_setresuid(uid: RVal) -> RVal {
+    let u = rg_as_int(&uid) as u32;
+    RVal::Int(unsafe { setresuid(u, u, u) } as i64)
+}
+
+fn rg_fn_sys_execve(prog: RVal, args: RVal, env_list: RVal) -> RVal {
+    use std::os::unix::process::CommandExt;
+    let prog_str = match &prog { RVal::Str(s) => s.as_str(), _ => "" };
+    let arg_vec = rg_extract_str_vec(&args);
+    let env_vec = rg_extract_str_vec(&env_list);
+    let mut cmd = std::process::Command::new(prog_str);
+    cmd.args(&arg_vec);
+    cmd.env_clear();
+    for kv in env_vec {
+        if let Some((k, v)) = kv.split_once("=") {
+            cmd.env(k, v);
+        }
+    }
+    let _err = cmd.exec();
+    RVal::Int(-1)
+}
+
+fn rg_fn_sys_read_pass(prompt: RVal) -> RVal {
+    use std::io::{BufRead, Write};
+    let pr = match &prompt { RVal::Str(s) => s.as_str(), _ => "" };
+    if let Ok(mut tty) = std::fs::OpenOptions::new().read(true).write(true).open("/dev/tty") {
+        let _ = tty.write_all(pr.as_bytes());
+        let _ = tty.flush();
+        let mut reader = std::io::BufReader::new(tty);
+        let mut line = String::new();
+        let _ = reader.read_line(&mut line);
+        return rg_str(line.trim_end());
+    }
+    let mut line = String::new();
+    let _ = std::io::stdin().read_line(&mut line);
+    rg_str(line.trim_end())
 }
 '
 
@@ -1409,7 +1902,7 @@ fn :: emit_rgc_payload RProgram String  => String
 
 fn :: emit_rgc_file String     String      => Int
       emit_rgc_file input_path output_path =
-        raw_src = read_file input_path
+        raw_src = load_rg_source input_path
         toks = tokenize_src raw_src
         prog = parse_tokens toks
         errs = typecheck_program prog
@@ -1426,7 +1919,7 @@ fn :: emit_rgc_after_check RProgram String  String      [RTypeError] => Int
 
 fn :: build_native_executable String     String     => Int
       build_native_executable input_path output_bin =
-        raw_src = read_file input_path
+        raw_src = load_rg_source input_path
         toks = tokenize_src raw_src
         prog = parse_tokens toks
         errs = typecheck_program prog

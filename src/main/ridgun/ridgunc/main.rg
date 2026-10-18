@@ -33,7 +33,7 @@ fn :: print_error_lines [String]    => ()
 
 fn :: run_cli_check String     => ()
       run_cli_check input_path =
-        raw_src = read_file input_path
+        raw_src = load_rg_source input_path
         toks = tokenize_src raw_src
         prog = parse_tokens toks
         errs = typecheck_program prog

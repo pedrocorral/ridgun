@@ -9,6 +9,9 @@
 --   and Compile-Time Call-Site Dimension Unification
 -- - Integrates Static Analyzer Errors (Where Cycles, Parallel
 --   Mutation Conflicts, Use-After-Channel-Send)
+-- @implements FR-COMP-001
+-- @implements FR-VM-001
+-- @implements FR-VM-002
 -- ============================================================
 import ast
 import lexer
@@ -49,6 +52,24 @@ fn :: is_int_type_name String => Bool
       is_int_type_name s      =
         s == "Int" OR s == "U8" OR s == "U16" OR s == "U32" OR s == "U64" OR s == "I8" OR s == "I16" OR s == "I32" OR s == "I64" OR s == "Usize"
 
+fn :: find_fat_arrow_idx String Int Int => Int
+      find_fat_arrow_idx s      pos len
+        | (pos + 4) > len = -1
+        | (str_slice s pos (pos + 4)) == " => " = pos
+        | otherwise = find_fat_arrow_idx s (pos + 1) len
+
+fn :: parse_paren_type_inner String => RType
+      parse_paren_type_inner inner  =
+        arrow_idx = find_fat_arrow_idx inner 0 (str_len inner)
+        parse_paren_type_split inner arrow_idx
+
+fn :: parse_paren_type_split String Int => RType
+      parse_paren_type_split inner  -1  =  TyTuple (parse_type_list_strs (split_comma_strs inner))
+      parse_paren_type_split inner  idx =
+        lhs_s = str_slice inner 0 idx
+        rhs_s = str_slice inner (idx + 4) (str_len inner)
+        TyFun (parse_type_list_strs (split_comma_strs lhs_s)) (parse_type_str rhs_s)
+
 fn :: parse_type_str String => RType
       parse_type_str s
         | ends_with_ellipsis s = TyVariadic (parse_type_str (str_slice s 0 ((str_len s) - 3)))
@@ -61,7 +82,7 @@ fn :: parse_type_str String => RType
         | s == "Tensor" OR s == "Tensor_GPU" = TyTensor []
         | str_starts_with s "Tensor(" = TyTensor (split_comma_strs (str_slice s 7 ((str_len s) - 1)))
         | str_starts_with s "[" = TyList (parse_type_str (str_slice s 1 ((str_len s) - 1)))
-        | str_starts_with s "(" = TyTuple (parse_type_list_strs (split_comma_strs (str_slice s 1 ((str_len s) - 1))))
+        | str_starts_with s "(" = parse_paren_type_inner (str_slice s 1 ((str_len s) - 1))
         | otherwise = TyVar s
 
 fn :: rtype_to_str RType              => String
@@ -154,11 +175,11 @@ fn :: put_type_bind [RTypeBind] String RType => [RTypeBind]
 
 fn :: builtin_local_types => [RTypeBind]
       builtin_local_types =
-        [TypeBind "new_mailbox" TyInt, TypeBind "mailbox" TyInt, TypeBind "new_channel" TyInt, TypeBind "channel" TyInt, TypeBind "cli_args" (TyList TyString)]
+        [TypeBind "new_mailbox" TyInt, TypeBind "mailbox" TyInt, TypeBind "new_channel" TyInt, TypeBind "channel" TyInt, TypeBind "cli_args" (TyList TyString), TypeBind "sys_getcwd" TyString, TypeBind "sys_getuid" TyInt, TypeBind "sys_getgid" TyInt]
 
 fn :: builtin_fn_types => [RTypeBind]
       builtin_fn_types =
-        [TypeBind "spawn" (TyFun [TyString] TyInt), TypeBind "join" (TyFun [TyInt] TyInt), TypeBind "new_bounded_channel" (TyFun [TyInt] TyInt), TypeBind "send_through" (TyFun [TyVar "a", TyInt] TyUnit), TypeBind "chan_send" (TyFun [TyVar "a", TyInt] TyUnit), TypeBind "receive_from" (TyFun [TyInt] (TyVar "a")), TypeBind "chan_recv" (TyFun [TyInt] (TyVar "a")), TypeBind "try_receive_from" (TyFun [TyInt] (TyVar "Option")), TypeBind "chan_try_recv" (TyFun [TyInt] (TyVar "Option")), TypeBind "receive_from_timeout" (TyFun [TyInt, TyInt] (TyVar "Option")), TypeBind "str_len" (TyFun [TyString] TyInt), TypeBind "str_char_at" (TyFun [TyString, TyInt] TyInt), TypeBind "str_slice" (TyFun [TyString, TyInt, TyInt] TyString), TypeBind "char_from_code" (TyFun [TyInt] TyString), TypeBind "str_concat" (TyFun [TyString, TyString] TyString), TypeBind "int_to_str" (TyFun [TyInt] TyString), TypeBind "str_to_int" (TyFun [TyString] TyInt), TypeBind "str_starts_with" (TyFun [TyString, TyString] TyBool), TypeBind "str_contains" (TyFun [TyString, TyString] TyBool), TypeBind "read_file" (TyFun [TyString] TyString), TypeBind "write_file" (TyFun [TyString, TyString] TyUnit), TypeBind "shell_exec" (TyFun [TyString] TyInt)]
+        [TypeBind "spawn" (TyFun [TyString] TyInt), TypeBind "join" (TyFun [TyInt] TyInt), TypeBind "new_bounded_channel" (TyFun [TyInt] TyInt), TypeBind "send_through" (TyFun [TyVar "a", TyInt] TyUnit), TypeBind "chan_send" (TyFun [TyVar "a", TyInt] TyUnit), TypeBind "receive_from" (TyFun [TyInt] (TyVar "a")), TypeBind "chan_recv" (TyFun [TyInt] (TyVar "a")), TypeBind "try_receive_from" (TyFun [TyInt] (TyVar "Option")), TypeBind "chan_try_recv" (TyFun [TyInt] (TyVar "Option")), TypeBind "receive_from_timeout" (TyFun [TyInt, TyInt] (TyVar "Option")), TypeBind "str_len" (TyFun [TyString] TyInt), TypeBind "str_char_at" (TyFun [TyString, TyInt] TyInt), TypeBind "str_slice" (TyFun [TyString, TyInt, TyInt] TyString), TypeBind "char_from_code" (TyFun [TyInt] TyString), TypeBind "str_concat" (TyFun [TyString, TyString] TyString), TypeBind "int_to_str" (TyFun [TyInt] TyString), TypeBind "str_to_int" (TyFun [TyString] TyInt), TypeBind "str_starts_with" (TyFun [TyString, TyString] TyBool), TypeBind "str_contains" (TyFun [TyString, TyString] TyBool), TypeBind "read_file" (TyFun [TyString] TyString), TypeBind "load_rg_source" (TyFun [TyString] TyString), TypeBind "read_bytes" (TyFun [TyString] (TyList TyInt)), TypeBind "write_bytes" (TyFun [TyString, TyList TyInt] TyUnit), TypeBind "write_file" (TyFun [TyString, TyString] TyUnit), TypeBind "shell_exec" (TyFun [TyString] TyInt), TypeBind "map" (TyFun [TyFun [TyVar "a"] (TyVar "b"), TyList (TyVar "a")] (TyList (TyVar "b"))), TypeBind "seq_map" (TyFun [TyFun [TyVar "a"] (TyVar "b"), TyList (TyVar "a")] (TyList (TyVar "b"))), TypeBind "filter" (TyFun [TyFun [TyVar "a"] TyBool, TyList (TyVar "a")] (TyList (TyVar "a"))), TypeBind "seq_filter" (TyFun [TyFun [TyVar "a"] TyBool, TyList (TyVar "a")] (TyList (TyVar "a"))), TypeBind "fold" (TyFun [TyFun [TyVar "b", TyVar "a"] (TyVar "b"), TyVar "b", TyList (TyVar "a")] (TyVar "b")), TypeBind "list_dir" (TyFun [TyString] (TyList TyString)), TypeBind "file_lstat" (TyFun [TyString] (TyTuple [TyBool, TyString, TyInt, TyInt, TyInt, TyString, TyString, TyInt, TyString])), TypeBind "sha256_file" (TyFun [TyString] TyString), TypeBind "sha256_str" (TyFun [TyString] TyString), TypeBind "sys_mkdir" (TyFun [TyString, TyInt] TyInt), TypeBind "sys_chmod" (TyFun [TyString, TyInt] TyInt), TypeBind "sys_exec" (TyFun [TyString, TyList TyString, TyList TyString] TyInt), TypeBind "sys_chdir" (TyFun [TyString] TyInt), TypeBind "sys_getcwd" (TyFun [] TyString), TypeBind "sys_getenv" (TyFun [TyString] TyString), TypeBind "sys_setenv" (TyFun [TyString, TyString] TyInt), TypeBind "sys_exit" (TyFun [TyInt] TyUnit), TypeBind "sys_getuid" (TyFun [] TyInt), TypeBind "sys_getgid" (TyFun [] TyInt), TypeBind "sys_username" (TyFun [TyInt] TyString), TypeBind "sys_user_groups" (TyFun [TyString] (TyList TyString)), TypeBind "sys_lookup_uid_gid" (TyFun [TyString] (TyTuple [TyInt, TyInt])), TypeBind "sys_setresgid" (TyFun [TyInt] TyInt), TypeBind "sys_setgroups" (TyFun [TyList TyInt] TyInt), TypeBind "sys_setresuid" (TyFun [TyInt] TyInt), TypeBind "sys_execve" (TyFun [TyString, TyList TyString, TyList TyString] TyInt), TypeBind "sys_read_pass" (TyFun [TyString] TyString)]
 
 fn :: register_variants [RVariant] RType [RTypeBind] [RTypeBind] => ([RTypeBind], [RTypeBind])
       register_variants [] _ locals fns = (locals, fns)
@@ -607,7 +628,7 @@ fn :: check_expr RExpr String [RTypeBind] [RTypeBind] => (RType, [RTypeError])
         finish_binop_check bop l_res r_res fns fn_name
       check_expr (ECall callee args) fn_name locals fns =
         args_res = check_expr_list args fn_name locals fns
-        finish_call_check callee args_res fn_name fns
+        finish_call_check callee args_res fn_name locals fns
       check_expr (EEcho args) fn_name locals fns =
         args_res = check_expr_list args fn_name locals fns
         discard_tys_return TyUnit args_res
@@ -669,10 +690,28 @@ fn :: finish_binop_check RBinOp (RType, [RTypeError]) (RType, [RTypeError]) [RTy
         b_res = check_binop bop l_ty r_ty fns fn_name
         prepend_type_errs (l_errs :: r_errs) b_res
 
-fn :: finish_call_check String ([RType], [RTypeError]) String [RTypeBind] => (RType, [RTypeError])
-      finish_call_check "spawn" (_, arg_errs) _ _ = (TyInt, arg_errs)
-      finish_call_check callee (arg_tys, arg_errs) fn_name fns =
-        check_call_target callee arg_tys arg_errs (lookup_type_bind fns callee) fn_name
+fn :: resolve_callee_bind String [RTypeBind] [RTypeBind] => (Bool, RType)
+      resolve_callee_bind callee locals      fns         =
+        fn_b = lookup_type_bind fns callee
+        resolve_callee_fallback callee locals fn_b
+
+fn :: resolve_callee_fallback String [RTypeBind] (Bool, RType) => (Bool, RType)
+      resolve_callee_fallback _      _           (True, ty)    =  (True, ty)
+      resolve_callee_fallback callee locals      (False, _)    =  lookup_type_bind locals callee
+
+fn :: specialize_hof_return String [RType] (RType, [RTypeError]) => (RType, [RTypeError])
+      specialize_hof_return "map" ((TyFun _ f_ret):_) (_, errs) = (TyList f_ret, errs)
+      specialize_hof_return "seq_map" ((TyFun _ f_ret):_) (_, errs) = (TyList f_ret, errs)
+      specialize_hof_return "filter" (_:list_ty:_) (_, errs) = (list_ty, errs)
+      specialize_hof_return "seq_filter" (_:list_ty:_) (_, errs) = (list_ty, errs)
+      specialize_hof_return "fold" (_:init_ty:_) (_, errs) = (init_ty, errs)
+      specialize_hof_return _ _ res = res
+
+fn :: finish_call_check String ([RType], [RTypeError]) String [RTypeBind] [RTypeBind] => (RType, [RTypeError])
+      finish_call_check "spawn" (_, arg_errs) _ _ _ = (TyInt, arg_errs)
+      finish_call_check callee (arg_tys, arg_errs) fn_name locals fns =
+        base_res = check_call_target callee arg_tys arg_errs (resolve_callee_bind callee locals fns) fn_name
+        specialize_hof_return callee arg_tys base_res
 
 fn :: check_where_binds [RWhereBind] String [RTypeBind] [RTypeBind] => ([RTypeBind], [RTypeError])
       check_where_binds [] _ locals _ = (locals, [])

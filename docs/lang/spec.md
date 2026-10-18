@@ -722,3 +722,29 @@ fn :: main => ()
    - Guards (`| cond = expr`), parallel pipes (`|| expr`), and `where`: column `8` (`6 + 2`).
    - Block body lines following a line ending in `=`, `where`, or `do`: `prev_indent + 2`.
 
+---
+
+## Parallel & Sequential Higher-Order Collection Operations (`FR-COMP-001`)
+
+Ridgun functions are pure by default, allowing collection combinators to execute **in parallel by default** while offering explicit `seq_*` variants when strict left-to-right sequential execution is desired:
+
+| Built-in | Signature | Execution Model |
+|---|---|---|
+| `map` | `(a => b) [a] => [b]` | **Parallel by default**: evaluates `f x` across list elements concurrently, preserving output order. |
+| `seq_map` | `(a => b) [a] => [b]` | **Sequential**: evaluates `f x` strictly left-to-right on the calling thread. |
+| `filter` | `(a => Bool) [a] => [a]` | **Parallel by default**: evaluates predicate `p x` concurrently and retains matching elements in order. |
+| `seq_filter` | `(a => Bool) [a] => [a]` | **Sequential**: evaluates predicate `p x` strictly left-to-right on the calling thread. |
+| `fold` | `(b a => b) b [a] => b` | **Sequential left fold**: accumulates `acc = f acc x` from left to right starting from `init`. |
+
+---
+
+## Verbatim File I/O, Byte Streams & POSIX Built-ins (`FR-VM-001`, `FR-VM-002`)
+
+1. **Verbatim File & Byte Stream I/O (`FR-VM-001`)**:
+   - `read_file : String => String` reads file contents verbatim (preserving `\r\n` and exact EOF newline presence/absence, and never running the compiler's `.rg` `import` preprocessor on data files).
+   - `load_rg_source : String => String` is used exclusively by the compiler toolchain when loading `.rg` source files with `import` splicing.
+   - `read_bytes : String => [Int]` and `write_bytes : String [Int] => ()` read and write raw binary byte streams (`0..255`, including `0x00` NUL and `0x80..0xFF`).
+2. **POSIX Filesystem, Process & Security Built-ins (`FR-VM-002`)**:
+   - **Filesystem**: `list_dir`, `file_lstat`, `sha256_file`, `sys_mkdir`, `sys_chmod`.
+   - **Process & Environment**: `sys_exec`, `sys_chdir`, `sys_getcwd`, `sys_getenv`, `sys_setenv`, `sys_exit`.
+   - **Security & Privilege Separation**: `sys_getuid`, `sys_getgid`, `sys_username`, `sys_user_groups`, `sys_lookup_uid_gid`, `sys_setresgid`, `sys_setgroups`, `sys_setresuid`, `sys_execve`, `sys_read_pass`.

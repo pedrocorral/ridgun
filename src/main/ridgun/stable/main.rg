@@ -134,7 +134,7 @@ op :: project name of StableConfig => String
 op :: check modules [String]         ok Int  err Int   => (Int, Int)
       check modules []               ok ok_c err err_c =  (ok_c, err_c)
       check modules (path:rem_files) ok ok_c err err_c =
-        raw = read_file path
+        raw = load_rg_source path
         toks = tokenize_src raw
         prog_ast = parse_tokens toks
         errs = typecheck_program prog_ast
@@ -336,11 +336,7 @@ op :: finish task test with (Int, Int)       => Int
 -- ── Task 6: `format` (Canonical Aesthetic Formatting) ───────
 
 op :: read raw file at String => String
-      read raw file at path   =
-        _ = shell_exec ('mkdir -p target && cp "' + path + '" target/.stable_fmt.raw')
-        raw = read_file "target/.stable_fmt.raw"
-        _ = shell_exec "rm -f target/.stable_fmt.raw"
-        raw
+      read raw file at path   =  read_file path
 
 op :: report unchanged file String => Int
       report unchanged file path   =
@@ -400,15 +396,15 @@ op :: run task clean on StableConfig => Int
         _ = echo "[success] Cleaned bytecode artifacts in {out_dir}/."
         0
 
-op :: map target names of [String]     => [String]
-      map target names of []           =  []
-      map target names of (ep:rem_eps) =  [target name from entry ep] :: (map target names of rem_eps)
+op :: collect target names of [String]     => [String]
+      collect target names of []           =  []
+      collect target names of (ep:rem_eps) =  [target name from entry ep] :: (collect target names of rem_eps)
 
 op :: run task info on StableConfig => Int
       run task info on (ProjectConfig name_str ver main_ep sdir tdir out_dir) =
         src_files = list rg files in sdir
         exec_entries = list exec entries in sdir
-        exec_names = join words (map target names of exec_entries) with spaces
+        exec_names = join words (collect target names of exec_entries) with spaces
         tst_files = list test files in tdir
         src_c = list_str_len src_files
         tst_c = list_str_len tst_files
