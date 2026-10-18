@@ -742,44 +742,195 @@ fn :: emit_native_where [RWhereBind] RExpr [String] => String
       emit_native_where ((WhereBind e v idxs):wbs) body locals =
         "    let lv_" + v + ": RVal = rg_index_set(lv_" + v + ", &[" + (emit_int_rval_csv idxs) + "], " + (emit_native_expr e locals) + ");\n" + (emit_native_where wbs body locals)
 
--- ── Function, Record Field Accessor & Dispatch Table Emission ──
+-- ── Function, Record Field Accessor, TCO & Tree-Shaking ─────
 
-fn :: emit_native_guards [RGuard] [String] => String
-      emit_native_guards []       _        =  ""
-      emit_native_guards ((GuardBranch cond body):gs) locals =
-        '    if rg_as_bool(&(' + (emit_native_expr cond locals) + ')) {' + "\n      return " + (emit_native_expr body locals) + ";\n    " + '}' + "\n" + (emit_native_guards gs locals)
+fn :: expr_has_self_tail_call String RExpr           => Bool
+      expr_has_self_tail_call target (ECall fname _) =  fname == target
+      expr_has_self_tail_call target (EBlock stmts)  =  stmts_have_self_tail_call target stmts
+      expr_has_self_tail_call target (EWhere body _) =  expr_has_self_tail_call target body
+      expr_has_self_tail_call _      _               =  False
 
-fn :: emit_native_case RFnCase Int   => String
-      emit_native_case (FnCase pats [] body) arity =
-        cond = emit_pat_list_cond pats 0
-        binds = emit_pat_list_binds pats 0 arity
-        locals = collect_pat_list_vars pats []
-        '  if ' + cond + ' {' + "\n" + binds + "    return " + (emit_native_expr body locals) + ";\n  " + '}' + "\n"
-      emit_native_case (FnCase pats guards _) arity =
-        cond = emit_pat_list_cond pats 0
-        binds = emit_pat_list_binds pats 0 arity
-        locals = collect_pat_list_vars pats []
-        '  if ' + cond + ' {' + "\n" + binds + (emit_native_guards guards locals) + '  }' + "\n"
+fn :: stmts_have_self_tail_call String [RStmt]           => Bool
+      stmts_have_self_tail_call _      []                =  False
+      stmts_have_self_tail_call target ((StmtExpr e):[]) =  expr_has_self_tail_call target e
+      stmts_have_self_tail_call target (_:rest)          =  stmts_have_self_tail_call target rest
 
-fn :: emit_native_cases [RFnCase] Int   => String
-      emit_native_cases []        _     =  ""
-      emit_native_cases (c:cs)    arity =  (emit_native_case c arity) + (emit_native_cases cs arity)
+fn :: guards_have_self_tail_call String [RGuard] => Bool
+      guards_have_self_tail_call _      []       =  False
+      guards_have_self_tail_call target ((GuardBranch _ body):gs)
+        | expr_has_self_tail_call target body = True
+        | otherwise = guards_have_self_tail_call target gs
 
-fn :: emit_param_sig Int Int   => String
-      emit_param_sig idx arity
+fn :: cases_have_self_tail_call String [RFnCase] => Bool
+      cases_have_self_tail_call _      []        =  False
+      cases_have_self_tail_call target ((FnCase _ [] body):cs)
+        | expr_has_self_tail_call target body = True
+        | otherwise = cases_have_self_tail_call target cs
+      cases_have_self_tail_call target ((FnCase _ guards _):cs)
+        | guards_have_self_tail_call target guards = True
+        | otherwise = cases_have_self_tail_call target cs
+
+fn :: emit_tco_tmp_binds [RExpr] Int [String] => String
+      emit_tco_tmp_binds []      _   _        =  ""
+      emit_tco_tmp_binds (e:es)  idx locals   =
+        'let _tco_' + (int_to_str idx) + ': RVal = ' + (emit_native_expr e locals) + '; ' + (emit_tco_tmp_binds es (idx + 1) locals)
+
+fn :: emit_tco_arg_assigns Int Int   => String
+      emit_tco_arg_assigns idx arity
         | idx >= arity = ""
+        | otherwise = '_arg_' + (int_to_str idx) + ' = _tco_' + (int_to_str idx) + '; ' + (emit_tco_arg_assigns (idx + 1) arity)
+
+fn :: emit_tail_return String Int   RExpr              [String] => String
+      emit_tail_return target arity (ECall fname args) locals
+        | fname == target AND (expr_list_count args) == arity AND (lookup_local locals fname) < 0 = '{ ' + (emit_tco_tmp_binds args 0 locals) + (emit_tco_arg_assigns 0 arity) + 'continue; }'
+      emit_tail_return target arity (EBlock stmts)     locals
+        | stmts_have_self_tail_call target stmts = "{\n" + (emit_tail_stmts target arity stmts locals) + "\n}"
+      emit_tail_return target arity (EWhere body binds) locals
+        | expr_has_self_tail_call target body = "{\n" + (emit_tail_where target arity binds body locals) + "\n}"
+      emit_tail_return _      _     expr               locals   =
+        'return ' + (emit_native_expr expr locals) + ';'
+
+fn :: emit_tail_stmts String Int   [RStmt]           [String] => String
+      emit_tail_stmts _      _     []                _        =  '    return RVal::Unit;'
+      emit_tail_stmts target arity ((StmtExpr e):[]) locals   =  '    ' + (emit_tail_return target arity e locals)
+      emit_tail_stmts target arity ((StmtLet v e):rest) locals
+        | v == "_" = "    let _ = " + (emit_native_expr e locals) + ";\n" + (emit_tail_stmts target arity rest locals)
+        | otherwise = "    let lv_" + v + ": RVal = " + (emit_native_expr e locals) + ";\n" + (emit_tail_stmts target arity rest (locals :: [v]))
+      emit_tail_stmts target arity ((StmtAtomic v e):rest) locals =
+        '    let _ = rg_store_shared("' + v + '", ' + (emit_native_expr e locals) + ');' + "\n" + (emit_tail_stmts target arity rest locals)
+      emit_tail_stmts target arity ((StmtIndexAssign t idxs e):rest) locals =
+        "    let lv_" + t + ": RVal = rg_index_set(lv_" + t + ", &[" + (emit_native_expr_csv idxs locals) + "], " + (emit_native_expr e locals) + ");\n" + (emit_tail_stmts target arity rest locals)
+      emit_tail_stmts target arity ((StmtExpr e):rest) locals =
+        "    let _ = " + (emit_native_expr e locals) + ";\n" + (emit_tail_stmts target arity rest locals)
+
+fn :: emit_tail_where String Int [RWhereBind] RExpr [String] => String
+      emit_tail_where target arity [] body locals = '    ' + (emit_tail_return target arity body locals)
+      emit_tail_where target arity ((WhereBind e v []):wbs) body locals =
+        "    let lv_" + v + ": RVal = " + (emit_native_expr e locals) + ";\n" + (emit_tail_where target arity wbs body (locals :: [v]))
+      emit_tail_where target arity ((WhereBind e v idxs):wbs) body locals =
+        "    let lv_" + v + ": RVal = rg_index_set(lv_" + v + ", &[" + (emit_int_rval_csv idxs) + "], " + (emit_native_expr e locals) + ");\n" + (emit_tail_where target arity wbs body locals)
+
+fn :: emit_native_guards String Int   [RGuard] [String] => String
+      emit_native_guards _      _     []       _        =  ""
+      emit_native_guards target arity ((GuardBranch cond body):gs) locals =
+        '    if rg_as_bool(&(' + (emit_native_expr cond locals) + ')) {' + "\n      " + (emit_tail_return target arity body locals) + "\n    " + '}' + "\n" + (emit_native_guards target arity gs locals)
+
+fn :: emit_native_case String RFnCase Int   => String
+      emit_native_case target (FnCase pats [] body) arity =
+        cond = emit_pat_list_cond pats 0
+        binds = emit_pat_list_binds pats 0 arity
+        locals = collect_pat_list_vars pats []
+        '  if ' + cond + ' {' + "\n" + binds + "    " + (emit_tail_return target arity body locals) + "\n  " + '}' + "\n"
+      emit_native_case target (FnCase pats guards _) arity =
+        cond = emit_pat_list_cond pats 0
+        binds = emit_pat_list_binds pats 0 arity
+        locals = collect_pat_list_vars pats []
+        '  if ' + cond + ' {' + "\n" + binds + (emit_native_guards target arity guards locals) + '  }' + "\n"
+
+fn :: emit_native_cases String [RFnCase] Int   => String
+      emit_native_cases _      []        _     =  ""
+      emit_native_cases target (c:cs)    arity =  (emit_native_case target c arity) + (emit_native_cases target cs arity)
+
+fn :: emit_param_sig Bool  Int Int   => String
+      emit_param_sig _     idx arity
+        | idx >= arity = ""
+      emit_param_sig True  idx arity
+        | (idx + 1) == arity = 'mut _arg_' + (int_to_str idx) + ': RVal'
+        | otherwise = 'mut _arg_' + (int_to_str idx) + ': RVal, ' + (emit_param_sig True (idx + 1) arity)
+      emit_param_sig False idx arity
         | (idx + 1) == arity = '_arg_' + (int_to_str idx) + ': RVal'
-        | otherwise = '_arg_' + (int_to_str idx) + ': RVal, ' + (emit_param_sig (idx + 1) arity)
+        | otherwise = '_arg_' + (int_to_str idx) + ': RVal, ' + (emit_param_sig False (idx + 1) arity)
 
 fn :: emit_native_fndef RFnDef => String
       emit_native_fndef (FnDef name params _ cases) =
         arity = infer_fndef_arity params cases
-        sig = emit_param_sig 0 arity
-        'fn ' + (mangle_fn_name name) + '(' + sig + ') -> RVal {' + "\n" + (emit_native_cases cases arity) + "  RVal::Unit\n" + '}' + "\n\n"
+        is_tco = cases_have_self_tail_call name cases
+        sig = emit_param_sig is_tco 0 arity
+        body_code = emit_native_cases name cases arity
+        emit_native_fndef_wrap name sig is_tco body_code
+
+fn :: emit_native_fndef_wrap String String Bool  String    => String
+      emit_native_fndef_wrap name   sig    True  body_code =
+        'fn ' + (mangle_fn_name name) + '(' + sig + ') -> RVal {' + "\n  loop {\n" + body_code + "    return RVal::Unit;\n  }\n" + '}' + "\n\n"
+      emit_native_fndef_wrap name   sig    False body_code =
+        'fn ' + (mangle_fn_name name) + '(' + sig + ') -> RVal {' + "\n" + body_code + "  RVal::Unit\n" + '}' + "\n\n"
 
 fn :: emit_native_fndef_list [RFnDef] => String
       emit_native_fndef_list []       =  ""
       emit_native_fndef_list (f:fs)   =  (emit_native_fndef f) + (emit_native_fndef_list fs)
+
+-- ── Call-Graph Tree-Shaking (Dead-Code Elimination) ──────────
+
+fn :: collect_refs_expr RExpr              [String] => [String]
+      collect_refs_expr (EVar name)        acc      =  add_unique_str name acc
+      collect_refs_expr (ENot inner)       acc      =  collect_refs_expr inner acc
+      collect_refs_expr (EOut inner)       acc      =  collect_refs_expr inner acc
+      collect_refs_expr (EBin bop l r)     acc      =  collect_refs_expr r (collect_refs_expr l (add_unique_str (binop_op_tag bop) acc))
+      collect_refs_expr (ECall "spawn" ((EStr s):args)) acc = collect_refs_expr_list args (add_unique_str s (add_unique_str "spawn" acc))
+      collect_refs_expr (ECall fname args) acc      =  collect_refs_expr_list args (add_unique_str fname acc)
+      collect_refs_expr (EEcho args)       acc      =  collect_refs_expr_list args acc
+      collect_refs_expr (EStrInterp parts) acc      =  collect_refs_expr_list parts acc
+      collect_refs_expr (EList elems)      acc      =  collect_refs_expr_list elems acc
+      collect_refs_expr (ETuple elems)     acc      =  collect_refs_expr_list elems acc
+      collect_refs_expr (ETensor elems)    acc      =  collect_refs_expr_list elems acc
+      collect_refs_expr (EEinsum es _)     acc      =  collect_refs_expr_list es acc
+      collect_refs_expr (EHadamard _ l _ r _) acc   =  collect_refs_expr r (collect_refs_expr l acc)
+      collect_refs_expr (EIndex base idxs) acc      =  collect_refs_expr_list idxs (collect_refs_expr base acc)
+      collect_refs_expr (EIndexAssign _ idxs v) acc =  collect_refs_expr v (collect_refs_expr_list idxs acc)
+      collect_refs_expr (ESeqSelect b _)   acc      =  collect_refs_expr b acc
+      collect_refs_expr (EBlock stmts)     acc      =  collect_refs_stmts stmts acc
+      collect_refs_expr (EWhere body binds) acc     =  collect_refs_where binds (collect_refs_expr body acc)
+      collect_refs_expr (EParPipe branches) acc     =  collect_refs_expr_list branches acc
+      collect_refs_expr (EWithCtx _ v b)   acc      =  collect_refs_expr b (collect_refs_expr v acc)
+      collect_refs_expr (EWithRegion _ b)  acc      =  collect_refs_expr b acc
+      collect_refs_expr (EAtomicUpdate _ e) acc     =  collect_refs_expr e acc
+      collect_refs_expr (ELoadContext _ e) acc      =  collect_refs_expr e acc
+      collect_refs_expr (ELoadShared _ e)  acc      =  collect_refs_expr e acc
+      collect_refs_expr _                  acc      =  acc
+
+fn :: collect_refs_expr_list [RExpr] [String] => [String]
+      collect_refs_expr_list []      acc      =  acc
+      collect_refs_expr_list (e:es)  acc      =  collect_refs_expr_list es (collect_refs_expr e acc)
+
+fn :: collect_refs_stmts [RStmt]            [String] => [String]
+      collect_refs_stmts []                 acc      =  acc
+      collect_refs_stmts ((StmtLet _ e):ss) acc      =  collect_refs_stmts ss (collect_refs_expr e acc)
+      collect_refs_stmts ((StmtExpr e):ss)  acc      =  collect_refs_stmts ss (collect_refs_expr e acc)
+      collect_refs_stmts ((StmtAtomic _ e):ss) acc   =  collect_refs_stmts ss (collect_refs_expr e acc)
+      collect_refs_stmts ((StmtIndexAssign _ idxs e):ss) acc =
+        collect_refs_stmts ss (collect_refs_expr e (collect_refs_expr_list idxs acc))
+
+fn :: collect_refs_where [RWhereBind] [String] => [String]
+      collect_refs_where []           acc      =  acc
+      collect_refs_where ((WhereBind e _ _):wbs) acc = collect_refs_where wbs (collect_refs_expr e acc)
+
+fn :: collect_refs_guards [RGuard] [String] => [String]
+      collect_refs_guards []       acc      =  acc
+      collect_refs_guards ((GuardBranch c b):gs) acc =
+        collect_refs_guards gs (collect_refs_expr b (collect_refs_expr c acc))
+
+fn :: collect_refs_cases [RFnCase] [String] => [String]
+      collect_refs_cases []        acc      =  acc
+      collect_refs_cases ((FnCase _ guards body):cs) acc =
+        collect_refs_cases cs (collect_refs_expr body (collect_refs_guards guards acc))
+
+fn :: find_fndef_cases [RFnDef] String => [RFnCase]
+      find_fndef_cases []       _      =  []
+      find_fndef_cases ((FnDef name _ _ cases):fs) target
+        | name == target = cases
+        | otherwise = find_fndef_cases fs target
+
+fn :: expand_reachable_worklist [String] [RFnDef] [String] => [String]
+      expand_reachable_worklist []       _        visited  =  visited
+      expand_reachable_worklist (w:ws)   all_fns  visited
+        | str_in_list w visited = expand_reachable_worklist ws all_fns visited
+        | otherwise = expand_reachable_worklist (ws :: (collect_refs_cases (find_fndef_cases all_fns w) [])) all_fns (visited :: [w])
+
+fn :: filter_reachable_fndefs [RFnDef] [String]  => [RFnDef]
+      filter_reachable_fndefs []       _         =  []
+      filter_reachable_fndefs ((FnDef name params ret cases):fs) reachable
+        | str_in_list name reachable = [FnDef name params ret cases] :: (filter_reachable_fndefs fs reachable)
+        | otherwise = filter_reachable_fndefs fs reachable
 
 fn :: emit_record_accessors [RField] Int [String] => (String, [String])
       emit_record_accessors []       _   emitted  =  ("", emitted)
@@ -1879,13 +2030,15 @@ fn rg_fn_sys_read_pass(prompt: RVal) -> RVal {
 fn :: emit_native_program RProgram => String
       emit_native_program (Program raw_fns tys) =
         sigs = build_cg_sigs raw_fns
-        fns = prep_fndef_list raw_fns sigs
+        all_fns = prep_fndef_list raw_fns sigs
+        entry = find_entry_fn_name all_fns "main"
+        reachable = expand_reachable_worklist [entry] all_fns []
+        fns = filter_reachable_fndefs all_fns reachable
         preamble = emit_runtime_preamble
         acc_defs = emit_typedef_accessors tys (collect_fn_names fns)
         fn_defs = emit_native_fndef_list fns
         dispatches = emit_dispatch_tables fns
-        entry = find_entry_fn_name fns "main"
-        preamble + acc_defs + fn_defs + dispatches + 'fn main() {' + "\n" + '  let _ = std::thread::Builder::new().stack_size(268435456).spawn(|| { let _ = ' + (mangle_fn_name entry) + '(); }).unwrap().join();' + "\n" + '}' + "\n"
+        preamble + acc_defs + fn_defs + dispatches + 'fn main() {' + "\n" + '  let child = std::thread::Builder::new().stack_size(268435456).spawn(|| {' + "\n" + '    let _ = ' + (mangle_fn_name entry) + '();' + "\n" + '  }).unwrap();' + "\n" + '  let _ = child.join();' + "\n" + '}' + "\n"
 
 -- ── Bytecode (.rgc) & Native Executable Emission ────────────
 
@@ -1931,7 +2084,7 @@ fn :: build_native_after_check RProgram String     [RTypeError] => Int
         tmp_rs = output_bin + "_gen.rs"
         tmp_bin = output_bin + "_tmp"
         _ = write_file tmp_rs native_rs
-        cmd = "rustc --edition 2021 --crate-name ridgun_bin -O -A warnings " + tmp_rs + " -o " + tmp_bin + " && mv -f " + tmp_bin + " " + output_bin + "; _st=$?; rm -f " + tmp_rs + " " + tmp_bin + "; exit $_st"
+        cmd = "rustc --edition 2021 --crate-name ridgun_bin -C opt-level=z -C lto=fat -C codegen-units=1 -C panic=abort -C strip=symbols -A warnings " + tmp_rs + " -o " + tmp_bin + " && mv -f " + tmp_bin + " " + output_bin + "; _st=$?; rm -f " + tmp_rs + " " + tmp_bin + "; exit $_st"
         shell_exec cmd
       build_native_after_check _        _          errs         =
         _ = echo (format_type_errors errs)

@@ -191,6 +191,18 @@ fn :: lex_one_tok String Int Int Int Int => (RToken, Int)
         | is_alpha c = tok_ident src pos len
         | otherwise = (TokNewline, pos + 1)
 
+fn :: tok_pair_tok (RToken, Int) => RToken
+      tok_pair_tok (tok, _)      =  tok
+
+fn :: tok_pair_pos (RToken, Int) => Int
+      tok_pair_pos (_, next_p)   =  next_p
+
+fn :: lex_next_tok String Int Int => RToken
+      lex_next_tok src    p   len =  tok_pair_tok (lex_one_tok src p len (str_char_at src p) (str_char_at src (p + 1)))
+
+fn :: lex_next_pos String Int Int => Int
+      lex_next_pos src    p   len =  tok_pair_pos (lex_one_tok src p len (str_char_at src p) (str_char_at src (p + 1)))
+
 fn :: lex_loop String Int Int [RToken] => [RToken]
       lex_loop src    pos len acc      =
         p = skip_ws src pos len
@@ -199,11 +211,7 @@ fn :: lex_loop String Int Int [RToken] => [RToken]
 fn :: lex_loop_at String Int Int [RToken] => [RToken]
       lex_loop_at src    p   len acc
         | p >= len = acc :: [TokEof]
-        | otherwise = lex_loop_step src len acc (lex_one_tok src p len (str_char_at src p) (str_char_at src (p + 1)))
-
-fn :: lex_loop_step String Int [RToken] (RToken, Int) => [RToken]
-      lex_loop_step src    len acc      (tok, next_p) =
-        lex_loop src next_p len (acc :: [tok])
+        | otherwise = lex_loop_at src (skip_ws src (lex_next_pos src p len) len) len (acc :: [lex_next_tok src p len])
 
 fn :: tokenize_src String => [RToken]
       tokenize_src src    =  lex_loop src 0 (str_len src) []
