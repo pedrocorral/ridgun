@@ -98,7 +98,9 @@ fn :: rtype_to_str RType              => String
       rtype_to_str (TyTensor dims)    =  "Tensor(" + (join_comma_strs dims) + ")"
       rtype_to_str (TyVariadic inner) =  (rtype_to_str inner) + "..."
       rtype_to_str (TyFun params ret) =  "(" + (rtype_list_to_str params) + " => " + (rtype_to_str ret) + ")"
-      rtype_to_str (TyVar name)       =  name
+      rtype_to_str (TyVar name)
+        | str_starts_with name "adt:" = str_slice name 4 (str_len name)
+        | otherwise = name
 
 fn :: rtype_list_to_str [RType] => String
       rtype_list_to_str []      =  ""
@@ -137,6 +139,13 @@ fn :: types_list_compatible [RType] [RType] => Bool
         | otherwise = False
       types_list_compatible _       _       =  False
 
+fn :: is_poly_type_var String => Bool
+      is_poly_type_var s
+        | str_starts_with s "adt:" = False
+        | s == "_empty" OR s == "_any" OR s == "Option" = True
+        | (str_len s) == 1 = True
+        | otherwise = False
+
 fn :: types_compatible RType              RType              => Bool
       types_compatible TyInt              TyInt              =  True
       types_compatible TyReal             TyReal             =  True
@@ -151,8 +160,12 @@ fn :: types_compatible RType              RType              => Bool
         (types_compatible inner other) OR (types_compatible (TyList inner) other)
       types_compatible other              (TyVariadic inner) =
         (types_compatible inner other) OR (types_compatible (TyList inner) other)
-      types_compatible (TyVar _)          _                  =  True
-      types_compatible _                  (TyVar _)          =  True
+      types_compatible (TyVar a)          (TyVar b)
+        | a == b = True
+        | (is_poly_type_var a) OR (is_poly_type_var b) = True
+        | otherwise = False
+      types_compatible (TyVar a)          _                  =  is_poly_type_var a
+      types_compatible _                  (TyVar b)          =  is_poly_type_var b
       types_compatible (TyList a)         (TyList b)         =  types_compatible a b
       types_compatible (TyTuple as)       (TyTuple bs)
         | (rtype_list_len as) == (rtype_list_len bs) = types_list_compatible as bs
@@ -163,6 +176,24 @@ fn :: types_compatible RType              RType              => Bool
       types_compatible _                  _                  =  False
 
 -- ── Type Environment Lookup & Registration ──────────────────
+
+fn :: collect_typedef_names [RTypeDef] => [String]
+      collect_typedef_names []         =  []
+      collect_typedef_names ((TypeDef name _ _):ts) = [name] :: (collect_typedef_names ts)
+
+fn :: qualify_declared_adt [String] RType              => RType
+      qualify_declared_adt tnames   (TyVar s)
+        | str_in_list s tnames = TyVar ("adt:" + s)
+        | otherwise = TyVar s
+      qualify_declared_adt tnames   (TyList inner)     =  TyList (qualify_declared_adt tnames inner)
+      qualify_declared_adt tnames   (TyTuple elems)    =  TyTuple (qualify_declared_adt_list tnames elems)
+      qualify_declared_adt tnames   (TyVariadic inner) =  TyVariadic (qualify_declared_adt tnames inner)
+      qualify_declared_adt tnames   (TyFun params ret) =  TyFun (qualify_declared_adt_list tnames params) (qualify_declared_adt tnames ret)
+      qualify_declared_adt _        other              =  other
+
+fn :: qualify_declared_adt_list [String] [RType] => [RType]
+      qualify_declared_adt_list _        []      =  []
+      qualify_declared_adt_list tnames   (t:ts)  =  [qualify_declared_adt tnames t] :: (qualify_declared_adt_list tnames ts)
 
 fn :: lookup_type_bind [RTypeBind] String => (Bool, RType)
       lookup_type_bind []          _      =  (False, TyInt)
@@ -179,59 +210,59 @@ fn :: builtin_local_types => [RTypeBind]
 
 fn :: builtin_fn_types => [RTypeBind]
       builtin_fn_types =
-        [TypeBind "spawn" (TyFun [TyString] TyInt), TypeBind "join" (TyFun [TyInt] TyInt), TypeBind "new_bounded_channel" (TyFun [TyInt] TyInt), TypeBind "send_through" (TyFun [TyVar "a", TyInt] TyUnit), TypeBind "chan_send" (TyFun [TyVar "a", TyInt] TyUnit), TypeBind "receive_from" (TyFun [TyInt] (TyVar "a")), TypeBind "chan_recv" (TyFun [TyInt] (TyVar "a")), TypeBind "try_receive_from" (TyFun [TyInt] (TyVar "Option")), TypeBind "chan_try_recv" (TyFun [TyInt] (TyVar "Option")), TypeBind "receive_from_timeout" (TyFun [TyInt, TyInt] (TyVar "Option")), TypeBind "str_len" (TyFun [TyString] TyInt), TypeBind "str_char_at" (TyFun [TyString, TyInt] TyInt), TypeBind "str_slice" (TyFun [TyString, TyInt, TyInt] TyString), TypeBind "char_from_code" (TyFun [TyInt] TyString), TypeBind "str_concat" (TyFun [TyString, TyString] TyString), TypeBind "int_to_str" (TyFun [TyInt] TyString), TypeBind "str_to_int" (TyFun [TyString] TyInt), TypeBind "str_starts_with" (TyFun [TyString, TyString] TyBool), TypeBind "str_contains" (TyFun [TyString, TyString] TyBool), TypeBind "read_file" (TyFun [TyString] TyString), TypeBind "load_rg_source" (TyFun [TyString] TyString), TypeBind "read_bytes" (TyFun [TyString] (TyList TyInt)), TypeBind "write_bytes" (TyFun [TyString, TyList TyInt] TyUnit), TypeBind "write_file" (TyFun [TyString, TyString] TyUnit), TypeBind "shell_exec" (TyFun [TyString] TyInt), TypeBind "map" (TyFun [TyFun [TyVar "a"] (TyVar "b"), TyList (TyVar "a")] (TyList (TyVar "b"))), TypeBind "seq_map" (TyFun [TyFun [TyVar "a"] (TyVar "b"), TyList (TyVar "a")] (TyList (TyVar "b"))), TypeBind "filter" (TyFun [TyFun [TyVar "a"] TyBool, TyList (TyVar "a")] (TyList (TyVar "a"))), TypeBind "seq_filter" (TyFun [TyFun [TyVar "a"] TyBool, TyList (TyVar "a")] (TyList (TyVar "a"))), TypeBind "fold" (TyFun [TyFun [TyVar "b", TyVar "a"] (TyVar "b"), TyVar "b", TyList (TyVar "a")] (TyVar "b")), TypeBind "list_dir" (TyFun [TyString] (TyList TyString)), TypeBind "file_lstat" (TyFun [TyString] (TyTuple [TyBool, TyString, TyInt, TyInt, TyInt, TyString, TyString, TyInt, TyString])), TypeBind "sha256_file" (TyFun [TyString] TyString), TypeBind "sha256_str" (TyFun [TyString] TyString), TypeBind "sys_mkdir" (TyFun [TyString, TyInt] TyInt), TypeBind "sys_chmod" (TyFun [TyString, TyInt] TyInt), TypeBind "sys_exec" (TyFun [TyString, TyList TyString, TyList TyString] TyInt), TypeBind "sys_chdir" (TyFun [TyString] TyInt), TypeBind "sys_getcwd" (TyFun [] TyString), TypeBind "sys_getenv" (TyFun [TyString] TyString), TypeBind "sys_setenv" (TyFun [TyString, TyString] TyInt), TypeBind "sys_exit" (TyFun [TyInt] TyUnit), TypeBind "sys_getuid" (TyFun [] TyInt), TypeBind "sys_getgid" (TyFun [] TyInt), TypeBind "sys_username" (TyFun [TyInt] TyString), TypeBind "sys_user_groups" (TyFun [TyString] (TyList TyString)), TypeBind "sys_lookup_uid_gid" (TyFun [TyString] (TyTuple [TyInt, TyInt])), TypeBind "sys_setresgid" (TyFun [TyInt] TyInt), TypeBind "sys_setgroups" (TyFun [TyList TyInt] TyInt), TypeBind "sys_setresuid" (TyFun [TyInt] TyInt), TypeBind "sys_execve" (TyFun [TyString, TyList TyString, TyList TyString] TyInt), TypeBind "sys_read_pass" (TyFun [TyString] TyString)]
+        [TypeBind "spawn" (TyFun [TyString] TyInt), TypeBind "join" (TyFun [TyInt] TyInt), TypeBind "new_bounded_channel" (TyFun [TyInt] TyInt), TypeBind "send_through" (TyFun [TyVar "A", TyInt] TyUnit), TypeBind "chan_send" (TyFun [TyVar "A", TyInt] TyUnit), TypeBind "receive_from" (TyFun [TyInt] (TyVar "A")), TypeBind "chan_recv" (TyFun [TyInt] (TyVar "A")), TypeBind "try_receive_from" (TyFun [TyInt] (TyVar "Option")), TypeBind "chan_try_recv" (TyFun [TyInt] (TyVar "Option")), TypeBind "receive_from_timeout" (TyFun [TyInt, TyInt] (TyVar "Option")), TypeBind "str_len" (TyFun [TyString] TyInt), TypeBind "str_char_at" (TyFun [TyString, TyInt] TyInt), TypeBind "str_slice" (TyFun [TyString, TyInt, TyInt] TyString), TypeBind "char_from_code" (TyFun [TyInt] TyString), TypeBind "str_concat" (TyFun [TyString, TyString] TyString), TypeBind "int_to_str" (TyFun [TyInt] TyString), TypeBind "str_to_int" (TyFun [TyString] TyInt), TypeBind "str_starts_with" (TyFun [TyString, TyString] TyBool), TypeBind "str_contains" (TyFun [TyString, TyString] TyBool), TypeBind "read_file" (TyFun [TyString] TyString), TypeBind "load_rg_source" (TyFun [TyString] TyString), TypeBind "read_bytes" (TyFun [TyString] (TyList TyInt)), TypeBind "write_bytes" (TyFun [TyString, TyList TyInt] TyUnit), TypeBind "write_file" (TyFun [TyString, TyString] TyUnit), TypeBind "shell_exec" (TyFun [TyString] TyInt), TypeBind "map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "seq_map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "seq_filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "fold" (TyFun [TyFun [TyVar "B", TyVar "A"] (TyVar "B"), TyVar "B", TyList (TyVar "A")] (TyVar "B")), TypeBind "list_dir" (TyFun [TyString] (TyList TyString)), TypeBind "file_lstat" (TyFun [TyString] (TyTuple [TyBool, TyString, TyInt, TyInt, TyInt, TyString, TyString, TyInt, TyString])), TypeBind "sha256_file" (TyFun [TyString] TyString), TypeBind "sha256_str" (TyFun [TyString] TyString), TypeBind "sys_mkdir" (TyFun [TyString, TyInt] TyInt), TypeBind "sys_chmod" (TyFun [TyString, TyInt] TyInt), TypeBind "sys_exec" (TyFun [TyString, TyList TyString, TyList TyString] TyInt), TypeBind "sys_chdir" (TyFun [TyString] TyInt), TypeBind "sys_getcwd" (TyFun [] TyString), TypeBind "sys_getenv" (TyFun [TyString] TyString), TypeBind "sys_setenv" (TyFun [TyString, TyString] TyInt), TypeBind "sys_exit" (TyFun [TyInt] TyUnit), TypeBind "sys_getuid" (TyFun [] TyInt), TypeBind "sys_getgid" (TyFun [] TyInt), TypeBind "sys_username" (TyFun [TyInt] TyString), TypeBind "sys_user_groups" (TyFun [TyString] (TyList TyString)), TypeBind "sys_lookup_uid_gid" (TyFun [TyString] (TyTuple [TyInt, TyInt])), TypeBind "sys_setresgid" (TyFun [TyInt] TyInt), TypeBind "sys_setgroups" (TyFun [TyList TyInt] TyInt), TypeBind "sys_setresuid" (TyFun [TyInt] TyInt), TypeBind "sys_execve" (TyFun [TyString, TyList TyString, TyList TyString] TyInt), TypeBind "sys_read_pass" (TyFun [TyString] TyString)]
 
-fn :: register_variants [RVariant] RType [RTypeBind] [RTypeBind] => ([RTypeBind], [RTypeBind])
-      register_variants [] _ locals fns = (locals, fns)
-      register_variants ((TypeVariant ctor []):vs) adt_ty locals fns =
-        register_variants vs adt_ty (put_type_bind locals ctor adt_ty) fns
-      register_variants ((TypeVariant ctor arg_strs):vs) adt_ty locals fns =
-        arg_tys = parse_type_list_strs arg_strs
-        register_variants vs adt_ty locals (put_type_bind fns ctor (TyFun arg_tys adt_ty))
+fn :: register_variants [String] [RVariant] RType [RTypeBind] [RTypeBind] => ([RTypeBind], [RTypeBind])
+      register_variants _ [] _ locals fns = (locals, fns)
+      register_variants tnames ((TypeVariant ctor []):vs) adt_ty locals fns =
+        register_variants tnames vs adt_ty (put_type_bind locals ctor adt_ty) fns
+      register_variants tnames ((TypeVariant ctor arg_strs):vs) adt_ty locals fns =
+        arg_tys = qualify_declared_adt_list tnames (parse_type_list_strs arg_strs)
+        register_variants tnames vs adt_ty locals (put_type_bind fns ctor (TyFun arg_tys adt_ty))
 
-fn :: collect_field_types [RField] => [RType]
-      collect_field_types []       =  []
-      collect_field_types ((TypeField _ fty_str):fs) =
-        [parse_type_str fty_str] :: (collect_field_types fs)
+fn :: collect_field_types [String] [RField] => [RType]
+      collect_field_types _        []       =  []
+      collect_field_types tnames   ((TypeField _ fty_str):fs) =
+        [qualify_declared_adt tnames (parse_type_str fty_str)] :: (collect_field_types tnames fs)
 
-fn :: register_field_accessors [RField] RType  [RTypeBind] => [RTypeBind]
-      register_field_accessors []       _      fns         =  fns
-      register_field_accessors ((TypeField fname fty_str):fs) adt_ty fns =
-        fty = parse_type_str fty_str
-        register_field_accessors fs adt_ty (put_type_bind fns fname (TyFun [adt_ty] fty))
+fn :: register_field_accessors [String] [RField] RType [RTypeBind] => [RTypeBind]
+      register_field_accessors _ [] _ fns = fns
+      register_field_accessors tnames ((TypeField fname fty_str):fs) adt_ty fns =
+        fty = qualify_declared_adt tnames (parse_type_str fty_str)
+        register_field_accessors tnames fs adt_ty (put_type_bind fns fname (TyFun [adt_ty] fty))
 
-fn :: register_typedef RTypeDef [RTypeBind] [RTypeBind] => ([RTypeBind], [RTypeBind])
-      register_typedef (TypeDef name vars []) locals fns =
-        adt_ty = parse_type_str name
-        register_variants vars adt_ty locals fns
-      register_typedef (TypeDef name vars fields) locals fns =
-        adt_ty = parse_type_str name
-        v_res = register_variants vars adt_ty locals fns
-        register_record_helpers name adt_ty fields v_res
+fn :: register_typedef [String] RTypeDef [RTypeBind] [RTypeBind] => ([RTypeBind], [RTypeBind])
+      register_typedef tnames (TypeDef name vars []) locals fns =
+        adt_ty = qualify_declared_adt tnames (parse_type_str name)
+        register_variants tnames vars adt_ty locals fns
+      register_typedef tnames (TypeDef name vars fields) locals fns =
+        adt_ty = qualify_declared_adt tnames (parse_type_str name)
+        v_res = register_variants tnames vars adt_ty locals fns
+        register_record_helpers tnames name adt_ty fields v_res
 
-fn :: register_record_helpers String RType [RField] ([RTypeBind], [RTypeBind]) => ([RTypeBind], [RTypeBind])
-      register_record_helpers name adt_ty fields (locals, fns) =
-        ctor_arg_tys = collect_field_types fields
+fn :: register_record_helpers [String] String RType [RField] ([RTypeBind], [RTypeBind]) => ([RTypeBind], [RTypeBind])
+      register_record_helpers tnames name adt_ty fields (locals, fns) =
+        ctor_arg_tys = collect_field_types tnames fields
         fns1 = put_type_bind fns name (TyFun ctor_arg_tys adt_ty)
-        fns2 = register_field_accessors fields adt_ty fns1
+        fns2 = register_field_accessors tnames fields adt_ty fns1
         (locals, fns2)
 
-fn :: register_typedef_list [RTypeDef] [RTypeBind] [RTypeBind] => ([RTypeBind], [RTypeBind])
-      register_typedef_list [] locals fns = (locals, fns)
-      register_typedef_list (t:ts) locals fns =
-        r1 = register_typedef t locals fns
-        register_typedef_list_cont ts r1
+fn :: register_typedef_list [String] [RTypeDef] [RTypeBind] [RTypeBind] => ([RTypeBind], [RTypeBind])
+      register_typedef_list _ [] locals fns = (locals, fns)
+      register_typedef_list tnames (t:ts) locals fns =
+        r1 = register_typedef tnames t locals fns
+        register_typedef_list_cont tnames ts r1
 
-fn :: register_typedef_list_cont [RTypeDef] ([RTypeBind], [RTypeBind]) => ([RTypeBind], [RTypeBind])
-      register_typedef_list_cont ts (locals1, fns1) =
-        register_typedef_list ts locals1 fns1
+fn :: register_typedef_list_cont [String] [RTypeDef] ([RTypeBind], [RTypeBind]) => ([RTypeBind], [RTypeBind])
+      register_typedef_list_cont tnames ts (locals1, fns1) =
+        register_typedef_list tnames ts locals1 fns1
 
-fn :: register_fndef_sigs [RFnDef] [RTypeBind] => [RTypeBind]
-      register_fndef_sigs []       fns         =  fns
-      register_fndef_sigs ((FnDef name param_strs ret_str _):fs) fns =
-        param_tys = parse_type_list_strs param_strs
-        ret_ty = parse_type_str ret_str
-        register_fndef_sigs fs (put_type_bind fns name (TyFun param_tys ret_ty))
+fn :: register_fndef_sigs [String] [RFnDef] [RTypeBind] => [RTypeBind]
+      register_fndef_sigs _        []       fns         =  fns
+      register_fndef_sigs tnames   ((FnDef name param_strs ret_str _):fs) fns =
+        param_tys = qualify_declared_adt_list tnames (parse_type_list_strs param_strs)
+        ret_ty = qualify_declared_adt tnames (parse_type_str ret_str)
+        register_fndef_sigs tnames fs (put_type_bind fns name (TyFun param_tys ret_ty))
 
 -- ── Pattern Variable Binding ────────────────────────────────
 
@@ -831,12 +862,12 @@ fn :: check_fn_cases [RFnCase] String [RType] RType Int [RTypeBind] [RTypeBind] 
       check_fn_cases (c:cs) fn_name param_tys ret_ty idx locals fns =
         (check_one_case c fn_name param_tys ret_ty idx locals fns) :: (check_fn_cases cs fn_name param_tys ret_ty (idx + 1) locals fns)
 
-fn :: check_all_functions [RFnDef] [RTypeBind] [RTypeBind] => [RTypeError]
-      check_all_functions []       _           _           =  []
-      check_all_functions ((FnDef name param_strs ret_str cases):fs) locals fns =
-        param_tys = parse_type_list_strs param_strs
-        ret_ty = parse_type_str ret_str
-        (check_fn_cases cases name param_tys ret_ty 0 locals fns) :: (check_all_functions fs locals fns)
+fn :: check_all_functions [String] [RFnDef] [RTypeBind] [RTypeBind] => [RTypeError]
+      check_all_functions _ [] _ _ = []
+      check_all_functions tnames ((FnDef name param_strs ret_str cases):fs) locals fns =
+        param_tys = qualify_declared_adt_list tnames (parse_type_list_strs param_strs)
+        ret_ty = qualify_declared_adt tnames (parse_type_str ret_str)
+        (check_fn_cases cases name param_tys ret_ty 0 locals fns) :: (check_all_functions tnames fs locals fns)
 
 fn :: convert_analysis_errors [RAnalysisError] => [RTypeError]
       convert_analysis_errors []               =  []
@@ -849,13 +880,14 @@ fn :: convert_analysis_errors [RAnalysisError] => [RTypeError]
 
 fn :: typecheck_program RProgram => [RTypeError]
       typecheck_program (Program fdefs tdefs) =
-        env_pair = register_typedef_list tdefs builtin_local_types builtin_fn_types
-        typecheck_with_typedef_env (Program fdefs tdefs) fdefs env_pair
+        tnames = collect_typedef_names tdefs
+        env_pair = register_typedef_list tnames tdefs builtin_local_types builtin_fn_types
+        typecheck_with_typedef_env tnames (Program fdefs tdefs) fdefs env_pair
 
-fn :: typecheck_with_typedef_env RProgram [RFnDef] ([RTypeBind], [RTypeBind]) => [RTypeError]
-      typecheck_with_typedef_env prog fdefs (locals, fns0) =
-        fns = register_fndef_sigs fdefs fns0
-        ty_errs = check_all_functions fdefs locals fns
+fn :: typecheck_with_typedef_env [String] RProgram [RFnDef] ([RTypeBind], [RTypeBind]) => [RTypeError]
+      typecheck_with_typedef_env tnames prog fdefs (locals, fns0) =
+        fns = register_fndef_sigs tnames fdefs fns0
+        ty_errs = check_all_functions tnames fdefs locals fns
         an_errs = convert_analysis_errors (analyze_program_errors prog)
         ty_errs :: an_errs
 

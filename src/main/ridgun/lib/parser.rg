@@ -722,6 +722,13 @@ fn :: line_has_arrow [RToken]       => Bool
       line_has_arrow (TokArrow:_)   =  True
       line_has_arrow (_:ts)         =  line_has_arrow ts
 
+fn :: line_has_fat_arrow [RToken]        => Bool
+      line_has_fat_arrow []              =  False
+      line_has_fat_arrow (TokEof:_)      =  False
+      line_has_fat_arrow (TokNewline:_)  =  False
+      line_has_fat_arrow (TokFatArrow:_) =  True
+      line_has_fat_arrow (_:ts)          =  line_has_fat_arrow ts
+
 fn :: parse_int_indices [RToken]           => ([Int], [RToken])
       parse_int_indices (TokRBracket:rest) =  ([], rest)
       parse_int_indices (TokComma:rest)    =  parse_int_indices rest
@@ -808,7 +815,7 @@ fn :: parse_block_line_ident String [RToken]         => ([RStmt], [RToken])
       parse_block_line_ident name   (TokIdxLBracket:rest)
         | line_has_equals rest = parse_block_idx_assign name ([TokIdxLBracket] :: rest) (collect_bracket_indices ([TokIdxLBracket] :: rest) [])
       parse_block_line_ident name   rest
-        | line_has_equals rest = ([], [TokIdent name] :: rest)
+        | (line_has_equals rest) OR (line_has_fat_arrow rest) = ([], [TokIdent name] :: rest)
         | otherwise = finish_expr_stmt (parse_expr ([TokIdent name] :: rest))
 
 fn :: parse_block_idx_assign String [RToken] ([RExpr], [RToken]) => ([RStmt], [RToken])
@@ -845,7 +852,7 @@ fn :: parse_block_safe_dispatch [RToken] => ([RStmt], [RToken])
         finish_atomic_stmt var_name e_res
       parse_block_safe_dispatch ((TokIdent name):rest) = parse_block_line_ident name rest
       parse_block_safe_dispatch ts
-        | is_top_keyword (tok_head ts) = ([], ts)
+        | (is_top_keyword (tok_head ts)) OR (line_has_fat_arrow ts) = ([], ts)
         | otherwise = finish_expr_stmt (parse_expr ts)
 
 fn :: finish_atomic_stmt String   (RExpr, [RToken]) => ([RStmt], [RToken])
@@ -1027,8 +1034,24 @@ fn :: parse_op_decl [RToken] => (RFnDef, [RToken])
       parse_op_decl (TokOp:TokColonColon:rest) =
         hdr = scan_op_header rest [] [] []
         finish_op_header hdr
-      parse_op_decl (_:rest) =  (FnDef "unknown" [] "()" [], rest)
-      parse_op_decl []       =  (FnDef "unknown" [] "()" [], [])
+      parse_op_decl ts       =
+        hdr = scan_op_header ts [] [] []
+        finish_op_header hdr
+
+fn :: is_prefix_fn_tmpl [Bool]    [String] => Bool
+      is_prefix_fn_tmpl (False:_) (w:[])   =  is_lower_ident w
+      is_prefix_fn_tmpl _         _        =  False
+
+fn :: parse_bare_decl [RToken] => (RFnDef, [RToken])
+      parse_bare_decl ts       =
+        hdr = scan_op_header ts [] [] []
+        dispatch_bare_decl ts hdr
+
+fn :: dispatch_bare_decl [RToken] ([String], [String], [Bool], [RToken]) => (RFnDef, [RToken])
+      dispatch_bare_decl ((TokIdent name):rest) (words, _, tmpl, _)
+        | is_prefix_fn_tmpl tmpl words = parse_fn_decl_ret name (parse_param_types rest)
+      dispatch_bare_decl _ hdr =
+        finish_op_header hdr
 
 fn :: finish_op_header ([String], [String], [Bool], [RToken]) => (RFnDef, [RToken])
       finish_op_header (words, params, tmpl, rest) =
@@ -1426,8 +1449,9 @@ fn :: parse_items [RToken]           [RFnDef] [RTypeDef] => RProgram
       parse_items (TokType:rest)     fns      tys        =
         t_res = parse_type_decl ([TokType] :: rest)
         parse_items_after_type t_res fns tys
-      parse_items (_:rest)           fns      tys        =
-        parse_items (skip_to_newline rest) fns tys
+      parse_items ts                 fns      tys
+        | line_has_fat_arrow ts = parse_items_after_fn (parse_bare_decl ts) fns tys
+        | otherwise = parse_items (skip_to_newline (tok_tail ts)) fns tys
 
 fn :: parse_items_after_fn (RFnDef, [RToken]) [RFnDef] [RTypeDef] => RProgram
       parse_items_after_fn (fdef, rest)       fns      tys        =

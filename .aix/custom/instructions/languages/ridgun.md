@@ -16,7 +16,7 @@ Read and follow the `implement-code-ridgun` skill before editing any `.rg` file.
 
 ## Syntax invariants (never violate)
 - **Comments**: `--` only. **Imports**: `import <module>` (resolved from same dir or `src/main/ridgun/lib/`).
-- **Signatures**: `fn :: name T1 T2 => Ret` or natural-language `op :: word T1 word (T2, T3) => Ret` (never put `()` before `=>` for 0-arg functions; in `op ::`, never use reserved lexer keywords like `fn`, `op`, `type`, `import`, `where`, `otherwise` as operator words).
+- **Signatures**: `fn ::` and `op ::` prefixes are optional (`name T1 T2 => Ret` or `fn :: name T1 T2 => Ret`; mixfix `word T1 word T2 => Ret` or `op :: word T1 word T2 => Ret`). Polymorphic type variables are **single uppercase letters (`A`..`Z`)** so that uppercase/bracketed tokens in signatures are always types and lowercase tokens are always function/operator words. Never put `()` before `=>` for 0-arg functions; in mixfix operators, never use reserved lexer keywords (`fn`, `op`, `type`, `import`, `where`, `otherwise`) as operator words.
 - **No `if/else` or `match/case`**: use pattern-matching function/operator cases or guards (`| cond = expr` and `| otherwise = expr`).
 - **Single-line guard bodies**: in `| cond = expr`, `expr` MUST be on the same line as `=`. Extract a helper function/operator when a branch needs a multi-statement block.
 - **Blocks**: 2-space indented statement blocks are valid only after `fn_name pats =` or `op_words pats =`; bind `()` side-effects with `_ = expr` and end with the return expression.

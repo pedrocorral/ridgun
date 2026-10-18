@@ -36,6 +36,13 @@ fn :: add_pair Int Int => Int
 fn :: apply_twice (Int => Int) Int => Int
       apply_twice f            x   =  f (f x)
 
+list_len [A]    => Int
+list_len []     =  0
+list_len (_:xs) =  1 + (list_len xs)
+
+swap A with B => (B, A)
+swap x with y =  (y, x)
+
 fn :: main => ()
       main =
         echo "=== Core Language, ADTs, Mixfix, Variadics & Higher-Order Ops ==="
@@ -43,6 +50,8 @@ fn :: main => ()
         assert_equals (clamp 150 between 0 and 100) 100
         assert_equals (sum_variadic 10 20 30 40) 100
         assert_equals (apply_twice double_val 5) 20
+        assert_equals (list_len [10, 20, 30, 40]) 4
+        assert_equals (swap 7 with "ok") ("ok", 7)
         assert_equals (map double_val [1, 2, 3, 4, 5]) [2, 4, 6, 8, 10]
         assert_equals (seq_map double_val [1, 2, 3, 4, 5]) [2, 4, 6, 8, 10]
         assert_equals (filter is_even [1, 2, 3, 4, 5, 6]) [2, 4, 6]

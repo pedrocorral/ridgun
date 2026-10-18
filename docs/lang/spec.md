@@ -99,24 +99,33 @@ If no subcommand is given, `run` is assumed.
 
 ---
 
-## Functions
+## Functions & Operators
 
-Functions are declared with `fn ::` followed by a type signature, then defined by equation.
+Functions and natural-language/infix operators are declared by a type signature ending in `=> <return_type>`, followed by one or more equations (`cases`). The leading `fn ::` and `op ::` prefixes are **optional**:
 
-### Syntax
+- **Canonical prefixless form** (starts at column 0):
+  ```ridgun
+  list_len [A]    => Int
+  list_len []     =  0
+  list_len (_:xs) =  1 + (list_len xs)
 
-```
-fn :: <name> <param_types...> => <return_type>
-      <name> <params...> = <body>
-```
+  swap A with B => (B, A)
+  swap x with y =  (y, x)
+  ```
+- **Explicit prefixed form** (`fn ::` / `op ::`, starts at column 0 with clauses aligned at column 6):
+  ```ridgun
+  fn :: sum Int Int => Int
+        sum a   b   =  a + b
+  ```
 
-### Example
+### Polymorphic Type Variables (`A`..`Z`)
 
-```ridgun
--- Declaration: sum takes two Ints, returns an Int
-fn :: sum Int Int => Int
-      sum a b = a + b
-```
+To guarantee zero lexical ambiguity between operator words and type parameters in both prefixed (`op ::`) and prefixless signatures:
+- **Every type token in a signature starts with an uppercase letter** (or `[...]` / `(...)`):
+  - **Single uppercase letters (`A`..`Z`)** denote **polymorphic type variables** (e.g., `[A]`, `(A => B)`, `swap A with B => (B, A)`).
+  - **Multi-character capitalized identifiers** (`Int`, `String`, `Bool`, `RExpr`, `Tensor`) denote concrete or user-defined types.
+- **Every lowercase token** (or operator symbol `+`, `-`, `*`, `/`, `%`) in a top-level signature is part of the function or mixfix operator name.
+- A top-level signature with **one leading lowercase identifier** followed only by types before `=>` is a prefix function (`fn`); any signature with **two or more lowercase words** or operator symbols interleaved with types before `=>` is a mixfix/infix/postfix operator (`op`).
 
 The declaration and definition are separate:
 - **Declaration** (`fn ::`) — specifies the name, parameter types, and return type
