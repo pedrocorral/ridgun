@@ -14,36 +14,51 @@ Reading budget: `docs/lang/spec.md` (only when a construct is unfamiliar), `buil
 
 ## 2. Core Syntax Rules & LLM Pitfalls to Avoid
 1. **Comments & Imports**: Line comments use `--` (never `//` or `#`). Top-of-file imports use `import module_name` (no quotes, no `.rg` extension).
-2. **Function Signatures (`fn ::`)**:
-   - With parameters: `fn :: add Int Int => Int` followed by cases `add x y = x + y`.
-   - Zero parameters: `fn :: main => ()` (no `()` before `=>`!) followed by `main = ...`.
+2. **Function & Operator Signatures (`fn ::`, `op ::`, and Generics `A`..`Z`)**:
+   - `fn ::` and `op ::` prefixes are optional (`add Int Int => Int` or `fn :: add Int Int => Int`).
+   - Zero parameters: `fn :: main => ()` (never put `()` before `=>`!) followed by `main = ...`.
    - Variadic last parameter: `fn :: sum_all Int... => Int`.
-3. **Pattern Matching & Guards (`|`) — CRITICAL**:
-   - Multiple cases repeat the function name:
+   - **Parametric Polymorphism (`A`..`Z`)**: Single uppercase letters (`A`..`Z`) are polymorphic type variables unified across arguments and substituted into the return type:
+     ```ridgun
+     list_len [A]    => Int
+     list_len []     =  0
+     list_len (_:xs) =  1 + (list_len xs)
+
+     fst (A, B) => A
+     fst (a, _) =  a
+
+     head_or [A]    A => A
+     head_or []     d =  d
+     head_or (x:_)  _ =  x
+     ```
+3. **Pattern Matching, Guards (`|`), and Multi-Line Guard Blocks**:
+   - Multiple cases repeat the function or operator pattern:
      ```ridgun
      fn :: fib Int => Int
-     fib 0 = 0
-     fib 1 = 1
-     fib n = (fib (n - 1)) + (fib (n - 2))
+           fib 0   =  0
+           fib 1   =  1
+           fib n   =  (fib (n - 1)) + (fib (n - 2))
      ```
-   - Guards omit `=` after patterns and put `| cond = expr` on indented lines:
+   - Guards omit `=` after patterns and put `| cond = ...` and `| otherwise = ...` on indented lines.
+   - **Both single-line expressions AND indented multi-line blocks are supported after `=` in guards**:
      ```ridgun
-     fn :: clamp Int Int Int => Int
-     clamp x lo hi
-       | x < lo = lo
-       | x > hi = hi
-       | otherwise = x
+     fn :: step_bound Int Int => Int
+           step_bound idx limit
+             | idx >= limit =
+                 capped = limit - 1
+                 scaled = capped * 2
+                 scaled + 1
+             | otherwise = idx + 1
      ```
-   - **NEVER put a newline immediately after `=` in a guard (`| cond =`)**. The expression after `| cond =` MUST start on the same line. If a guarded branch needs multiple statements, call a helper function.
-   - **No `if/then/else` or `match/case` keywords**: always use pattern matching cases or guards (`| cond = expr` / `| otherwise = expr`).
+   - **No `if/then/else` or `match/case` keywords**: always use pattern matching cases or guards (`| cond = ...` / `| otherwise = ...`).
 4. **Indented Statement Blocks**:
-   - Allowed ONLY after an unguarded `fn_name pats =` followed by a newline and 2-space indentation:
+   - Allowed after `fn_name pats =`, `op_words pats =`, or `| cond =` followed by a newline and 2-space indentation:
      ```ridgun
      fn :: run_step String => Int
-     run_step path =
-       raw = read_file path
-       _ = echo "Loaded {path}"
-       str_len raw
+           run_step path =
+             raw = read_file path
+             _ = echo "Loaded {path}"
+             str_len raw
      ```
    - Discard `()` return values of intermediate side-effect calls with `_ = ...`; the last line of the block is the return value.
 5. **Logical, Comparison & List Operators**:
@@ -51,39 +66,53 @@ Reading budget: `docs/lang/spec.md` (only when a construct is unfamiliar), `buil
    - List literal: `[1, 2, 3]`. Pattern destructuring: `[]`, `(x:xs)`, `(a:b:[])`.
    - List concatenation uses `::` between two lists: `[head_item] :: tail_list` or `list_a :: [last_item]`.
    - String concatenation uses `+`: `"hello " + name`.
-6. **Strings: Interpolated (`"..."`) vs Raw (`'...'`)**:
-   - Double quotes `"Hello, {name}!"` interpolate variables `{var}` or expressions `{fn x}`. Escape literal braces as `{{` and `}}`.
+6. **Strings: Interpolated (`"..."`), Brace Escaping (`\{`/`\}` and `{{`/`}}`), and Raw (`'...'`)**:
+   - Double quotes `"Hello, {name}!"` interpolate variables `{var}` or expressions `{fn x}`.
+   - Escape literal braces inside `"..."` using EITHER `\{` and `\}` (e.g., `"\$\{VAR:-default\}"`) OR `{{` and `}}` (e.g., `"{{braces}}"`).
    - Single quotes `'raw text with {braces} and "quotes"'` are raw strings (no interpolation, no backslash escaping).
 
-## 3. Types, ADTs, Records, and Custom Operators
+## 3. Types, ADTs, Record Updates (`with`), and Contextual Keywords
 - **Primitives**: `Int`, `Real`, `String`, `Bool` (`True`, `False`), `()` (Unit), `[T]` (List), `(A, B)` (Tuple), `Tensor(i, j)`.
 - **Sum ADTs**:
   ```ridgun
-  type Option a = None | Some a
-  type Result a e = Ok a | Err e
+  type Option A = None | Some A
+  type Result A E = Ok A | Err E
   ```
   Match constructors in parentheses when they take arguments: `unwrap (Some x) = x`.
-- **Product Records**:
+- **Product Records & Functional Record Updates (`with`)**:
   ```ridgun
-  type Point = x: Real, y: Real
+  type LsSpec = one_per_line: Bool, color: Bool, width: Int
   ```
-  Construct with `Point 3.0 4.0`; access fields via auto-generated functions `x pt`, `y pt`.
+  - Construct positionally: `default_spec = LsSpec False False 80`.
+  - Read fields via auto-generated accessors: `color spec`, `width spec`.
+  - **Update one or more fields immutably using `with` and colons `:`**:
+    ```ridgun
+    spec1 = default_spec with color: True
+    spec2 = spec1 with one_per_line: True, width: 120
+    ```
+- **Contextual `type` and `with`**:
+  - `type` and `with` are **contextual keywords**: `type` only starts a type declaration at the top level when followed by `UpperName =`.
+  - Inside `fn ::`, `op ::`, patterns, blocks, and record definitions, `type` and `with` can be used freely as function names, operator words, parameter names, local variables, or record field names:
+    ```ridgun
+    op :: format String type String with Int => String
+          format label  type kind   with w   =  "{label}:{kind}:{w}"
+    ```
 - **Low-level Layout Attributes**: `@packed`, `@repr(C)`, `@align(64)` before `type`.
 - **Operator Overloading & Natural-Language Mixfix (`op ::`)**:
   - Prefix, infix, postfix, or mixfix: `op :: execute command [String] on StableConfig => (Bool, StableConfig, Int)` or `op :: file String exists => Bool`.
-  - Parameter slots in `op ::` can be uppercase type names (`Int`, `String`, `StableConfig`), list types (`[String]`), or tuple types (`(Bool, String)`).
+  - Parameter slots in `op ::` can be uppercase type names (`Int`, `String`, `StableConfig`), single-letter type variables (`A`..`Z`), list types (`[String]`, `[A]`), or tuple types (`(Bool, String)`).
   - Longest-match resolution: if `op :: a b c d`, `op :: a b`, and `op :: c d` exist, `a b c d` calls `a_b_c_d`; use parentheses `a b (c d)` to pass the result of `c d` into `a b`.
-  - Never use reserved lexer keywords (`fn`, `op`, `type`, `import`, `where`, `otherwise`, `do`, `atomic`) as operator keyword words (`with` is explicitly allowed).
+  - Do not use structural keywords (`fn`, `op`, `import`, `where`, `otherwise`, `do`, `atomic`) as operator words (`type` and `with` ARE allowed).
 
 ## 4. Parallelism, Tensors, Concurrency & Memory Regions
 - **Parallel Producer-Consumer `where` DAGs**:
   Independent bindings in a `where` block execute in parallel; dataflow dependencies (`->`) form an automatic DAG checked for cycles and disjoint mutations at compile time:
   ```ridgun
   fn :: pipeline Int => Int
-  pipeline x = left + right
-    where
-      heavy_a x -> left
-      heavy_b x -> right
+        pipeline x   =  left + right
+          where
+            heavy_a x -> left
+            heavy_b x -> right
   ```
   Disjoint slice write in `where`: `compute_cell i j -> grid[i, j]`.
 - **Parallel Pipes (`||`)**: `branch_a x || branch_b x` evaluates branches concurrently into a tuple.
@@ -112,15 +141,16 @@ Reading budget: `docs/lang/spec.md` (only when a construct is unfamiliar), `buil
 | `int_to_str n` / `str_to_int s` | `Int => String` / `String => Int` | Integer/string conversion (supports `0x` hex and `_`) |
 | `str_starts_with s p` | `String String => Bool` | Prefix check |
 | `str_contains s needle` | `String String => Bool` | Substring check |
-| `read_file path` | `String => String` | Read file contents (recursively resolves `import` for `.rg`) |
+| `read_file path` | `String => String` | Read file contents verbatim |
 | `write_file path content` | `String String => ()` | Write string to file |
 | `shell_exec cmd` | `String => Int` | Execute shell command via `sh -c` and return exit code |
 | `cli_args` | `=> [String]` | Command-line arguments list |
-| `spawn "fn_name" arg` / `join tid` | `String a => Int` / `Int => b` | Spawn parallel task by function name and join result |
+| `spawn "fn_name" arg` / `join tid` | `String A => Int` / `Int => B` | Spawn parallel task by function name and join result |
 
-## 6. Verification Procedure
+## 6. Verification Procedure (Assume `ridgunc` and `stable` are in `PATH`)
+Always invoke `ridgunc` and `stable` directly by name (never prefix them with relative paths):
 1. Place shared modules in `src/main/ridgun/lib/` and executable entrypoints in `src/main/ridgun/<target>/main.rg`.
-2. Run `./target/stable format [file...]` to apply canonical aesthetic column-alignment formatting (`FR-TOOL-001`, aesthetic only — not enforced by `ridgunc`).
-3. Run `./target/stable check` to typecheck and run static analysis across all modules (`0 errors`).
-4. Run `./target/stable test` to compile and execute all `src/test/ridgun/test_*.rg` suites.
-5. If compiler/tool sources changed, run `./target/stable built` (or `./target/stable built <target>`) to rebuild native binaries in `target/`.
+2. Run `stable format [file...]` to apply canonical aesthetic column-alignment formatting (`FR-TOOL-001`, aesthetic only — not enforced by `ridgunc`).
+3. Run `stable check` (or `ridgunc check <file.rg>`) to typecheck and run static analysis across all modules (`0 errors`).
+4. Run `stable test` (or `ridgunc run <test_file.rg>`) to compile and execute test suites.
+5. Run `stable built` (or `ridgunc build <entry.rg> -o <binary>`) to build standalone native ELF binaries.

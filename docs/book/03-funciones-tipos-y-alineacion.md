@@ -100,7 +100,7 @@ resumen_pedido item   uds precio =
   "Has pedido {uds}x {item}. Total a pagar: {uds * precio} euros."
 ```
 
-*(Truco: si necesitas escribir una llave literal dentro de comillas dobles, ponla doble: `{{` o `}}`).*
+*(Truco: si necesitas escribir una llave literal dentro de comillas dobles —por ejemplo al generar un script de shell `"$\{VAR:-default\}"` o un JSON—, puedes escaparla con barra invertida `\{` y `\}` o duplicarla `{{` y `}}`).*
 
 ### 2. Comillas simples (`'...'`): Crudas y literales (*Raw Strings*)
 Lo que escribes entre comillas simples sale **tal cual**, sin tocar ni una barra invertida `\`, ni una llave `{}`. Perfecto para cuando generas código en otro lenguaje, escribes comandos de shell o trabajas con rutas llenas de barras:

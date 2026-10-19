@@ -42,6 +42,11 @@ fn :: is_top_keyword RToken      => Bool
       is_top_keyword TokEof      =  True
       is_top_keyword _           =  False
 
+fn :: is_top_decl_start [RToken]    => Bool
+      is_top_decl_start (TokType:(TokIdent name):TokEquals:_) = is_upper_ident name
+      is_top_decl_start (TokType:_) =  False
+      is_top_decl_start ts          =  is_top_keyword (tok_head ts)
+
 fn :: is_upper_ident String => Bool
       is_upper_ident s      =
         c = str_char_at s 0
@@ -202,6 +207,8 @@ fn :: parse_pattern [RToken]           => (RPattern, [RToken])
       parse_pattern (TokFalse:rest)    =  (PatBool False, rest)
       parse_pattern (TokLBracket:TokRBracket:rest) = (PatEmpty, rest)
       parse_pattern (TokLParen:TokRParen:rest) = (PatWild, rest)
+      parse_pattern (TokType:rest)     =  (PatVar "type", rest)
+      parse_pattern (TokWith:rest)     =  (PatVar "with", rest)
       parse_pattern ((TokIdent s):rest)
         | s == "_" = (PatWild, rest)
         | (is_upper_ident s) AND (str_len s) > 1 = (PatCtor s [], rest)
@@ -358,6 +365,7 @@ fn :: is_atom_tok RToken        => Bool
       is_atom_tok TokTrue       =  True
       is_atom_tok TokFalse      =  True
       is_atom_tok (TokIdent _)  =  True
+      is_atom_tok TokType       =  True
       is_atom_tok TokWith       =  True
       is_atom_tok TokLParen     =  True
       is_atom_tok TokLBracket   =  True
@@ -555,6 +563,57 @@ fn :: finish_seq_select RExpr (String, [RToken]) => (RExpr, [RToken])
 
 -- ── Application & Postfix (`out`, `s(+ _)`, calls) ──────────
 
+fn :: is_record_update_start [RToken] => Bool
+      is_record_update_start (TokWith:(TokIdent _):TokColon:_) = True
+      is_record_update_start (TokWith:TokType:TokColon:_) = True
+      is_record_update_start (TokWith:TokWith:TokColon:_) = True
+      is_record_update_start _        =  False
+
+fn :: extract_field_name [RToken] => (String, [RToken])
+      extract_field_name ((TokIdent f):TokColon:rest) = (f, rest)
+      extract_field_name (TokType:TokColon:rest) = ("type", rest)
+      extract_field_name (TokWith:TokColon:rest) = ("with", rest)
+      extract_field_name ts       =  ("", ts)
+
+fn :: has_next_record_field [RToken] => Bool
+      has_next_record_field (TokComma:(TokIdent _):TokColon:_) = True
+      has_next_record_field (TokComma:TokType:TokColon:_) = True
+      has_next_record_field (TokComma:TokWith:TokColon:_) = True
+      has_next_record_field _        =  False
+
+fn :: parse_record_update_pairs [RToken] [RExpr] => ([RExpr], [RToken])
+      parse_record_update_pairs ts       acc     =
+        f_res = extract_field_name ts
+        parse_record_update_val f_res acc
+
+fn :: parse_record_update_val (String, [RToken]) [RExpr] => ([RExpr], [RToken])
+      parse_record_update_val ("", ts)           acc     =  (acc, ts)
+      parse_record_update_val (fname, rest)      acc     =
+        v_res = parse_logic_expr rest
+        parse_record_update_more fname v_res acc
+
+fn :: parse_record_update_more String (RExpr, [RToken]) [RExpr] => ([RExpr], [RToken])
+      parse_record_update_more fname (val_e, (TokComma:rest)) acc
+        | has_next_record_field ([TokComma] :: rest) = parse_record_update_pairs rest (acc :: [EStr fname, val_e])
+        | otherwise = (acc :: [EStr fname, val_e], [TokComma] :: rest)
+      parse_record_update_more fname (val_e, rest) acc =
+        (acc :: [EStr fname, val_e], rest)
+
+fn :: parse_record_update RExpr [RToken]       => (RExpr, [RToken])
+      parse_record_update base  (TokWith:rest) =
+        p_res = parse_record_update_pairs rest []
+        finish_record_update base p_res
+      parse_record_update base  ts             =  (base, ts)
+
+fn :: finish_record_update RExpr ([RExpr], [RToken]) => (RExpr, [RToken])
+      finish_record_update base  (pairs, rest)       =
+        check_record_update_tail (ECall "__record_update__" ([base] :: pairs), rest)
+
+fn :: check_record_update_tail (RExpr, [RToken]) => (RExpr, [RToken])
+      check_record_update_tail (base_e, rest)
+        | is_record_update_start rest = parse_record_update base_e rest
+        | otherwise = (base_e, rest)
+
 fn :: parse_app_expr [RToken] => (RExpr, [RToken])
       parse_app_expr ts       =
         p1 = parse_atom ts
@@ -564,11 +623,13 @@ fn :: parse_app_tail (RExpr, [RToken]) => (RExpr, [RToken])
       parse_app_tail ((EVar name), (TokLParen:rest))
         | is_seq_mask_tokens ([TokLParen] :: rest) = finish_seq_select (EVar name) (scan_seq_mask rest "")
       parse_app_tail ((EVar name), rest)
+        | is_record_update_start rest = parse_record_update (EVar name) rest
         | name == "echo" = finish_echo_call (parse_atom_list rest)
-        | is_atom_tok (tok_head rest) = finish_fn_or_out_call (EVar name) name (parse_atom_list rest)
+        | is_atom_tok (tok_head rest) = check_record_update_tail (finish_fn_or_out_call (EVar name) name (parse_atom_list rest))
         | otherwise = (EVar name, rest)
       parse_app_tail (first_e, rest)
-        | is_atom_tok (tok_head rest) = finish_chain_or_out first_e (parse_atom_list rest)
+        | is_record_update_start rest = parse_record_update first_e rest
+        | is_atom_tok (tok_head rest) = check_record_update_tail (finish_chain_or_out first_e (parse_atom_list rest))
         | otherwise = (first_e, rest)
 
 fn :: finish_fn_or_out_call RExpr String ([RExpr], [RToken]) => (RExpr, [RToken])
@@ -583,6 +644,7 @@ fn :: finish_chain_or_out RExpr   ([RExpr], [RToken]) => (RExpr, [RToken])
 
 fn :: parse_atom_list [RToken] => ([RExpr], [RToken])
       parse_atom_list ts
+        | is_record_update_start ts = ([], ts)
         | is_atom_tok (tok_head ts) = parse_atom_list_cont (parse_atom ts)
         | otherwise = ([], ts)
 
@@ -611,6 +673,7 @@ fn :: parse_atom_base [RToken]           => (RExpr, [RToken])
       parse_atom_base ((TokRawStr s):rest) = (EStr s, rest)
       parse_atom_base (TokTrue:rest)     =  (EBool True, rest)
       parse_atom_base (TokFalse:rest)    =  (EBool False, rest)
+      parse_atom_base (TokType:rest)     =  (EVar "type", rest)
       parse_atom_base (TokWith:rest)     =  (EVar "with", rest)
       parse_atom_base ((TokIdent s):TokLBracket:rest)
         | s == "Tensor" OR s == "Tensor_GPU" = finish_tensor_lit (parse_comma_exprs rest)
@@ -683,7 +746,7 @@ fn :: finish_tuple_lit RExpr ([RExpr], [RToken]) => (RExpr, [RToken])
 
 fn :: parse_guards [RToken]       => ([RGuard], [RToken])
       parse_guards (TokPipe:TokOtherwise:TokEquals:rest) =
-        b = parse_expr rest
+        b = parse_case_body rest
         parse_guards_cont (EBool True) b
       parse_guards (TokPipe:rest) =
         c = parse_expr rest
@@ -692,10 +755,10 @@ fn :: parse_guards [RToken]       => ([RGuard], [RToken])
 
 fn :: parse_guard_after_cond (RExpr, [RToken]) => ([RGuard], [RToken])
       parse_guard_after_cond (cond, (TokEquals:rest)) =
-        b = parse_expr rest
+        b = parse_case_body rest
         parse_guards_cont cond b
       parse_guard_after_cond (cond, rest)      =
-        b = parse_expr rest
+        b = parse_case_body rest
         parse_guards_cont cond b
 
 fn :: parse_guards_cont RExpr (RExpr, [RToken]) => ([RGuard], [RToken])
@@ -710,10 +773,30 @@ fn :: prepend_guard RGuard ([RGuard], [RToken]) => ([RGuard], [RToken])
 fn :: line_has_equals [RToken]       => Bool
       line_has_equals []             =  False
       line_has_equals (TokEof:_)     =  False
-      line_has_equals (TokNewline:TokPipe:_) = True
       line_has_equals (TokNewline:_) =  False
       line_has_equals (TokEquals:_)  =  True
       line_has_equals (_:ts)         =  line_has_equals ts
+
+fn :: is_echo_expr RExpr     => Bool
+      is_echo_expr (EEcho _) =  True
+      is_echo_expr _         =  False
+
+fn :: line_followed_by_pipe [RToken]       => Bool
+      line_followed_by_pipe []             =  False
+      line_followed_by_pipe (TokEof:_)     =  False
+      line_followed_by_pipe (TokNewline:TokPipe:_) = True
+      line_followed_by_pipe (TokNewline:_) =  False
+      line_followed_by_pipe (TokEquals:_)  =  False
+      line_followed_by_pipe (_:ts)         =  line_followed_by_pipe ts
+
+fn :: next_line_has_guard [RToken] => Bool
+      next_line_has_guard ts       =
+        clean = skip_newlines ts
+        next_line_has_guard_clean clean
+
+fn :: next_line_has_guard_clean [RToken]    => Bool
+      next_line_has_guard_clean (TokPipe:_) =  False
+      next_line_has_guard_clean ts          =  line_followed_by_pipe ts
 
 fn :: line_has_arrow [RToken]       => Bool
       line_has_arrow []             =  False
@@ -836,23 +919,30 @@ fn :: finish_let_stmt String (RExpr, [RToken]) => ([RStmt], [RToken])
         prepend_stmt (StmtLet v e) more
 
 fn :: finish_expr_stmt (RExpr, [RToken]) => ([RStmt], [RToken])
-      finish_expr_stmt (e, rest)         =
-        more = parse_block_stmts_safe rest
-        prepend_stmt (StmtExpr e) more
+      finish_expr_stmt (e, rest)
+        | (NOT (is_echo_expr e)) AND (next_line_has_guard rest) = ([StmtExpr e], rest)
+        | otherwise = prepend_stmt (StmtExpr e) (parse_block_stmts_safe rest)
 
 fn :: parse_block_stmts_safe [RToken] => ([RStmt], [RToken])
       parse_block_stmts_safe ts       =
         clean = skip_newlines ts
         parse_block_safe_dispatch clean
 
-fn :: parse_block_safe_dispatch [RToken] => ([RStmt], [RToken])
-      parse_block_safe_dispatch []       =  ([], [])
+fn :: parse_block_safe_dispatch [RToken]       => ([RStmt], [RToken])
+      parse_block_safe_dispatch []             =  ([], [])
+      parse_block_safe_dispatch (TokPipe:rest) =  ([], [TokPipe] :: rest)
       parse_block_safe_dispatch (TokAtomic:(TokIdent var_name):TokEquals:rest) =
         e_res = parse_expr rest
         finish_atomic_stmt var_name e_res
       parse_block_safe_dispatch ((TokIdent name):rest) = parse_block_line_ident name rest
+      parse_block_safe_dispatch (TokType:rest)
+        | is_top_decl_start ([TokType] :: rest) = ([], [TokType] :: rest)
+        | otherwise = parse_block_line_ident "type" rest
+      parse_block_safe_dispatch (TokWith:rest)
+        | is_with_block_start ([TokWith] :: rest) = finish_expr_stmt (parse_expr ([TokWith] :: rest))
+        | otherwise = parse_block_line_ident "with" rest
       parse_block_safe_dispatch ts
-        | (is_top_keyword (tok_head ts)) OR (line_has_fat_arrow ts) = ([], ts)
+        | (is_top_decl_start ts) OR (line_has_fat_arrow ts) = ([], ts)
         | otherwise = finish_expr_stmt (parse_expr ts)
 
 fn :: finish_atomic_stmt String   (RExpr, [RToken]) => ([RStmt], [RToken])
@@ -911,11 +1001,15 @@ fn :: parse_fn_cases String  [RToken] => ([RFnCase], [RToken])
         clean = skip_newlines ts
         parse_fn_cases_check fn_name clean
 
-fn :: parse_fn_cases_check String  [RToken] => ([RFnCase], [RToken])
+fn :: parse_fn_cases_check String  [RToken]       => ([RFnCase], [RToken])
       parse_fn_cases_check fn_name ((TokIdent s):rest)
         | s == fn_name = parse_fn_cases_cont fn_name (parse_fn_case_for fn_name ([TokIdent s] :: rest))
         | otherwise = ([], [TokIdent s] :: rest)
-      parse_fn_cases_check _       ts       =  ([], ts)
+      parse_fn_cases_check "type"  (TokType:rest) =
+        parse_fn_cases_cont "type" (parse_fn_case_for "type" ([TokIdent "type"] :: rest))
+      parse_fn_cases_check "with"  (TokWith:rest) =
+        parse_fn_cases_cont "with" (parse_fn_case_for "with" ([TokIdent "with"] :: rest))
+      parse_fn_cases_check _       ts             =  ([], ts)
 
 fn :: parse_fn_cases_cont String  (RFnCase, [RToken]) => ([RFnCase], [RToken])
       parse_fn_cases_cont fn_name (c, rest)           =
@@ -929,6 +1023,12 @@ fn :: parse_fn_decl [RToken] => (RFnDef, [RToken])
       parse_fn_decl (TokFn:TokColonColon:(TokIdent name):rest) =
         pt_res = parse_param_types rest
         parse_fn_decl_ret name pt_res
+      parse_fn_decl (TokFn:TokColonColon:TokType:rest) =
+        pt_res = parse_param_types rest
+        parse_fn_decl_ret "type" pt_res
+      parse_fn_decl (TokFn:TokColonColon:TokWith:rest) =
+        pt_res = parse_param_types rest
+        parse_fn_decl_ret "with" pt_res
       parse_fn_decl (_:rest) =  (FnDef "unknown" [] "()" [], rest)
       parse_fn_decl []       =  (FnDef "unknown" [] "()" [], [])
 
@@ -967,6 +1067,8 @@ fn :: scan_op_header [RToken] [String] [String] [Bool] => ([String], [String], [
       scan_op_header ((TokIdent s):rest) words params tmpl
         | is_upper_ident s = scan_op_header rest words (params :: [s]) (tmpl :: [True])
         | otherwise = scan_op_header rest (words :: [s]) params (tmpl :: [False])
+      scan_op_header (TokType:rest) words params tmpl =
+        scan_op_header rest (words :: ["type"]) params (tmpl :: [False])
       scan_op_header (TokWith:rest) words params tmpl =
         scan_op_header rest (words :: ["with"]) params (tmpl :: [False])
       scan_op_header (TokPlus:rest) words params tmpl =
@@ -992,6 +1094,7 @@ fn :: scan_op_type_slot [String] [String] [Bool] (String, [RToken]) => ([String]
 
 fn :: match_op_keyword RToken       String => Bool
       match_op_keyword (TokIdent s) kw     =  s == kw
+      match_op_keyword TokType      kw     =  kw == "type"
       match_op_keyword TokWith      kw     =  kw == "with"
       match_op_keyword TokPlus      kw     =  kw == "+"
       match_op_keyword TokMinus     kw     =  kw == "-"
@@ -1003,7 +1106,7 @@ fn :: match_op_keyword RToken       String => Bool
 fn :: try_parse_op_template [Bool] [String] [RToken] [RPattern] => (Bool, [RPattern], [RToken])
       try_parse_op_template [] _ ts pats = (True, pats, ts)
       try_parse_op_template (True:t_rest) kws ts pats
-        | is_top_keyword (tok_head ts) = (False, [], ts)
+        | is_top_decl_start ts = (False, [], ts)
         | otherwise = try_parse_op_pat t_rest kws pats (parse_pattern ts)
       try_parse_op_template (False:t_rest) (kw:kw_rest) (tok:ts_rest) pats
         | match_op_keyword tok kw = try_parse_op_template t_rest kw_rest ts_rest pats
@@ -1050,6 +1153,10 @@ fn :: parse_bare_decl [RToken] => (RFnDef, [RToken])
 fn :: dispatch_bare_decl [RToken] ([String], [String], [Bool], [RToken]) => (RFnDef, [RToken])
       dispatch_bare_decl ((TokIdent name):rest) (words, _, tmpl, _)
         | is_prefix_fn_tmpl tmpl words = parse_fn_decl_ret name (parse_param_types rest)
+      dispatch_bare_decl (TokType:rest) (words, _, tmpl, _)
+        | is_prefix_fn_tmpl tmpl words = parse_fn_decl_ret "type" (parse_param_types rest)
+      dispatch_bare_decl (TokWith:rest) (words, _, tmpl, _)
+        | is_prefix_fn_tmpl tmpl words = parse_fn_decl_ret "with" (parse_param_types rest)
       dispatch_bare_decl _ hdr =
         finish_op_header hdr
 
@@ -1178,6 +1285,12 @@ fn :: parse_record_fields [RToken]          => ([RField], [RToken])
       parse_record_fields ((TokIdent fname):rest) =
         ty_res = parse_type_tok (strip_optional_colon rest)
         parse_record_fields_cont fname ty_res
+      parse_record_fields (TokType:rest)    =
+        ty_res = parse_type_tok (strip_optional_colon rest)
+        parse_record_fields_cont "type" ty_res
+      parse_record_fields (TokWith:rest)    =
+        ty_res = parse_type_tok (strip_optional_colon rest)
+        parse_record_fields_cont "with" ty_res
       parse_record_fields (_:rest)          =  ([], skip_to_newline rest)
 
 fn :: parse_record_fields_cont String (String, [RToken]) => ([RField], [RToken])
@@ -1192,6 +1305,10 @@ fn :: parse_type_decl [RToken] => (RTypeDef, [RToken])
       parse_type_decl (TokType:(TokIdent name):TokEquals:((TokIdent first_w):rest))
         | is_upper_ident first_w = finish_sum_type name (parse_variants ([TokIdent first_w] :: rest))
         | otherwise = finish_record_type name (parse_record_fields ([TokIdent first_w] :: rest))
+      parse_type_decl (TokType:(TokIdent name):TokEquals:(TokType:rest)) =
+        finish_record_type name (parse_record_fields ([TokType] :: rest))
+      parse_type_decl (TokType:(TokIdent name):TokEquals:(TokWith:rest)) =
+        finish_record_type name (parse_record_fields ([TokWith] :: rest))
       parse_type_decl (_:rest) =  (TypeDef "Unknown" [] [], skip_to_newline rest)
       parse_type_decl []       =  (TypeDef "Unknown" [] [], [])
 
@@ -1328,6 +1445,7 @@ fn :: is_std_builtin String            => Bool
       is_std_builtin "sys_setresuid"   =  True
       is_std_builtin "sys_execve"      =  True
       is_std_builtin "sys_read_pass"   =  True
+      is_std_builtin "__record_update__" = True
       is_std_builtin _                 =  False
 
 fn :: norm_call String  [RExpr] [RArityEntry] => RExpr
@@ -1446,8 +1564,8 @@ fn :: parse_items [RToken]           [RFnDef] [RTypeDef] => RProgram
       parse_items (TokHardware:rest) fns      tys        =
         hw_res = parse_hardware_decl ([TokHardware] :: rest)
         parse_items_after_fndefs hw_res fns tys
-      parse_items (TokType:rest)     fns      tys        =
-        t_res = parse_type_decl ([TokType] :: rest)
+      parse_items (TokType:(TokIdent name):TokEquals:rest) fns tys =
+        t_res = parse_type_decl ([TokType, TokIdent name, TokEquals] :: rest)
         parse_items_after_type t_res fns tys
       parse_items ts                 fns      tys
         | line_has_fat_arrow ts = parse_items_after_fn (parse_bare_decl ts) fns tys

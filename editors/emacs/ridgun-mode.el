@@ -56,7 +56,7 @@
   :safe #'integerp
   :group 'ridgun)
 
-(defcustom ridgun-compiler-command "target/ridgunc"
+(defcustom ridgun-compiler-command "ridgunc"
   "Command or path to the self-hosted `ridgunc' compiler binary."
   :type 'string
   :group 'ridgun)

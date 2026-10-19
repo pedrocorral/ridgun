@@ -98,6 +98,8 @@ fn :: unescape_char Int => String
         | c == 114 = char_from_code 13
         | c == 92 = char_from_code 92
         | c == 34 = char_from_code 34
+        | c == 123 = (char_from_code 123) + (char_from_code 123)
+        | c == 125 = (char_from_code 125) + (char_from_code 125)
         | otherwise = char_from_code c
 
 fn :: unescape_loop String Int Int String => String

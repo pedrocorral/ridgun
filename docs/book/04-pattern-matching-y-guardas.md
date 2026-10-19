@@ -79,6 +79,25 @@ es_bisiesto a
 
 Cero símbolos crípticos. Lo lee alguien que no sabe Ridgun y lo entiende a la primera.
 
+### Bloques de varias líneas dentro de una guarda (`| cond =` + bloque indentado)
+*"Oye, ¿y si en una de las ramas de `|` necesito calcular dos o tres variables locales antes de devolver el resultado? ¿Tengo que crear una función auxiliar aparte solo para eso?"*
+
+¡Ni hablar! Igual que después del `=` de una función normal puedes abrir un bloque indentado de varias líneas, **después del `=` de cualquier guarda `| cond =` o `| otherwise =` también puedes hacer un salto de línea y abrir un bloque indentado**:
+
+```ridgun
+ajustar_ventana Int Int => Int
+ajustar_ventana idx limite
+  | idx >= limite =
+      tope = limite - 1
+      escalado = tope * 2
+      escalado + 10
+  | otherwise =
+      siguiente = idx + 1
+      siguiente * 2
+```
+
+Cada rama de la guarda tiene su propio bloque local limpio y su última línea es el valor que devuelve esa rama.
+
 ---
 
 ## 4.3. "¿Sin `while`? ¿Y no va a reventar la pila si recorro un archivo grande?"

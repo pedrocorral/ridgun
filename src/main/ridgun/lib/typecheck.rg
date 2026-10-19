@@ -551,12 +551,84 @@ fn :: drop_rtypes [RType] Int => [RType]
       drop_rtypes []      _   =  []
       drop_rtypes (_:xs)  n   =  drop_rtypes xs (n - 1)
 
+fn :: is_single_poly_var String => Bool
+      is_single_poly_var s
+        | str_starts_with s "adt:" = False
+        | otherwise = (str_len s) == 1
+
+fn :: is_concrete_for_poly RType            => Bool
+      is_concrete_for_poly (TyVar "_empty") =  False
+      is_concrete_for_poly (TyVar "_any")   =  False
+      is_concrete_for_poly _                =  True
+
+fn :: bind_or_check_poly String RType String String [RTypeBind] => ([RTypeBind], [RTypeError])
+      bind_or_check_poly v arg callee fn_name poly_env =
+        bind_or_check_poly_step v arg callee fn_name poly_env (lookup_type_bind poly_env v)
+
+fn :: bind_or_check_poly_step String RType String String [RTypeBind] (Bool, RType) => ([RTypeBind], [RTypeError])
+      bind_or_check_poly_step v arg _ _ poly_env (False, _)
+        | is_concrete_for_poly arg = ([TypeBind v arg] :: poly_env, [])
+        | otherwise = (poly_env, [])
+      bind_or_check_poly_step v arg callee fn_name poly_env (True, bound_ty)
+        | types_compatible arg bound_ty = (poly_env, [])
+        | otherwise = (poly_env, [TypeError fn_name ("function '" + callee + "' type variable " + v + " unified with incompatible types: " + (rtype_to_str bound_ty) + " and " + (rtype_to_str arg))])
+
+fn :: collect_poly_binds RType RType String String [RTypeBind] => ([RTypeBind], [RTypeError])
+      collect_poly_binds arg (TyVar v) callee fn_name poly_env
+        | is_single_poly_var v = bind_or_check_poly v arg callee fn_name poly_env
+        | otherwise = (poly_env, [])
+      collect_poly_binds (TyList a_in) (TyList p_in) callee fn_name poly_env =
+        collect_poly_binds a_in p_in callee fn_name poly_env
+      collect_poly_binds (TyTuple a_es) (TyTuple p_es) callee fn_name poly_env =
+        collect_poly_binds_list a_es p_es callee fn_name poly_env
+      collect_poly_binds (TyFun a_ps a_r) (TyFun p_ps p_r) callee fn_name poly_env =
+        collect_poly_binds_after (collect_poly_binds_list a_ps p_ps callee fn_name poly_env) a_r p_r callee fn_name
+      collect_poly_binds _ _ _ _ poly_env = (poly_env, [])
+
+fn :: collect_poly_binds_after ([RTypeBind], [RTypeError]) RType RType String String => ([RTypeBind], [RTypeError])
+      collect_poly_binds_after (env1, errs1) a_r p_r callee fn_name =
+        merge_poly_res errs1 (collect_poly_binds a_r p_r callee fn_name env1)
+
+fn :: collect_poly_binds_list [RType] [RType] String String [RTypeBind] => ([RTypeBind], [RTypeError])
+      collect_poly_binds_list [] _ _ _ poly_env = (poly_env, [])
+      collect_poly_binds_list _ [] _ _ poly_env = (poly_env, [])
+      collect_poly_binds_list (a:as) (p:ps) callee fn_name poly_env =
+        collect_poly_binds_list_step (collect_poly_binds a p callee fn_name poly_env) as ps callee fn_name
+
+fn :: collect_poly_binds_list_step ([RTypeBind], [RTypeError]) [RType] [RType] String String => ([RTypeBind], [RTypeError])
+      collect_poly_binds_list_step (env1, errs1) as ps callee fn_name =
+        merge_poly_res errs1 (collect_poly_binds_list as ps callee fn_name env1)
+
+fn :: merge_poly_res [RTypeError] ([RTypeBind], [RTypeError]) => ([RTypeBind], [RTypeError])
+      merge_poly_res errs1 (env2, errs2) = (env2, errs1 :: errs2)
+
+fn :: subst_poly_type RType          [RTypeBind] => RType
+      subst_poly_type (TyVar v)      poly_env
+        | is_single_poly_var v = subst_poly_var v (lookup_type_bind poly_env v)
+        | otherwise = TyVar v
+      subst_poly_type (TyList inner) poly_env    =  TyList (subst_poly_type inner poly_env)
+      subst_poly_type (TyTuple es)   poly_env    =  TyTuple (subst_poly_type_list es poly_env)
+      subst_poly_type (TyFun ps r)   poly_env    =  TyFun (subst_poly_type_list ps poly_env) (subst_poly_type r poly_env)
+      subst_poly_type ty             _           =  ty
+
+fn :: subst_poly_var String (Bool, RType) => RType
+      subst_poly_var _      (True, ty)    =  ty
+      subst_poly_var v      (False, _)    =  TyVar v
+
+fn :: subst_poly_type_list [RType] [RTypeBind] => [RType]
+      subst_poly_type_list []      _           =  []
+      subst_poly_type_list (t:ts)  poly_env    =  [subst_poly_type t poly_env] :: (subst_poly_type_list ts poly_env)
+
+fn :: finish_poly_call RType [RTypeError] ([RTypeBind], [RTypeError]) => (RType, [RTypeError])
+      finish_poly_call ret_ty fixed_errs (poly_env, poly_errs) =
+        (subst_poly_type ret_ty poly_env, fixed_errs :: poly_errs)
+
 fn :: check_call_sig String [RType] [RType] RType String => (RType, [RTypeError])
       check_call_sig callee arg_tys param_tys ret_ty fn_name
         | is_last_variadic param_tys = check_variadic_call callee arg_tys param_tys ret_ty fn_name
         | (rtype_list_len arg_tys) == 1 AND (rtype_list_len param_tys) > 1 = check_tuple_chain_call callee (rtype_at arg_tys 0) arg_tys param_tys ret_ty fn_name
         | (rtype_list_len arg_tys) != (rtype_list_len param_tys) = (ret_ty, [TypeError fn_name ("function '" + callee + "' called with " + (int_to_str (rtype_list_len arg_tys)) + " argument(s), expected " + (int_to_str (rtype_list_len param_tys)))])
-        | otherwise = (ret_ty, check_fixed_args arg_tys param_tys callee fn_name 0 [])
+        | otherwise = finish_poly_call ret_ty (check_fixed_args arg_tys param_tys callee fn_name 0 []) (collect_poly_binds_list arg_tys param_tys callee fn_name [])
 
 fn :: check_variadic_call String [RType] [RType] RType String => (RType, [RTypeError])
       check_variadic_call callee arg_tys param_tys ret_ty fn_name =
@@ -571,7 +643,7 @@ fn :: check_variadic_call_counts String [RType] [RType] RType String Int RType =
 
 fn :: check_tuple_chain_call String RType [RType] [RType] RType String => (RType, [RTypeError])
       check_tuple_chain_call callee (TyTuple elems) _ param_tys ret_ty fn_name
-        | (rtype_list_len elems) == (rtype_list_len param_tys) = (ret_ty, check_fixed_args elems param_tys callee fn_name 0 [])
+        | (rtype_list_len elems) == (rtype_list_len param_tys) = finish_poly_call ret_ty (check_fixed_args elems param_tys callee fn_name 0 []) (collect_poly_binds_list elems param_tys callee fn_name [])
       check_tuple_chain_call _ (TyVar "_seq") _ _ ret_ty _ = (ret_ty, [])
       check_tuple_chain_call callee _ arg_tys param_tys ret_ty fn_name =
         (ret_ty, [TypeError fn_name ("function '" + callee + "' called with " + (int_to_str (rtype_list_len arg_tys)) + " argument(s), expected " + (int_to_str (rtype_list_len param_tys)))])
@@ -587,6 +659,23 @@ fn :: check_call_target String [RType] [RTypeError] (Bool, RType) String => (RTy
 
 fn :: prepend_type_errs [RTypeError] (RType, [RTypeError]) => (RType, [RTypeError])
       prepend_type_errs errs1 (ty, errs2) = (ty, errs1 :: errs2)
+
+fn :: check_record_update_fields (RType, [RTypeError]) [RExpr] String [RTypeBind] [RTypeBind] => (RType, [RTypeError])
+      check_record_update_fields (base_ty, base_errs) [] _ _ _ = (base_ty, base_errs)
+      check_record_update_fields (base_ty, base_errs) ((EStr fname):val_e:rest) fn_name locals fns =
+        v_res = check_expr val_e fn_name locals fns
+        f_errs = check_one_record_field base_ty fname v_res fn_name (lookup_type_bind fns fname)
+        check_record_update_fields (base_ty, base_errs :: f_errs) rest fn_name locals fns
+      check_record_update_fields (base_ty, base_errs) (_:rest) fn_name locals fns =
+        check_record_update_fields (base_ty, base_errs) rest fn_name locals fns
+
+fn :: check_one_record_field RType String (RType, [RTypeError]) String (Bool, RType) => [RTypeError]
+      check_one_record_field base_ty fname (val_ty, val_errs) fn_name (True, (TyFun (rec_ty:[]) fty))
+        | NOT (types_compatible base_ty rec_ty) = val_errs :: [TypeError fn_name ("record field '" + fname + "' belongs to " + (rtype_to_str rec_ty) + ", not " + (rtype_to_str base_ty))]
+        | NOT (types_compatible val_ty fty) = val_errs :: [TypeError fn_name ("record field '" + fname + "' has type " + (rtype_to_str val_ty) + ", expected " + (rtype_to_str fty))]
+        | otherwise = val_errs
+      check_one_record_field _ fname (_, val_errs) fn_name _ =
+        val_errs :: [TypeError fn_name ("unknown record field '" + fname + "'")]
 
 fn :: check_expr_list [RExpr] String [RTypeBind] [RTypeBind] => ([RType], [RTypeError])
       check_expr_list [] _ _ _ = ([], [])
@@ -657,6 +746,9 @@ fn :: check_expr RExpr String [RTypeBind] [RTypeBind] => (RType, [RTypeError])
         l_res = check_expr l fn_name locals fns
         r_res = check_expr r fn_name locals fns
         finish_binop_check bop l_res r_res fns fn_name
+      check_expr (ECall "__record_update__" (base_e:rest_args)) fn_name locals fns =
+        b_res = check_expr base_e fn_name locals fns
+        check_record_update_fields b_res rest_args fn_name locals fns
       check_expr (ECall callee args) fn_name locals fns =
         args_res = check_expr_list args fn_name locals fns
         finish_call_check callee args_res fn_name locals fns

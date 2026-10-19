@@ -37,11 +37,12 @@ name = "Ridgun"
 "Nested: {factorial 5} done"             -- "Nested: 120 done"
 ```
 
-To include a literal brace, double it:
+To include a literal brace inside `"..."`, either escape it with a backslash (`\{` and `\}`) or double it (`{{` and `}}`):
 
 ```ridgun
+"Shell expansion: \$\{VAR:-default\}"    -- "Shell expansion: ${VAR:-default}"
 "This is {{not interpolated}}"           -- "This is {not interpolated}"
-"Use {{}} for literal braces"            -- "Use {} for literal braces"
+"Use \{ \} or {{}} for literal braces"   -- "Use { } or {} for literal braces"
 ```
 
 ### Raw Strings (single quotes)
@@ -58,7 +59,7 @@ Single-quoted strings are **raw** — no interpolation is performed. All charact
 
 | Syntax | Interpolation | Use case |
 |---|---|---|
-| `"..."` | Yes — `{expr}` | Dynamic strings with embedded expressions |
+| `"..."` | Yes — `{expr}` (escape braces with `\{`/`\}` or `{{`/`}}`) | Dynamic strings with embedded expressions |
 | `'...'` | No — all literal | Static text, templates, regex patterns |
 
 ---
@@ -118,13 +119,14 @@ Functions and natural-language/infix operators are declared by a type signature 
         sum a   b   =  a + b
   ```
 
-### Polymorphic Type Variables (`A`..`Z`)
+### Polymorphic Type Variables (`A`..`Z`) & Contextual Keywords (`type`, `with`)
 
 To guarantee zero lexical ambiguity between operator words and type parameters in both prefixed (`op ::`) and prefixless signatures:
 - **Every type token in a signature starts with an uppercase letter** (or `[...]` / `(...)`):
-  - **Single uppercase letters (`A`..`Z`)** denote **polymorphic type variables** (e.g., `[A]`, `(A => B)`, `swap A with B => (B, A)`).
+  - **Single uppercase letters (`A`..`Z`)** denote **polymorphic type variables** (e.g., `[A]`, `(A, B)`, `(A => B)`, `swap A with B => (B, A)`). Repeated occurrences of a type variable across parameters are unified at each call site and substituted into the return type.
   - **Multi-character capitalized identifiers** (`Int`, `String`, `Bool`, `RExpr`, `Tensor`) denote concrete or user-defined types.
 - **Every lowercase token** (or operator symbol `+`, `-`, `*`, `/`, `%`) in a top-level signature is part of the function or mixfix operator name.
+- **Contextual keywords `type` and `with`**: `type` only introduces a type declaration at the top level when followed by `UpperName =`. Everywhere else (`fn ::` and `op ::` signatures, operator words, parameter patterns, local variables, and record field names), `type` and `with` are valid identifiers/words without ambiguity.
 - A top-level signature with **one leading lowercase identifier** followed only by types before `=>` is a prefix function (`fn`); any signature with **two or more lowercase words** or operator symbols interleaved with types before `=>` is a mixfix/infix/postfix operator (`op`).
 
 The declaration and definition are separate:
@@ -469,24 +471,25 @@ seq1, seq2           -- seq(seq(a, b), seq(c, d))
 
 Ridgun uses **algebraic data types** for user-defined types. There are no classes, methods, or `impl` blocks — functions and operators take types as parameters.
 
-#### Product Types (records)
+#### Product Types (records) & Record Update Syntax (`with`)
 
 A type with named fields:
 
 ```ridgun
-type Conf = host String, port Int
-type Point = x Real, y Real
+type Conf  = host: String, port: Int, tls: Bool
+type Point = x: Real, y: Real
 ```
 
-Fields are accessed by name as functions:
+Fields are accessed by name as functions (`host c`, `port c`), and updated functionally using `with` and colons `:`:
 
 ```ridgun
 fn :: get_host Conf => String
-get_host c = host c
+      get_host c    =  host c
 
--- or directly in expressions
-fn :: connect Conf => Result
-connect c = open_connection (host c) (port c)
+-- Functional record update (creates a new Conf with updated fields;
+-- mutates in place via Arc::try_unwrap when the record is uniquely owned):
+fn :: enable_tls Conf => Conf
+      enable_tls c    =  c with tls: True, port: 443
 ```
 
 #### Sum Types (variants)
@@ -510,21 +513,24 @@ type Tree = Leaf Int | Node Tree Tree
 
 ---
 
-## Pattern Matching
+## Pattern Matching & Guards
 
-Ridgun supports **Haskell-style pattern matching** — functions and operators can be defined by multiple equations that match on the shape of their arguments.
+Ridgun supports **Haskell-style pattern matching** and **boolean guards (`|`)** — including multi-line indented statement blocks inside guards.
 
-### Literal Patterns
+### Literal Patterns & Multi-Line Guard Blocks
 
 ```ridgun
 fn :: factorial Int => Int
       factorial 0   =  1
       factorial n   =  n * factorial (n - 1)
 
-fn :: fib Int => Int
-      fib 0   =  0
-      fib 1   =  1
-      fib n   =  fib (n - 1) + fib (n - 2)
+fn :: step_index Int Int => Int
+      step_index idx limit
+        | idx >= limit =
+            capped = limit - 1
+            scaled = capped * 2
+            scaled + 1
+        | otherwise = idx + 1
 ```
 
 ### Constructor Patterns

@@ -506,10 +506,7 @@ fn :: emit_interp_check String Int Int [String] Int Int String => String
         | otherwise = 'rg_fn_str_concat(rg_str("' + (escape_rust_str (str_slice s pos (open_idx + 1))) + '"), ' + (emit_interp_loop s (open_idx + 1) len locals) + ')'
 
 fn :: emit_str_lit String [String] => String
-      emit_str_lit s      []       =  'rg_str("' + (escape_rust_str s) + '")'
-      emit_str_lit s      locals
-        | str_contains s (char_from_code 123) = emit_interp_loop s 0 (str_len s) locals
-        | otherwise = 'rg_str("' + (escape_rust_str s) + '")'
+      emit_str_lit s      _        =  'rg_str("' + (escape_rust_str s) + '")'
 
 -- ── Pattern Lowering to Native Rust Conditions & Bindings ───
 
@@ -638,6 +635,11 @@ fn :: format_real_lit String => String
         | str_contains r "." = r + "f64"
         | otherwise = r + ".0f64"
 
+fn :: emit_record_updates String [RExpr] [String] => String
+      emit_record_updates cur    ((EStr fname):val_e:rest) locals =
+        emit_record_updates ('rg_set_' + fname + '(' + cur + ', ' + (emit_native_expr val_e locals) + ')') rest locals
+      emit_record_updates cur    _       _        =  cur
+
 fn :: emit_native_expr RExpr              [String] => String
       emit_native_expr (EInt n)           _        =  'RVal::Int(' + (int_to_str n) + ')'
       emit_native_expr (EReal r)          _        =  'RVal::Real(' + (format_real_lit r) + ')'
@@ -651,6 +653,8 @@ fn :: emit_native_expr RExpr              [String] => String
       emit_native_expr (EOut inner)       locals   =  'rg_out(' + (emit_native_expr inner locals) + ')'
       emit_native_expr (EBin bop l r)     locals   =
         emit_binop_rust bop (emit_native_expr l locals) (emit_native_expr r locals)
+      emit_native_expr (ECall "__record_update__" (base_e:rest_args)) locals =
+        emit_record_updates (emit_native_expr base_e locals) rest_args locals
       emit_native_expr (ECall "__unpack2__" ((EVar fn_target):single_arg:[])) locals =
         '{ let _u = ' + (emit_native_expr single_arg locals) + '; ' + (mangle_fn_name fn_target) + '(rg_tuple_get(&_u, 0), rg_tuple_get(&_u, 1)) }'
       emit_native_expr (ECall fname [])   locals
@@ -936,7 +940,7 @@ fn :: emit_record_accessors [RField] Int [String] => (String, [String])
       emit_record_accessors []       _   emitted  =  ("", emitted)
       emit_record_accessors ((TypeField fname _):fs) idx emitted
         | (lookup_local emitted fname) >= 0 = emit_record_accessors fs (idx + 1) emitted
-        | otherwise = prepend_code_str ('fn rg_fn_' + fname + '(_arg_0: RVal) -> RVal { rg_adt_field(&_arg_0, ' + (int_to_str idx) + ') }' + "\n") (emit_record_accessors fs (idx + 1) (emitted :: [fname]))
+        | otherwise = prepend_code_str ('fn rg_fn_' + fname + '(_arg_0: RVal) -> RVal { rg_adt_field(&_arg_0, ' + (int_to_str idx) + ') }' + "\n" + 'fn rg_set_' + fname + '(_arg_0: RVal, _val: RVal) -> RVal { rg_adt_set(_arg_0, ' + (int_to_str idx) + ', _val) }' + "\n") (emit_record_accessors fs (idx + 1) (emitted :: [fname]))
 
 fn :: prepend_code_str String (String, [String]) => (String, [String])
       prepend_code_str s      (rest_s, emitted)  =  (s + rest_s, emitted)
@@ -1142,6 +1146,7 @@ fn rg_store_shared(name: &str, val: RVal) -> RVal {
 #[inline] fn rg_tuple_get(v: &RVal, idx: usize) -> RVal { match v { RVal::Tuple(items) => items.get(idx).cloned().unwrap_or(RVal::Unit), RVal::List(rc, st) => rc.get(*st + idx).cloned().unwrap_or(RVal::Unit), _ => RVal::Unit } }
 #[inline] fn rg_is_adt(v: &RVal, exp: &str, arity: usize) -> bool { match v { RVal::Adt(c, f) => c.as_str() == exp && f.len() == arity, _ => false } }
 #[inline] fn rg_adt_field(v: &RVal, idx: usize) -> RVal { match v { RVal::Adt(_, f) => f.get(idx).cloned().unwrap_or(RVal::Unit), _ => RVal::Unit } }
+#[inline] fn rg_adt_set(v: RVal, idx: usize, val: RVal) -> RVal { match v { RVal::Adt(c, rc) => { let mut f = match Rc::try_unwrap(rc) { Ok(vec) => vec, Err(r) => (*r).clone() }; if idx < f.len() { f[idx] = val; } RVal::Adt(c, Rc::new(f)) } o => o } }
 
 #[inline]
 fn rg_add(a: RVal, b: RVal) -> RVal {

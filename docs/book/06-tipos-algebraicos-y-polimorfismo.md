@@ -15,15 +15,10 @@ En Ridgun cortamos esos dos problemas de raíz con **Tipos de Datos Algebraicos 
 Cuando quieres agrupar varios datos que pertenecen a una misma entidad (por ejemplo, un servidor con su nombre, su IP y su puerto), defines un **`type`** con sus campos:
 
 ```ridgun
-type Servidor =
-  host: String
-  puerto: Int
-  tls_activo: Bool
+type Servidor = host: String, puerto: Int, tls_activo: Bool
 ```
 
-*(Si es cortito y prefieres ponerlo en una sola línea, también vale: `type Punto = x: Int, y: Int`).*
-
-Con solo escribir esas cuatro líneas, Ridgun te regala tres cosas automáticamente:
+Con solo escribir esa línea, Ridgun te regala **cuatro cosas** automáticamente:
 
 ### 1. El constructor `Servidor`
 ```ridgun
@@ -39,7 +34,19 @@ url_conexion Servidor => String
 url_conexion srv      =  "Conectar a " + (host srv) + " en el puerto {puerto srv}"
 ```
 
-### 3. *Pattern matching* completo por si quieres abrir el registro en canal
+### 3. Actualización funcional de registros (`with campo: valor`)
+Imagina un registro de configuración con 12 o 15 campos (como las opciones de un comando `ls` o de un servidor web) y quieres cambiar solo uno o dos campos sin tocar el resto. En vez de reconstruir el registro pasando los 15 campos a mano, usas **`with`** y dos puntos **`:`** (exactamente igual que en la definición del `type`):
+
+```ridgun
+activar_modo_dev Servidor => Servidor
+activar_modo_dev srv      =  srv with puerto: 8080, tls_activo: False
+```
+
+Lo mejor de los dos mundos:
+- En tu código es **100% inmutable y seguro** (el compilador comprueba que `puerto` y `tls_activo` existan en `Servidor` y tengan el tipo correcto).
+- Por debajo, si `srv` no está compartido con nadie más, el ejecutable nativo reutiliza su memoria *in-place* (`Arc::try_unwrap`) sin copiar el resto de campos.
+
+### 4. *Pattern matching* completo por si quieres abrir el registro en canal
 ```ridgun
 es_puerto_seguro Servidor                 => Bool
 es_puerto_seguro (Servidor _ 443 True)    =  True
@@ -54,13 +61,10 @@ Ahora viene lo bueno.
 Un registro normal tiene `host` **Y** `puerto` **Y** `tls_activo`.
 Pero en el mundo real muchas veces necesitas decir: *"Un método de pago es **O BIEN** una tarjeta con su número, **O BIEN** una transferencia con su IBAN, **O BIEN** efectivo (que no lleva ningún dato extra)"*.
 
-En orientación a objetos tendrías que crear una interfaz `MetodoPago`, tres subclases en tres archivos distintos, constructores, `instanceof`... En Ridgun son **4 líneas**:
+En orientación a objetos tendrías que crear una interfaz `MetodoPago`, tres subclases en tres archivos distintos, constructores, `instanceof`... En Ridgun es **una línea**:
 
 ```ridgun
-type MetodoPago =
-  | Tarjeta String Int
-  | Transferencia String
-  | Efectivo
+type MetodoPago = Tarjeta String Int | Transferencia String | Efectivo
 ```
 
 Y mira qué pasa cuando procesas un `MetodoPago` en una función:
@@ -85,10 +89,7 @@ Si tuvieras un tipo `Any`, meterías `[1, "dos"]` y perderías toda la ayuda del
 En Ridgun (igual que en Haskell o Rust), creas en dos segundos un tipo suma que explica exactamente qué cosas pueden vivir dentro de esa lista:
 
 ```ridgun
-type ValorCelda =
-  | Entero Int
-  | Texto String
-  | Vacio
+type ValorCelda = Entero Int | Texto String | Vacio
 
 formatear_celda ValorCelda   => String
 formatear_celda (Entero n)   =  "Número: {n}"
@@ -113,13 +114,13 @@ Como en Ridgun no existe `null` ni existen excepciones que salten por los aires 
 2. **`Result`**: o la operación salió bien (**`Ok valor`**), o falló por un motivo concreto (**`Err error`**).
 
 ```ridgun
-buscar_division Int Int => Result Int String
+buscar_division Int Int => Result
 buscar_division _   0   =  Err "¡Eh! No se puede dividir por cero"
 buscar_division a   b   =  Ok (a / b)
 
-imprimir_res (Result Int String) => ()
-imprimir_res (Ok n)              =  echo "El resultado es {n}"
-imprimir_res (Err msg)           =  echo "Fallo controlado: {msg}"
+imprimir_res Result      => ()
+imprimir_res (Ok n)      =  echo "El resultado es {n}"
+imprimir_res (Err msg)   =  echo "Fallo controlado: {msg}"
 ```
 
 Nadie puede ignorar un error por descuido porque el propio tipo `Result` te obliga a mirar si dentro hay un `Ok` o un `Err`.
@@ -133,9 +134,9 @@ Supón que escribes una función que invierte un par `(x, y)` o que saca el prim
 En Ridgun, **cualquier letra mayúscula individual (`A` a `Z`)** en una firma de tipos funciona automáticamente como un **tipo comodín polimórfico (variable de tipo)**:
 
 ```ridgun
-cabeza_segura [A]    A          => A
+cabeza_segura [A]    A           => A
 cabeza_segura []     por_defecto =  por_defecto
-cabeza_segura (x:_)  _          =  x
+cabeza_segura (x:_)  _           =  x
 
 girar_par (A, B)  => (B, A)
 girar_par (x, y)  =  (y, x)
@@ -146,11 +147,6 @@ Fíjate en la magia de `cabeza_segura [A] A => A`:
 - Si llamas a `cabeza_segura [10, 20] 0`, el compilador ata cabos (`A = Int`) y te devuelve un `Int`.
 - Si llamas a `cabeza_segura ["a", "b"] "ninguno"`, ata cabos (`A = String`) y te devuelve un `String`.
 - Pero si intentas hacer trampa y llamas a `cabeza_segura [10, 20] "ninguno"`, ¡zas! El compilador te frena en seco porque el primer argumento dice que `A` es `Int` y el segundo dice que `A` es `String`.
-
-### "Un momento... ¿y si en mi dominio médico o matemático quiero crear un tipo real llamado `type A` (por ejemplo, grupo sanguíneo A)?"
-¡Buena pregunta! En Ridgun, **tus declaraciones `type` mandan siempre**.
-- Mientras no hayas definido `type A`, la letra `A` en una firma es un tipo polimórfico genérico.
-- En el instante en que escribes en tu código `type A = ...`, el compilador toma nota y, a partir de ahí, `A` significa **tu tipo de datos `A`**, no un genérico. Sin ambigüedades.
 
 ---
 
@@ -164,24 +160,28 @@ Con **`op ::`** (o directamente sin prefijo si usas patrones de operador) puedes
 ```ridgun
 type Complejo = real: Int, imag: Int
 
-op :: (Complejo a) + (Complejo b) => Complejo
-      a            + b            =  Complejo ((real a) + (real b)) ((imag a) + (imag b))
+op :: Complejo + Complejo => Complejo
+      a        + b        =  Complejo ((real a) + (real b)) ((imag a) + (imag b))
 ```
 
-### 2. Crear operadores *Mixfix* (que se leen como frases naturales)
-Puedes intercalar palabras clave con parámetros tipados `(Tipo nombre)` en el orden que quieras:
+### 2. Crear operadores *Mixfix* (que se leen como frases naturales, incluidos `type` y `with`)
+En una firma de operador, **las palabras con mayúscula inicial (`Int`, `String`, `A`..`Z`) o entre corchetes/paréntesis (`[Int]`, `(A, B)`) son los huecos para los argumentos**, y **las palabras en minúscula son parte de la frase del operador** (incluso palabras tan habituales como `type` o `with`, que en Ridgun son contextuales y nunca te bloquean):
 
 ```ridgun
-op :: si (Bool cond) entonces (A verdadero) sino (A falso) => A
-      si True        entonces verdadero     sino _         =  verdadero
-      si False       entonces _             sino falso     =  falso
+op :: si Bool entonces A sino A => A
+      si True entonces v sino _ =  v
+      si False entonces _ sino f = f
+
+op :: format String type String with Int => String
+      format label  type kind   with w   =  "{label} ({kind}, width={w})"
 
 main => ()
 main =
   mensaje = si (10 > 5) entonces "¡Diez gana!" sino "Imposible"
   echo mensaje
+  echo (format "panel" type "bordered" with 80)
 ```
 
-Acabas de fabricarte tu propio operador ternario polimórfico en **3 líneas** de Ridgun.
+Acabas de fabricarte tu propio operador ternario polimórfico y un DSL de formateo en **3 líneas** de Ridgun.
 
 En el **Capítulo 07** vamos a poner todos los núcleos de tu procesador a trabajar a la vez sin derramar una gota de sudor: **funciones de orden superior (`map`, `pmap`, `filter`, `fold`), grafos paralelos `where`-DAG y canales concurrentes**.

@@ -136,7 +136,7 @@ Tú dibujas las flechas de flujo (`->`). El compilador analiza quién depende de
 En cualquier otro lenguaje, la firma de tipos va por libre en una línea y el cuerpo de la función va debajo como un párrafo de texto normal.
 En Ridgun, **la firma de tipos es literalmente la cabecera de una tabla**, y cada caso debajo alinea cada patrón justo en la vertical de su tipo y cada `=` bajo el `=>`:
 ```ridgun
-dividir Int Int => Option<Int>
+dividir Int Int => Option
 dividir _   0   =  None
 dividir a   b   =  Some (a / b)
 ```
@@ -144,10 +144,10 @@ Nadie más trata la firma y las ecuaciones como una única matriz visual verific
 
 ### 3. Operadores frase (*Mixfix* N-arios) tipados y alineados (`op ::`)
 En la mayoría de los lenguajes, o te aguantas con `+`, `-`, `*` o como mucho defines un operador binario críptico como `<|>` que nadie sabe qué significa.
-En Ridgun puedes crear **operadores que son frases legibles con tantos huecos tipados como quieras**:
+En Ridgun puedes crear **operadores que son frases legibles con tantos huecos tipados como quieras** (incluyendo palabras contextuales como `type` o `with`):
 ```ridgun
-op :: (Int x) limitado_entre (Int min) y (Int max) => Int
-      x       limitado_entre min       y max
+op :: Int limitado_entre Int y Int => Int
+      x   limitado_entre min y max
         | x < min   = min
         | x > max   = max
         | otherwise = x
