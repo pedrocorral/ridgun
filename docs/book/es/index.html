@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>El Libro de Ridgun — Guía Completa del Lenguaje</title>
+  <style>
+    :root, [data-theme="dark"] {
+      --bg: #0f141c;
+      --bg-sidebar: #141b26;
+      --bg-card: #18212f;
+      --bg-code: #0b0f16;
+      --border: #263246;
+      --text: #e6edf3;
+      --text-muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-soft: rgba(56, 189, 248, 0.14);
+      --kw: #ff7b72;
+      --ty: #79c0ff;
+      --fn: #d2a8ff;
+      --str: #a5d6ff;
+      --num: #f2cc60;
+      --com: #6e7681;
+      --op: #ffa657;
+      --shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    }
+    [data-theme="light"] {
+      --bg: #f8fafc;
+      --bg-sidebar: #f1f5f9;
+      --bg-card: #ffffff;
+      --bg-code: #0f172a;
+      --border: #cbd5e1;
+      --text: #0f172a;
+      --text-muted: #475569;
+      --accent: #0284c7;
+      --accent-soft: rgba(2, 132, 199, 0.12);
+      --kw: #ff7b72;
+      --ty: #79c0ff;
+      --fn: #d2a8ff;
+      --str: #a5d6ff;
+      --num: #f2cc60;
+      --com: #94a3b8;
+      --op: #ffa657;
+      --shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.72;
+      display: flex;
+      min-height: 100vh;
+    }
+    /* Sidebar */
+    aside.sidebar {
+      width: 310px;
+      background: var(--bg-sidebar);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      position: fixed;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      z-index: 20;
+      overflow-y: auto;
+    }
+    .brand {
+      padding: 1.35rem 1.25rem 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .brand-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.45rem;
+    }
+    .brand-badge {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+      background: var(--accent-soft);
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+    }
+    .lang-bar {
+      display: flex;
+      gap: 0.25rem;
+    }
+    .lang-link {
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-decoration: none;
+      color: var(--text-muted);
+      padding: 0.16rem 0.42rem;
+      border-radius: 5px;
+      border: 1px solid var(--border);
+    }
+    .lang-link:hover, .lang-link.active {
+      color: var(--accent);
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+    .brand h1 {
+      margin: 0;
+      font-size: 1.25rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+    .brand p {
+      margin: 0.25rem 0 0;
+      font-size: 0.83rem;
+      color: var(--text-muted);
+    }
+    .search-box {
+      padding: 0.85rem 1.1rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .search-box input {
+      width: 100%;
+      padding: 0.55rem 0.75rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 0.88rem;
+      outline: none;
+    }
+    .search-box input:focus {
+      border-color: var(--accent);
+    }
+    .nav-list {
+      list-style: none;
+      padding: 0.75rem 0.65rem 1.5rem;
+      margin: 0;
+      flex: 1;
+    }
+    .nav-item {
+      margin-bottom: 0.25rem;
+    }
+    .nav-btn {
+      width: 100%;
+      text-align: left;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 0.62rem 0.75rem;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.55rem;
+      transition: all 0.15s ease;
+      line-height: 1.38;
+    }
+    .nav-btn:hover {
+      background: var(--accent-soft);
+      color: var(--text);
+    }
+    .nav-btn.active {
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .nav-num {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.78rem;
+      opacity: 0.8;
+      min-width: 1.5rem;
+      padding-top: 0.08rem;
+    }
+    .sidebar-footer {
+      padding: 0.85rem 1.1rem;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+    .theme-btn {
+      background: var(--bg-card);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.35rem 0.65rem;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+    /* Main content */
+    main.reader {
+      margin-left: 310px;
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      padding: 2.5rem 2rem 5rem;
+    }
+    article.chapter {
+      max-width: 820px;
+      width: 100%;
+    }
+    article.chapter h1 {
+      font-size: 2.15rem;
+      line-height: 1.22;
+      margin-top: 0;
+      margin-bottom: 1.25rem;
+      letter-spacing: -0.025em;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.85rem;
+    }
+    article.chapter h2 {
+      font-size: 1.48rem;
+      margin-top: 2.6rem;
+      margin-bottom: 0.85rem;
+      color: var(--accent);
+      letter-spacing: -0.015em;
+    }
+    article.chapter h3 {
+      font-size: 1.16rem;
+      margin-top: 1.8rem;
+      margin-bottom: 0.6rem;
+    }
+    article.chapter p {
+      margin: 0 0 1.1rem;
+    }
+    article.chapter ul, article.chapter ol {
+      margin: 0 0 1.25rem;
+      padding-left: 1.45rem;
+    }
+    article.chapter li {
+      margin-bottom: 0.4rem;
+    }
+    article.chapter hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 2.2rem 0;
+    }
+    article.chapter blockquote {
+      margin: 1.35rem 0;
+      padding: 0.9rem 1.15rem;
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+      border-radius: 0 8px 8px 0;
+    }
+    article.chapter blockquote p:last-child {
+      margin-bottom: 0;
+    }
+    /* Code blocks */
+    .code-wrapper {
+      position: relative;
+      margin: 1.25rem 0 1.5rem;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      background: var(--bg-code);
+      box-shadow: var(--shadow);
+    }
+    .code-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.42rem 0.9rem;
+      background: rgba(255, 255, 255, 0.04);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+      font-size: 0.75rem;
+      color: #94a3b8;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+    .copy-btn {
+      background: rgba(255, 255, 255, 0.08);
+      color: #e2e8f0;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 5px;
+      padding: 0.18rem 0.55rem;
+      font-size: 0.73rem;
+      cursor: pointer;
+    }
+    .copy-btn:hover {
+      background: rgba(56, 189, 248, 0.25);
+    }
+    pre {
+      margin: 0;
+      padding: 1rem 1.15rem;
+      overflow-x: auto;
+      font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.89rem;
+      line-height: 1.58;
+      color: #e6edf3;
+    }
+    p code, li code, td code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.86em;
+      background: var(--accent-soft);
+      color: var(--accent);
+      padding: 0.15rem 0.38rem;
+      border-radius: 5px;
+    }
+    /* Tables */
+    .table-wrap {
+      overflow-x: auto;
+      margin: 1.35rem 0;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.92rem;
+    }
+    th, td {
+      padding: 0.7rem 0.95rem;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+    }
+    th {
+      background: var(--bg-sidebar);
+      font-weight: 700;
+    }
+    tr:last-child td {
+      border-bottom: none;
+    }
+    /* Syntax tokens */
+    .rg-com { color: var(--com); font-style: italic; }
+    .rg-kw  { color: var(--kw); font-weight: 600; }
+    .rg-ty  { color: var(--ty); font-weight: 600; }
+    .rg-str { color: var(--str); }
+    .rg-num { color: var(--num); }
+    .rg-op  { color: var(--op); font-weight: 600; }
+    /* Chapter pager */
+    .pager {
+      margin-top: 3.5rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+    .pager-btn {
+      flex: 1;
+      padding: 0.9rem 1.1rem;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      color: var(--text);
+      cursor: pointer;
+      text-align: left;
+      transition: border-color 0.15s ease;
+    }
+    .pager-btn.next { text-align: right; }
+    .pager-btn:hover { border-color: var(--accent); }
+    .pager-label {
+      display: block;
+      font-size: 0.76rem;
+      color: var(--text-muted);
+      margin-bottom: 0.2rem;
+    }
+    .pager-title {
+      font-weight: 600;
+      color: var(--accent);
+      font-size: 0.95rem;
+    }
+    .search-results {
+      margin-bottom: 2rem;
+      padding: 1rem 1.2rem;
+      border-radius: 10px;
+      border: 1px solid var(--accent);
+      background: var(--bg-card);
+    }
+    .search-hit {
+      padding: 0.6rem 0;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+    }
+    .search-hit:last-child { border-bottom: none; }
+    .search-hit-title { color: var(--accent); font-weight: 600; }
+    .search-hit-snippet { font-size: 0.86rem; color: var(--text-muted); }
+    @media (max-width: 860px) {
+      aside.sidebar { position: static; width: 100%; border-right: none; border-bottom: 1px solid var(--border); }
+      body { flex-direction: column; }
+      main.reader { margin-left: 0; padding: 1.5rem 1.1rem 3rem; }
+    }
+  </style>
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-top">
+        <span class="brand-badge">Ridgun v0.9.3</span>
+        <div class="lang-bar"><a class="lang-link active" href="index.html">ES</a><a class="lang-link" href="../en/index.html">EN</a><a class="lang-link" href="../pt/index.html">PT</a><a class="lang-link" href="../sv/index.html">SV</a></div>
+      </div>
+      <h1>El Libro de Ridgun</h1>
+      <p>De cero a experto en programación funcional tabular y de sistemas</p>
+    </div>
+    <div class="search-box">
+      <input type="search" id="searchInput" placeholder="Buscar en el libro (ej. ||, Tensor, RMM2, TCO...)" />
+    </div>
+    <ul class="nav-list" id="navList"></ul>
+    <div class="sidebar-footer">
+      <span>9 capítulos (00–08) · Español</span>
+      <button class="theme-btn" id="themeBtn" type="button">☀️ / 🌙 Tema</button>
+    </div>
+  </aside>
+
+  <main class="reader">
+    <article class="chapter" id="chapterContent"></article>
+  </main>
+
+  <script>
+    const CHAPTERS = [{"num": "00", "slug": "00-por-que-necesito-ridgun", "file": "00-por-que-necesito-ridgun.md", "title": "Capítulo 00: ¿Por qué necesito Ridgun? ¿Ah, sí? No lo sabía... ¡Cuéntame más!", "short_title": "¿Por qué necesito Ridgun? ¿Ah, sí? No lo sabía... ¡Cuéntame más!", "markdown": "# Capítulo 00: ¿Por qué necesito Ridgun? ¿Ah, sí? No lo sabía... ¡Cuéntame más!\n\nSeamos sinceros: cuando alguien te dice *\"hemos creado un nuevo lenguaje de programación\"*, tu primera reacción natural —y muy sana— es arquear una ceja y pensar:\n\n> *\"¿Otro más? Pero si ya tengo Python para ir rápido, Rust o C para cuando necesito velocidad, y Bash para pegar cosas en la terminal. ¿Para qué demonios necesito yo aprender Ridgun?\"*\n\nEs una pregunta excelente. Y la respuesta corta es: **porque te has acostumbrado a sufrir tres dolores diarios pensando que eran inevitables**.\n\nVamos a ponerles nombre.\n\n---\n\n## Dolor n.º 1: \"El síndrome de los dos mundos\" (Prototipar en uno, reescribir en otro)\n\nSeguro que has vivido esta película:\n\n1. Empiezas una herramienta o un motor de cálculo en **Python**, **JavaScript** o **Ruby** porque quieres pensar en el problema, no en punteros ni en el compilador.\n2. El código queda corto y bonito... pero cuando le pasas un archivo de 500 MB o intentas usar los 16 núcleos de tu máquina, se arrastra. Y si quieres distribuir tu programa a un servidor limpio, tienes que empaquetar medio gigabyte de entorno virtual, intérprete y librerías dinámicas.\n3. Resignado, decides reescribirlo en **C**, **C++** o **Rust**. Ahora vuela y ocupa unos pocos cientos de kilobytes, pero tu código de 40 líneas se ha convertido en 300 líneas llenas de `unwrap()`, `&mut`, `'a`, `Arc<Mutex<...>>`, llaves `{}` y puntos y coma `;`.\n\n**¿Qué cambia con Ridgun?**\nEn Ridgun escribes código **más corto y limpio que en Python**, pero cuando ejecutas `ridgunc build`, obtienes **un único binario nativo ELF de ~350 KB** sin intérprete, sin máquina virtual externa y sin recolector de basura. No hay fase de *\"luego lo reescribimos en el lenguaje rápido\"*: el código limpio donde piensas el problema **ya es** el binario nativo de producción.\n\n---\n\n## Dolor n.º 2: \"Leer código ajeno (o el tuyo de hace 6 meses) es jugar a ser detective\"\n\nMira cómo escribimos lógica condicional en casi todos los lenguajes mainstream:\n\n```text\nif (estado == ACTIVO && (rol == ADMIN || (rol == EDITOR && tienePermiso))) {\n    if (cuota > 0) {\n        return procesar(usuario);\n    } else {\n        return denegar(\"Sin cuota\");\n    }\n} else {\n    return denegar(\"No autorizado\");\n}\n```\n\nNuestros ojos no evolucionaron para emparejar llaves anidadas ni para desentrañar árboles de `if / else` escalonados. Cuando los ingenieros, matemáticos o físicos quieren entender reglas complejas sin equivocarse, no escriben párrafos de `if / else`: **dibujan una tabla**.\n\nEn Ridgun, **el código es esa tabla**:\n\n```ridgun\nautorizar String   String   Bool  Int   => String\nautorizar \"activo\" \"admin\"  _     cuota =\n  | cuota > 0 = \"Procesando petición\"\n  | otherwise = \"Denegado: sin cuota\"\nautorizar \"activo\" \"editor\" True  cuota =\n  | cuota > 0 = \"Procesando petición\"\n  | otherwise = \"Denegado: sin cuota\"\nautorizar _        _        _     _     =  \"Denegado: no autorizado\"\n```\n\nMira las columnas:\n- Columna 1: el estado (`\"activo\"` o `_`).\n- Columna 2: el rol (`\"admin\"`, `\"editor\"` o `_`).\n- Columna 3: si tiene permiso (`True` o `_`).\n- Columna 4: la `cuota`.\n\nNo tienes que ejecutar mentalmente el programa línea por línea para saber qué pasa cuando entra un `\"editor\"` con permiso `False`: tus ojos bajan verticalmente por la tabla y lo ven en medio segundo.\n\n---\n\n## Dolor n.º 3: \"Mi ordenador tiene 16 núcleos, pero mi programa solo usa 1 (porque me da pánico tocar hilos)\"\n\nHoy hasta el teléfono más modesto tiene 8 núcleos, y cualquier servidor o portátil de trabajo tiene entre 12 y 32. Sin embargo, el 95% de los programas cotidianos siguen ejecutándose en un solo hilo secuencial.\n\n¿Por qué? Porque en los lenguajes imperativos, paralelizar significa abrir la caja de Pandora:\n- ¿Y si dos hilos modifican el mismo diccionario a la vez? (*Data race*).\n- ¿Y si bloqueo el `Mutex` A y luego el B en un hilo, y el B y luego el A en otro? (*Deadlock*).\n- ¿Y si contamino toda mi base de código con `async` y `await` de arriba abajo?\n\nEn Ridgun, **toda función es pura y todo dato es inmutable por defecto**. Eso tiene una consecuencia mágica: **dos expresiones que no dependen una de la otra jamás pueden interferir entre sí**.\n\nPor eso, en Ridgun no tienes que gestionar hilos para aprovechar tu CPU. Solo declaras **qué depende de qué** con barras paralelas `||` y flechas `->`:\n\n```ridgun\ninforme_mensual Datos => Informe\ninforme_mensual d     =  combinar metricas_red metricas_disco metricas_cpu\n  || analizar_red d   -> metricas_red\n  || analizar_disco d -> metricas_disco\n  || analizar_cpu d   -> metricas_cpu\n```\n\nTú solo has escrito tres líneas limpias indicando de dónde sale cada dato. El compilador ve que las tres ramas son independientes y sabe que puede lanzarlas en paralelo sin que exista ni la más mínima posibilidad de un *data race* o un *deadlock*.\n\n---\n\n## Dolor n.º 4: \"El recolector de basura decide pausar el mundo justo en el peor momento\"\n\nLos lenguajes funcionales clásicos (Haskell, OCaml, Erlang, Clojure) son maravillosos para razonar sobre el código, pero casi todos dependen de un **Recolector de Basura (*Garbage Collector*)** en tiempo de ejecución. Eso los descarta cuando necesitas:\n- Latencias predecibles al microsegundo.\n- Controlar exactamente cuánta memoria RAM puede consumir una operación antes de abortarla limpiamente.\n- Escribir utilidades del sistema operativo (`ls`, `find`, `sh`, `doas`, `make`) o tocar registros de hardware (`MMIO`).\n\nRidgun te da **toda la elegancia del mundo funcional puro, pero con Gestión de Memoria de Ridgun (`RMM`: `RMM1` estática y `RMM2` por conteo de asignaciones en cascada) más regiones léxicas con cuota exacta (`with region`)**:\n\n```ridgun\nparsear_paquete String => Result\nparsear_paquete crudo  =\n  with region 16_KB do\n    decodificar_trama crudo\n```\n\nCada estructura temporal es liberada de forma determinista por el compilador (`RMM1` / `RMM2`) en el instante en que deja de usarse, y si un atacante te envía un paquete malicioso diseñado para explotar la memoria, al superar el byte 16.384 la región se corta al instante, libera su arena en $O(1)$ y te devuelve `Err OutOfMemory`. Sin caídas del proceso, sin pausas de GC y sin fugas de memoria.\n\n---\n\n## En resumen: ¿Cuándo brilla Ridgun?\n\nRidgun está hecho para ti si alguna vez has querido:\n\n1. **Escribir herramientas de sistemas, compiladores, analizadores o utilidades CLI** que arranquen en microsegundos, pesen unos pocos cientos de KB y no puedan romperse por punteros nulos ni efectos colaterales ocultos.\n2. **Programar algoritmos, pipelines de datos o álgebra de tensores** donde el compilador verifique por ti hasta las dimensiones de las matrices (`Tensor[M, K] * Tensor[K, N] => Tensor[M, N]`) antes de ejecutar nada.\n3. **Disfrutar leyendo tu propio código**: que cada archivo `.rg` parezca una página de un libro bien maquetado gracias al formateador tabular automático (`stable format`).\n\n¿Te pica la curiosidad? Pasa al **Capítulo 01** y escribamos nuestro primer programa en menos de dos minutos.\n"}, {"num": "01", "slug": "01-bienvenido-a-ridgun", "file": "01-bienvenido-a-ridgun.md", "title": "Capítulo 01: Tu primer contacto con Ridgun (Sin cascos, sin llaves y sin puntos y coma)", "short_title": "Tu primer contacto con Ridgun (Sin cascos, sin llaves y sin puntos y coma)", "markdown": "# Capítulo 01: Tu primer contacto con Ridgun (Sin cascos, sin llaves y sin puntos y coma)\n\nVale, ya te he convencido en el Capítulo 00 de que no estamos locos por crear Ridgun. Ahora seguramente estés pensando:\n\n> *\"Muy bonito el discurso de las tablas y los 16 núcleos, pero enséñame código de verdad. ¿Cuánto tarda uno en escribir algo que funcione sin pelearse con el compilador?\"*\n\nVenga, ¡al turrón!\n\n---\n\n## 1.1. \"¡Hola, mundo!\", pero con chicha\n\nEn la mayoría de los libros de programación te enseñan un `print(\"Hola mundo\")` soso y pasan de página. Nosotros vamos a escribir directamente una función con lógica real para que veas cómo respira Ridgun desde el minuto uno.\n\nCrea un archivo llamado `hola.rg` y escribe esto:\n\n```ridgun\nsaludo String => String\nsaludo \"\"     =  \"¡Hola, viajero misterioso! (No me has dicho tu nombre)\"\nsaludo \"Root\" =  \"¡Hombre, Root! Cuidado con lo que borras hoy.\"\nsaludo nombre =  \"¡Hola, {nombre}! Bienvenido a Ridgun.\"\n\nmain => ()\nmain =\n  echo (saludo \"Ada\")\n  echo (saludo \"Root\")\n  echo (saludo \"\")\n```\n\nPara ejecutarlo ahora mismo:\n\n```bash\nridgunc run hola.rg\n```\n\nY verás en tu terminal:\n\n```text\n¡Hola, Ada! Bienvenido a Ridgun.\n¡Hombre, Root! Cuidado con lo que borras hoy.\n¡Hola, viajero misterioso! (No me has dicho tu nombre)\n```\n\nPara un momento y mira el bloque de `saludo` arriba. ¿Notas lo que **NO** hay?\n- **No hay `function`, ni `def`, ni `pub fn`** (si quieres poner `fn ::` delante de la firma puedes hacerlo, pero es opcional).\n- **No hay paréntesis `(String nombre)` ni llaves `{ ... }`** ensuciando la pantalla.\n- **No hay `if (nombre == \"\") ... else if (nombre == \"Root\") ... else ...`**.\n- **No hay `return`**.\n\n---\n\n## 1.2. Cómo lee tu cerebro un archivo `.rg`\n\nVamos a destripar esas cuatro líneas de `saludo`, porque aquí ya está el 50% de la filosofía de Ridgun:\n\n```ridgun\nsaludo String => String\nsaludo \"\"     =  \"¡Hola, viajero misterioso! (No me has dicho tu nombre)\"\nsaludo \"Root\" =  \"¡Hombre, Root! Cuidado con lo que borras hoy.\"\nsaludo nombre =  \"¡Hola, {nombre}! Bienvenido a Ridgun.\"\n```\n\n1. **La primera línea es el contrato (`saludo String => String`)**:\n   Dice: *\"Me llamo `saludo`, recibo un `String` y te devuelvo (`=>`) otro `String`\"*. Punto. Si alguien intenta llamarme pasándome el número `42`, el compilador le dará un toque en el hombro antes siquiera de ejecutar el programa.\n2. **Las líneas de abajo son los casos (de arriba abajo)**:\n   - ¿Me has pasado la cadena vacía `\"\"`? Devuelvo la primera frase.\n   - ¿Me has pasado exactamente `\"Root\"`? Devuelvo la segunda frase.\n   - ¿Me has pasado cualquier otra cosa? La guardo en la variable `nombre` y la meto dentro del texto usando `{nombre}`.\n3. **¿Y qué es `main => ()`?**:\n   Como `main` no recibe argumentos, ponemos `=>` directamente después del nombre. Y devuelve `()` (el tipo vacío o *Unit*, para los amigos), porque su único trabajo es sacar cosas por pantalla con `echo`.\n\n---\n\n## 1.3. \"Espera... ¿tengo que alinear esos espacios a mano como un monje copista?\"\n\n¡Ni de broma! Si tuvieras que darle a la barra espaciadora contando columnas a ojo, abandonarías Ridgun a los diez minutos (y con razón).\n\nTú escribes el código deprisa, con un solo espacio entre cada palabra:\n\n```ridgun\nsaludo String => String\nsaludo \"\" = \"¡Hola, viajero misterioso!\"\nsaludo nombre = \"¡Hola, {nombre}!\"\n```\n\nY cuando ejecutas **`stable format`** (o pulsas `TAB` / guardas el archivo en Emacs con `ridgun-mode`), el formateador canónico coloca cada parámetro debajo de su tipo y alinea todos los `=` con precisión milimétrica. Tú escribes rápido; la máquina maqueta la tabla.\n\n---\n\n## 1.4. De script rápido a binario de combate en un comando\n\nCuando haces `ridgunc run hola.rg`, estás compilando y lanzando el programa al vuelo. Pero imagina que ya has terminado tu herramienta y quieres llevártela a un servidor de producción o compartirla con un compañero que no tiene instalado Ridgun.\n\nEjecutas:\n\n```bash\nridgunc build hola.rg -o hola\n```\n\nY ya tienes `./hola`: un **ejecutable nativo ELF de Linux x86_64**, limpio, sin código muerto (*Tree-Shaking*), con optimización de enlace completo (*LTO*) y sin depender de ningún intérprete externo.\n\n---\n\n## 1.5. La chuleta honesta: ¿De dónde viene cada idea de Ridgun?\n\nRidgun no pretende reinventar la rueda cuadrada; toma prestado sin complejos lo mejor de cuatro tradiciones:\n\n| De quién | Qué toma Ridgun | Qué deja fuera (por tu salud mental) |\n|---|---|---|\n| **Haskell / ML** | Funciones puras, *pattern matching* por casos, tipos algebraicos (`Option`, `Result`) y polimorfismo (`A`..`Z`). | Las mónadas abstractas, los 40 `LANGUAGE pragmas` y el recolector de basura. |\n| **J / APL** | La obsesión por la forma tabular del código, tensores nativos y máscaras de secuencias (`s[\"-+-\"]`). | Los símbolos jeroglíficos imposibles de escribir en un teclado normal. |\n| **Rust / C** | Binarios ELF nativos pequeños, cero GC, control de memoria (`with region`) y llamadas al sistema POSIX. | La pelea constante con el *borrow checker*, los *lifetimes* `'a` y la verbosidad sintáctica. |\n| **Erlang / Go** | Concurrencia por canales (`chan_send`, `chan_recv`) y tareas ligeras (`spawn`, `join`). | Los punteros `nil` y las mutaciones compartidas por descuido. |\n\n---\n\n## 1.6. Y lo más importante: ¿Qué hace Ridgun que NO tiene nadie más?\n\nReconocer a los clásicos es de buena educación, pero si Ridgun fuera solo un \"recopilatorio de grandes éxitos\" de otros lenguajes, no estarías leyendo este libro.\n\nHay **siete cosas** que hemos diseñado e integrado en Ridgun que no vas a encontrar juntas —y muchas de ellas, ni siquiera por separado— en ningún otro lenguaje actual:\n\n### 1. Bloques paralelos `||` con `->` que son grafos paralelos reales, no simple azúcar sintáctico\nEn otros lenguajes funcionales un bloque de variables locales solo ordena expresiones que luego se evalúan en un único hilo.\nEn Ridgun, **un bloque `||` con flechas `->` es un Grafo Acíclico Dirigido (DAG) de ejecución paralela** sin siquiera necesitar escribir palabras clave extra como `where`:\n```ridgun\ninforme_anual Int => Int\ninforme_anual id  =  ingresos - gastos\n  || calcular_ventas id -> ingresos\n  || calcular_costes id -> gastos\n```\nTú dibujas las flechas de flujo (`->`). El compilador analiza quién depende de quién, **verifica estáticamente que no hayas creado ningún ciclo infinito**, y lanza las ramas independientes en paralelo sin que escribas ni un solo `async`, `await`, `Future` ni `Mutex`.\n\n### 2. El código como tabla bidimensional donde la firma es la cabecera de las columnas\nEn cualquier otro lenguaje, la firma de tipos va por libre en una línea y el cuerpo de la función va debajo como un párrafo de texto normal.\nEn Ridgun, **la firma de tipos es literalmente la cabecera de una tabla**, y cada caso debajo alinea cada patrón justo en la vertical de su tipo y cada `=` bajo el `=>`:\n```ridgun\ndividir Int Int => Option\ndividir _   0   =  None\ndividir a   b   =  Some (a / b)\n```\nNadie más trata la firma y las ecuaciones como una única matriz visual verificada por el compilador y maquetada automáticamente por `stable format`.\n\n### 3. Operadores frase (*Mixfix* N-arios) tipados y alineados (`op ::`)\nEn la mayoría de los lenguajes, o te aguantas con `+`, `-`, `*` o como mucho defines un operador binario críptico como `<|>` que nadie sabe qué significa.\nEn Ridgun puedes crear **operadores que son frases legibles con tantos huecos tipados como quieras** (incluyendo palabras contextuales como `type` o `with`):\n```ridgun\nop :: Int limitado_entre Int y Int => Int\n      x   limitado_entre min y max =\n        | x < min   = min\n        | x > max   = max\n        | otherwise = x\n```\nY luego en tu código escribes `velocidad limitado_entre 0 y 120`. Se lee como castellano (o inglés), pero está 100% tipado y compilado a código nativo.\n\n### 4. Máscaras visuales sobre secuencias (`s(+ _)` y `s[\"-+-\"]`)\n¿Alguna vez has tenido que escribir una ensalada de índices `filter(\\(i, x) -> i % 2 == 0)` solo para quedarte con los elementos pares o extraer un patrón rítmico de una lista?\nEn Ridgun le pasas directamente una **máscara visual**:\n- `datos[\"-+-\"]`: descarta el primero (`-`), se queda el segundo (`+`), descarta el tercero (`-`).\n- `datos[\"+-~\"]`: el símbolo `~` repite el patrón `+-` en bucle hasta el final de la lista (todos los índices pares de un plumazo).\nCero aritmética de índices, cero errores *off-by-one*.\n\n### 5. Polimorfismo de \"cero ruido\" (`A`..`Z`) gobernado por tu dominio\nEn Rust, TypeScript o Java, cuando una función es genérica tienes que llenar la línea de paréntesis angulares: `fn intercambiar<A, B>(par: (A, B)) -> (B, A)`.\nEn Ridgun simplemente usas una letra mayúscula suelta:\n```ridgun\nintercambiar (A, B) => (B, A)\nintercambiar (x, y) =  (y, x)\n```\n*\"¿Y si en mi programa quiero tener un tipo real que se llame `type A`?\"* — Ningún problema: en Ridgun **tus declaraciones `type` mandan**. Si no existe `type A`, `A` es genérico; en el instante en que defines `type A = ...`, pasa a ser tu tipo concreto en todo el módulo.\n\n### 6. Cero archivos de configuración extraños: `build.rg` es Ridgun puro\nOlvídate de aprender TOML para Cargo, JSON para npm, XML para Maven o la sintaxis arcana de `Makefile` con tabuladores invisibles. En Ridgun, la receta que construye tu proyecto (`build.rg`) **es un archivo `.rg` más**, con las mismas funciones puras y el mismo *pattern matching* que el resto de tu código.\n\n### 7. La \"Santísima Trinidad\" que parecía imposible: Nivel Haskell + Memoria RMM sin GC ni Lifetimes + Binarios de ~350 KB\nHasta hoy tenías que elegir:\n- Si querías expresividad funcional pura (Haskell, OCaml, Elixir), pagabas con un recolector de basura y un runtime pesado.\n- Si querías binarios diminutos de sistema sin recolector de basura (C, Rust, Zig), pagabas gestionando punteros o peleándote con el *borrow checker* y escribiendo código imperativo lleno de `let mut`.\n\nRidgun rompe ese dilema combinando **Ridgun Memory Management (`RMM`: `RMM1` estática y `RMM2` por conteo de asignaciones en cascada)**, **regiones léxicas (`with region`)** que liberan arenas enteras en $O(1)$, **recursión de cola transformada en bucles nativos (`loop`)**, y **poda de grafo de llamadas (*Tree-Shaking*)** desde `main`. El resultado: escribes código declarativo de altísimo nivel y obtienes un ejecutable ELF autónomo de **~350 KB** capaz de competir de tú a tú con herramientas escritas en C.\n\nAhora sí: con las cartas sobre la mesa, vamos al **Capítulo 02** para poner a trabajar a **`ridgunc`** y **`stable`**.\n\n"}, {"num": "02", "slug": "02-primeros-pasos-y-herramientas", "file": "02-primeros-pasos-y-herramientas.md", "title": "Capítulo 02: Tus dos mejores amigos: `ridgunc` y `stable` (Cero archivos YAML, prometido)", "short_title": "Tus dos mejores amigos: `ridgunc` y `stable` (Cero archivos YAML, prometido)", "markdown": "# Capítulo 02: Tus dos mejores amigos: `ridgunc` y `stable` (Cero archivos YAML, prometido)\n\nHay lenguajes cuyo compilador es maravilloso, pero cuyo sistema de proyectos parece diseñado por tu peor enemigo: que si un `Makefile` de 400 líneas con tabuladores invisibles, que si un `pom.xml` infinito, que si un `webpack.config.js` que deja de funcionar si lo miras fijo...\n\nEn Ridgun nos hicimos una promesa muy simple desde el primer día:\n\n> *\"Sólo habrá dos ejecutables en todo el ecosistema (`ridgunc` y `stable`), ambos estarán escritos en el propio Ridgun, y el archivo de configuración del proyecto (`build.rg`) será código Ridgun normal y corriente. Ni JSON, ni YAML, ni TOML, ni inventos raros.\"*\n\nVamos a ver cómo se usan.\n\n---\n\n## 2.1. `ridgunc`: El francotirador para archivos sueltos\n\nCuando tienes un único archivo `.rg` entre manos y quieres probar una idea rápida, analizar sus tipos o compilar un ejecutable, hablas directamente con **`ridgunc`**.\n\nSólo tiene 4 comandos que de verdad necesitas recordar:\n\n```bash\n# 1. \"¿Compila esto o he metido la pata con algún tipo?\"\nridgunc check experimento.rg\n\n# 2. \"¡Ejecútalo ya!\" (Compila y corre de un tirón)\nridgunc run experimento.rg\n\n# 3. \"Hazme un binario nativo ELF listo para llevar\"\nridgunc build experimento.rg -o mi_programa\n\n# 4. \"Sácame el artefacto intermedio de bytecode (.rgc)\"\nridgunc compile experimento.rg -o experimento.rgc\n```\n\n### El superpoder oculto de `ridgunc check`\nCuando lanzas `ridgunc check`, no solo te dice *\"0 errores\"*. También te chiva qué estrategia ha elegido el analizador estático para cada una de tus funciones:\n- **`InlineSequential`**: *\"Esta función es pequeñita y directa; la voy a ejecutar en línea sin meter sobrecoste de planificación\"*.\n- **`LazyStealableTask`**: *\"Aquí hay recursión o un grafo paralelo `||`; la preparo para que otros núcleos de CPU puedan robar trabajo si hace falta\"*.\n\n### El bisturí de `ridgunc build` (Por qué tus binarios no pesan 20 MB)\nCuando ejecutas `ridgunc build`, el compilador no se limita a escupir todo el código de las librerías que hayas importado:\n1. Empieza en tu función `main` y recorre el grafo de llamadas para ver **qué funciones usas de verdad**. Si importaste una librería enorme de 80 funciones pero solo llamas a 2, las otras 78 se descartan antes siquiera de tocar el ensamblador (*Tree-Shaking*).\n2. Busca todas las funciones recursivas de cola y las convierte en bucles `loop` nativos que consumen **0 bytes de pila**.\n3. Pasa el enlace final con optimización global (*fat LTO*) y limpia la basura de depuración DWARF para dejarte un binario compacto y afilado (~350 KB).\n\n---\n\n## 2.2. `stable`: Cuando tu proyecto crece y quieres orden\n\nUn archivo suelto está genial para un script, pero en cuanto tienes varios módulos, librerías compartidas y tests, necesitas un director de orquesta. Ese es **`stable`**.\n\nLa estructura de carpetas de un proyecto Ridgun no tiene misterio:\n\n```text\nmi-super-herramienta/\n├── build.rg                  # El manifiesto del proyecto (¡es código Ridgun!)\n├── src/\n│   ├── main/\n│   │   └── ridgun/\n│   │       ├── lib/          # Tus módulos reutilizables (`import utilidades`)\n│   │       └── app/\n│   │           └── main.rg   # Punto de entrada (`main => ()`)\n│   └── test/\n│       └── ridgun/           # Tus baterías de tests (`test_*.rg`)\n│           └── test_todo.rg\n└── target/                   # Donde aparecen los binarios compilados\n```\n\n---\n\n## 2.3. `build.rg`: Un archivo de configuración que nunca te mentirá\n\n¿Por qué nos negamos a usar YAML o TOML para configurar un proyecto Ridgun?\nPorque en YAML te equivocas en dos espacios de indentación y no te enteras hasta que falla el despliegue. En cambio, como **`build.rg` es un archivo Ridgun**, tiene tipos estáticos, pasa por `stable check` y se alinea solo con `stable format`:\n\n```ridgun\ntype ProjectInfo =\n  name: String\n  version: String\n  edition: String\n\nproject => ProjectInfo\nproject =  ProjectInfo \"mi-super-herramienta\" \"0.1.0\" \"2026\"\n\nsource_dir => String\nsource_dir =  \"src/main/ridgun\"\n\ntest_dir => String\ntest_dir =  \"src/test/ridgun\"\n\ntarget_dir => String\ntarget_dir =  \"target\"\n```\n\nSi te equivocas al escribir un campo, el propio compilador te avisa. Sin sorpresas.\n\n---\n\n## 2.4. Tu rutina diaria con `stable` (Los 4 fantásticos)\n\nCuando estás trabajando dentro de tu proyecto, tu día a día se reduce a cuatro comandos:\n\n### 1. `stable format` — El fin de las discusiones de estilo en el equipo\n```bash\nstable format\n```\n¿Que tu compañero pone tres espacios antes del `=>` y tú pones uno? Da igual. Ejecutas `stable format` y en menos de un segundo deja **todos** los archivos `.rg` del repositorio alineados como una tabla suiza.\n\n### 2. `stable check` — El radar instantáneo\n```bash\nstable check\n```\nRecorre todos los módulos de `src/main/ridgun/`, verifica tipos, constructores, aridades y dimensiones de tensores, y te da el veredicto módulo por módulo.\n\n### 3. `stable test` — Dormir tranquilo por las noches\n```bash\nstable test\n```\nBusca todas las suites `src/test/ridgun/test_*.rg`, las ejecuta y comprueba cada `assert_equals` y `assert_true`.\n\n```ridgun\n-- Ejemplo de src/test/ridgun/test_mates.rg\nimport test\n\ndoble Int => Int\ndoble x   =  x * 2\n\nmain => ()\nmain =\n  assert_equals (doble 21) 42\n  assert_true ((doble 5) > 0)\n```\n\n### 4. `stable built` (y `stable clean`) — A producción\n```bash\nstable built\n```\nCompila todos los objetivos nativos en `target/`. Y si algún día quieres borrar `target/` y empezar limpio: `stable clean`.\n\n---\n\n## 2.5. ¿Cómo importo un archivo desde otro? (`import`)\n\nSin rutas relativas infernales tipo `../../../lib/cosas.rg`. Si tienes un archivo `src/main/ridgun/lib/cadenas.rg`, en cualquier otro archivo escribes arriba del todo:\n\n```ridgun\nimport cadenas\n```\n\nY listo: todas las funciones y tipos de `cadenas.rg` están disponibles como si estuvieran en tu propio archivo. ¿Y qué pasa si el módulo `A` hace `import cadenas`, el módulo `B` también hace `import cadenas`, y tu `main.rg` importa `A` y `B`? Tranquilo: el cargador de Ridgun recuerda qué archivos canónicos ha leído ya y **solo lo incluye una vez**.\n\nAhora que tienes la caja de herramientas controlada, pasemos al **Capítulo 03** para dominar las funciones, los tipos, los bloques y los trucos con cadenas de texto.\n"}, {"num": "03", "slug": "03-funciones-tipos-y-alineacion", "file": "03-funciones-tipos-y-alineacion.md", "title": "Capítulo 03: Funciones, firmas de tipos y el arte de escribir código como una tabla", "short_title": "Funciones, firmas de tipos y el arte de escribir código como una tabla", "markdown": "# Capítulo 03: Funciones, firmas de tipos y el arte de escribir código como una tabla\n\nHay una pregunta que todo programador se hace la primera vez que ve código funcional:\n\n> *\"Si aquí no hay clases, ni objetos, ni variables que cambian de valor... ¿entonces dónde meto mi lógica?\"*\n\nEn **funciones**. Pero no en esas funciones de 200 líneas llenas de banderas booleanas que todos hemos sufrido alguna vez, sino en funciones pequeñas, directas y tan fáciles de leer que parecen una tabla en una pizarra.\n\nVamos a ver cómo se construyen.\n\n---\n\n## 3.1. Dos formas de presentar una función (Tú eliges el traje)\n\nEn Ridgun toda función empieza con su **firma de tipos** (qué entra y qué sale tras `=>`) y debajo van sus **cláusulas de implementación** (con `=`).\n\nPuedes escribir el encabezado de dos maneras:\n\n### Opción A: Directa al grano (sin prefijo)\n```ridgun\naplicar_descuento Int    Int        => Int\naplicar_descuento precio porcentaje =  precio - (precio * porcentaje / 100)\n```\n\n### Opción B: Con etiqueta explícita (`fn ::`)\n```ridgun\nfn :: aplicar_descuento Int    Int        => Int\n      aplicar_descuento precio porcentaje =  precio - (precio * porcentaje / 100)\n```\n\n*\"Oye, ¿y por qué existen las dos?\"*\nPorque para gustos, los colores:\n- Hay quien prefiere que las funciones empiecen pegadas al margen izquierdo sin escribir `fn ::` cada vez (al fin y al cabo, la flecha `=>` ya grita a los cuatro vientos que esa línea es una firma de tipos).\n- Y hay quien prefiere tener una columna izquierda dedicada a las etiquetas (`fn ::`, `op ::`, `type`, `import`) para escanear el archivo visualmente.\n\nEl compilador y `stable format` entienden ambas a la perfección.\n\n---\n\n## 3.2. La magia de las columnas: por qué tus ojos descansan\n\nMira esta función que calcula el coste de un envío según el país y si es urgente:\n\n```ridgun\ncoste_envio String    Bool  Int  => Int\ncoste_envio \"ES\"      False _    =  5\ncoste_envio \"ES\"      True  _    =  12\ncoste_envio _         False peso =  10 + (peso * 2)\ncoste_envio _         True  peso =  25 + (peso * 4)\n```\n\nHaz la prueba: tapa la mitad derecha de la pantalla y mira solo las tres columnas de entrada:\n- Primera columna (`String`): `\"ES\"`, `\"ES\"`, `_`, `_`.\n- Segunda columna (`Bool`): `False`, `True`, `False`, `True`.\n- Tercera columna (`Int`): `_`, `_`, `peso`, `peso`.\n\n¿Ves algún agujero lógico? Ninguno: están las 4 combinaciones posibles delante de tus narices, alineadas verticalmente debajo de `String`, `Bool` e `Int`. En un bloque de `if / else` tradicional tendrías que leer 18 líneas para estar seguro de que no te has dejado ningún caso suelto.\n\n---\n\n## 3.3. Los tipos básicos y un regalo para no contar ceros (`_KB`, `_MB`, `_GB`)\n\nLos tipos escalares de Ridgun son directos y sin sorpresas:\n\n| Tipo | Qué es en realidad | Ejemplos |\n|---|---|---|\n| `Int` | Entero de 64 bits con signo (`i64`) | `0`, `42`, `-100`, `0xFF00`, `1_000_000` |\n| `Real` | Decimal de doble precisión (`f64`) | `3.14159`, `0.001`, `-2.5` |\n| `String` | Cadena de texto inmutable | `\"Hola\"`, `'ruta\\cruda'` |\n| `Char` | Código de carácter | Devuelto por `str_char_at` |\n| `Bool` | Booleano de toda la vida | `True`, `False` |\n| `()` | Vacío (*Unit*, cuando solo imprimes o haces I/O) | `()` |\n\n### ¿Cansado de escribir `65536` o `1048576` y rezar para no haberte comido un dígito?\nEn Ridgun los literales numéricos aceptan directamente los sufijos **`_KB`**, **`_MB`** y **`_GB`**, además de guiones bajos `_` para separar grupos de cifras:\n\n```ridgun\ntamano_buffer => Int\ntamano_buffer =  64_KB      -- El compilador lo traduce a 65536\n\nlimite_archivo => Int\nlimite_archivo =  16_MB     -- El compilador lo traduce a 16777216\n\nmascara_octeto => Int\nmascara_octeto =  0xFF_00   -- Hexadecimal limpio y legible\n```\n\n---\n\n## 3.4. Comillas dobles (`\"...\"`) vs. Comillas simples (`'...'`)\n\nEn muchos lenguajes las comillas simples y dobles hacen exactamente lo mismo (un desperdicio). En Ridgun cada una tiene una misión clarísima:\n\n### 1. Comillas dobles (`\"...\"`): Inteligentes e interpoladas\nInterpretan escapes (`\\n`, `\\t`, `\\\"`, `\\\\`) y **evalúan cualquier variable o expresión que metas entre llaves `{...}`**:\n\n```ridgun\nresumen_pedido String Int Int => String\nresumen_pedido item   uds precio =\n  \"Has pedido {uds}x {item}. Total a pagar: {uds * precio} euros.\"\n```\n\n*(Truco: si necesitas escribir una llave literal dentro de comillas dobles —por ejemplo al generar un script de shell `\"$\\{VAR:-default\\}\"` o un JSON—, puedes escaparla con barra invertida `\\{` y `\\}` o duplicarla `{{` y `}}`).*\n\n### 2. Comillas simples (`'...'`): Crudas y literales (*Raw Strings*)\nLo que escribes entre comillas simples sale **tal cual**, sin tocar ni una barra invertida `\\`, ni una llave `{}`. Perfecto para cuando generas código en otro lenguaje, escribes comandos de shell o trabajas con rutas llenas de barras:\n\n```ridgun\ncomando_sed => String\ncomando_sed =  's/\\([0-9]+\\)/[\\1]/g'\n```\n\n### Tu caja de herramientas para cadenas (`String`)\nUnir cadenas es tan simple como sumarlas con `+`: `\"Hola, \" + nombre`. Y cuando necesitas hacer cirugía fina sobre un texto, tienes estas funciones nativas listas sin importar nada:\n\n- `str_len s` $\\rightarrow$ longitud de `s`.\n- `str_char_at s i` $\\rightarrow$ código numérico (`Int`) del carácter en la posición `i` (`-1` si te sales).\n- `str_slice s inicio fin` $\\rightarrow$ recorta desde `inicio` hasta `fin` (sin incluir `fin`).\n- `char_from_code c` $\\rightarrow$ convierte un código numérico (`Int`, p. ej. `10` para `\\n` o `34` para `\"`) en un `String` de 1 carácter.\n- `str_contains s aguja` y `str_starts_with s prefijo` $\\rightarrow$ devuelven `True` o `False`.\n- `int_to_str n` y `str_to_int s` $\\rightarrow$ convierten de número a texto y viceversa (¡`str_to_int` entiende incluso `\"0xFF\"`!).\n\n---\n\n## 3.5. Bloques de varias líneas, la regla universal del `=` y variables `mut`\n\nCuando una función no cabe en una sola línea, haces un salto de línea después del `=` e indentas el bloque.\n\nMira cómo se lee un bloque paso a paso:\n\n```ridgun\ncalcular_factura Int Int => Int\ncalcular_factura base iva_pct =\n  impuestos = base * iva_pct / 100\n  gastos_gestion = 5\n  echo \"Desglose -> Base:\" base \"Impuestos:\" impuestos\n  base + impuestos + gastos_gestion\n```\n\nCuatro reglas de oro que hacen que los bloques en Ridgun sean limpios y uniformes:\n1. **Inmutable por defecto sin `let` ni `const`**: escribes `impuestos = ...` y ya tienes tu constante local inmutable. Si por descuido intentas sobrescribir `impuestos = 99` más abajo en el mismo bloque, el compilador te frena en seco.\n2. **Variables mutables explícitas con `mut`**: cuando de verdad quieres ir actualizando un acumulador local paso a paso dentro de una función, lo declaras con **`mut`** y luego lo reasignas libremente con `=`:\n   ```ridgun\n   aplicar_recargos Int => Int\n   aplicar_recargos precio =\n     mut total = precio\n     total = total + 10\n     total = total * 2\n     total\n   ```\n   *(Y si `total` guarda una lista o estructura en memoria, la política **`RMM2`** de Ridgun suma `+1` al nuevo valor antes de descontar `-1` al antiguo, liberándolo al instante si nadie más lo usa).*\n3. **La regla universal del `=`**: detrás de **cualquier `=`** (en una función, en un operador, en una variable local `x =` o en una rama condicional) puedes poner siempre cualquiera de las tres formas de bloque de Ridgun:\n   - **`(nada)`**: líneas secuenciales indentadas (como arriba).\n   - **`|`**: un árbol de guardas condicionales.\n   - **`||`**: un grafo de cálculos en paralelo con `->`.\n4. **La última expresión es siempre el resultado**: `base + impuestos + gastos_gestion` es lo que devuelve `calcular_factura`. Sin `return`.\n\nEn el **Capítulo 04** vamos a ver cómo tomar decisiones complejas —incluyendo árboles de decisión de varios niveles con `|.`— sin escribir jamás un `if/else` ni un bucle `while`: bienvenido al mundo de las **guardas booleanas** y la **recursión de cola de coste cero**.\n"}, {"num": "04", "slug": "04-pattern-matching-y-guardas", "file": "04-pattern-matching-y-guardas.md", "title": "Capítulo 04: Adiós al `if/else`, adiós al `while` (Pattern Matching, Guardas y TCO)", "short_title": "Adiós al `if/else`, adiós al `while` (Pattern Matching, Guardas y TCO)", "markdown": "# Capítulo 04: Adiós al `if/else`, adiós al `while` (Pattern Matching, Guardas y TCO)\n\nCuando le cuentas a alguien que en Ridgun **no existe la palabra clave `if`, ni `else`, ni `switch`, ni `for`, ni `while`**, suele mirarte como si le hubieras dicho que vas a construir una casa sin martillo ni clavos:\n\n> *\"¿Que no hay `if` ni `while`? ¿Y cómo narices tomo una decisión o recorro un millón de datos?\"*\n\nPues resulta que `if/else` y `while` son herramientas bastante toscas heredadas de cómo funcionaban los saltos (`GOTO`) en los años 50. En Ridgun los sustituimos por tres piezas que encajan como un guante:\n1. ***Pattern Matching*** (cuando decides según la **forma o valor exacto** del dato).\n2. **Guardas booleanas `|`** (cuando decides según una **condición o rango**).\n3. **Recursión de cola con TCO** (que el compilador convierte por debajo en un bucle `loop` nativo ultrarrápido).\n\nVamos a verlas en acción.\n\n---\n\n## 4.1. *Pattern Matching*: Cuando el argumento ya te da la respuesta\n\nEn el capítulo anterior ya vimos un adelanto. En lugar de recibir una variable genérica `x` y abrir dentro de la función cinco `if (x == ...)`, en Ridgun pones los casos directamente en la puerta de entrada de la función:\n\n```ridgun\ncodigo_http Int => String\ncodigo_http 200 =  \"OK: Todo fue sobre ruedas\"\ncodigo_http 301 =  \"Movido permanentemente\"\ncodigo_http 404 =  \"No encontrado (¿has mirado debajo del sofá?)\"\ncodigo_http 500 =  \"Fuego en el servidor\"\ncodigo_http n   =  \"Código desconocido: {n}\"\n```\n\nRidgun prueba las filas **de arriba abajo**:\n- Si entra `404`, salta directo a la tercera fila.\n- Si entra `418`, ninguna de las cuatro primeras filas coincide, así que cae en la última (`n`), que atrapa cualquier entero y lo nombra `n` para que puedas imprimirlo.\n- ¿Y si en el último caso ni siquiera te importa qué número era? Pones un guion bajo `_` (*comodín*) y te olvidas: `codigo_http _ = \"Otro código\"`.\n\n---\n\n## 4.2. Guardas booleanas (`|`): Tu bisturí para rangos, variables condicionales y árboles de decisión\n\n*\"Vale, el pattern matching mola cuando busco el `200` o el `404`. ¿Pero qué hago si quiero comprobar si `nota >= 5` o si `edad > 18 and edad < 65`? ¡No voy a escribir 47 filas con todos los números del 18 al 65!\"*\n\n¡Claro que no! Para eso están las **guardas (`|`)**.\n\nCuando el resultado depende de una desigualdad o de una combinación lógica, después del `=` de la función (o de cualquier variable local) abres una escalera de barras verticales `|`:\n\n```ridgun\ncalificar Int => String\ncalificar nota =\n  | nota < 0   = \"Nota imposible (¿puntos negativos?)\"\n  | nota < 5   = \"Suspenso\"\n  | nota < 7   = \"Aprobado\"\n  | nota < 9   = \"Notable\"\n  | nota <= 10 = \"Sobresaliente\"\n  | otherwise  = \"Te has pasado de la escala\"\n```\n\nMíralo bien:\n- El signo `=` del encabezado (`calificar nota =`) se alinea debajo de `=>` igual que en cualquier otra función.\n- Debajo se lee de arriba abajo igual que una tabla de tarifas: cada línea `| condicion = resultado` se comprueba en orden. En cuanto una da `True`, devuelve ese resultado y se acabó.\n- Al final pones **`| otherwise = ...`**, que significa literalmente *\"en cualquier otro caso\"* (tu red de seguridad para que nunca quede un camino sin retorno).\n\n### Lógica booleana en minúsculas claras (`and`, `or`, `xor`, `not`)\n¿Te has fijado en que muchos lenguajes usan `|` para bits, `||` para booleanos, `!` para negar... y cuando lees una condición compleja parece que un gato ha caminado sobre el teclado (`if (!a && (b || c))`)?\n\nEn Ridgun, como `|` ya es el símbolo sagrado de las guardas y de los tipos algebraicos, y `||` es el operador de paralelismo, **los operadores booleanos se escriben con palabras claras en minúsculas**:\n\n- **`and`**: se cumplen las dos cosas (`edad >= 18 and tiene_carnet`).\n- **`or`**: se cumple al menos una (`dia == \"sabado\" or dia == \"domingo\"`).\n- **`xor`**: se cumple una u otra, pero no las dos a la vez.\n- **`not`**: invierte el booleano (`not (esta_vacio texto)`).\n\nMira qué limpio queda el clásico problema de los años bisiestos:\n\n```ridgun\nes_bisiesto Int => Bool\nes_bisiesto a =\n  | (a % 400) == 0                = True\n  | (a % 4) == 0 and (a % 100) != 0 = True\n  | otherwise                     = False\n```\n\nCero símbolos crípticos. Lo lee alguien que no sabe Ridgun y lo entiende a la primera.\n\n### Variables locales condicionales (`x =` + `|`)\nComo en Ridgun todo `=` sigue la misma regla, **también puedes usar `|` para asignar una variable local** sin tener que crear una función auxiliar aparte:\n\n```ridgun\nprecio_billete Int Bool => Int\nprecio_billete base es_familia_numerosa =\n  descuento =\n    | es_familia_numerosa = 20\n    | base > 100          = 10\n    | otherwise           = 0\n  base - (base * descuento / 100)\n```\n\n### Árboles de decisión anidados y el limitador compacto `|.`\n*\"¿Y si dentro de una rama `| cond =` o `| otherwise =` quiero abrir otro sub-árbol de guardas `|` de 3 o 4 niveles de profundidad y luego volver a un nivel superior?\"*\n\nPuedes anidar `|` dentro de `|` tantos niveles como quieras. Y cuando un bloque `|` anidado termina pero debajo siguen más ramas de un nivel padre (o más sentencias del bloque), colocas **`|.`** al final de su última línea (`| otherwise = valor |.`) para indicar sin ninguna ambigüedad que ese sub-árbol se cierra y vuelves al nivel anterior:\n\n```ridgun\nenrutar_peticion Int    Int Bool      Bool     Int        Int       => Int\nenrutar_peticion metodo rol firmada   es_admin tamano_kb  limitado  =\n  | metodo == 0 =\n    | tamano_kb == 0 = 204\n    | otherwise      = 200 |.\n  | metodo == 1 =\n    | not firmada = 401\n    | otherwise =\n      -- Nivel 2: petición POST firmada\n      | limitado > 0 =\n        -- Nivel 3: control de rate-limit\n        | es_admin =\n          -- Nivel 4: excepción para administradores\n          | tamano_kb > 10000 = 413\n          | otherwise         = 202 |.\n        | otherwise = 429 |.\n      | tamano_kb > 1000 =\n        -- Nivel 3: hemos vuelto desde el Nivel 4 gracias a `|.`\n        | rol >= 2 and es_admin = 201\n        | otherwise             = 413 |.\n      | otherwise = 201 |.\n  | otherwise = 405\n```\n\nFíjate en lo limpio que es:\n- En un árbol simple de 1 nivel (o al final de toda la función) **nunca hace falta poner `|.`** (sería ruido innecesario).\n- Solo escribes `|.` al cerrar una rama anidada cuando debajo continúa una rama de un nivel superior.\n\n### Bloques de varias líneas dentro de una guarda (`| cond =` + bloque indentado)\nIgual que después del `=` de una función normal puedes abrir un bloque indentado de varias líneas, **después del `=` de cualquier guarda `| cond =` o `| otherwise =` también puedes hacer un salto de línea y abrir un bloque secuencial**:\n\n```ridgun\najustar_ventana Int Int => Int\najustar_ventana idx limite =\n  | idx >= limite =\n      tope = limite - 1\n      escalado = tope * 2\n      escalado + 10\n  | otherwise =\n      siguiente = idx + 1\n      siguiente * 2\n```\n\nCada rama de la guarda tiene su propio bloque local limpio y su última línea es el valor que devuelve esa rama.\n\n---\n\n## 4.3. \"¿Sin `while`? ¿Y no va a reventar la pila si recorro un archivo grande?\"\n\nHablemos del elefante en la habitación.\n\nSi vienes de Python, Java o JavaScript, te han enseñado desde pequeñito que *\"la recursión es elegante en la pizarra de la universidad, pero en el mundo real desborda la pila (`StackOverflowError`) a las 1.000 vueltas; usa un bucle `while`\"*.\n\nEso es verdad en lenguajes que **no** optimizan las llamadas de cola. Pero en un lenguaje funcional de sistemas como Ridgun, **una recursión de cola ES un bucle `while` disfrazado de función pura**.\n\n### ¿Qué diferencia hay entre una recursión normal y una recursión de cola?\nFíjate en estas dos funciones que cuentan hacia atrás desde `n` hasta `0` sumando los números:\n\n```ridgun\n-- Versión A: Recursión NORMAL (deja trabajo pendiente para la vuelta)\nsumar_lento Int => Int\nsumar_lento 0   =  0\nsumar_lento n   =  n + (sumar_lento (n - 1))\n\n-- Versión B: Recursión DE COLA (lleva la cuenta al día en `acumulado`)\nsumar_rapido_loop Int Int       => Int\nsumar_rapido_loop 0   acumulado =  acumulado\nsumar_rapido_loop n   acumulado =  sumar_rapido_loop (n - 1) (acumulado + n)\n```\n\n- En la **Versión A**, antes de poder sumar `n + ...`, la función tiene que esperar a que termine `sumar_lento (n - 1)`. Eso obliga al ordenador a guardar `n` en la pila en cada paso.\n- En la **Versión B**, la llamada a `sumar_rapido_loop` **es lo último que ocurre en la línea**. No queda nada pendiente detrás de ella. Ya le pasas la suma actualizada en `acumulado + n`.\n\n### El truco de magia de `ridgunc` (TCO: *Tail-Call Optimization*)\nCuando `ridgunc` compila `sumar_rapido_loop`, ve que la función se llama a sí misma al final de la cláusula y dice:\n\n> *\"¿Para qué voy a crear un marco de pila nuevo si el actual ya no sirve para nada? Voy a sobrescribir `n` con `n - 1`, sobrescribir `acumulado` con `acumulado + n` y saltar al principio con un `loop { ... continue; }` nativo.\"*\n\nResultado:\n1. Puedes llamar a `sumar_rapido_loop 100_000_000 0` (cien millones de vueltas) y **gastará exactamente 0 bytes extra de pila**.\n2. Va igual de rápido que un bucle `while` escrito a mano en Rust o C, pero sin haber tenido que declarar ni una sola variable mutable en tu código Ridgun.\n\n---\n\n## 4.4. El patrón maestro que usarás en todo programa Ridgun\n\nCada vez que en otro lenguaje pensarías *\"voy a hacer un bucle `while` con un índice `i` y un acumulador\"*, en Ridgun escribes una pareja de funciones como esta (la función principal limpia y su ayudante `_loop` de cola):\n\n```ridgun\nbuscar_caracter_loop String Int Int Int     => Int\nbuscar_caracter_loop texto  pos fin buscado =\n  | pos >= fin                        = -1\n  | (str_char_at texto pos) == buscado = pos\n  | otherwise                         = buscar_caracter_loop texto (pos + 1) fin buscado\n\nbuscar_caracter String Int     => Int\nbuscar_caracter texto  buscado =  buscar_caracter_loop texto 0 (str_len texto) buscado\n```\n\nMira las tres guardas de `buscar_caracter_loop`:\n1. ¿Llegué al final (`pos >= fin`)? Devuelvo `-1` (fin del bucle).\n2. ¿Encontré el carácter en `pos`? Devuelvo `pos` (fin del bucle).\n3. ¿No es este? Paso al siguiente (`pos + 1`) con una llamada de cola (que el compilador convierte en `continue;`).\n\nLimpio, imposible de tener *bugs* de variables globales pisadas y rápido como un rayo.\n\nEn el **Capítulo 05** vamos a meterle mano a las colecciones de datos: **listas, tuplas, funciones que aceptan infinitos argumentos (`...`) y las máscaras de secuencias estilo J/APL**.\n"}, {"num": "05", "slug": "05-listas-tuplas-y-secuencias", "file": "05-listas-tuplas-y-secuencias.md", "title": "Capítulo 05: Listas, Tuplas y el truco ninja de las Secuencias", "short_title": "Listas, Tuplas y el truco ninja de las Secuencias", "markdown": "# Capítulo 05: Listas, Tuplas y el truco ninja de las Secuencias\n\nUn programa que solo mueve un número o un texto a la vez sirve de poco. En la vida real manejas listas de archivos, filas de una base de datos, paquetes de red o coordenadas.\n\nPara eso, Ridgun te da tres envases distintos, cada uno pensado para un trabajo muy concreto:\n1. **Listas (`[T]`)**: *\"Tengo muchos elementos del mismo tipo (o ninguno) y quiero recorrerlos\"*.\n2. **Tuplas (`(A, B)`)**: *\"Quiero devolver un par o un trío de cosas distintas juntas sin crear un tipo nuevo\"*.\n3. **Secuencias y máscaras (`s[\"-+-\"]`)**: *\"Quiero filtrar o reordenar argumentos al vuelo como si tuviera un colador matemático\"*.\n\nVamos una por una.\n\n---\n\n## 5.1. Listas (`[T]`): El pan de cada día\n\nEn Ridgun, si pones corchetes alrededor de un tipo, tienes una lista de ese tipo:\n- `[Int]` es una lista de enteros: `[10, 20, 30]`.\n- `[String]` es una lista de textos: `[\"manzana\", \"pera\"]`.\n- `[]` es la lista vacía (el comodín que encaja con cualquier `[T]`).\n\n> *\"Oye, ¿puedo meter un número y un texto juntos en la misma lista tipo `[1, \"dos\"]`?\"*\n> Tal cual, **no** (y dale las gracias al compilador por impedírtelo, porque así nunca te explotará una suma en producción al encontrarse un texto sorpresa). En el Capítulo 06 veremos cómo resolver el caso de `[1, \"dos\"]` con elegancia total usando un Tipo Algebraico (igual que hace Haskell).\n\n### Cómo se trocea una lista sin usar índices `i`, `j`, `k`: `[]` y `(x:xs)`\nEn los lenguajes imperativos, recorrer una lista suele implicar `for (int i = 0; i < lista.size(); i++)`, con el clásico riesgo de pasarte por uno (*off-by-one*).\n\nEn Ridgun no cuentas índices; **desmontas la lista por la cabeza**:\n- `[]`: encaja si la lista está vacía.\n- `(x:xs)`: encaja si la lista tiene al menos un elemento. Mete el primer elemento en `x` (la **cabeza**) y el resto de la lista en `xs` (la **cola**).\n\nMira qué gusto da sumar una lista o contar cuántos elementos tiene:\n\n```ridgun\nsumar_lista [Int]  => Int\nsumar_lista []     =  0\nsumar_lista (x:xs) =  x + (sumar_lista xs)\n\ncontar_elementos [A]    => Int\ncontar_elementos []     =  0\ncontar_elementos (_:xs) =  1 + (contar_elementos xs)\n```\n\nY un detalle técnico que te alegrará el día: en Ridgun, sacar la cola `xs` en `(x:xs)` **no copia el resto de la lista en memoria**. Internamente es una vista sobre el mismo vector que solo avanza el puntero de inicio en `1` ($O(1)$ instantáneo).\n\n### Puedes destapar varios elementos de golpe\nEl patrón `:` da muchísimo juego cuando estás parseando comandos o protocolos:\n\n```ridgun\ninterpretar_comando [String]                => String\ninterpretar_comando []                      =  \"No has escrito nada\"\ninterpretar_comando (\"ayuda\":_)             =  \"Mostrando la ayuda...\"\ninterpretar_comando (\"copiar\":origen:dest:[]) = \"Copiando de {origen} a {dest}\"\ninterpretar_comando (cmd:_)                 =  \"Comando desconocido: {cmd}\"\n```\n\nMira la tercera fila: `(\"copiar\":origen:dest:[])` comprueba de un solo plumazo que la lista tenga **exactamente 3 elementos**, que el primero sea `\"copiar\"`, y te deja el segundo y el tercero servidos en bandeja en `origen` y `dest`. Intenta escribir eso en C o Java y verás cuántas líneas de `args.length == 3 && args[0].equals(\"copiar\")` te salen.\n\n### Unir listas con doble dos puntos (`::`)\nCuando estás en el lado derecho del `=` (en una expresión) y quieres pegar dos listas, usas **`::`**:\n\n```ridgun\npegar_listas [Int] [Int] => [Int]\npegar_listas a     b     =  a :: b\n\nanadir_detras [Int] Int => [Int]\nanadir_detras xs    x   =  xs :: [x]\n```\n\n*(Regla mnemotécnica rápida: un solo `:` en los patrones desmonta la lista; dos `::` en las expresiones pegan dos listas).*\n\n¿Y si de verdad quieres sacar el elemento número 5 directamente sin recorrer nada? Usa corchetes pegados al nombre: `mi_lista[5]`.\n\n---\n\n## 5.2. Funciones variádicas (`T...`): \"¡Pásame todos los que quieras!\"\n\nA veces quieres que quien llame a tu función pueda escribir `maximo_de 4 19 2 88 7` cómodamente, sin obligarle a envolver los números entre corchetes `[4, 19, 2, 88, 7]`.\n\nPon tres puntos **`...`** detrás del último tipo de tu firma, y dentro de tu función lo recibirás automáticamente empaquetado como una lista:\n\n```ridgun\nsumar_varios Int... => Int\nsumar_varios nums   =  sumar_lista nums\n\nmain => ()\nmain =\n  echo (sumar_varios 10 20 30)       -- Imprime 60\n  echo (sumar_varios 1 2 3 4 5 6 7)  -- Imprime 28\n```\n\n---\n\n## 5.3. Tuplas: Cuando una función quiere devolver más de una cosa\n\nEn muchos lenguajes devolver dos cosas desde una función es un dolor: o creas una clase auxiliar tonta `ResultadoConPosicion`, o pasas punteros de salida por referencia.\n\nEn Ridgun devuelves una **tupla** `(A, B)`:\n\n```ridgun\ndividir_y_resto Int Int => (Int, Int)\ndividir_y_resto a   b   =  (a / b, a % b)\n```\n\nIncluso puedes ahorrarte los paréntesis en la línea de la firma si te resulta más limpio:\n`dividir_y_resto Int Int => Int Int`.\n\n### Cómo abrir una tupla\nIgual que la creas con `(a, b)`, la abres en los argumentos de cualquier función con `(cociente, resto)`:\n\n```ridgun\nexplicar_division (Int, Int)        => String\nexplicar_division (cociente, resto) =  \"Cabe a {cociente} y sobran {resto}\"\n```\n\n### El detalle estrella: Desempaquetado automático entre funciones\nSupón que tienes `dividir_y_resto` (que devuelve una tupla de 2 enteros) y otra función `sumar_par Int Int => Int` (que espera 2 enteros sueltos). En Ridgun no tienes que abrir la tupla a mano en una variable intermedia; puedes enchufar una función dentro de la otra directamente:\n\n```ridgun\nsumar_par Int Int => Int\nsumar_par x   y   =  x + y\n\nmain => ()\nmain =\n  -- dividir_y_resto 17 5 devuelve (3, 2), y sumar_par recibe 3 y 2 directamente:\n  echo (sumar_par (dividir_y_resto 17 5))  -- Imprime 5\n```\n\n---\n\n## 5.4. El truco ninja: Secuencias y Máscaras Posicionales (`s[\"-+-\"]`)\n\nAquí viene una de las joyas más originales de Ridgun, heredada directamente de los lenguajes vectoriales como J y APL.\n\nImagina que recibes una ristra de argumentos con el patrón de secuencia **`(s)`** y quieres quedarte solo con algunos y tirar otros sin declarar cinco variables con nombres inventados (`_a`, `b`, `_c`, `d`...).\n\nLe aplicas a `s` una **máscara de signos `+` (quédatelo) y `-` (tíralo)**:\n\n- **`s[\"-+-\"]`**: de 3 elementos, tira el primero (`-`), quédate con el segundo (`+`) y tira el tercero (`-`).\n- **`s[\"+-+\"]`**: quédate con el primero y el tercero; devuelve la secuencia con esos dos.\n- **`s[\"-- +\"]`** (ojo al espacio antes del último `+`): tira los dos primeros (`--`) y aplica `+` **a todos los demás que vengan detrás**, sean cuantos sean.\n\nMíralo funcionando:\n\n```ridgun\nel_del_medio Int Int Int => Int\nel_del_medio (s)         =  s[\"-+-\"]\n\ndescartar_dos_primeros Int... => [Int]\ndescartar_dos_primeros (s)    =  s[\"-- +\"]\n\nmain => ()\nmain =\n  echo (el_del_medio 100 42 999)              -- Imprime 42\n  echo (descartar_dos_primeros 1 2 10 20 30)  -- Imprime [10, 20, 30]\n```\n\nAdemás, si usas el operador coma `,` fuera de paréntesis (`lista1 , lista2`), Ridgun aplana ambas colecciones en una única secuencia continua.\n\nEn el **Capítulo 06** vamos a dar el paso que convierte a un programador funcional en un arquitecto de primera: **crear tus propios Tipos de Datos Algebraicos (ADTs), escribir funciones polimórficas con `A`..`Z` y fabricar tus propios operadores a medida**.\n"}, {"num": "06", "slug": "06-tipos-algebraicos-y-polimorfismo", "file": "06-tipos-algebraicos-y-polimorfismo.md", "title": "Capítulo 06: Tipos de Datos Algebraicos (ADTs), Polimorfismo y por qué aquí no queremos `null` ni `Any`", "short_title": "Tipos de Datos Algebraicos (ADTs), Polimorfismo y por qué aquí no queremos `null` ni `Any`", "markdown": "# Capítulo 06: Tipos de Datos Algebraicos (ADTs), Polimorfismo y por qué aquí no queremos `null` ni `Any`\n\nEn 1965, Tony Hoare inventó la referencia nula (`null` / `nil`). Cuarenta años después pidió perdón públicamente y la llamó *\"mi error de mil millones de dólares\"*.\n\n¿Por qué? Porque en los lenguajes con `null`, una función te promete en su firma que te va a devolver un `Usuario`... y cuando menos te lo esperas te devuelve `null` y te tira abajo el servidor a las tres de la mañana.\n\nY otro tanto ocurre con la herencia de objetos y el tipo `Any` (u `Object`): metes un número y un texto en una lista `[1, \"dos\"]`, el lenguaje se encoge de hombros y dice *\"vale, pues ahora esto es una `List[Any]`, buena suerte adivinando qué hay dentro cuando la recorras\"*.\n\nEn Ridgun cortamos esos dos problemas de raíz con **Tipos de Datos Algebraicos (ADTs)** y **Polimorfismo Paramétrico**. Suena a nombre de asignatura dura, pero en cinco minutos vas a ver que es la forma más natural del mundo de modelar datos.\n\n---\n\n## 6.1. Tipos Producto (Registros): Tus `struct` de toda la vida, pero con superpoderes\n\nCuando quieres agrupar varios datos que pertenecen a una misma entidad (por ejemplo, un servidor con su nombre, su IP y su puerto), defines un **`type`** con sus campos:\n\n```ridgun\ntype Servidor = host: String, puerto: Int, tls_activo: Bool\n```\n\nCon solo escribir esa línea, Ridgun te regala **cuatro cosas** automáticamente:\n\n### 1. El constructor `Servidor`\n```ridgun\nmi_nodo => Servidor\nmi_nodo =  Servidor \"api.ejemplo.com\" 443 True\n```\n\n### 2. Una función *getter* pura para cada campo (`host`, `puerto`, `tls_activo`)\nNo tienes que escribir `s.getHost()` ni nada parecido; cada nombre de campo es directamente una función que extrae ese dato:\n\n```ridgun\nurl_conexion Servidor => String\nurl_conexion srv      =  \"Conectar a \" + (host srv) + \" en el puerto {puerto srv}\"\n```\n\n### 3. Actualización funcional de registros (`with campo: valor`)\nImagina un registro de configuración con 12 o 15 campos (como las opciones de un comando `ls` o de un servidor web) y quieres cambiar solo uno o dos campos sin tocar el resto. En vez de reconstruir el registro pasando los 15 campos a mano, usas **`with`** y dos puntos **`:`** (exactamente igual que en la definición del `type`):\n\n```ridgun\nactivar_modo_dev Servidor => Servidor\nactivar_modo_dev srv      =  srv with puerto: 8080, tls_activo: False\n```\n\nLo mejor de los dos mundos:\n- En tu código es **100% inmutable y seguro** (el compilador comprueba que `puerto` y `tls_activo` existan en `Servidor` y tengan el tipo correcto).\n- Por debajo, si `srv` no está compartido con nadie más, el ejecutable nativo reutiliza su memoria *in-place* (`Arc::try_unwrap`) sin copiar el resto de campos.\n\n### 4. *Pattern matching* completo por si quieres abrir el registro en canal\n```ridgun\nes_puerto_seguro Servidor                 => Bool\nes_puerto_seguro (Servidor _ 443 True)    =  True\nes_puerto_seguro _                        =  False\n```\n\n---\n\n## 6.2. Tipos Suma (Variantes con `|`): Cómo jubilar a `null`, a las excepciones y a la herencia\n\nAhora viene lo bueno.\nUn registro normal tiene `host` **Y** `puerto` **Y** `tls_activo`.\nPero en el mundo real muchas veces necesitas decir: *\"Un método de pago es **O BIEN** una tarjeta con su número, **O BIEN** una transferencia con su IBAN, **O BIEN** efectivo (que no lleva ningún dato extra)\"*.\n\nEn orientación a objetos tendrías que crear una interfaz `MetodoPago`, tres subclases en tres archivos distintos, constructores, `instanceof`... En Ridgun es **una línea**:\n\n```ridgun\ntype MetodoPago = Tarjeta String Int | Transferencia String | Efectivo\n```\n\nY mira qué pasa cuando procesas un `MetodoPago` en una función:\n\n```ridgun\ndescribir_pago MetodoPago            => String\ndescribir_pago (Tarjeta num _)       =  \"Pago con tarjeta terminada en {num}\"\ndescribir_pago (Transferencia iban)  =  \"Transferencia desde la cuenta {iban}\"\ndescribir_pago Efectivo              =  \"Pago en metálico en ventanilla\"\n```\n\nCada variante (`Tarjeta`, `Transferencia`, `Efectivo`) lleva pegados únicamente los datos que tienen sentido para ella. Es **imposible** construir un pago en `Efectivo` que tenga un `iban` colgado por error.\n\n---\n\n## 6.3. \"¿Y cómo meto `[1, \"dos\"]` en una lista sin usar `Any`?\"\n\nVolvamos a la pregunta del millón. Imagina que estás leyendo un archivo CSV o JSON donde una celda puede ser un número entero, un texto o estar vacía.\n\nSi tuvieras un tipo `Any`, meterías `[1, \"dos\"]` y perderías toda la ayuda del compilador: a partir de ese momento cualquier operación sobre la lista sería caminar con los ojos vendados.\n\nEn Ridgun (igual que en Haskell o Rust), creas en dos segundos un tipo suma que explica exactamente qué cosas pueden vivir dentro de esa lista:\n\n```ridgun\ntype ValorCelda = Entero Int | Texto String | Vacio\n\nformatear_celda ValorCelda   => String\nformatear_celda (Entero n)   =  \"Número: {n}\"\nformatear_celda (Texto s)    =  \"Texto: {s}\"\nformatear_celda Vacio        =  \"(vacío)\"\n\nmi_fila => [ValorCelda]\nmi_fila =  [Entero 1, Texto \"dos\", Vacio]\n```\n\n¿Ves la diferencia?\n- Con `Any`, el compilador no sabe si en la lista hay enteros, cadenas o una cafetera conectada por USB.\n- Con `[ValorCelda]`, puedes mezclar números y textos en la misma lista, **pero el compilador sabe al 100% que solo existen esas tres posibilidades** y te obliga a desempaquetar cada caso (`Entero n`, `Texto s`, `Vacio`) antes de usarlo. Seguridad total sin perder ni un ápice de flexibilidad.\n\n---\n\n## 6.4. `Option` y `Result`: Cuando algo puede no estar o puede fallar\n\nComo en Ridgun no existe `null` ni existen excepciones que salten por los aires (`throw new Exception()`), el lenguaje trae integrados dos tipos suma universales:\n\n1. **`Option`**: o tienes **`Some valor`**, o tienes **`None`** (nada).\n2. **`Result`**: o la operación salió bien (**`Ok valor`**), o falló por un motivo concreto (**`Err error`**).\n\n```ridgun\nbuscar_division Int Int => Result\nbuscar_division _   0   =  Err \"¡Eh! No se puede dividir por cero\"\nbuscar_division a   b   =  Ok (a / b)\n\nimprimir_res Result      => ()\nimprimir_res (Ok n)      =  echo \"El resultado es {n}\"\nimprimir_res (Err msg)   =  echo \"Fallo controlado: {msg}\"\n```\n\nNadie puede ignorar un error por descuido porque el propio tipo `Result` te obliga a mirar si dentro hay un `Ok` o un `Err`.\n\n---\n\n## 6.5. Polimorfismo Paramétrico: Funciones genéricas con `A`, `B`, `T`...\n\nSupón que escribes una función que invierte un par `(x, y)` o que saca el primer elemento de una lista. ¿De verdad importa si la lista es de `Int`, de `String` o de `Servidor`? ¡Para nada! El algoritmo es idéntico.\n\nEn Ridgun, **cualquier letra mayúscula individual (`A` a `Z`)** en una firma de tipos funciona automáticamente como un **tipo comodín polimórfico (variable de tipo)**:\n\n```ridgun\ncabeza_segura [A]    A           => A\ncabeza_segura []     por_defecto =  por_defecto\ncabeza_segura (x:_)  _           =  x\n\ngirar_par (A, B)  => (B, A)\ngirar_par (x, y)  =  (y, x)\n```\n\nFíjate en la magia de `cabeza_segura [A] A => A`:\n- No es un `Any` descontrolado: dice que **el tipo de la lista `[A]`, el tipo del valor `por_defecto` (`A`) y el tipo devuelto (`A`) tienen que ser el mismo**.\n- Si llamas a `cabeza_segura [10, 20] 0`, el compilador ata cabos (`A = Int`) y te devuelve un `Int`.\n- Si llamas a `cabeza_segura [\"a\", \"b\"] \"ninguno\"`, ata cabos (`A = String`) y te devuelve un `String`.\n- Pero si intentas hacer trampa y llamas a `cabeza_segura [10, 20] \"ninguno\"`, ¡zas! El compilador te frena en seco porque el primer argumento dice que `A` es `Int` y el segundo dice que `A` es `String`.\n\n---\n\n## 6.6. Crea tus propios operadores (`op ::`): Desde vectores hasta frases a medida\n\n¿Por qué solo los números nativos iban a tener derecho a usar `+` o `*`? ¿Y por qué conformarse con los operadores de siempre cuando puedes inventar la sintaxis perfecta para tu problema?\n\nCon **`op ::`** (o directamente sin prefijo si usas patrones de operador) puedes hacer dos virguerías:\n\n### 1. Enseñarle a `+`, `-`, `*`, `/`, `%` a operar con tus propios tipos\n```ridgun\ntype Complejo = real: Int, imag: Int\n\nop :: Complejo + Complejo => Complejo\n      a        + b        =  Complejo ((real a) + (real b)) ((imag a) + (imag b))\n```\n\n### 2. Crear operadores *Mixfix* (que se leen como frases naturales, incluidos `type` y `with`)\nEn una firma de operador, **las palabras con mayúscula inicial (`Int`, `String`, `A`..`Z`) o entre corchetes/paréntesis (`[Int]`, `(A, B)`) son los huecos para los argumentos**, y **las palabras en minúscula son parte de la frase del operador** (incluso palabras tan habituales como `type` o `with`, que en Ridgun son contextuales y nunca te bloquean):\n\n```ridgun\nop :: si Bool entonces A sino A => A\n      si True entonces v sino _ =  v\n      si False entonces _ sino f = f\n\nop :: format String type String with Int => String\n      format label  type kind   with w   =  \"{label} ({kind}, width={w})\"\n\nmain => ()\nmain =\n  mensaje = si (10 > 5) entonces \"¡Diez gana!\" sino \"Imposible\"\n  echo mensaje\n  echo (format \"panel\" type \"bordered\" with 80)\n```\n\nAcabas de fabricarte tu propio operador ternario polimórfico y un DSL de formateo en **3 líneas** de Ridgun.\n\nEn el **Capítulo 07** vamos a poner todos los núcleos de tu procesador a trabajar a la vez sin derramar una gota de sudor: **funciones de orden superior (`map`, `seq_map`, `filter`, `seq_filter`, `fold`), grafos paralelos `||` con `->` y canales concurrentes**.\n"}, {"num": "07", "slug": "07-orden-superior-y-paralelismo-dag", "file": "07-orden-superior-y-paralelismo-dag.md", "title": "Capítulo 07: Funciones de Orden Superior y Paralelismo sin Sudor (Ni `Mutex`, ni `Deadlocks`)", "short_title": "Funciones de Orden Superior y Paralelismo sin Sudor (Ni `Mutex`, ni `Deadlocks`)", "markdown": "# Capítulo 07: Funciones de Orden Superior y Paralelismo sin Sudor (Ni `Mutex`, ni `Deadlocks`)\n\nEn casi todos los lenguajes de programación hay un momento dramático en la vida de un proyecto: el día en que alguien dice en una reunión:\n\n> *\"Esto va lento. Hay que paralelizarlo con hilos.\"*\n\nSe hace el silencio en la sala. Todo el mundo sabe lo que viene después: semanas cazando *race conditions* fantasma que solo ocurren los martes con luna llena, bloqueos mutuos (*deadlocks*) y errores irreproducibles.\n\nEn Ridgun, cuando alguien dice *\"hay que paralelizarlo\"*, `map` y `filter` ya son paralelos por defecto, o pones tus cálculos en un bloque paralelo `||` con flechas `->` y te vas a tomar un café.\n\n¿Por qué? Porque **cuando tus funciones son puras y tus datos son inmutables por defecto, dos núcleos de CPU trabajando a la vez jamás pueden pisarse la manguera**.\n\nVamos a verlo paso a paso.\n\n---\n\n## 7.1. Funciones que reciben funciones: `map`, `seq_map`, `filter`, `seq_filter` y `fold`\n\nEn Ridgun una función es un valor más. Puedes pasarla por parámetro igual que pasas el número `7`.\n\nEl lenguaje trae de serie los combinadores de colecciones para transformar listas sin escribir ni una sola recursión manual:\n\n### 1. `map` (paralelo por defecto) y `seq_map` (secuencial)\nSupón que tienes una función `costoso Int => Int` y una lista con números:\n\n```ridgun\ncostoso Int => Int\ncostoso x   =  (x * x) + (x * 3)\n\nmain => ()\nmain =\n  datos = [1, 2, 3, 4, 5, 6, 7, 8]\n  -- Paralelo multicore por defecto:\n  r1 = map costoso datos\n  -- Secuencial estricto de izquierda a derecha:\n  r2 = seq_map costoso datos\n  echo r1\n  echo r2\n```\n\n- Con **`map`**, el runtime de Ridgun reparte los elementos de `datos` entre los hilos trabajadores de tu procesador y reconstruye la lista final **exactamente en el mismo orden**, garantizando que `map f xs == seq_map f xs`.\n- ¿Y si tu función hace efectos de entrada/salida (como imprimir en pantalla o escribir en un archivo) y quieres forzar a que vaya estrictamente de izquierda a derecha de uno en uno? Usas **`seq_map`**.\n\n### 2. `filter` (paralelo) y `seq_filter` (secuencial): Quedarte solo con los que cumplan una condición\nLe pasas una función que devuelva `Bool` (un *predicado*) y una lista:\n\n```ridgun\nes_positivo Int => Bool\nes_positivo n   =  n > 0\n\nmain => ()\nmain =\n  limpios = filter es_positivo [-5, 10, 0, -2, 42]\n  echo limpios  -- Imprime [10, 42]\n```\n\n### 3. `fold`: Reducir toda una lista a un solo resultado\nLe pasas una función combinadora de dos argumentos `(Acumulado Elemento => Acumulado)`, el valor inicial y la lista:\n\n```ridgun\nacumular_producto Int Int => Int\nacumular_producto acc x   =  acc * x\n\nmain => ()\nmain =\n  echo (fold acumular_producto 1 [2, 3, 4, 5])  -- 1 * 2 * 3 * 4 * 5 = 120\n```\n\n### ¿Cómo escribo yo mi propia función que reciba otra función?\nMuy fácil: en la firma de tipos pones la firma de la función invitada entre paréntesis `(Entrada => Salida)`:\n\n```ridgun\nejecutar_dos_veces (A => A) A => A\nejecutar_dos_veces f        x =  f (f x)\n```\n\n---\n\n## 7.2. La joya de la corona: Bloques `||` con `->` como Grafos Paralelos (DAGs)\n\nAquí es donde Ridgun cambia tu forma de pensar.\n\nEn un lenguaje imperativo normal, cuando escribes tres líneas seguidas:\n1. Primero se ejecuta la línea 1.\n2. Luego la línea 2 (aunque no tenga nada que ver con la línea 1).\n3. Luego la línea 3.\n\nEso es obligar al ordenador a trabajar con orejeras. En Ridgun, cuando usas barras paralelas **`||`** con flechas **`->`** (sin necesidad de escribir ninguna palabra clave como `where`), no estás dando órdenes secuenciales: estás dibujando un **Grafo Acíclico Dirigido (DAG)** que dice qué cálculo alimenta a qué variable:\n\n```ridgun\nfib Int => Int\nfib 0   =  0\nfib 1   =  1\nfib n   =  (fib (n - 1)) + (fib (n - 2))\n\nfact Int => Int\nfact 0   =  1\nfact n   =  n * (fact (n - 1))\n\nsuper_calculo => Int\nsuper_calculo =  rama_izquierda + rama_derecha\n  || fib 10 -> rama_izquierda\n  || fact 6 -> rama_derecha\n```\n\nLéelo en voz alta:\n- *\"Quiero calcular `rama_izquierda + rama_derecha`, mientras en paralelo (`||`) `fib 10` va a `rama_izquierda` (`->`) y `fact 6` va a `rama_derecha` (`->`).\"*\n\n### Lo que hace `ridgunc` entre bambalinas con tus líneas `||`:\n1. Mira las flechas `->` y arma el árbol de dependencias (DAG).\n2. **Caza ciclos estáticamente**: si por error escribes `|| a + 1 -> b` y `|| b + 1 -> a`, el compilador te dice en el acto *\"¡Quietos! Hay una dependencia circular\"* y no te deja compilar un cuelgue infinito.\n3. Ve que `fib 10` y `fact 6` no dependen el uno del otro, así que tienen luz verde para correr en paralelo antes de sumarse en `rama_izquierda + rama_derecha`.\n\nIncluso puedes montar un pipeline de varias plantas dentro del mismo bloque `||` —ya sea al pie de la expresión o justo después del `=`— y el compilador deducirá solito qué plantas pueden ir a la vez y cuáles tienen que esperar:\n\n```ridgun\nbalance_trimestral Int => Int\nbalance_trimestral base =\n  || base * 100                  -> ventas_brutas\n  || base * 40                   -> costes_fijos\n  || ventas_brutas - costes_fijos -> beneficio_bruto ||.\n  beneficio_bruto * 80 / 100\n```\n\nFíjate en el detalle **`||.`** al final de la última línea `||`: igual que `|.` cierra un árbol de guardas anidado, **`||.`** cierra el bloque paralelo `||` cuando debajo siguen sentencias secuenciales normales. Aquí `ventas_brutas` y `costes_fijos` arrancan en paralelo; cuando ambos están listos se calcula `beneficio_bruto`, y finalmente se devuelve `beneficio_bruto * 80 / 100`. Todo sin un solo `async`, `Future`, `Promise` ni `Mutex`.\n\n---\n\n## 7.3. El atajo `||` sin nombres: Tuberías paralelas que devuelven una tupla\n\n¿Y si solo quieres lanzar dos o tres cálculos en paralelo y recogerlos juntos en una tupla sin siquiera inventar nombres de variables con `->`?\n\nUsas `||` directamente:\n\n```ridgun\npar_paralelo Int => (Int, Int)\npar_paralelo n   =\n  || fib n\n  || fact n\n```\n\nDirecto, visual y devuelve la tupla `(fib n, fact n)`.\n\n---\n\n## 7.4. Cuando quieres el volante manual: `spawn`, `join` y Canales CSP\n\nEl paralelismo automático de `where` y `pmap` cubre el 90% de los casos. Pero a veces estás programando un sistema de actores, una cola de trabajos o un pipeline productor-consumidor y quieres controlar tú mismo las tareas y los mensajes.\n\nPara eso tienes dos herramientas limpias:\n\n### 1. Lanzar tareas con `spawn` y recoger el resultado con `join`\n```ridgun\nprocesar_lote Int => Int\nprocesar_lote id  =  id * 100\n\nmain => ()\nmain =\n  tarea1 = spawn procesar_lote 1\n  tarea2 = spawn procesar_lote 2\n  -- Mientras tanto podrías hacer otras cosas aquí...\n  res1 = join tarea1\n  res2 = join tarea2\n  echo \"Terminaron con:\" res1 \"y\" res2\n```\n\n### 2. Pasar mensajes por canales acotados (`new_bounded_channel`)\nIgual que en Go o Erlang, en lugar de compartir memoria entre hilos, envías valores inmutables a través de un tubo seguro:\n\n- `new_bounded_channel capacidad`: crea un canal con espacio para `capacidad` mensajes.\n- `chan_send valor canal` (o `send_through valor canal`): mete un mensaje en el tubo.\n- `chan_recv canal` (o `receive_from canal`): saca el siguiente mensaje del tubo.\n- `chan_try_recv canal`: mira si hay mensaje sin quedarse esperando; devuelve `Some valor` o `None`.\n- `receive_from_timeout canal ticks`: espera un límite de tiempo y devuelve `Ok valor` o `Err Timeout`.\n\n```ridgun\nmain => ()\nmain =\n  tubo = new_bounded_channel 4\n  _ = chan_send \"Tarea A completada\" tubo\n  _ = chan_send \"Tarea B completada\" tubo\n  primero = chan_recv tubo\n  segundo = chan_recv tubo\n  echo primero \"|\" segundo\n```\n\nY ahora, abróchate el cinturón para el **Capítulo 08**, el gran final: **tensores con dimensiones verificadas en compilación, variables de ámbito (`context`/`shared`), regiones de memoria deterministas, acceso directo a hardware MMIO y programación de sistemas UNIX/POSIX**.\n"}, {"num": "08", "slug": "08-tensores-regiones-y-sistemas", "file": "08-tensores-regiones-y-sistemas.md", "title": "Capítulo 08: Tensores, Memoria Compilada RMM (`RMM1`/`RMM2`), Regiones y Sistemas", "short_title": "Tensores, Memoria Compilada RMM (`RMM1`/`RMM2`), Regiones y Sistemas", "markdown": "# Capítulo 08: Tensores, Memoria Compilada RMM (`RMM1`/`RMM2`), Regiones y Sistemas\n\nHasta aquí hemos visto el lado más amable, elegante y matemático de Ridgun: funciones puras, tipos algebraicos, *pattern matching*, árboles de decisión con `|` / `|.` y grafos paralelos `||` con `->` que aprovechan todos los núcleos de tu procesador sin pedirte ni un triste `Mutex`.\n\nLlegados a este punto, el programador veterano de sistemas suele levantar la mano al fondo del aula con media sonrisa y preguntar:\n\n> *\"Todo esto es precioso para calcular facturas o compilar ASTs, pero ¿qué pasa cuando necesito multiplicar matrices de millones de flotantes a velocidad de vértigo? ¿Qué pasa con la memoria? ¿Hay un recolector de basura (Garbage Collector) escondido debajo de la alfombra esperando el peor momento para congelar mi programa durante 200 milisegundos? ¿Y cómo hablo con el sistema operativo Unix de verdad?\"*\n\nExcelentes preguntas. Vamos a levantar el capó de Ridgun para ver cómo se las gasta cuando toca bajar al barro de los sistemas, el cálculo numérico y la memoria determinista.\n\n---\n\n## 8.1. El dilema de la memoria: ni Garbage Collector ni peleas con el Borrow Checker (`RMM1` y `RMM2`)\n\nEn el mundo de los lenguajes modernos suele haber dos bandos irreconciliables:\n\n1. **El bando del Garbage Collector (Java, Go, Python, JS, Haskell, OCaml):** tú pides memoria alegremente y, de vez en cuando, un camión de la basura invisible detiene el tráfico de tu programa para rastrear qué objetos siguen vivos y cuáles no. Es comodísimo... hasta que estás haciendo una herramienta de sistema ultrarrápida o un servidor con latencias estrictas y el camión decide aparcar en doble fila.\n2. **El bando del control manual / Borrow Checker (C, C++, Rust):** no hay recolector de basura, pero a cambio tienes que gestionar punteros a mano (jugándote un `Segmentation fault` o un *use-after-free*) o pasarte media tarde negociando con el *borrow checker* por qué `'a` no vive tanto como `'b`.\n\nRidgun resuelve este dilema de raíz con **Ridgun Memory Management (`RMM`)**, un sistema determinista de dos políticas complementarias (**`RMM1`** y **`RMM2`**) combinado con **regiones léxicas (`with region`)**:\n\n### Política `RMM1` — Gestión de Memoria Compilada (CMM Lineal y Condicional)\nCuando el compilador conoce estáticamente el flujo de las variables locales dentro de una función:\n- **CMM Lineal**: `ridgunc` calcula en tiempo de compilación cuál es la **última línea** en la que se lee cada variable local (`a`, `b`, ...) e inserta justo después su liberación determinista (`rg_cmm_drop`), o transfiere su propiedad sin copias (`rg_cmm_move`) cuando la variable se devuelve como resultado.\n- **CMM Condicional (`ptr(a) != ptr(c)`)**: ¿y si una función como `elegir cond a b` devuelve `a` o `b` según una condición en tiempo de ejecución? `ridgunc` construye la tabla de ancestros y emite una guarda de identidad de punteros de **1 ciclo de CPU**: si `b` deja de usarse mientras `c` sigue viva, comprueba `if ptr(b) != ptr(c) { free(b) }`. La rama no elegida se libera al instante y la elegida sobrevive intacta.\n\n### Política `RMM2` — Conteo por Asignación y Cascada Estructural\n¿Y qué ocurre cuando metes estructuras dentro de otras estructuras (`xs = [a, b]`), reasignas variables mutables (`mut x = ...`) o encadenas llamadas complejas? Ahí entra **`RMM2`**, que gobierna todo el ciclo de vida con cuatro reglas matemáticas sin fisuras:\n\n1. **Los argumentos de entrada de una función no se tocan (`+0` al entrar, `-0` al salir)**: pasar una lista o un registro a una función jamás incrementa ni decrementa contadores en vano.\n2. **Toda asignación a una variable local interna o celda de contenedor suma `+1`**:\n   - `a = [10, 20]` $\\rightarrow$ el bloque `M1` nace con contador `1`.\n   - `xs = [a, b]` $\\rightarrow$ la lista `xs` nace con `1`, y como guarda referencias a `a` y `b`, ambos suben a `2`.\n   - Si reasignas una variable mutable (`mut x = ...` y luego `x = nuevo`), `RMM2` aplica primero **`+1`** al valor nuevo antes de aplicar **`-1`** al antiguo.\n3. **Al salir de la función, las variables locales que NO se devuelven reciben `-1`**: si el contador de una estructura llega a `0`, se libera su memoria en el acto y **propaga `-1` en cascada, uno por uno, a cada uno de sus hijos directos**.\n4. **El valor devuelto por la función se exime en tránsito**: recibe su `-1` de variable local pero no se destruye al cruzar el `return`, de modo que cuando quien llamó hace `c = mi_funcion ()`, ese `+1` de la asignación lo deja exactamente en `1`.\n\n```ridgun\nelegir Bool [Int] [Int] => [Int]\nelegir cond a     b     =\n  | cond      = a\n  | otherwise = b\n\nejemplo_rmm2 Bool => Int\nejemplo_rmm2 cond =\n  a = [10, 20, 30]         -- M1 (rc = 1)\n  b = [40, 50, 60]         -- M2 (rc = 1)\n  c = elegir cond a b      -- `c` recibe +1; el no elegido muere aquí mismo (rc -> 0)\n  (contar a) + (contar c)  -- Al terminar, `a` y `c` reciben -1 y todo queda en 0 bloques vivos\n```\n\n---\n\n## 8.2. Regiones Léxicas con Cuota (`with region`): Cortafuegos de memoria en $O(1)$\n\nAdemás de `RMM1` y `RMM2`, cuando estás procesando un paquete de red externo, un archivo gigante o un lote de datos no confiables y quieres poner un **techo estricto de memoria RAM**, envuelves el cálculo en un bloque **`with region`**:\n\n```ridgun\nprocesar_trama String => Result\nprocesar_trama crudo  =\n  with region 64_KB do\n    limpias = map limpiar_linea (dividir_lineas crudo)\n    contar_validos limpias\n```\n\n1. **Cuota garantizada en hardware/runtime**: si dentro del bloque se intenta reservar ni un solo byte por encima de `64_KB` (`65.536` bytes), el runtime aborta limpiamente el bloque, libera toda la arena temporal en tiempo constante $O(1)$ y devuelve `Err OutOfMemory` sin tumbar el proceso.\n2. **Liberación instantánea al salir**: en cuanto termina el bloque `with region`, toda la memoria temporal de la arena desaparece de golpe sin dejar fragmentación.\n\n---\n\n## 8.3. Tensores Nativos, Contracción de Einstein (`@`) yDimensiones Simbólicas\n\nSi alguna vez has programado en Python con NumPy o PyTorch, seguro que has sufrido el clásico error en el minuto 41 de ejecución:\n\n```text\nRuntimeError: mat1 and mat2 shapes cannot be multiplied (128x64 and 32x128)\n```\n\nEn Ridgun, los **`Tensor`** son ciudadanos nativos de primera clase y sus dimensiones forman parte de la firma de tipos:\n\n```ridgun\n-- Si entra (N × K) y (K × M), ¡por narices sale (N × M)!\nmultiplicar_matrices Tensor[N, K] Tensor[K, M] => Tensor[N, M]\nmultiplicar_matrices a            b            =  a_ik @ b_kj\n```\n\nFíjate en dos detalles espectaculares:\n1. **Verificación estática de dimensiones (`Tensor[N, K]`)**: el eje interno `K` de la primera matriz tiene que coincidir con el primer eje `K` de la segunda. Si intentas pasar dimensiones incompatibles, `ridgunc check` te detiene antes de ejecutar nada.\n2. **Notación de subíndices de Einstein (`a_ik @ b_kj`) y Hadamard (`a_ij * b_j`)**:\n   - Con **`@`**, los subíndices repetidos en todos los operandos (`k`) se contraen (se suman) y los únicos (`i`, `j`) sobreviven en el tensor resultado.\n   - Con **`+`, `-`, `*`, `/`**, los subíndices alinean dimensiones y hacen *broadcasting* automático (`a_ij * b_j` multiplica cada fila `i` de `a` por el vector `b_j` sin necesidad de escribir `unsqueeze` ni `reshape`).\n3. **Mutación *in-place* para algoritmos numéricos**:\n   ```ridgun\n   crear_matriz_identidad => Tensor\n   crear_matriz_identidad =\n     m = Tensor [[1.0, 0.0], [0.0, 1.0]]\n     m[0, 1] = 0.5\n     m\n   ```\n\n---\n\n## 8.4. Variables de Contexto (`context ::`) y Estado Compartido Atómico (`shared ::`)\n\nEn el 99% de tu código pasarás datos por parámetro. Pero para ese 1% donde necesitas configuración de entorno o un contador global entre hilos sin contaminar 40 firmas intermedias, Ridgun ofrece dos mecanismos explícitos y seguros:\n\n### 1. `context ::` — Ámbito dinámico aislado por tarea (`with ... = ... do`)\n```ridgun\ncontext :: ruta_log : String = \"/var/log/app.log\"\n\nregistrar_evento String => ()\nregistrar_evento msg    =  echo \"[{ruta_log}] {msg}\"\n\nmain => ()\nmain =\n  registrar_evento \"Arranque normal\"\n  with ruta_log = \"/tmp/test.log\" do\n    registrar_evento \"Dentro del test aislado\"\n```\n\n### 2. `shared ::` y `atomic` — Estado concurrente con bloqueo atómico por línea\n```ridgun\nshared :: peticiones_totales : Int = 0\n\ncontabilizar_visita => Int\ncontabilizar_visita =\n  atomic peticiones_totales = peticiones_totales + 1\n  peticiones_totales\n```\n\n---\n\n## 8.5. Acceso a Hardware (`hardware ::`) y Primitivas POSIX de Sistemas\n\nEl propio compilador `ridgunc`, el gestor `stable` y utilidades de sistemas Unix están escritos en Ridgun. Para ello, el lenguaje incluye bloques de registros mapeados en memoria (`hardware ::`) y primitivas POSIX directas:\n\n```ridgun\nhardware :: UART0 @ 0x1000_0000\n  tx_data : Int @ 0x00\n  status  : Int @ 0x04\n```\n\nY para trabajar con el sistema operativo:\n\n| Primitiva | Firma | Qué hace |\n|---|---|---|\n| `cli_args` | `=> [String]` | Argumentos de línea de comandos (`argv`). |\n| `read_file` / `write_file` | `String => String` / `String String => ()` | Lectura y escritura íntegra de archivos en disco. |\n| `read_bytes` / `write_bytes` | `String => [Int]` / `String [Int] => ()` | Lectura y escritura binaria exacta byte a byte (`0..255`). |\n| `list_dir` / `file_lstat` | `String => [String]` / `String => ...` | Listado de directorios e inspección de metadatos POSIX (`lstat`). |\n| `sha256_file` / `sha256_str` | `String => String` | Hash criptográfico SHA-256 nativo. |\n| `sys_exec` / `shell_exec` | `... => Int` | Ejecución de procesos del sistema operativo. |\n| `sys_getcwd` / `sys_chdir` | `=> String` / `String => Int` | Consultar o cambiar el directorio de trabajo. |\n| `sys_getenv` / `sys_setenv` | `String => String` / `String String => Int` | Variables de entorno del proceso. |\n| `sys_getuid` / `sys_getgid` | `=> Int` | UID y GID reales del proceso (`doas`, herramientas de seguridad). |\n| `sys_exit` | `Int => ()` | Terminar el proceso con código de salida. |\n\n---\n\n## 8.6. Caso de Estudio Real: Construyendo `rg-wc`, una utilidad Unix paralela\n\nVamos a unir todo lo aprendido desde el Capítulo 01 hasta aquí en un programa real de sistemas: una versión paralela de la herramienta Unix `wc` (contador de líneas y bytes para múltiples archivos) escrita en Ridgun puro:\n\n```ridgun\n-- 1. Modelamos las métricas de un archivo con un registro ADT (Capítulo 06)\ntype Metricas = archivo: String, lineas: Int, bytes: Int\n\n-- 2. Contamos saltos de línea (código ASCII 10) con recursión de cola TCO (Capítulo 04)\nfn :: contar_saltos String Int Int Int => Int\n      contar_saltos texto  pos fin acum =\n        | pos >= fin                   = acum\n        | (str_char_at texto pos) == 10 = contar_saltos texto (pos + 1) fin (acum + 1)\n        | otherwise                    = contar_saltos texto (pos + 1) fin acum\n\nfn :: numero_de_lineas String => Int\n      numero_de_lineas texto  =  contar_saltos texto 0 (str_len texto) 0\n\n-- 3. Analizamos un archivo y devolvemos su estructura Metricas\nfn :: analizar_archivo String => Metricas\n      analizar_archivo ruta   =\n        contenido = read_file ruta\n        || numero_de_lineas contenido -> n_lineas\n        || str_len contenido          -> n_bytes ||.\n        Metricas ruta n_lineas n_bytes\n\n-- 4. Formateamos cada fila y sumamos totales con `fold` y `||` (Capítulo 07)\nfn :: formatear_metrica Metricas => String\n      formatear_metrica m        =  \"{lineas m}\\t{bytes m}\\t{archivo m}\"\n\nfn :: sumar_lineas Int Metricas => Int\n      sumar_lineas acc m        =  acc + (lineas m)\n\nfn :: sumar_bytes Int Metricas => Int\n      sumar_bytes acc m        =  acc + (bytes m)\n\nfn :: generar_informe [String] => String\n      generar_informe rutas    =\n        metricas = map analizar_archivo rutas\n        || map formatear_metrica metricas -> filas\n        || fold sumar_lineas 0 metricas   -> total_l\n        || fold sumar_bytes 0 metricas    -> total_b ||.\n        \"{filas}\\nTotal: {total_l} líneas, {total_b} bytes\"\n\nfn :: main => ()\n      main =\n        echo (generar_informe [\"README.md\", \"AGENTS.md\"])\n```\n\nPárate un segundo a mirar esas ~40 líneas de código:\n- No hay ni un solo `null`, ni una excepción descontrolada, ni un `Mutex`.\n- `contar_saltos` se compila a un `loop` nativo con 0 bytes de pila gracias al TCO automático.\n- `map analizar_archivo rutas` procesa los archivos en paralelo en todos los núcleos de tu CPU, y el bloque `||` calcula simultáneamente las filas formateadas, el total de líneas y el total de bytes.\n- La memoria temporal se libera determinísticamente mediante **`RMM1`/`RMM2`**.\n- Y cuando ejecutas `ridgunc build rg_wc.rg -o rg-wc`, obtienes un binario nativo autónomo de ~350 KB listo para copiar a `/usr/local/bin`.\n\n---\n\n## 8.7. Hoja de Ruta Final: Las 10 Reglas de Oro del Programador Ridgun\n\n1. **Escribe siempre primero el contrato (`=>`) y después las ecuaciones (`=`):** pensar en los tipos primero hace que el compilador trabaje para ti.\n2. **Deja que `stable format` maquete tus tablas:** escribe con un espacio y deja que la herramienta alinee columnas, `=>`, `=` y `->`.\n3. **Recuerda la regla universal del `=`:** detrás de cualquier `=` puedes abrir un bloque secuencial, un árbol de guardas `|` o un grafo paralelo `||`.\n4. **Usa `|.` y `||.` solo cuando cierres un bloque anidado para volver a un nivel superior:** mantén los árboles de decisión profundos compactos y sin ambigüedad.\n5. **Inmutable por defecto (`x = ...`), mutable explícito (`mut x = ...`):** usa `mut` únicamente cuando un acumulador local lo pida de verdad.\n6. **Usa operadores booleanos claros en minúsculas (`and`, `or`, `xor`, `not`) y cierra siempre tus guardas con `| otherwise =`.**\n7. **Modela tu dominio con ADTs (`type`):** usa registros con `with campo: valor` y tipos suma (`Option`, `Result`) en lugar de `null`.\n8. **Paraleliza declarando dependencias con `|| expr -> var` y `map` / `filter`:** deja que el compilador verifique que no hay ciclos y reparta el trabajo entre los núcleos.\n9. **Ponle dimensiones simbólicas a tus Tensores (`Tensor[N, K]`) y subíndices a tus contracciones (`a_ik @ b_kj`).**\n10. **Confía en `RMM` (`RMM1`/`RMM2`), acota entradas externas con `with region` y verifica siempre con `stable check` y `stable test`.**\n\n¡Feliz viaje programando en Ridgun!\n"}];
+    const UI_STRINGS = {"copy_label": "Copiar", "copied_label": "¡Copiado!", "prev_label": "&larr; Capítulo anterior", "next_label": "Siguiente capítulo &rarr;", "search_hits_label": "Resultados para", "search_empty_label": "No se encontraron coincidencias para"};
+    let currentIdx = 0;
+
+    function escapeHtml(s) {
+      return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    function highlightRidgun(code) {
+      return code.split("\n").map(line => {
+        const comIdx = (() => {
+          let inD = false, inS = false;
+          for (let i = 0; i < line.length - 1; i++) {
+            if (line[i] === "\\") { i++; continue; }
+            if (line[i] === '"' && !inS) inD = !inD;
+            else if (line[i] === "'" && !inD) inS = !inS;
+            else if (!inD && !inS && line[i] === "-" && line[i+1] === "-") return i;
+          }
+          return -1;
+        })();
+        const codePart = comIdx >= 0 ? line.slice(0, comIdx) : line;
+        const comPart = comIdx >= 0 ? line.slice(comIdx) : "";
+        let html = escapeHtml(codePart);
+        // Strings
+        html = html.replace(/("([^"\\]|\\.)*"|'[^']*')/g, '<span class="rg-str">$1</span>');
+        // Keywords
+        html = html.replace(/\b(fn|op|type|import|mut|otherwise|with|region|do|global|context|shared|atomic|hardware|echo|and|or|xor|not)\b/g, '<span class="rg-kw">$1</span>');
+        // Types & constructors
+        html = html.replace(/\b(Int|Real|String|Char|Bool|Tensor|Option|Result|Some|None|Ok|Err|OutOfMemory|Timeout|True|False)\b/g, '<span class="rg-ty">$1</span>');
+        // Operators
+        html = html.replace(/(::|=&gt;|-&gt;|&lt;-|\|\|\.|\|\||\|\.)/g, '<span class="rg-op">$1</span>');
+        // Numbers & byte units
+        html = html.replace(/\b(0x[0-9a-fA-F_]+|[0-9][0-9_]*(_KB|_MB|_GB)?(\.[0-9]+)?)\b/g, '<span class="rg-num">$1</span>');
+        if (comPart) {
+          html += '<span class="rg-com">' + escapeHtml(comPart) + '</span>';
+        }
+        return html;
+      }).join("\n");
+    }
+
+    function formatInline(text) {
+      let out = escapeHtml(text);
+      out = out.replace(/`([^`]+)`/g, "<code>$1</code>");
+      out = out.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+      out = out.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+      out = out.replace(/\$O\(([^)]+)\)\$/g, "<code>O($1)</code>");
+      out = out.replace(/\$\\rightarrow\$/g, "&rarr;");
+      out = out.replace(/\$1024\^2\$/g, "1024<sup>2</sup>");
+      out = out.replace(/\$1024\^3\$/g, "1024<sup>3</sup>");
+      out = out.replace(/\$1024\$/g, "1024");
+      return out;
+    }
+
+    function renderMarkdown(md) {
+      const lines = md.split("\n");
+      let html = "";
+      let i = 0;
+      while (i < lines.length) {
+        const line = lines[i];
+        // Fenced code block
+        if (line.startsWith("```")) {
+          const lang = line.slice(3).trim() || "ridgun";
+          i++;
+          const buf = [];
+          while (i < lines.length && !lines[i].startsWith("```")) {
+            buf.push(lines[i]);
+            i++;
+          }
+          i++; // skip closing ```
+          const rawCode = buf.join("\n");
+          const bodyHtml = (lang === "ridgun" || lang === "") ? highlightRidgun(rawCode) : escapeHtml(rawCode);
+          html += `<div class="code-wrapper"><div class="code-header"><span>${escapeHtml(lang)}</span><button class="copy-btn" onclick="copyCode(this)">${escapeHtml(UI_STRINGS.copy_label)}</button></div><pre data-raw="${ encodeURIComponent(rawCode) }"><code>${bodyHtml}</code></pre></div>`;
+          continue;
+        }
+        // Horizontal rule
+        if (/^---+$/.test(line.trim())) {
+          html += "<hr />";
+          i++;
+          continue;
+        }
+        // Headings
+        if (line.startsWith("# ")) {
+          html += `<h1>${formatInline(line.slice(2).trim())}</h1>`;
+          i++;
+          continue;
+        }
+        if (line.startsWith("## ")) {
+          html += `<h2>${formatInline(line.slice(3).trim())}</h2>`;
+          i++;
+          continue;
+        }
+        if (line.startsWith("### ")) {
+          html += `<h3>${formatInline(line.slice(4).trim())}</h3>`;
+          i++;
+          continue;
+        }
+        // Table
+        if (line.trim().startsWith("|") && i + 1 < lines.length && /^\|[\s:-]+\|/.test(lines[i+1].trim())) {
+          const headers = line.trim().slice(1, -1).split("|").map(c => formatInline(c.trim()));
+          i += 2;
+          const rows = [];
+          while (i < lines.length && lines[i].trim().startsWith("|")) {
+            rows.push(lines[i].trim().slice(1, -1).split("|").map(c => formatInline(c.trim())));
+            i++;
+          }
+          html += '<div class="table-wrap"><table><thead><tr>' + headers.map(h => `<th>${h}</th>`).join("") + '</tr></thead><tbody>' +
+                  rows.map(r => '<tr>' + r.map(c => `<td>${c}</td>`).join("") + '</tr>').join("") + '</tbody></table></div>';
+          continue;
+        }
+        // Blockquote
+        if (line.startsWith(">")) {
+          const qLines = [];
+          while (i < lines.length && lines[i].startsWith(">")) {
+            qLines.push(lines[i].replace(/^>\s?/, ""));
+            i++;
+          }
+          html += `<blockquote><p>${qLines.map(formatInline).join("<br/>")}</p></blockquote>`;
+          continue;
+        }
+        // Unordered list
+        if (/^\s*-\s+/.test(line)) {
+          const items = [];
+          while (i < lines.length && /^\s*-\s+/.test(lines[i])) {
+            items.push(formatInline(lines[i].replace(/^\s*-\s+/, "")));
+            i++;
+          }
+          html += "<ul>" + items.map(it => `<li>${it}</li>`).join("") + "</ul>";
+          continue;
+        }
+        // Ordered list
+        if (/^\s*\d+\.\s+/.test(line)) {
+          const items = [];
+          while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) {
+            items.push(formatInline(lines[i].replace(/^\s*\d+\.\s+/, "")));
+            i++;
+          }
+          html += "<ol>" + items.map(it => `<li>${it}</li>`).join("") + "</ol>";
+          continue;
+        }
+        // Empty line
+        if (!line.trim()) {
+          i++;
+          continue;
+        }
+        // Paragraph
+        const pLines = [];
+        while (i < lines.length && lines[i].trim() && !lines[i].startsWith("#") && !lines[i].startsWith("```") && !lines[i].startsWith(">") && !lines[i].trim().startsWith("|") && !/^---+$/.test(lines[i].trim()) && !/^\s*(-|\d+\.)\s+/.test(lines[i])) {
+          pLines.push(formatInline(lines[i]));
+          i++;
+        }
+        html += `<p>${pLines.join(" ")}</p>`;
+      }
+      return html;
+    }
+
+    window.copyCode = function(btn) {
+      const pre = btn.closest(".code-wrapper").querySelector("pre");
+      const raw = decodeURIComponent(pre.getAttribute("data-raw"));
+      navigator.clipboard.writeText(raw);
+      const old = btn.textContent;
+      btn.textContent = UI_STRINGS.copied_label;
+      setTimeout(() => { btn.textContent = old; }, 1400);
+    };
+
+    function renderSidebar() {
+      const nav = document.getElementById("navList");
+      nav.innerHTML = CHAPTERS.map((ch, idx) => `
+        <li class="nav-item">
+          <button class="nav-btn ${idx === currentIdx ? 'active' : ''}" onclick="selectChapter(${idx})">
+            <span class="nav-num">${ch.num}</span>
+            <span>${escapeHtml(ch.short_title)}</span>
+          </button>
+        </li>
+      `).join("");
+    }
+
+    window.selectChapter = function(idx) {
+      currentIdx = idx;
+      const ch = CHAPTERS[idx];
+      location.hash = ch.slug;
+      renderSidebar();
+      let pagerHtml = '<div class="pager">';
+      if (idx > 0) {
+        pagerHtml += `<button class="pager-btn prev" onclick="selectChapter(${idx - 1})"><span class="pager-label">${UI_STRINGS.prev_label}</span><span class="pager-title">${escapeHtml(CHAPTERS[idx - 1].title)}</span></button>`;
+      } else {
+        pagerHtml += '<div></div>';
+      }
+      if (idx + 1 < CHAPTERS.length) {
+        pagerHtml += `<button class="pager-btn next" onclick="selectChapter(${idx + 1})"><span class="pager-label">${UI_STRINGS.next_label}</span><span class="pager-title">${escapeHtml(CHAPTERS[idx + 1].title)}</span></button>`;
+      }
+      pagerHtml += '</div>';
+      document.getElementById("chapterContent").innerHTML = renderMarkdown(ch.markdown) + pagerHtml;
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+
+    document.getElementById("searchInput").addEventListener("input", (e) => {
+      const q = e.target.value.trim().toLowerCase();
+      if (q.length < 2) {
+        selectChapter(currentIdx);
+        return;
+      }
+      const hits = [];
+      CHAPTERS.forEach((ch, idx) => {
+        const lines = ch.markdown.split("\n");
+        for (const l of lines) {
+          if (l.toLowerCase().includes(q)) {
+            hits.push({ idx, title: ch.title, snippet: l.replace(/^[#>*-]+\s*/, "").slice(0, 140) });
+            break;
+          }
+        }
+      });
+      const box = hits.length
+        ? `<div class="search-results"><strong>${escapeHtml(UI_STRINGS.search_hits_label)} "${escapeHtml(q)}" (${hits.length}):</strong>` +
+          hits.map(h => `<div class="search-hit" onclick="document.getElementById('searchInput').value=''; selectChapter(${h.idx})"><div class="search-hit-title">${escapeHtml(h.title)}</div><div class="search-hit-snippet">${escapeHtml(h.snippet)}</div></div>`).join("") +
+          `</div>`
+        : `<div class="search-results">${escapeHtml(UI_STRINGS.search_empty_label)} "${escapeHtml(q)}".</div>`;
+      document.getElementById("chapterContent").innerHTML = box + renderMarkdown(CHAPTERS[currentIdx].markdown);
+    });
+
+    document.getElementById("themeBtn").addEventListener("click", () => {
+      const root = document.documentElement;
+      root.setAttribute("data-theme", root.getAttribute("data-theme") === "dark" ? "light" : "dark");
+    });
+
+    // Initial load from URL hash if present
+    const initialSlug = location.hash.replace(/^#/, "");
+    const foundIdx = CHAPTERS.findIndex(c => c.slug === initialSlug);
+    selectChapter(foundIdx >= 0 ? foundIdx : 0);
+  </script>
+</body>
+</html>

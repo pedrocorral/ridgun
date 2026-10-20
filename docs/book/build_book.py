@@ -11,7 +11,8 @@ BOOK_DIR = os.path.dirname(os.path.abspath(__file__))
 EDITIONS = [
     {
         "code": "es",
-        "dir": BOOK_DIR,
+        "dir": os.path.join(BOOK_DIR, "es"),
+        "out_path": os.path.join(BOOK_DIR, "es", "index.html"),
         "html_lang": "es",
         "page_title": "El Libro de Ridgun — Guía Completa del Lenguaje",
         "brand_title": "El Libro de Ridgun",
@@ -28,14 +29,15 @@ EDITIONS = [
         "chapter_prefix_re": r"^Cap[íi]tulo\s+\d+\s*[:—-]\s*",
         "lang_links": [
             ("ES", "index.html", True),
-            ("EN", "en/index.html", False),
-            ("PT", "pt/index.html", False),
-            ("SV", "sv/index.html", False),
+            ("EN", "../en/index.html", False),
+            ("PT", "../pt/index.html", False),
+            ("SV", "../sv/index.html", False),
         ],
     },
     {
         "code": "en",
         "dir": os.path.join(BOOK_DIR, "en"),
+        "out_path": os.path.join(BOOK_DIR, "en", "index.html"),
         "html_lang": "en",
         "page_title": "The Ridgun Book — Complete Language Guide",
         "brand_title": "The Ridgun Book",
@@ -51,7 +53,7 @@ EDITIONS = [
         "search_empty_label": "No matches found for",
         "chapter_prefix_re": r"^Chapter\s+\d+\s*[:—-]\s*",
         "lang_links": [
-            ("ES", "../index.html", False),
+            ("ES", "../es/index.html", False),
             ("EN", "index.html", True),
             ("PT", "../pt/index.html", False),
             ("SV", "../sv/index.html", False),
@@ -60,6 +62,7 @@ EDITIONS = [
     {
         "code": "pt",
         "dir": os.path.join(BOOK_DIR, "pt"),
+        "out_path": os.path.join(BOOK_DIR, "pt", "index.html"),
         "html_lang": "pt",
         "page_title": "O Livro do Ridgun — Guia Completo da Linguagem",
         "brand_title": "O Livro do Ridgun",
@@ -75,7 +78,7 @@ EDITIONS = [
         "search_empty_label": "Nenhuma correspondência encontrada para",
         "chapter_prefix_re": r"^Cap[íi]tulo\s+\d+\s*[:—-]\s*",
         "lang_links": [
-            ("ES", "../index.html", False),
+            ("ES", "../es/index.html", False),
             ("EN", "../en/index.html", False),
             ("PT", "index.html", True),
             ("SV", "../sv/index.html", False),
@@ -84,6 +87,7 @@ EDITIONS = [
     {
         "code": "sv",
         "dir": os.path.join(BOOK_DIR, "sv"),
+        "out_path": os.path.join(BOOK_DIR, "sv", "index.html"),
         "html_lang": "sv",
         "page_title": "Boken om Ridgun — Komplett Språkguide",
         "brand_title": "Boken om Ridgun",
@@ -99,10 +103,35 @@ EDITIONS = [
         "search_empty_label": "Inga träffar hittades för",
         "chapter_prefix_re": r"^Kapitel\s+\d+\s*[:—-]\s*",
         "lang_links": [
-            ("ES", "../index.html", False),
+            ("ES", "../es/index.html", False),
             ("EN", "../en/index.html", False),
             ("PT", "../pt/index.html", False),
             ("SV", "index.html", True),
+        ],
+    },
+    {
+        "code": "root",
+        "dir": os.path.join(BOOK_DIR, "es"),
+        "out_path": os.path.join(BOOK_DIR, "index.html"),
+        "html_lang": "es",
+        "page_title": "El Libro de Ridgun — Guía Completa del Lenguaje",
+        "brand_title": "El Libro de Ridgun",
+        "brand_subtitle": "De cero a experto en programación funcional tabular y de sistemas",
+        "search_placeholder": "Buscar en el libro (ej. ||, Tensor, RMM2, TCO...)",
+        "footer_text": "9 capítulos (00–08) · Español",
+        "theme_label": "☀️ / 🌙 Tema",
+        "copy_label": "Copiar",
+        "copied_label": "¡Copiado!",
+        "prev_label": "&larr; Capítulo anterior",
+        "next_label": "Siguiente capítulo &rarr;",
+        "search_hits_label": "Resultados para",
+        "search_empty_label": "No se encontraron coincidencias para",
+        "chapter_prefix_re": r"^Cap[íi]tulo\s+\d+\s*[:—-]\s*",
+        "lang_links": [
+            ("ES", "es/index.html", True),
+            ("EN", "en/index.html", False),
+            ("PT", "pt/index.html", False),
+            ("SV", "sv/index.html", False),
         ],
     },
 ]
@@ -803,7 +832,7 @@ def build_edition(ed):
         .replace("__CHAPTERS_JSON__", json.dumps(chapters, ensure_ascii=False))
         .replace("__UI_STRINGS_JSON__", json.dumps(ui_strings, ensure_ascii=False))
     )
-    out_path = os.path.join(target_dir, "index.html")
+    out_path = ed["out_path"]
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(out_html)
     print(f"[build_book] Generated {out_path} ({len(out_html)} bytes, {len(chapters)} chapters)")
