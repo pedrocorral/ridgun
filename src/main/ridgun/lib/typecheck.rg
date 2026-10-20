@@ -778,6 +778,8 @@ fn :: check_expr RExpr String [RTypeBind] [RTypeBind] => (RType, [RTypeError])
         check_where_expr body binds fn_name locals fns
       check_expr (EParPipe branches) fn_name locals fns =
         finish_tuple_type (check_expr_list branches fn_name locals fns)
+      check_expr (EGuard guards) fn_name locals fns =
+        check_guard_expr guards fn_name locals fns
       check_expr (EBlock stmts) fn_name locals fns =
         check_block_stmts stmts TyUnit fn_name locals fns
 
@@ -873,31 +875,65 @@ fn :: bind_subscript_let (String, String) String RType [RTypeBind] => [RTypeBind
       bind_subscript_let (base, _) name ty locals =
         put_type_bind (put_type_bind locals base ty) name ty
 
+fn :: check_guard_expr [RGuard] String [RTypeBind] [RTypeBind] => (RType, [RTypeError])
+      check_guard_expr [] _ _ _ = (TyUnit, [])
+      check_guard_expr ((GuardBranch cond body):gs) fn_name locals fns =
+        c_res = check_expr cond fn_name locals fns
+        b_res = check_expr body fn_name locals fns
+        check_guard_expr_first c_res b_res gs fn_name locals fns
+
+fn :: check_guard_expr_first (RType, [RTypeError]) (RType, [RTypeError]) [RGuard] String [RTypeBind] [RTypeBind] => (RType, [RTypeError])
+      check_guard_expr_first (c_ty, c_errs) (b_ty, b_errs) gs fn_name locals fns =
+        c_chk = check_guard_cond_ty c_ty fn_name 0
+        rest_errs = check_case_guards gs fn_name b_ty 1 locals fns
+        (b_ty, c_errs :: c_chk :: b_errs :: rest_errs)
+
 fn :: check_block_stmts [RStmt] RType String [RTypeBind] [RTypeBind] => (RType, [RTypeError])
-      check_block_stmts [] last_ty _ _ _ = (last_ty, [])
-      check_block_stmts ((StmtLet name val_e):ss) _ fn_name locals fns =
+      check_block_stmts stmts last_ty fn_name locals fns =
+        check_block_stmts_scoped stmts last_ty fn_name locals fns [] []
+
+fn :: check_block_stmts_scoped [RStmt] RType String [RTypeBind] [RTypeBind] [String] [String] => (RType, [RTypeError])
+      check_block_stmts_scoped [] last_ty _ _ _ _ _ = (last_ty, [])
+      check_block_stmts_scoped ((StmtMut name val_e):ss) _ fn_name locals fns immuts muts =
         v_res = check_expr val_e fn_name locals fns
-        check_block_after_let name ss fn_name locals fns v_res
-      check_block_stmts ((StmtExpr e):ss) _ fn_name locals fns =
+        check_block_after_mut name ss fn_name locals fns immuts muts v_res
+      check_block_stmts_scoped ((StmtLet name val_e):ss) _ fn_name locals fns immuts muts =
+        v_res = check_expr val_e fn_name locals fns
+        check_block_after_let name ss fn_name locals fns immuts muts v_res
+      check_block_stmts_scoped ((StmtExpr e):ss) _ fn_name locals fns immuts muts =
         e_res = check_expr e fn_name locals fns
-        check_block_after_expr ss fn_name locals fns e_res
-      check_block_stmts ((StmtAtomic _ val_e):ss) _ fn_name locals fns =
+        check_block_after_expr ss fn_name locals fns immuts muts e_res
+      check_block_stmts_scoped ((StmtAtomic _ val_e):ss) _ fn_name locals fns immuts muts =
         v_res = check_expr val_e fn_name locals fns
-        check_block_after_expr ss fn_name locals fns (TyUnit, snd_errs v_res)
-      check_block_stmts ((StmtIndexAssign _ idxs val_e):ss) _ fn_name locals fns =
+        check_block_after_expr ss fn_name locals fns immuts muts (TyUnit, snd_errs v_res)
+      check_block_stmts_scoped ((StmtIndexAssign _ idxs val_e):ss) _ fn_name locals fns immuts muts =
         i_res = check_expr_list idxs fn_name locals fns
         v_res = check_expr val_e fn_name locals fns
-        check_block_after_expr ss fn_name locals fns (TyUnit, (snd_list_errs i_res) :: (snd_errs v_res))
+        check_block_after_expr ss fn_name locals fns immuts muts (TyUnit, (snd_list_errs i_res) :: (snd_errs v_res))
 
-fn :: check_block_after_let String [RStmt] String [RTypeBind] [RTypeBind] (RType, [RTypeError]) => (RType, [RTypeError])
-      check_block_after_let name ss fn_name locals fns (v_ty, v_errs) =
+fn :: check_block_after_mut String [RStmt] String [RTypeBind] [RTypeBind] [String] [String] (RType, [RTypeError]) => (RType, [RTypeError])
+      check_block_after_mut name ss fn_name locals fns immuts muts (v_ty, v_errs) =
         locals1 = bind_let_var name v_ty locals
-        more = check_block_stmts ss v_ty fn_name locals1 fns
+        more = check_block_stmts_scoped ss v_ty fn_name locals1 fns immuts (add_unique_str name muts)
         prepend_type_errs v_errs more
 
-fn :: check_block_after_expr [RStmt] String [RTypeBind] [RTypeBind] (RType, [RTypeError]) => (RType, [RTypeError])
-      check_block_after_expr ss fn_name locals fns (e_ty, e_errs) =
-        more = check_block_stmts ss e_ty fn_name locals fns
+fn :: check_immut_reassign String String [String] [String] => [RTypeError]
+      check_immut_reassign "_"  _       _      _    =  []
+      check_immut_reassign name fn_name immuts muts
+        | str_in_list name muts = []
+        | str_in_list name immuts = [TypeError fn_name ("cannot reassign immutable variable '" + name + "'; declare it with 'mut " + name + " = ...' first")]
+        | otherwise = []
+
+fn :: check_block_after_let String [RStmt] String [RTypeBind] [RTypeBind] [String] [String] (RType, [RTypeError]) => (RType, [RTypeError])
+      check_block_after_let name ss fn_name locals fns immuts muts (v_ty, v_errs) =
+        mut_err = check_immut_reassign name fn_name immuts muts
+        locals1 = bind_let_var name v_ty locals
+        more = check_block_stmts_scoped ss v_ty fn_name locals1 fns (add_unique_str name immuts) muts
+        prepend_type_errs (v_errs :: mut_err) more
+
+fn :: check_block_after_expr [RStmt] String [RTypeBind] [RTypeBind] [String] [String] (RType, [RTypeError]) => (RType, [RTypeError])
+      check_block_after_expr ss fn_name locals fns immuts muts (e_ty, e_errs) =
+        more = check_block_stmts_scoped ss e_ty fn_name locals fns immuts muts
         prepend_type_errs e_errs more
 
 -- ── Function & Case Type Checking ───────────────────────────

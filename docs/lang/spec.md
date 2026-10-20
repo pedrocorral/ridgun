@@ -158,38 +158,37 @@ Usage would read as: `add 3 to 5` → `8`
 
 The words between typed parameters (`to`, `and`, `in`, etc.) are **keywords of the operator** — they are part of the operator's identity and must appear at call sites.
 
-### Parallel Operators
+### Parallel Operators (`||`)
 
-Operators can express **parallel execution** as a first-class concept:
+Operators can express **parallel execution** as a first-class concept using `||`:
 
 ```ridgun
--- Run two configs in parallel, return two results
+-- Run two configs in parallel with named DAG bindings (|| expr -> var)
 op :: run Conf and Conf in parallel => Res, Res
       run a and b in parallel       =  res_a, res_b
-        where
-          run my own process a      -> res_a
-          run my own process b      -> res_b
+        || run my own process a     -> res_a
+        || run my own process b     -> res_b
 ```
 
 Key elements:
-- **Multiple return values** — `=> res, res` declares two return values
-- **`where` block** — Binds sub-computations to result names
-- **`->`** — Assigns the result of a sub-computation to a variable
-- The `where` block implies parallel execution of its bindings
+- **Multiple return values** — `=> Res, Res` declares two return values
+- **`|| expr -> var` block** — Binds sub-computations to result names (`where` is eliminated; `||` unifies all parallel branches)
+- **`->`** — Assigns the result of a parallel sub-computation to a variable (or tensor slice `-> out[i, j]`)
+- Independent `||` branches execute concurrently as a parallel DAG based on data dependencies
 
-### Pipe Syntax for Parallelism
+### Direct Parallel Pipe Block (`|| expr`)
 
-An alternative syntax for expressing parallel execution uses `||` (double pipe):
+When an expression or function directly returns a tuple of parallel computations without intermediate variable names, `||` lines appear directly after `=`:
 
 ```ridgun
--- Another way to run two processes in parallel
+-- Run two processes in parallel and return their results as a tuple
 op :: another way to run two processes Conf Conf in parallel => Res, Res
       another way to run two processes a b in parallel =
         || run my own process a
         || run my own process b
 ```
 
-Each `||` line runs as an independent parallel task. Results are collected in order.
+Each `||` line runs as an independent parallel task. Results are collected in declaration order.
 
 ### Operator Overloading
 
@@ -212,7 +211,7 @@ When symbolic operators (like `+`, `*`) appear inside natural language operator 
 | **Highest** | Symbolic operators | `*`, `/`, `+`, `-`, `%` |
 | | Function application | `f x` |
 | | Comparison | `==`, `!=`, `<`, `>` |
-| | Logical | `AND`, `OR`, `XOR`, `NOT` |
+| | Logical | `and`, `or`, `xor`, `not` |
 | **Lowest** | Natural language operators | `add a to b`, `run a and b in parallel` |
 
 ### Operator Chaining
@@ -278,27 +277,27 @@ False                                    -- boolean false
 
 ```ridgun
 fn :: is_valid Int => Bool
-      is_valid n
+      is_valid n =
         | n > 0     = True
         | otherwise = False
 ```
 
 ### Logical Operators
 
-Ridgun uses **word-based** logical operators instead of symbolic ones:
+Ridgun uses **word-based lowercase** logical operators instead of symbolic ones:
 
 | Operator | Meaning | Example |
 |---|---|---|
-| `AND` | Logical conjunction | `a AND b` |
-| `OR` | Logical disjunction | `a OR b` |
-| `XOR` | Exclusive or | `a XOR b` |
-| `NOT` | Logical negation | `NOT a` |
+| `and` | Logical conjunction | `a and b` |
+| `or` | Logical disjunction | `a or b` |
+| `xor` | Exclusive or | `a xor b` |
+| `not` | Logical negation | `not a` |
 
 ```ridgun
-result = True AND False                  -- False
-result = True OR False                   -- True
-result = True XOR True                   -- False
-result = NOT False                       -- True
+result = True and False                  -- False
+result = True or False                   -- True
+result = True xor True                   -- False
+result = not False                       -- True
 ```
 
 These are infix keyword operators with standard boolean semantics.
@@ -513,31 +512,118 @@ type Tree = Leaf Int | Node Tree Tree
 
 ---
 
-## Pattern Matching & Guards
+## Unified `=` Grammar (`(none)`, `|`, `||`) & Local Variables (`FR-COMP-003`)
 
-Ridgun supports **Haskell-style pattern matching** and **boolean guards (`|`)** — including multi-line indented statement blocks inside guards.
+Every definition or binding in Ridgun — whether a function clause (`fn ::`), an operator clause (`op ::`), an immutable local variable (`x =`), a mutable local variable (`mut x =`), or a guard branch (`| cond =` / `| otherwise =`) — ends with `=` and accepts the **exact same four block/expression forms** on the right-hand side:
 
-### Literal Patterns & Multi-Line Guard Blocks
+| Prefix after `=` | Execution Semantics | Meaning |
+|---|---|---|
+| **Inline `<expr>`** | Single expression (with optional `\|\| expr -> var` lines below) | Evaluates `<expr>` directly (resolving any parallel `\|\|` DAG bindings beneath it). |
+| **`(none)`** *(indented lines)* | **Sequential** (top-to-bottom) | Evaluates statements in order (`mut`, assignments, side effects); the last expression is the result. |
+| **`\| <cond> = ...`** | **Conditional** (guards & nested decision trees) | Evaluates boolean conditions top-to-bottom until the first `True` branch (or `\| otherwise =`). |
+| **`\|\| <expr>`** | **Parallel** (green-thread DAG / tuple) | Evaluates `\|\|` branches concurrently (`\|\| expr -> var` for named DAG nodes, `\|\| expr` for parallel tuple results). |
+
+### 1. Guards (`|`) Always Follow `=` (Functions, Operators, Local Variables, and Nested Decision Trees)
+
+Guard blocks (`| cond = ...` and `| otherwise = ...`) **always appear behind an `=`**, unifying function clauses, operator clauses, local variable definitions, and nested conditional trees:
+
+#### Function & Operator Clauses with Guards
+```ridgun
+fn :: abs Int => Int
+      abs n =
+        | n < 0     = 0 - n
+        | otherwise = n
+
+op :: clamp Int between Int and Int => Int
+      clamp x   between lo  and hi  =
+        | x < lo    = lo
+        | x > hi    = hi
+        | otherwise = x
+```
+
+#### Local Variable Assignment with Guards
+Because `|` is valid after any `=`, local variables can be bound conditionally without needing an `if/else` keyword or a helper function:
+```ridgun
+discount =
+  | is_vip      = 20
+  | total > 100 = 10
+  | otherwise   = 0
+```
+
+#### Multi-Line Sequential Blocks, Deep Decision Trees, and Nested Closers (`|.` / `||.`)
+Each guard branch ends with `=`, so its body can itself be a sequential block (`(none)`), a parallel block (`||`), or **another nested `|` guard block** — enabling arbitrary decision trees (3–4+ levels deep) inside `| cond =` and `| otherwise =`.
+
+- **Closing nested levels (`|.` and `||.`)**:
+  - In simple 1-level blocks or at the end of a function/tree, **no closing token is needed**.
+  - When a nested `|` (or `||`) sub-block finishes and execution **returns to an outer level** where more branches or statements follow below it, **`|.`** (for `|`) or **`||.`** (for `||`) explicitly closes that nested level.
+  - Both **inline placement at the end of the last line** (`| otherwise = val |.`, the canonical compact style) and placement on the next line (`|.`) are valid:
+
+```ridgun
+fn :: evaluate_payment Account Customer Payment => String
+      evaluate_payment account customer payment =
+        | is_locked account   = "REJECTED_ACCOUNT_LOCKED"
+        | amount payment <= 0 = "ERROR_INVALID_AMOUNT"
+        | otherwise =
+            | tier customer == "ENTERPRISE" =
+                | amount payment > 50000 =
+                    | has_dual_signature payment = "APPROVED_ENTERPRISE_DUAL_SIG"
+                    | tenure customer > 10       = "RISK_COMMITTEE_REVIEW"
+                    | otherwise                  = "REJECTED_ENTERPRISE_LIMIT" |.
+                | country payment != "US" =
+                    | is_whitelisted (country payment) = "APPROVED_ENTERPRISE_INTL"
+                    | otherwise                        = "HELD_COMPLIANCE_INTL" |.
+                | otherwise = "APPROVED_ENTERPRISE_STANDARD" |.
+            | tier customer == "VIP" =
+                | amount payment > 10000 =
+                    | has_2fa payment = "APPROVED_VIP_2FA"
+                    | otherwise       = "REQUEST_VIP_SMS" |.
+                | otherwise = "APPROVED_VIP_DIRECT" |.
+            | otherwise =
+                | amount payment > 1000 =
+                    | has_2fa payment and risk payment < 30 = "APPROVED_RETAIL_2FA"
+                    | otherwise                             = "REJECTED_RETAIL_RISK" |.
+                | otherwise = "APPROVED_RETAIL_LOW_AMOUNT"
+
+fn :: charge_order Payment => Int
+      charge_order payment =
+        || fetch_base_fee payment     -> base_fee
+        || compute_risk_score payment -> risk_score ||.
+        surcharge =
+          | risk_score > 80 = 50
+          | otherwise       = 0 |.
+        base_fee + surcharge
+```
+
+### 2. Immutable by Default (`x = ...`) vs Explicit Mutable Variables (`mut x = ...`)
+
+Inside sequential blocks, local variables follow **Option 1**:
+- **Immutable binding (`x = <rhs>`)**:
+  - Declares a new immutable local variable `x`.
+  - Attempting to reassign `x = ...` later in the same scope without a prior `mut x = ...` declaration is a **compile-time error**.
+- **Mutable declaration (`mut x = <rhs>`) & Reassignment (`x = <new_rhs>`)**:
+  - `mut x = <rhs>` declares `x` as mutable in the current scope and initializes it.
+  - Subsequent reassignments to `x` in the same scope are written simply as `x = <new_rhs>` (without repeating `mut`).
+  - Under `RMM2`, reassigning `x = <new_rhs>` increments the new structure (`+1`) **before** decrementing the old structure (`-1`, cascading to its children if its counter reaches `0`).
+
+```ridgun
+fn :: accumulate Int => Int
+      accumulate n =
+        factor = 2
+        mut acc = n * factor
+        acc = acc + 10
+        acc =
+          | acc > 100 = 100
+          | otherwise = acc
+        acc
+```
+
+### 3. Pattern Matching on Literals & ADT Constructors
 
 ```ridgun
 fn :: factorial Int => Int
       factorial 0   =  1
       factorial n   =  n * factorial (n - 1)
 
-fn :: step_index Int Int => Int
-      step_index idx limit
-        | idx >= limit =
-            capped = limit - 1
-            scaled = capped * 2
-            scaled + 1
-        | otherwise = idx + 1
-```
-
-### Constructor Patterns
-
-Pattern matching on ADT constructors:
-
-```ridgun
 fn :: unwrap Result    => Int
       unwrap (Ok n)    =  n
       unwrap (Err msg) =  0
@@ -553,30 +639,34 @@ fn :: sum_tree Tree              => Int
 
 ---
 
-## Parallelism Primitives
+## Parallelism Primitives (`||`)
 
-Ridgun provides two syntactic forms for parallel execution:
+Ridgun unifies all parallel execution under `||` (`where` is removed):
 
-### `where` Blocks
-
-```ridgun
-<operator> = <result_bindings>
-  where
-    <computation_1> -> <result_var_1>
-    <computation_2> -> <result_var_2>
-```
-
-All computations in a `where` block execute in parallel. Results are bound to variables using `->`.
-
-### Pipe `||` Blocks
+### Named Parallel DAG Bindings (`|| expr -> var`)
 
 ```ridgun
-<operator> =
-  || <computation_1>
-  || <computation_2>
+fn :: compute_total Int Int => Int
+      compute_total a   b   =  x + y + z
+        || heavy_calc a     -> x
+        || heavy_calc b     -> y
+        || combine x y      -> z
 ```
 
-Each `||` line runs as a separate parallel green thread. Results are returned as a tuple in declaration order.
+- All `|| expr -> var` lines beneath an expression form a **parallel Directed Acyclic Graph (DAG)**.
+- The compiler analyzes variable dependencies across `||` lines (`x` and `y` have no dependencies and run in parallel in Wave 1; `z` depends on `x` and `y` and runs in Wave 2 before `x + y + z` is evaluated).
+- Parallel tensor slice writes (`|| expr -> out[i, j]`) are also supported.
+
+### Direct Parallel Pipe Blocks (`|| expr`)
+
+```ridgun
+op :: run Conf and Conf in parallel => Res, Res
+      run a    and b    in parallel =
+        || run_process a
+        || run_process b
+```
+
+Each `||` line runs as a separate parallel green thread, and results are returned as a tuple in declaration order (or joined when placed inside a sequential block).
 
 ### Typed Channels
 
@@ -706,11 +796,14 @@ fn :: main => ()
 | Hadamard operation | `A_ij * B_ij` | Element-wise arithmetic with index alignment |
 | `echo` | `echo "a" "b" "c"` | Print strings to terminal |
 | `out` | `"text" out` | Output string to terminal |
-| Where block | `where expr -> var` | Parallel sub-computations with named results |
-| Pipe block | `\|\| expr` | Parallel execution (alternative syntax) |
+| Immutable local binding | `x = expr` | Bind an immutable local variable (`=` supports `(none)`, `\|`, `\|\|`) |
+| Mutable local binding | `mut x = expr` | Declare a mutable local variable (reassigned via `x = new_expr`) |
+| Guard block | `\| cond = expr` | Conditional guard branch after `=` (supports nested `\|`) |
+| Parallel DAG block | `\|\| expr -> var` | Parallel sub-computations with named DAG results |
+| Parallel pipe block | `\|\| expr` | Parallel execution returning a tuple |
 | Operator overloading | `op :: type + type => type` | Overload existing operators for new types |
 | Bool literals | `True`, `False` | Boolean primitive values |
-| Logical operators | `AND`, `OR`, `XOR`, `NOT` | Word-based logical operators |
+| Logical operators | `and`, `or`, `xor`, `not` | Word-based lowercase logical operators |
 | Entry point | `fn :: main => ()` | Required program entry point |
 
 ---
@@ -720,22 +813,22 @@ fn :: main => ()
 > **Aesthetic Only — Not a Compiler Requirement (`FR-TOOL-001`)**: Ridgun's lexer and parser are insensitive to horizontal column alignment. Unaligned and column-aligned `.rg` source files are 100% equivalent to `ridgunc`. The rules below define the **canonical aesthetic layout** applied by `stable format` and GNU Emacs `ridgun-mode` (`C-c C-f`).
 
 1. **Alignment Group per Signature (`fn ::` / `op ::`)**:
-   - Each `fn ::` or `op ::` declaration starts an alignment group spanning its signature, its pattern-matching clauses, and its `where` bindings, ending at the next top-level declaration (`fn`, `op`, `type`, `import`, `global`, `context`, `shared`, `hardware`, `@`).
+   - Each `fn ::` or `op ::` declaration starts an alignment group spanning its signature, its pattern-matching clauses, and its `|| expr -> var` bindings, ending at the next top-level declaration (`fn`, `op`, `type`, `import`, `global`, `context`, `shared`, `hardware`, `@`).
 2. **Column Alignment of LHS Tokens ($C_0 = 6$)**:
    - `fn :: ` and `op :: ` are 6 characters wide, so token $0$ of the signature LHS starts at column $C_0 = 6$.
    - Each token slot $i \in [0, N-1]$ before `=>`/`->` (treating `"..."`, `'...'`, `[...]`, and `(...)` as single tokens) has width $W_i = \max(\text{len}(\text{sig\_tok}_i), \max_{\text{clause} : \text{len}(\text{clause\_tok}_i) \le 18} \text{len}(\text{clause\_tok}_i))$ and starts at column $C_i = C_{i-1} + W_{i-1} + 1$. Clause patterns wider than `18` characters are treated as outliers: they do not stretch $W_i$ for the rest of the group and simply overflow on their own line with 1 space.
    - Matching definition clauses are indented to column $6$ ($C_0$) so the function name or operator words and every argument pattern align vertically beneath their corresponding signature slots.
 3. **Vertical Alignment of `=>`, `=`, and `->` ($C_{\text{arrow}}$)**:
-   - Let $C_{\text{arrow}} = \max\big(C_{N-1} + W_{N-1} + 1,\; \max_{\text{where}}(10 + \text{len}(\text{where\_lhs}) + 1)\big)$ and $C_{\text{ret}} = C_{\text{arrow}} + \text{len}(\text{arrow}) + 1$.
+   - Let $C_{\text{arrow}} = \max\big(C_{N-1} + W_{N-1} + 1,\; \max_{\text{pipe\_bind}}(8 + 3 + \text{len}(\text{pipe\_lhs}) + 1)\big)$ and $C_{\text{ret}} = C_{\text{arrow}} + \text{len}(\text{arrow}) + 1$.
    - In the signature, `=>` is placed at $C_{\text{arrow}}$ and the return type at $C_{\text{ret}}$.
-   - In both single-line clauses (`<lhs> = <rhs>`) and multi-line block clauses (`<lhs> =`), `=` is placed at $C_{\text{arrow}}$ (aligned directly beneath `=>`); in single-line clauses, `<rhs>` starts at $C_{\text{ret}}$.
-   - In `where` bindings (`<lhs> -> <rhs>`), `<lhs>` starts at column $10$ (`6 + 2*2`), `->` is placed at $C_{\text{arrow}}$, and `<rhs>` starts at $C_{\text{ret}}$.
+   - In single-line clauses (`<lhs> = <rhs>`), multi-line block clauses (`<lhs> =`), and guard-headed clauses (`<lhs> =` followed by `| cond = ...`), `=` is placed at $C_{\text{arrow}}$ (aligned directly beneath `=>`); in single-line clauses, `<rhs>` starts at $C_{\text{ret}}$.
+   - In parallel DAG bindings (`|| <lhs> -> <rhs>`), `||` starts at column $8$ (`6 + 2`), `->` is placed at $C_{\text{arrow}}$, and `<rhs>` starts at $C_{\text{ret}}$.
    - **Compact Fallback (`> 4` Parameters or `> 80` Columns)**: If a declaration has more than `4` parameter slots or its aligned signature line would exceed `80` characters, horizontal column padding is disabled for that group and tokens are separated by a single space (`" "`) while preserving column-6 clause indentation.
 4. **Structural Indentation (2-Space Offset)**:
    - Top-level declarations (`fn`, `op`, `type`, `import`, `global`, `context`, `shared`, `hardware`, `@`): column `0`.
    - Function/operator clauses under a signature: column `6`.
-   - Guards (`| cond = expr`), parallel pipes (`|| expr`), and `where`: column `8` (`6 + 2`).
-   - Block body lines following a line ending in `=`, `where`, or `do`: `prev_indent + 2`.
+   - Guards (`| cond = expr`) and parallel pipes (`|| expr` / `|| expr -> var`): `prev_indent + 2` (column `8` inside a clause, or `indent + 2` inside a local binding or nested guard).
+   - Sequential block body lines following a line ending in `=`: `prev_indent + 2`.
 
 ---
 
@@ -773,19 +866,22 @@ Ridgun manages heap memory (`String`, `[a]`, `(a, b)`, ADTs, `Tensor`) determini
 1. **Policy `RMM1` — Compiled Memory Management (CMM Linear + Conditional)**:
    - Applied when control flow and called functions are statically known at compile time over non-nested bindings:
      - **Linear CMM (`rg_cmm_move` / `rg_cmm_drop`)**: The compiler determines the exact last-use statement of every local variable at compile time, moving returned variables (`rg_cmm_move(&mut lv_x)`) and emitting unconditional deallocation (`rg_cmm_drop(&mut lv_x)`) immediately after a variable's last use when no may-aliases remain live.
-     - **Conditional CMM (`rg_cmm_drop_unless` / `ptr(a) != ptr(c)`)**: When a static branching call (`c = elegir cond a b`) returns one of several candidate inputs and one or more candidates remain live alongside `c`, the compiler builds the **Ancestor May-Alias Table (`RCmmAlias`)** and emits a 1-cycle pointer-identity guard at each variable's static last-use statement:
+     - **Conditional CMM (`rg_cmm_drop_unless` / `ptr(a) != ptr(c)`)**: When a static branching call (`c = choose_list cond a b`) returns one of several candidate inputs and one or more candidates remain live alongside `c`, the compiler builds the **Ancestor May-Alias Table (`RCmmAlias`)** and emits a 1-cycle pointer-identity guard at each variable's static last-use statement:
        ```ridgun
-       a = crear_a ()          -- Allocates M1
-       b = crear_b ()          -- Allocates M2
-       c = elegir cond a b     -- b dies here while c is live -> if ptr(b) != ptr(c) { free(b) }
-       imprimir a              -- a dies here while c is live -> if ptr(a) != ptr(c) { free(a) }
-       usar c                  -- c dies here (no live peers) -> free(c) (unconditional)
+       a = make_a ()               -- Allocates M1
+       b = make_b ()               -- Allocates M2
+       c = choose_list cond a b    -- b dies here while c is live -> if ptr(b) != ptr(c) { free(b) }
+       print_list a                -- a dies here while c is live -> if ptr(a) != ptr(c) { free(a) }
+       consume_list c              -- c dies here (no live peers) -> free(c) (unconditional)
        ```
-2. **Policy `RMM2` — Assignment & Cascaded Structure Counting (Anonymous Functions, Nested Containers & Multi-thread)**:
-   - Unifies memory management when control flow is dynamic (anonymous functions / higher-order callbacks), when structures nest inside other structures (`xs = [a, b, ..., z]`, `xs[3] = a`), and across threads:
+2. **Policy `RMM2` — Assignment & Cascaded Structure Counting (Active Policy)**:
+   - Unifies memory management across functions, branching returns (`choose_list`), nested containers (`xs = [a, b, ..., z]`, `xs[3] = a`), mutable local variables (`mut x = ...`), and multi-thread execution:
      - **Primitive Scalars (`Int`, `Real`, `Bool`, `()`)**: Never counted; copied by value on the stack/registers.
-     - **Heap Structures (`CmmBox<T>`)**: Carry their own counter (`rc`), starting at `1` on creation, incremented (`+1`) on variable or container-slot assignment (`b = a`, `xs[3] = a`), untouched (`+0`) on read-only borrows, transferred without decrement on `return`, and decremented (`-1`) when a non-returned variable dies.
-     - **Parent-to-Child Cascade**: When a parent structure's counter (`xs`) reaches `0`, `xs` is freed and decrements (`-1`) each of its direct child structures `a, b, ..., z` one by one, recursively freeing any child whose counter reaches `0`.
+     - **Incoming Function Arguments (`pats`)**: **Never touched** (`+0` on entry, `-0` on exit).
+     - **Internal Local Variables (`x = ...` / `mut x = ...`)**: Receive **`+1` on assignment** (`x = expr`, `xs[3] = a`). On mutable reassignment (`x = new_expr`), `new_expr` receives `+1` before old `x` receives `-1`.
+     - **End of Function / Scope Exit**:
+       - Non-returned internal local variables receive `-1` first: if `rc == 0`, the parent block is freed and **cascades `-1` one by one to each direct child structure** (recursively freeing any child whose `rc` reaches `0`).
+       - A returned internal local variable (`return a`) receives `-1` (or is moved via `rg_cmm_move`), and even if its `rc` is `0` in transit, it is **spared** so the caller's assignment (`c = make_pair ()`) adds `+1` (`0 + 1 = 1`). When an incoming argument is returned (`choose_list cond a b`), it was untouched inside the function (`rc = 1`), so the caller's `c = choose_list cond a b` adds `+1` (`1 + 1 = 2`, shared between `a` and `c`).
 3. **Policy `RMM3`** *(Reserved)*:
    - Reserved for a subsequent aggressive static optimization policy.
    - See [`docs/etc/cmm_architecture.md`](../etc/cmm_architecture.md) for the complete `RMM1` and `RMM2` specification.

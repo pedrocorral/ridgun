@@ -150,6 +150,8 @@ fn :: compile_rexpr RExpr              [String] => ([RInstr], [String])
         append_instr (BSeqSelectMask mask) b_res
       compile_rexpr (EBlock stmts)     locals   =
         compile_rblock stmts locals
+      compile_rexpr (EGuard guards)    locals   =
+        compile_rguard_expr guards locals
       compile_rexpr (EWhere body binds) locals  =
         w_res = compile_where_list binds locals
         compile_where_body body w_res
@@ -233,10 +235,20 @@ fn :: compile_rexpr_list_cont [RExpr] ([RInstr], [String]) => ([RInstr], [String
 fn :: merge_code_pair [RInstr] ([RInstr], [String]) => ([RInstr], [String])
       merge_code_pair c1       (c2, locals2)        =  (c1 :: c2, locals2)
 
+fn :: compile_rguard_expr [RGuard] [String] => ([RInstr], [String])
+      compile_rguard_expr []       locals   =  ([BPushUnit], locals)
+      compile_rguard_expr ((GuardBranch _ body):[]) locals =
+        compile_rexpr body locals
+      compile_rguard_expr ((GuardBranch _ body):_) locals =
+        compile_rexpr body locals
+
 fn :: compile_rblock [RStmt]           [String] => ([RInstr], [String])
       compile_rblock []                locals   =  ([BPushUnit], locals)
       compile_rblock ((StmtExpr e):[]) locals   =  compile_rexpr e locals
       compile_rblock ((StmtLet v e):rest) locals =
+        e_res = compile_rexpr e locals
+        compile_rblock_after_let v rest e_res
+      compile_rblock ((StmtMut v e):rest) locals =
         e_res = compile_rexpr e locals
         compile_rblock_after_let v rest e_res
       compile_rblock ((StmtAtomic v e):rest) locals =
@@ -395,6 +407,7 @@ fn :: prep_expr RExpr              [RCgSig] => RExpr
       prep_expr (EIndexAssign t idxs v) sigs = EIndexAssign t (prep_expr_list idxs sigs) (prep_expr v sigs)
       prep_expr (ESeqSelect b m)   sigs     =  ESeqSelect (prep_expr b sigs) m
       prep_expr (EBlock stmts)     sigs     =  EBlock (prep_stmt_list stmts sigs)
+      prep_expr (EGuard guards)    sigs     =  EGuard (prep_guard_list guards sigs)
       prep_expr (EWhere body binds) sigs    =  EWhere (prep_expr body sigs) (prep_where_list binds sigs)
       prep_expr (EParPipe branches) sigs    =  EParPipe (prep_expr_list branches sigs)
       prep_expr (EWithCtx c v b)   sigs     =  EWithCtx c (prep_expr v sigs) (prep_expr b sigs)
@@ -424,6 +437,7 @@ fn :: prep_expr_list [RExpr] [RCgSig] => [RExpr]
 fn :: prep_stmt_list [RStmt]            [RCgSig] => [RStmt]
       prep_stmt_list []                 _        =  []
       prep_stmt_list ((StmtLet v e):ss) sigs     =  [StmtLet v (prep_expr e sigs)] :: (prep_stmt_list ss sigs)
+      prep_stmt_list ((StmtMut v e):ss) sigs     =  [StmtMut v (prep_expr e sigs)] :: (prep_stmt_list ss sigs)
       prep_stmt_list ((StmtExpr e):ss)  sigs     =  [StmtExpr (prep_expr e sigs)] :: (prep_stmt_list ss sigs)
       prep_stmt_list ((StmtAtomic v e):ss) sigs  =  [StmtAtomic v (prep_expr e sigs)] :: (prep_stmt_list ss sigs)
       prep_stmt_list ((StmtIndexAssign t idxs e):ss) sigs = [StmtIndexAssign t (prep_expr_list idxs sigs) (prep_expr e sigs)] :: (prep_stmt_list ss sigs)
@@ -615,6 +629,7 @@ fn :: cmm_expr_vars RExpr              [String] => [String]
       cmm_expr_vars (EIndexAssign t idxs v) acc =  cmm_expr_vars v (cmm_expr_list_vars idxs (add_unique_str t acc))
       cmm_expr_vars (ESeqSelect b _)   acc      =  cmm_expr_vars b acc
       cmm_expr_vars (EBlock stmts)     acc      =  cmm_stmts_vars stmts acc
+      cmm_expr_vars (EGuard guards)    acc      =  cmm_guards_vars guards acc
       cmm_expr_vars (EWhere body binds) acc     =  cmm_where_vars binds body acc
       cmm_expr_vars (EParPipe branches) acc     =  cmm_expr_list_vars branches acc
       cmm_expr_vars (EWithCtx _ v b)   acc      =  cmm_expr_vars b (cmm_expr_vars v acc)
@@ -624,6 +639,11 @@ fn :: cmm_expr_vars RExpr              [String] => [String]
       cmm_expr_vars (ELoadShared _ e)  acc      =  cmm_expr_vars e acc
       cmm_expr_vars _                  acc      =  acc
 
+fn :: cmm_guards_vars [RGuard] [String] => [String]
+      cmm_guards_vars []       acc      =  acc
+      cmm_guards_vars ((GuardBranch c b):gs) acc =
+        cmm_guards_vars gs (cmm_expr_vars b (cmm_expr_vars c acc))
+
 fn :: cmm_expr_list_vars [RExpr] [String] => [String]
       cmm_expr_list_vars []      acc      =  acc
       cmm_expr_list_vars (e:es)  acc      =  cmm_expr_list_vars es (cmm_expr_vars e acc)
@@ -631,6 +651,7 @@ fn :: cmm_expr_list_vars [RExpr] [String] => [String]
 fn :: cmm_stmts_vars [RStmt]            [String] => [String]
       cmm_stmts_vars []                 acc      =  acc
       cmm_stmts_vars ((StmtLet _ e):ss) acc      =  cmm_stmts_vars ss (cmm_expr_vars e acc)
+      cmm_stmts_vars ((StmtMut _ e):ss) acc      =  cmm_stmts_vars ss (cmm_expr_vars e acc)
       cmm_stmts_vars ((StmtExpr e):ss)  acc      =  cmm_stmts_vars ss (cmm_expr_vars e acc)
       cmm_stmts_vars ((StmtAtomic _ e):ss) acc   =  cmm_stmts_vars ss (cmm_expr_vars e acc)
       cmm_stmts_vars ((StmtIndexAssign t idxs e):ss) acc =
@@ -757,6 +778,7 @@ fn :: emit_native_expr RExpr              [String] => String
       emit_native_expr (ESeqSelect base mask) locals =
         'rg_seq_select(&(' + (emit_native_expr base locals) + '), "' + (escape_rust_str mask) + '")'
       emit_native_expr (EBlock stmts)     locals   =  '{' + "\n" + (emit_native_stmts stmts locals) + "\n" + '}'
+      emit_native_expr (EGuard guards)    locals   =  '{' + "\n" + (emit_expr_guards guards locals) + "\n" + '}'
       emit_native_expr (EWhere body binds) locals  =  '{' + "\n" + (emit_native_where binds body locals) + "\n" + '}'
       emit_native_expr (EParPipe branches) locals  =  'rg_tuple(vec![' + (emit_native_expr_csv branches locals) + '])'
       emit_native_expr (EWithCtx ctx_name val_e body) locals =
@@ -828,6 +850,11 @@ fn :: emit_let_var_decl String RExpr [String] => String
         | otherwise =
             "    let mut lv_" + v + ": RVal = " + (emit_native_expr e locals) + ";\n"
 
+fn :: emit_expr_guards [RGuard] [String] => String
+      emit_expr_guards []       _        =  "    RVal::Unit"
+      emit_expr_guards ((GuardBranch cond body):gs) locals =
+        "    if rg_as_bool(&(" + (emit_native_expr cond locals) + ")) {\n      " + (emit_native_expr body locals) + "\n    } else {\n" + (emit_expr_guards gs locals) + "\n    }"
+
 fn :: emit_native_stmts [RStmt] [String] => String
       emit_native_stmts stmts   locals   =  emit_native_stmts_cmm stmts locals []
 
@@ -847,7 +874,9 @@ fn :: emit_native_stmts_cmm [RStmt]            [String] [String]   => String
             "    let _ = " + (emit_native_expr e locals) + ";\n" + (emit_cmm_uncond_drops used "    ") + "    RVal::Unit"
         | otherwise =
             used = cmm_remove_str v (cmm_filter_in_list (cmm_expr_vars e []) scope_vars)
-            "    let mut lv_" + v + ": RVal = " + (emit_native_expr e locals) + ";\n" + (emit_cmm_uncond_drops used "    ") + "    rg_cmm_move(&mut lv_" + v + ")"
+            (emit_let_var_decl v e locals) + (emit_cmm_uncond_drops used "    ") + "    rg_cmm_move(&mut lv_" + v + ")"
+      emit_native_stmts_cmm ((StmtMut v e):[]) locals scope_vars =
+        emit_native_stmts_cmm [StmtLet v e] locals scope_vars
       emit_native_stmts_cmm ((StmtLet v e):rest) locals scope_vars
         | v == "_" =
             used_in_e = cmm_filter_in_list (cmm_expr_vars e []) scope_vars
@@ -856,6 +885,8 @@ fn :: emit_native_stmts_cmm [RStmt]            [String] [String]   => String
             "    let _ = " + (emit_native_expr e locals) + ";\n" + (emit_cmm_uncond_drops dead_now "    ") + (emit_native_stmts_cmm rest locals scope_vars)
         | otherwise =
             emit_let_binding_stmt v e locals scope_vars rest
+      emit_native_stmts_cmm ((StmtMut v e):rest) locals scope_vars =
+        emit_let_binding_stmt v e locals scope_vars rest
       emit_native_stmts_cmm ((StmtAtomic v e):rest) locals scope_vars =
         used_in_e = cmm_filter_in_list (cmm_expr_vars e []) scope_vars
         live_after = cmm_stmts_vars rest []
@@ -892,6 +923,7 @@ fn :: emit_native_where_cmm [RWhereBind] RExpr [String] [String] => String
 fn :: expr_has_self_tail_call String RExpr           => Bool
       expr_has_self_tail_call target (ECall fname _) =  fname == target
       expr_has_self_tail_call target (EBlock stmts)  =  stmts_have_self_tail_call target stmts
+      expr_has_self_tail_call target (EGuard guards) =  guards_have_self_tail_call target guards
       expr_has_self_tail_call target (EWhere body _) =  expr_has_self_tail_call target body
       expr_has_self_tail_call _      _               =  False
 
@@ -930,10 +962,13 @@ fn :: emit_tail_return String Int   RExpr              [String] => String
         emit_tail_return_cmm target arity expr locals []
 
 fn :: emit_tail_return_cmm String Int   RExpr              [String] [String]   => String
-      emit_tail_return_cmm target arity (ECall fname args) locals   _
-        | fname == target AND (expr_list_count args) == arity AND (lookup_local locals fname) < 0 = '{ ' + (emit_tco_tmp_binds args 0 locals) + (emit_tco_arg_assigns 0 arity) + 'continue; }'
+      emit_tail_return_cmm target arity (ECall fname args) locals   scope_vars
+        | fname == target AND (expr_list_count args) == arity AND (lookup_local locals fname) < 0 = '{ ' + (emit_tco_tmp_binds args 0 locals) + (emit_cmm_uncond_drops scope_vars "") + (emit_tco_arg_assigns 0 arity) + 'continue; }'
       emit_tail_return_cmm target arity (EBlock stmts)     locals   scope_vars =
         "{\n" + (emit_tail_stmts_cmm target arity stmts locals scope_vars) + "\n}"
+      emit_tail_return_cmm target arity (EGuard guards)    locals   scope_vars
+        | guards_have_self_tail_call target guards =
+            "{\n" + (emit_tail_guards_cmm target arity guards locals scope_vars) + "\n}"
       emit_tail_return_cmm target arity (EWhere body binds) locals  scope_vars =
         "{\n" + (emit_tail_where_cmm target arity binds body locals scope_vars) + "\n}"
       emit_tail_return_cmm _      _     (EVar v)           locals   _
@@ -941,6 +976,12 @@ fn :: emit_tail_return_cmm String Int   RExpr              [String] [String]   =
       emit_tail_return_cmm _      _     expr               locals   scope_vars =
         used = cmm_filter_in_list (cmm_expr_vars expr []) scope_vars
         emit_tail_return_expr expr locals used
+
+fn :: emit_tail_guards_cmm String Int [RGuard] [String] [String] => String
+      emit_tail_guards_cmm _      _     []       _      scope_vars =
+        (emit_cmm_uncond_drops scope_vars "    ") + "    return RVal::Unit;"
+      emit_tail_guards_cmm target arity ((GuardBranch cond body):gs) locals scope_vars =
+        '    if rg_as_bool(&(' + (emit_native_expr cond locals) + ')) {' + "\n      " + (emit_tail_return_cmm target arity body locals scope_vars) + "\n    }\n" + (emit_tail_guards_cmm target arity gs locals scope_vars)
 
 fn :: emit_tail_return_expr RExpr [String] [String] => String
       emit_tail_return_expr expr  locals   []       =
@@ -971,6 +1012,8 @@ fn :: emit_tail_stmts_cmm String Int   [RStmt]            [String] [String]   =>
             "    let _ = " + (emit_native_expr e locals) + ";\n" + (emit_cmm_uncond_drops dead_now "    ") + (emit_tail_stmts_cmm target arity rest locals scope_vars)
         | otherwise =
             emit_tail_let_stmt target arity v e locals scope_vars rest
+      emit_tail_stmts_cmm target arity ((StmtMut v e):rest) locals scope_vars =
+        emit_tail_let_stmt target arity v e locals scope_vars rest
       emit_tail_stmts_cmm target arity ((StmtAtomic v e):rest) locals scope_vars =
         used_in_e = cmm_filter_in_list (cmm_expr_vars e []) scope_vars
         live_after = cmm_stmts_vars rest []
@@ -1067,6 +1110,7 @@ fn :: collect_refs_expr RExpr              [String] => [String]
       collect_refs_expr (EIndexAssign _ idxs v) acc =  collect_refs_expr v (collect_refs_expr_list idxs acc)
       collect_refs_expr (ESeqSelect b _)   acc      =  collect_refs_expr b acc
       collect_refs_expr (EBlock stmts)     acc      =  collect_refs_stmts stmts acc
+      collect_refs_expr (EGuard guards)    acc      =  collect_refs_guards guards acc
       collect_refs_expr (EWhere body binds) acc     =  collect_refs_where binds (collect_refs_expr body acc)
       collect_refs_expr (EParPipe branches) acc     =  collect_refs_expr_list branches acc
       collect_refs_expr (EWithCtx _ v b)   acc      =  collect_refs_expr b (collect_refs_expr v acc)
@@ -1083,6 +1127,7 @@ fn :: collect_refs_expr_list [RExpr] [String] => [String]
 fn :: collect_refs_stmts [RStmt]            [String] => [String]
       collect_refs_stmts []                 acc      =  acc
       collect_refs_stmts ((StmtLet _ e):ss) acc      =  collect_refs_stmts ss (collect_refs_expr e acc)
+      collect_refs_stmts ((StmtMut _ e):ss) acc      =  collect_refs_stmts ss (collect_refs_expr e acc)
       collect_refs_stmts ((StmtExpr e):ss)  acc      =  collect_refs_stmts ss (collect_refs_expr e acc)
       collect_refs_stmts ((StmtAtomic _ e):ss) acc   =  collect_refs_stmts ss (collect_refs_expr e acc)
       collect_refs_stmts ((StmtIndexAssign _ idxs e):ss) acc =

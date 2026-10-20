@@ -126,6 +126,79 @@ fn :: rmm2_trace_nested => (Int, Int, Int)
         vivos_final = cmm_live_blocks - base
         (vivos_inicial, vivos_tras_xs, vivos_final)
 
+-- @tests FR-COMP-003
+-- 1. Unified `=` before `|` and 4-level nested decision tree with inline `|.` closers
+fn :: route_request Int    Int  Bool      Bool     Int        Int          => Int
+      route_request method role is_signed is_admin payload_kb rate_limited =
+        | method == 0 =
+          | payload_kb == 0 = 204
+          | otherwise = 200 |.
+        | method == 1 =
+          | not is_signed = 401
+          | otherwise =
+            -- Level 2: signed POST request
+            | rate_limited > 0 =
+              -- Level 3: rate-limited check
+              | is_admin =
+                -- Level 4: admin override under rate limit
+                | payload_kb > 10000 = 413
+                | otherwise = 202 |.
+              | otherwise = 429 |.
+            | payload_kb > 1000 =
+              -- Level 3: back from Level 4 via `|.`!
+              | role >= 2 and is_admin = 201
+              | otherwise = 413 |.
+            | otherwise = 201 |.
+        | method == 2 and (is_admin or role >= 3) = 200
+        | otherwise = 405
+
+-- 2. Local variable assigned via guard block (`x =\n  | ...`) and inline `|.`
+fn :: compute_shipping Bool   Int    Bool       => Int
+      compute_shipping is_vip weight is_express =
+        base_fee =
+          | is_vip =
+            | weight > 50 = 10
+            | otherwise = 0 |.
+          | weight > 50 = 35
+          | otherwise = 15
+        surcharge =
+          | is_express and not is_vip = 12
+          | otherwise = 0
+        base_fee + surcharge
+
+-- 3. Parallel DAG bindings (`|| expr -> var`) without `where` + inline `||.`
+fn :: parallel_dag_calc Int Int => Int
+      parallel_dag_calc x   y   =
+        || x * x       -> x2
+        || y * y       -> y2
+        || x2 + y2     -> sum_sq ||.
+        offset = 10
+        sum_sq + offset
+
+fn :: parallel_dag_bottom Int Int => Int
+      parallel_dag_bottom a   b   =  prod + diff
+        || a * b -> prod
+        || a - b -> diff
+
+-- 4. Mutable local variables (`mut x = ...`) with `RMM2` heap rebinding
+fn :: mut_accum_and_rebind Int => (Int, Int, Int)
+      mut_accum_and_rebind n   =
+        base = cmm_live_blocks
+        mut acc = n
+        acc = acc + 10
+        acc = acc * 2
+        mut items = [1, 2, 3]
+        live_before_rebind = cmm_live_blocks - base
+        items = [10, 20, 30, 40]
+        live_after_rebind = cmm_live_blocks - base
+        total = acc + (list_len items)
+        (total, live_before_rebind, live_after_rebind)
+
+-- 5. Lowercase logical operators (`and`, `or`, `xor`, `not`)
+fn :: eval_logic_ops Bool Bool => (Bool, Bool, Bool, Bool)
+      eval_logic_ops a    b    =
+        (a and b, a or b, a xor b, not a)
+
 fn :: main => ()
       main =
         echo "=== Core Language, ADTs, Mixfix, Variadics & Higher-Order Ops ==="
@@ -167,5 +240,25 @@ fn :: main => ()
         assert_equals (cmm_trace_cascada True True) (1, 1, 0)
         assert_equals (cmm_trace_cascada False False) (2, 1, 0)
         assert_equals (rmm2_trace_nested) (3, 1, 0)
+        echo "=== FR-COMP-003: Unified `=`, 4-Level Guards (`|.`), `||`, `mut`, and Lowercase Logic ==="
+        assert_equals (route_request 0 1 False False 0 0) 204
+        assert_equals (route_request 0 1 False False 50 0) 200
+        assert_equals (route_request 1 1 False False 50 0) 401
+        assert_equals (route_request 1 1 True True 20000 1) 413
+        assert_equals (route_request 1 1 True True 500 1) 202
+        assert_equals (route_request 1 1 True False 500 1) 429
+        assert_equals (route_request 1 2 True True 2500 0) 201
+        assert_equals (route_request 1 1 True False 2500 0) 413
+        assert_equals (route_request 1 1 True False 100 0) 201
+        assert_equals (route_request 2 3 True False 0 0) 200
+        assert_equals (route_request 9 0 False False 0 0) 405
+        assert_equals (compute_shipping True 60 True) 10
+        assert_equals (compute_shipping True 20 True) 0
+        assert_equals (compute_shipping False 60 True) 47
+        assert_equals (compute_shipping False 20 False) 15
+        assert_equals (parallel_dag_calc 3 4) 35
+        assert_equals (parallel_dag_bottom 6 4) 26
+        assert_equals (mut_accum_and_rebind 5) (34, 1, 1)
+        assert_equals (eval_logic_ops True False) (False, True, True, False)
         echo "=== All core language tests passed ==="
 

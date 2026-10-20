@@ -122,7 +122,7 @@ Unir cadenas es tan simple como sumarlas con `+`: `"Hola, " + nombre`. Y cuando 
 
 ---
 
-## 3.5. Bloques de varias líneas: "¿Dónde está el `return`?"
+## 3.5. Bloques de varias líneas, la regla universal del `=` y variables `mut`
 
 Cuando una función no cabe en una sola línea, haces un salto de línea después del `=` e indentas el bloque.
 
@@ -137,9 +137,22 @@ calcular_factura base iva_pct =
   base + impuestos + gastos_gestion
 ```
 
-Tres reglas de oro que hacen que los bloques en Ridgun sean limpios:
-1. **No hace falta poner `let` ni `const`**: escribes `impuestos = ...` y ya tienes tu constante local.
-2. **La última línea es siempre el resultado**: `base + impuestos + gastos_gestion` es lo que devuelve `calcular_factura`. Sin `return`.
-3. **¿Y cómo llamo a una función dentro de otra?**: separando los argumentos con espacios (`calcular_factura 100 21`). Solo pones paréntesis cuando un argumento es a su vez otra operación compuesta: `calcular_factura (80 + 20) (iva_actual + 1)`.
+Cuatro reglas de oro que hacen que los bloques en Ridgun sean limpios y uniformes:
+1. **Inmutable por defecto sin `let` ni `const`**: escribes `impuestos = ...` y ya tienes tu constante local inmutable. Si por descuido intentas sobrescribir `impuestos = 99` más abajo en el mismo bloque, el compilador te frena en seco.
+2. **Variables mutables explícitas con `mut`**: cuando de verdad quieres ir actualizando un acumulador local paso a paso dentro de una función, lo declaras con **`mut`** y luego lo reasignas libremente con `=`:
+   ```ridgun
+   aplicar_recargos Int => Int
+   aplicar_recargos precio =
+     mut total = precio
+     total = total + 10
+     total = total * 2
+     total
+   ```
+   *(Y si `total` guarda una lista o estructura en memoria, la política **`RMM2`** de Ridgun suma `+1` al nuevo valor antes de descontar `-1` al antiguo, liberándolo al instante si nadie más lo usa).*
+3. **La regla universal del `=`**: detrás de **cualquier `=`** (en una función, en un operador, en una variable local `x =` o en una rama condicional) puedes poner siempre cualquiera de las tres formas de bloque de Ridgun:
+   - **`(nada)`**: líneas secuenciales indentadas (como arriba).
+   - **`|`**: un árbol de guardas condicionales.
+   - **`||`**: un grafo de cálculos en paralelo con `->`.
+4. **La última expresión es siempre el resultado**: `base + impuestos + gastos_gestion` es lo que devuelve `calcular_factura`. Sin `return`.
 
-En el **Capítulo 04** vamos a ver cómo tomar decisiones complejas sin escribir jamás un `if/else` ni un bucle `while`: bienvenido al mundo de las **guardas booleanas** y la **recursión de cola de coste cero**.
+En el **Capítulo 04** vamos a ver cómo tomar decisiones complejas —incluyendo árboles de decisión de varios niveles con `|.`— sin escribir jamás un `if/else` ni un bucle `while`: bienvenido al mundo de las **guardas booleanas** y la **recursión de cola de coste cero**.

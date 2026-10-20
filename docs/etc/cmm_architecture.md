@@ -21,62 +21,78 @@ When the execution flow and called functions are statically known at compile tim
    - Intermediate read-only uses borrow the value (`&RVal`) at **0 cost**.
    - The final use moves ownership (`rg_cmm_move(&mut lv_x)`) or emits an unconditional deallocation (`rg_cmm_drop(&mut lv_x)`) immediately after the statement.
 2. **Conditional CMM (Pointer-Identity Guards `ptr(a) != ptr(c)`)**:
-   When a known branching call (`c = elegir cond a b`) returns one of several input candidates and at least one candidate remains live alongside `c`, the compiler tracks the **Ancestor May-Alias Graph (`RCmmAlias`)** at compile time and emits a pointer-identity guard at each variable's static last-use line (`if ptr(x) != ptr(c) { free(x) }`).
+   When a known branching call (`c = choose_list cond a b`) returns one of several input candidates and at least one candidate remains live alongside `c`, the compiler tracks the **Ancestor May-Alias Graph (`RCmmAlias`)** at compile time and emits a pointer-identity guard at each variable's static last-use line (`if ptr(x) != ptr(c) { free(x) }`).
 
-### Canonical `elegir` Trace under `RMM1`
+### Canonical `choose_list` Trace under `RMM1`
 
 ```ridgun
-fn :: elegir Bool [Int] [Int] => [Int]
-      elegir cond a     b
-        | cond = a
+fn :: choose_list Bool [Int] [Int] => [Int]
+      choose_list cond a     b     =
+        | cond      = a
         | otherwise = b
 ```
 
-In a caller where `b` is never used after `elegir`, while `a` **continues to be used** after `elegir` before `c` is finally consumed:
+In a caller where `b` is never used after `choose_list`, while `a` **continues to be used** after `choose_list` before `c` is finally consumed:
 
 ```ridgun
-a = crear_a ()          -- Allocates heap block M1
-b = crear_b ()          -- Allocates heap block M2
-c = elegir cond a b     -- c aliases {a, b}; b reaches its last use here
-                        -- [RMM1 for b]: if ptr(b) != ptr(c) { free(b) }
-imprimir a              -- a is still live here and reaches its last use here
-                        -- [RMM1 for a]: if ptr(a) != ptr(c) { free(a) }
-usar c                  -- c reaches its last use here; no aliases remain live
-                        -- [RMM1 for c]: free(c) (unconditional)
+a = make_a ()               -- Allocates heap block M1
+b = make_b ()               -- Allocates heap block M2
+c = choose_list cond a b    -- c aliases {a, b}; b reaches its last use here
+                            -- [RMM1 for b]: if ptr(b) != ptr(c) { free(b) }
+print_list a                -- a is still live here and reaches its last use here
+                            -- [RMM1 for a]: if ptr(a) != ptr(c) { free(a) }
+consume_list c              -- c reaches its last use here; no aliases remain live
+                            -- [RMM1 for c]: free(c) (unconditional)
 ```
 
 - **Branch `cond == True` (`ptr(c) == ptr(a) == M1`, `ptr(b) == M2`)**:
-  - Right after `c = elegir True a b`: `ptr(b) != ptr(c)` is **True** $\rightarrow$ **`M2` is freed immediately**.
-  - Right after `imprimir a`: `ptr(a) != ptr(c)` is **False** $\rightarrow$ `M1` is spared.
-  - Right after `usar c`: no live aliases remain $\rightarrow$ **`M1` is freed unconditionally**.
+  - Right after `c = choose_list True a b`: `ptr(b) != ptr(c)` is **True** $\rightarrow$ **`M2` is freed immediately**.
+  - Right after `print_list a`: `ptr(a) != ptr(c)` is **False** $\rightarrow$ `M1` is spared.
+  - Right after `consume_list c`: no live aliases remain $\rightarrow$ **`M1` is freed unconditionally**.
 - **Branch `cond == False` (`ptr(c) == ptr(b) == M2`, `ptr(a) == M1`)**:
-  - Right after `c = elegir False a b`: `ptr(b) != ptr(c)` is **False** $\rightarrow$ `M2` is spared.
-  - Right after `imprimir a`: `ptr(a) != ptr(c)` is **True** $\rightarrow$ **`M1` is freed immediately**.
-  - Right after `usar c`: no live aliases remain $\rightarrow$ **`M2` is freed unconditionally**.
+  - Right after `c = choose_list False a b`: `ptr(b) != ptr(c)` is **False** $\rightarrow$ `M2` is spared.
+  - Right after `print_list a`: `ptr(a) != ptr(c)` is **True** $\rightarrow$ **`M1` is freed immediately**.
+  - Right after `consume_list c`: no live aliases remain $\rightarrow$ **`M2` is freed unconditionally**.
 
 ---
 
 ## 3. Policy 2: `RMM2` — Assignment & Cascaded Structure Counting
 
-When control flow cannot be fully resolved at compile time (**anonymous functions / closures / dynamic higher-order calls**), when values are stored inside **nested data structures** (`xs = [a, b, ..., z]`, `xs[3] = a`, ADTs, tuples), or across **multi-threaded boundaries**, `RMM2` unifies variable lifetime tracking and nested container ownership under one rule:
+When control flow cannot be fully resolved at compile time (**anonymous functions / closures / dynamic higher-order calls**), when values are stored inside **nested data structures** (`xs = [a, b, ..., z]`, `xs[3] = a`, ADTs, tuples), or across **multi-threaded boundaries**, `RMM2` unifies variable lifetime tracking and nested container ownership under a single set of rules:
 
 1. **Primitive Scalars (`Int`, `Real`, `Bool`, `Unit`)**:
    - Never heap-allocated and never reference-counted. Passed and copied by value in CPU registers.
 2. **Heap Structures (`List`, `Tuple`, `Adt`, `Tensor`, `Str`)**:
-   - Every structure instance has its own counter (`rc`), initialized to `1` upon creation.
+   - Every structure instance has its own counter (`rc`).
    - In a nested structure `xs = [a, b, ..., z]`, the parent container `xs` has its own counter `rc(xs)`, and each child structure `a, b, ..., z` has its own independent counter `rc(a), rc(b), ..., rc(z)`.
-3. **`+1` Only on Assignment (`b = a` or `xs[3] = a`)**:
-   - Assigning a structure to a new variable (`b = a`) or inserting/assigning it into a container slot (`xs = [a, ...]`, `xs[3] = a`) increments `a`'s counter by `+1` (and if `xs[3]` previously held a structure `old`, `old` is decremented by `-1`).
-   - Read-only uses and borrowed function arguments (`imprimir a`, `list_len a`, `a + 1`) perform **`+0 / -0`** counter operations.
-4. **Move-on-Return (`return`)**:
-   - When a function returns a variable (`return x`), ownership is transferred directly to the caller (`rg_cmm_move`): `x` is **not** decremented on exit.
-5. **`-1` on Death & Parent-to-Child Cascade**:
-   - When a local variable `x` is **not** returned and reaches its static CMM last-use point (or scope exit), it performs `-1` on `rc(x)`.
-   - If `rc(x) > 0`, the structure survives (it remains referenced by another live variable or container).
-   - If `rc(x) == 0`, the parent block `x` is deallocated and **iterates over its direct children `a, b, ..., z` one by one**:
-     - Basic scalar children are ignored.
-     - Each child structure has its counter decremented by `-1`; any child whose counter reaches `0` is immediately freed (recursively cascading to its own children), while any child with `rc > 0` (e.g., extracted into an outer variable) survives intact.
-   - This exact cascade invariant holds identically for both single-threaded and multi-threaded execution.
+3. **Incoming Function Arguments (`pats` / `_arg_i`) Are NEVER Touched (`+0 / -0`)**:
+   - A function never increments (`+0`) its incoming arguments on entry and never decrements (`-0`) them on exit. Their ownership belongs to the caller.
+4. **Internal Local Variables (`x = ...` / `mut x = ...`) Receive `+1` on Assignment**:
+   - Assigning a structure to a new local variable (`a = make_a ()`, `b = a`) or inserting/assigning it into a container slot (`xs = [a, ...]`, `xs[3] = a`) increments that structure's counter by **`+1`**.
+   - On mutable variable reassignment (`mut x = a` followed later by `x = b` or `x = choose_list cond x b`), the new value receives **`+1` before** the old value of `x` receives **`-1`** (preventing premature self-destruction on self-referential updates).
+5. **End of Function / Scope Exit (`-1` on Local Variables & Transit Survival)**:
+   - **Non-returned internal local variables** receive **`-1` first** (in reverse declaration order):
+     - If `rc(x) > 0`, the structure survives because another live variable or container still holds it.
+     - If `rc(x) == 0`, the parent block `x` is freed and **iterates over its direct children `a, b, ..., z` one by one**, applying `-1` to each child structure and freeing any child whose `rc` reaches `0` (recursively cascading to its own children).
+   - **Returned internal local variable (`return a`)**:
+     - Receives `-1` at the end of the function (or transfers via `rg_cmm_move`), and **even if its `rc` is `0` in transit, it is NOT destroyed** because the caller's assignment (`c = make_pair ()`) immediately applies `+1` (`0 + 1 = 1`).
+   - **Returned incoming argument (`return a` in `choose_list cond a b`)**:
+     - Because `a` is an incoming argument, `choose_list` does not touch it (`+0 / -0`, so `rc(a)` remains `1`). When the caller executes `c = choose_list cond a b`, assigning to `c` applies `+1`, leaving `rc(M1) = 1 + 1 = 2` (shared between `a` and `c` in the caller).
+
+### Complete Catalog of the 10 `RMM2` Lifecycle Scenarios
+
+| # | Scenario | Trace & Counter Evolution | Final State |
+|---|---|---|---|
+| **1** | **Local created and NOT returned** | `a = [1, 2]` (`rc(M1) = 1`) $\rightarrow$ function ends without returning `a`: `a` gets `-1` $\rightarrow$ `rc(M1) = 0` $\rightarrow$ **freed**. | `0` live blocks |
+| **2** | **Local created and RETURNED (`c = make_pair ()`)** | Inside `make_pair`: `a = [1, 2]` (`rc(M1) = 1`) $\rightarrow$ returned: `a` gets `-1` (`rc(M1) = 0`, spared in transit) $\rightarrow$ caller `c = make_pair ()` applies `+1` (`rc(M1) = 1`) $\rightarrow$ caller ends: `c` gets `-1` (`rc(M1) = 0`, **freed**). | `0` live blocks |
+| **3** | **Local Alias (`b = a`)** | `a = [1, 2]` (`rc(M1) = 1`) $\rightarrow$ `b = a` (`+1` $\rightarrow$ `rc(M1) = 2`) $\rightarrow$ `b` dies (`-1` $\rightarrow$ `rc(M1) = 1`, survives for `a`) $\rightarrow$ `a` dies (`-1` $\rightarrow$ `rc(M1) = 0`, **freed**). | `0` live blocks |
+| **4** | **Read-only Borrow (`print_list a`)** | `a = [1, 2]` (`rc(M1) = 1`) $\rightarrow$ `print_list a` (`p` is an incoming argument: `+0 / -0`, `rc(M1)` stays `1`) $\rightarrow$ `a` continues to be used $\rightarrow$ `a` dies (`-1` $\rightarrow$ `rc(M1) = 0`, **freed**). | `0` live blocks |
+| **5** | **Branching on Arguments (`c = choose_list cond a b`)** | Caller creates `a` (`M1, rc=1`) and `b` (`M2, rc=1`). Inside `choose_list True a b`: `a` and `b` are incoming arguments (`+0 / -0`). Returns `M1` (`rc=1`). Caller `c = ...` applies `+1` to `M1` (`rc(M1)=2, rc(M2)=1`). `b` dies (`-1` $\rightarrow$ `rc(M2)=0`, **M2 freed**). `a` dies (`-1` $\rightarrow$ `rc(M1)=1`, **M1 survives for `c`**). `c` dies (`-1` $\rightarrow$ `rc(M1)=0`, **M1 freed**). | `0` live blocks |
+| **6** | **Nested Container (`xs = [a, b]`)** | `a` (`M1, rc=1`), `b` (`M2, rc=1`). `xs = [a, b]` creates `MX` (`rc=1`) and increments children (`rc(M1)=2, rc(M2)=2`). `a` and `b` die (`-1` $\rightarrow$ `rc(M1)=1, rc(M2)=1`, kept alive by `MX`). `xs` dies (`-1` $\rightarrow$ `rc(MX)=0`, **MX freed**, cascades `-1` to `M1` and `M2` $\rightarrow$ `rc(M1)=0, rc(M2)=0`, **M1 & M2 freed**). | `0` live blocks |
+| **7** | **Container Created Inside Function & Returned** | Inside `make_nested_list`: `a` (`M1, rc=1`), `b` (`M2, rc=1`), `xs = [a, b]` (`rc(MX)=1, rc(M1)=2, rc(M2)=2`). At function exit: non-returned locals `a, b` get `-1` (`rc(M1)=1, rc(M2)=1`); returned `xs` gets `-1` (`rc(MX)=0` in transit, spared); caller `c = make_nested_list ()` applies `+1` (`rc(MX)=1`). When `c` dies: `MX` reaches `0` and cascades `-1` to `M1, M2` (**all freed**). | `0` live blocks |
+| **8** | **Extracting Child Before Container Dies (`res = xs[0]`)** | `xs` (`MX, rc=1`) holds `M1` (`rc=1`) and `M2` (`rc=1`). `res = xs[0]` applies `+1` to `M1` (`rc(M1)=2`). Non-returned `xs` gets `-1` **before** returned `res`: `MX` reaches `0` and cascades `-1` to `M1` (`2-1=1`, **survives!**) and `M2` (`1-1=0`, **M2 freed**). Returned `res` transfers `M1` to caller (`rc(M1)=1`). | `0` live blocks |
+| **9** | **Slot Overwrite (`xs[0] = c`)** | `xs[0]` initially holds `M1` (`rc=1`). Executing `xs[0] = c` (`M3, rc=1`) applies `+1` to `M3` (`rc(M3)=2`) and `-1` to old slot value `M1` (`rc(M1)=0`, **M1 freed immediately**). | `0` live blocks |
+| **10** | **Mutable Variable Reassignment (`mut x = a` then `x = b`)** | `mut x = a` (`rc(M1)=1`). Later `x = b` (`M2`): applies `+1` to new value `M2` **before** applying `-1` to old value `M1` (`rc(M1)=0`, **M1 freed immediately**, safe even when `x = x[0]` or `x = choose_list cond x b`). | `0` live blocks |
 
 ---
 

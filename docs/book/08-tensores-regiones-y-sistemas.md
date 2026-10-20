@@ -1,13 +1,6 @@
----
-id: DOC-BOOK-08
-title: "Capítulo 8 — Tensores, Regiones de Memoria y Programación de Sistemas"
-status: active
-last_updated: 2026-10-18
----
+# Capítulo 08: Tensores, Memoria Compilada RMM (`RMM1`/`RMM2`), Regiones y Sistemas
 
-# Capítulo 8 — Tensores, Regiones de Memoria y Programación de Sistemas
-
-Hasta aquí hemos visto el lado más amable, elegante y matemático de Ridgun: funciones puras, tipos algebraicos, *pattern matching* con guardas y grafos `where` que paralelizan tus cálculos sin pedirte ni un triste `Mutex`.
+Hasta aquí hemos visto el lado más amable, elegante y matemático de Ridgun: funciones puras, tipos algebraicos, *pattern matching*, árboles de decisión con `|` / `|.` y grafos paralelos `||` con `->` que aprovechan todos los núcleos de tu procesador sin pedirte ni un triste `Mutex`.
 
 Llegados a este punto, el programador veterano de sistemas suele levantar la mano al fondo del aula con media sonrisa y preguntar:
 
@@ -17,277 +10,222 @@ Excelentes preguntas. Vamos a levantar el capó de Ridgun para ver cómo se las 
 
 ---
 
-## 8.1 El dilema de la memoria: ni Garbage Collector ni peleas con el Borrow Checker
+## 8.1. El dilema de la memoria: ni Garbage Collector ni peleas con el Borrow Checker (`RMM1` y `RMM2`)
 
 En el mundo de los lenguajes modernos suele haber dos bandos irreconciliables:
 
-1. **El bando del Garbage Collector (Java, Go, Python, JS, Haskell, OCaml):** tú pides memoria alegremente y, de vez en cuando, un camión de la basura invisible detiene el tráfico de tu programa para rastrear qué objetos siguen vivos y cuáles no. Es comodísimo... hasta que estás haciendo un motor de audio en tiempo real, una herramienta de sistema ultrarrápida o un servidor con latencias estrictas y el camión decide aparcar en doble fila.
-2. **El bando del control manual / Borrow Checker (C, C++, Rust):** no hay recolector de basura, pero a cambio tienes que gestionar punteros a mano (jugándote un `Segmentation fault` o un *use-after-free*) o pasarte media tarde negociando con el *borrow checker* de Rust por qué `'a` no vive tanto como `'b` dentro de un *closure* anidado.
+1. **El bando del Garbage Collector (Java, Go, Python, JS, Haskell, OCaml):** tú pides memoria alegremente y, de vez en cuando, un camión de la basura invisible detiene el tráfico de tu programa para rastrear qué objetos siguen vivos y cuáles no. Es comodísimo... hasta que estás haciendo una herramienta de sistema ultrarrápida o un servidor con latencias estrictas y el camión decide aparcar en doble fila.
+2. **El bando del control manual / Borrow Checker (C, C++, Rust):** no hay recolector de basura, pero a cambio tienes que gestionar punteros a mano (jugándote un `Segmentation fault` o un *use-after-free*) o pasarte media tarde negociando con el *borrow checker* por qué `'a` no vive tanto como `'b`.
 
-Ridgun toma una tercera vía clásica de la literatura de compiladores (inspirada en el cálculo de regiones de Tofte y Talpin, MLKit y las arenas de sistemas): **gestión determinista de memoria basada en regiones léxicas (`region`)**.
+Ridgun resuelve este dilema de raíz con **Ridgun Memory Management (`RMM`)**, un sistema determinista de dos políticas complementarias (**`RMM1`** y **`RMM2`**) combinado con **regiones léxicas (`with region`)**:
 
-### ¿Qué es exactamente un bloque `region`?
+### Política `RMM1` — Gestión de Memoria Compilada (CMM Lineal y Condicional)
+Cuando el compilador conoce estáticamente el flujo de las variables locales dentro de una función:
+- **CMM Lineal**: `ridgunc` calcula en tiempo de compilación cuál es la **última línea** en la que se lee cada variable local (`a`, `b`, ...) e inserta justo después su liberación determinista (`rg_cmm_drop`), o transfiere su propiedad sin copias (`rg_cmm_move`) cuando la variable se devuelve como resultado.
+- **CMM Condicional (`ptr(a) != ptr(c)`)**: ¿y si una función como `elegir cond a b` devuelve `a` o `b` según una condición en tiempo de ejecución? `ridgunc` construye la tabla de ancestros y emite una guarda de identidad de punteros de **1 ciclo de CPU**: si `b` deja de usarse mientras `c` sigue viva, comprueba `if ptr(b) != ptr(c) { free(b) }`. La rama no elegida se libera al instante y la elegida sobrevive intacta.
 
-Piensa en una `region` como una **pizarra en blanco** (una *arena* de memoria contigua ultrarrápida) que pides prestada al entrar en un bloque de código:
+### Política `RMM2` — Conteo por Asignación y Cascada Estructural
+¿Y qué ocurre cuando metes estructuras dentro de otras estructuras (`xs = [a, b]`), reasignas variables mutables (`mut x = ...`) o encadenas llamadas complejas? Ahí entra **`RMM2`**, que gobierna todo el ciclo de vida con cuatro reglas matemáticas sin fisuras:
+
+1. **Los argumentos de entrada de una función no se tocan (`+0` al entrar, `-0` al salir)**: pasar una lista o un registro a una función jamás incrementa ni decrementa contadores en vano.
+2. **Toda asignación a una variable local interna o celda de contenedor suma `+1`**:
+   - `a = [10, 20]` $\rightarrow$ el bloque `M1` nace con contador `1`.
+   - `xs = [a, b]` $\rightarrow$ la lista `xs` nace con `1`, y como guarda referencias a `a` y `b`, ambos suben a `2`.
+   - Si reasignas una variable mutable (`mut x = ...` y luego `x = nuevo`), `RMM2` aplica primero **`+1`** al valor nuevo antes de aplicar **`-1`** al antiguo.
+3. **Al salir de la función, las variables locales que NO se devuelven reciben `-1`**: si el contador de una estructura llega a `0`, se libera su memoria en el acto y **propaga `-1` en cascada, uno por uno, a cada uno de sus hijos directos**.
+4. **El valor devuelto por la función se exime en tránsito**: recibe su `-1` de variable local pero no se destruye al cruzar el `return`, de modo que cuando quien llamó hace `c = mi_funcion ()`, ese `+1` de la asignación lo deja exactamente en `1`.
 
 ```ridgun
-fn :: procesar_lote_masivo [Str] => Int
-procesar_lote_masivo lineas =
-  region r
-    limpias = map limpiar_linea lineas
-    tokens  = map tokenizar limpias
-    contar_validos tokens
+elegir Bool [Int] [Int] => [Int]
+elegir cond a     b     =
+  | cond      = a
+  | otherwise = b
+
+ejemplo_rmm2 Bool => Int
+ejemplo_rmm2 cond =
+  a = [10, 20, 30]         -- M1 (rc = 1)
+  b = [40, 50, 60]         -- M2 (rc = 1)
+  c = elegir cond a b      -- `c` recibe +1; el no elegido muere aquí mismo (rc -> 0)
+  (contar a) + (contar c)  -- Al terminar, `a` y `c` reciben -1 y todo queda en 0 bloques vivos
 ```
-
-Mira lo que ocurre aquí dentro:
-
-1. **Al entrar en `region r`**: el runtime reserva una arena temporal asociada al identificador léxico `r`.
-2. **Durante el bloque**: todas las estructuras intermedias (`limpias`, `tokens`, listas auxiliares, cadenas temporales...) se alojan en esa pizarra a velocidad de vértigo (un simple avance de puntero, *bump allocation*).
-3. **Al salir de `region r`**: el compilador sabe estáticamente que el cálculo ha terminado. Conserva el valor de retorno (`Int`) y **destruye toda la región `r` de golpe en tiempo constante $O(1)$**, en el instante exacto en que termina la última línea del bloque.
-
-Sin pausas aleatorias de un recolector de basura. Sin tener que escribir `free()` a mano en 14 sitios distintos. Y sin anotar lifetimes `'a` en cada firma de función.
 
 ---
 
-## 8.2 Reglas de escape: nada roto sale de la habitación
+## 8.2. Regiones Léxicas con Cuota (`with region`): Cortafuegos de memoria en $O(1)$
 
-*"Espera"*, dirás. *"¿Y qué pasa si dentro de `region r` construyo un puntero o un recurso atado a `r` e intento devolverlo hacia fuera cuando la región ya se ha destruido?"*
-
-En C o C++, eso se llama *dangling pointer* (puntero colgante) y es la receta clásica para que tu programa explote tres horas después en producción.
-
-En Ridgun, el verificador estático aplica la **regla de no-escape de regiones**:
-
-* El tipo del valor final que devuelve un bloque `region r` **no puede contener referencias atadas a la región `r`**.
-* Los valores puros o copiados al ámbito exterior (`Int`, `Float`, `Bool`, `Str`, `List`, ADTs ordinarios) pueden salir libremente del bloque `region r`.
-* Pero cualquier recurso anclado explícitamente a la vida de `r` tiene prohibido cruzar la puerta de salida. Si lo intentas, `ridgunc` detiene la compilación en el acto y te señala la línea exacta.
-
-Además, puedes anidar regiones si tienes un bucle o una fase interna que genera gigabytes de datos efímeros y quieres reciclar esa memoria en cada paso:
+Además de `RMM1` y `RMM2`, cuando estás procesando un paquete de red externo, un archivo gigante o un lote de datos no confiables y quieres poner un **techo estricto de memoria RAM**, envuelves el cálculo en un bloque **`with region`**:
 
 ```ridgun
-fn :: analizar_documento Str => (Int, Int)
-analizar_documento texto =
-  region r_externa
-    parrafos = dividir_parrafos texto
-    total_p  = length parrafos
-    palabras =
-      region r_interna
-        listas_palabras = map extraer_palabras parrafos
-        sumar_longitudes listas_palabras
-    (total_p, palabras)
+procesar_trama String => Result
+procesar_trama crudo  =
+  with region 64_KB do
+    limpias = map limpiar_linea (dividir_lineas crudo)
+    contar_validos limpias
 ```
 
-En cuanto `palabras` termina de calcularse, toda la memoria de `listas_palabras` dentro de `r_interna` desaparece inmediatamente, antes incluso de construir la tupla final `(total_p, palabras)`.
+1. **Cuota garantizada en hardware/runtime**: si dentro del bloque se intenta reservar ni un solo byte por encima de `64_KB` (`65.536` bytes), el runtime aborta limpiamente el bloque, libera toda la arena temporal en tiempo constante $O(1)$ y devuelve `Err OutOfMemory` sin tumbar el proceso.
+2. **Liberación instantánea al salir**: en cuanto termina el bloque `with region`, toda la memoria temporal de la arena desaparece de golpe sin dejar fragmentación.
 
 ---
 
-## 8.3 Tensores Tipados (`Tensor<DType, [Dims]>`): álgebra lineal sin sorpresas
+## 8.3. Tensores Nativos, Contracción de Einstein (`@`) yDimensiones Simbólicas
 
-Si alguna vez has programado en Python con NumPy, PyTorch o TensorFlow, seguro que has vivido esta escena de terror:
-
-Lanzas un entrenamiento o un pipeline numérico pesado, se tira 40 minutos calculando con la GPU al 100%, y en el minuto 41 salta en tiempo de ejecución:
+Si alguna vez has programado en Python con NumPy o PyTorch, seguro que has sufrido el clásico error en el minuto 41 de ejecución:
 
 ```text
 RuntimeError: mat1 and mat2 shapes cannot be multiplied (128x64 and 32x128)
 ```
 
-O peor aún: las dimensiones *casi* coinciden gracias a una regla mágica e implícita de *broadcasting*, el programa no falla, y te pasas dos semanas publicando resultados numéricos silenciosamente erróneos.
-
-En Ridgun, **las dimensiones y el tipo numérico de un tensor forman parte de su tipo estático**:
+En Ridgun, los **`Tensor`** son ciudadanos nativos de primera clase y sus dimensiones forman parte de la firma de tipos:
 
 ```ridgun
-Tensor<DType, [D1, D2, ...]>
-```
-
-Donde:
-* **`DType`** es el tipo escalar de los elementos (por ejemplo, `Float32`, `Float64`, `Int32`, `Int64`).
-* **`[D1, D2, ...]`** son las dimensiones (ejes) del tensor: ya sean constantes enteras conocidas (`3`, `128`, `1024`) o variables simbólicas de dimensión (`N`, `M`, `K`, `Batch`).
-
-### Ejemplos de firmas con tensores
-
-Mira qué expresiva se vuelve una firma cuando el propio tipo te documenta la geometría de los datos:
-
-```ridgun
--- Un vector de 3 componentes en precisión simple
-fn :: normalizar Tensor<Float32, [3]> => Tensor<Float32, [3]>
-
--- Una imagen RGB en alta definición (Alto × Ancho × Canales)
-fn :: convertir_a_gris Tensor<Float32, [1080, 1920, 3]> => Tensor<Float32, [1080, 1920]>
-
--- Multiplicación de matrices polimórfica en sus dimensiones:
 -- Si entra (N × K) y (K × M), ¡por narices sale (N × M)!
-fn :: multiplicar_matrices Tensor<Float32, [N, K]> Tensor<Float32, [K, M]> => Tensor<Float32, [N, M]>
+multiplicar_matrices Tensor[N, K] Tensor[K, M] => Tensor[N, M]
+multiplicar_matrices a            b            =  a_ik @ b_kj
 ```
 
-Fíjate en la última firma: la dimensión interior `K` de la primera matriz `[N, K]` **tiene que ser la misma `K`** que la primera dimensión de la segunda matriz `[K, M]`. Si intentas multiplicar una matriz `[128, 64]` por una `[32, 128]`, **no tienes que esperar 40 minutos a que falle en ejecución**: el compilador subraya la llamada en menos de un segundo antes de generar el binario.
+Fíjate en dos detalles espectaculares:
+1. **Verificación estática de dimensiones (`Tensor[N, K]`)**: el eje interno `K` de la primera matriz tiene que coincidir con el primer eje `K` de la segunda. Si intentas pasar dimensiones incompatibles, `ridgunc check` te detiene antes de ejecutar nada.
+2. **Notación de subíndices de Einstein (`a_ik @ b_kj`) y Hadamard (`a_ij * b_j`)**:
+   - Con **`@`**, los subíndices repetidos en todos los operandos (`k`) se contraen (se suman) y los únicos (`i`, `j`) sobreviven en el tensor resultado.
+   - Con **`+`, `-`, `*`, `/`**, los subíndices alinean dimensiones y hacen *broadcasting* automático (`a_ij * b_j` multiplica cada fila `i` de `a` por el vector `b_j` sin necesidad de escribir `unsqueeze` ni `reshape`).
+3. **Mutación *in-place* para algoritmos numéricos**:
+   ```ridgun
+   crear_matriz_identidad => Tensor
+   crear_matriz_identidad =
+     m = Tensor [[1.0, 0.0], [0.0, 1.0]]
+     m[0, 1] = 0.5
+     m
+   ```
 
-### El operador `@` (multiplicación matricial) y operaciones elemento a elemento
+---
 
-Ridgun incorpora el operador infijo `@` como ciudadano de primera clase para el producto matricial (o producto escalar de vectores), además de los operadores aritméticos habituales (`+`, `-`, `*`, `/`) para operaciones elemento a elemento entre tensores de idéntica forma:
+## 8.4. Variables de Contexto (`context ::`) y Estado Compartido Atómico (`shared ::`)
 
+En el 99% de tu código pasarás datos por parámetro. Pero para ese 1% donde necesitas configuración de entorno o un contador global entre hilos sin contaminar 40 firmas intermedias, Ridgun ofrece dos mecanismos explícitos y seguros:
+
+### 1. `context ::` — Ámbito dinámico aislado por tarea (`with ... = ... do`)
 ```ridgun
--- Capa lineal clásica de una red neuronal: Y = (X @ W) + B
-fn :: capa_lineal Tensor<Float32, [B, In]> Tensor<Float32, [In, Out]> Tensor<Float32, [B, Out]> => Tensor<Float32, [B, Out]>
-capa_lineal x pesos sesgo = (x @ pesos) + sesgo
+context :: ruta_log : String = "/var/log/app.log"
+
+registrar_evento String => ()
+registrar_evento msg    =  echo "[{ruta_log}] {msg}"
+
+main => ()
+main =
+  registrar_evento "Arranque normal"
+  with ruta_log = "/tmp/test.log" do
+    registrar_evento "Dentro del test aislado"
 ```
 
-Al conocer estáticamente los tipos y las dimensiones `[B, In]` e `[In, Out]`, el compilador AOT puede emitir bucles nativos contiguos en memoria (listos para vectorización SIMD / AVX / NEON) sin comprobaciones dinámicas de rango en cada celda.
+### 2. `shared ::` y `atomic` — Estado concurrente con bloqueo atómico por línea
+```ridgun
+shared :: peticiones_totales : Int = 0
+
+contabilizar_visita => Int
+contabilizar_visita =
+  atomic peticiones_totales = peticiones_totales + 1
+  peticiones_totales
+```
 
 ---
 
-## 8.4 Programación de Sistemas y Primitivas POSIX / Sistema Operativo
+## 8.5. Acceso a Hardware (`hardware ::`) y Primitivas POSIX de Sistemas
 
-Ridgun no nació para vivir encerrado en una torre de marfil académica: su propio compilador (`ridgunc`), su gestor de proyectos (`stable`) y utilidades clásicas de sistemas Unix (`ls`, `find`, `mtree`, `jot`, `rs`, `lam`, `vis`, `unvis`, `apply`, `make`, `sh`, `doas`) están escritos íntegramente en Ridgun.
-
-Para lograrlo, el runtime nativo expone un conjunto directo y sin intermediarios de **primitivas de sistema**, organizadas por dominios:
-
-### 1. Argumentos, Consola y Salida del Proceso
-
-| Primitiva | Firma conceptual | Qué hace |
-|---|---|---|
-| `cli_args` | `() => [Str]` | Devuelve la lista de argumentos pasados por línea de comandos (`argv`). |
-| `print` | `a => ()` | Imprime un valor en `stdout` seguido de salto de línea. |
-| `eprint` | `a => ()` | Imprime un mensaje de error en `stderr`. |
-| `sys_exit` | `Int => a` | Termina el proceso inmediatamente con el código de salida indicado (`0` éxito, `!= 0` error). |
-
-### 2. Sistema de Archivos y Metadatos (POSIX `stat`, `lstat`, directorios)
-
-| Primitiva | Firma conceptual | Qué hace |
-|---|---|---|
-| `fs_exists` | `Str => Bool` | Comprueba si existe una ruta en el sistema de archivos. |
-| `fs_is_dir` | `Str => Bool` | Devuelve `True` si la ruta es un directorio. |
-| `fs_read` | `Str => Str` | Lee el contenido completo de un archivo de texto. |
-| `fs_write` | `Str Str => ()` | Escribe una cadena en un archivo (creando los directorios padre si hace falta). |
-| `fs_mkdir` | `Str => ()` | Crea un directorio (`mkdir -p`). |
-| `fs_rm` | `Str => ()` | Elimina un archivo o directorio recursivamente. |
-| `fs_list_dir` | `Str => [Str]` | Lista los nombres de las entradas dentro de un directorio. |
-| `fs_walk` | `Str => [Str]` | Recorre recursivamente un directorio devolviendo todos los archivos `.rg`. |
-| `fs_stat_View` / `fs_lstat_View` | `Str => StatInfo` | Inspecciona permisos octales, UID/GID, tamaño, inodo, enlaces y marcas de tiempo (`mtime`). |
-| `fs_chmod` / `fs_chown` | `... => Int` | Modifica permisos o propietario de archivos en disco. |
-
-### 3. Procesos, Señales, Reloj y Entorno Unix
-
-| Primitiva | Firma conceptual | Qué hace |
-|---|---|---|
-| `sys_run` | `Str => (Int, Str)` | Ejecuta un comando del sistema y devuelve `(exit_code, salida_combinada)`. |
-| `env_get` / `env_set` | `Str => Str` / `Str Str => ()` | Lee o modifica variables de entorno del proceso. |
-| `sys_getcwd` / `sys_chdir` | `() => Str` / `Str => Int` | Obtiene o cambia el directorio de trabajo actual. |
-| `sys_getuid` / `sys_geteuid` | `() => Int` | Consulta el UID real o efectivo del usuario (esencial en herramientas como `doas`). |
-| `clock_ms` | `() => Int` | Devuelve un reloj monotónico en milisegundos para medir tiempos con precisión. |
-| `sha256_file` | `Str => Str` | Calcula el hash criptográfico SHA-256 de un archivo directamente en nativo. |
-
----
-
-## 8.5 ¿Cómo produce Ridgun binarios nativos de ~350 KB?
-
-Una de las sorpresas más gratas cuando compilas una herramienta en Ridgun con `ridgunc build` o `stable build` es mirar el tamaño y la velocidad del ejecutable resultante.
-
-Mientras muchos lenguajes modernos de alto nivel generan binarios de 15 a 50 MB porque arrastran consigo medio recolector de basura, un motor de reflexión y toda su librería estándar aunque solo imprimas `"Hola"`, el compilador AOT de Ridgun aplica tres optimizaciones de ingeniería de compiladores que mantienen los binarios en torno a **300–400 KB**:
-
-1. **Poda de Grafo de Llamadas (*Call-Graph Tree-Shaking* / DCE):**
-   Cuando importas diez módulos llenos de utilidades, `ridgunc` construye el grafo de dependencias exacto partiendo de tu función `main`. Si tu programa usa ` dividir_lineas` de una librería pero no toca las otras 80 funciones de ese módulo, **esas 80 funciones ni siquiera se emiten al código nativo**. Solo viaja en el binario lo que es estrictamente alcanzable desde `main`.
-2. **Optimización de Llamadas de Cola (*Tail-Call Optimization* / TCO a bucle nativo):**
-   Como en Ridgun iteramos mediante recursión, un compilador ingenuo consumiría un marco de pila por cada elemento de una lista de un millón de líneas. `ridgunc` detecta automáticamente cuándo una función se llama a sí misma en posición de cola (al final de una rama o guarda) y **la transforma en un bucle `loop { ... continue; }` de máquina**, mutando los registros en el sitio con **consumo de pila $O(1)$ (cero bytes extra por iteración)**.
-3. **Optimización AOT con LTO completo (`lto=fat`, `panic=abort`, `strip=symbols`):**
-   El backend nativo enlaza con optimización global de tiempo de enlace (*Link-Time Optimization*), elimina tablas de *unwinding* innecesarias y limpia los símbolos DWARF de depuración, dejando únicamente código máquina puro y compacto.
-
----
-
-## 8.6 Caso de Estudio Real: Construyendo `rg-wc`, una utilidad Unix paralela
-
-Vamos a unir todo lo que has aprendido desde el Capítulo 1 hasta aquí en un programa real de sistemas: una versión moderna de la herramienta Unix `wc` (contador de líneas, palabras y bytes para múltiples archivos) que:
-
-1. Usa **ADTs** para modelar el resultado de cada archivo.
-2. Usa **guardas y *pattern matching*** para validar los argumentos de CLI.
-3. Usa un **bloque `region`** para limpiar la memoria temporal al analizar cada archivo.
-4. Usa un **bloque `where`** para procesar los resúmenes de forma declarativa y limpia.
+El propio compilador `ridgunc`, el gestor `stable` y utilidades de sistemas Unix están escritos en Ridgun. Para ello, el lenguaje incluye bloques de registros mapeados en memoria (`hardware ::`) y primitivas POSIX directas:
 
 ```ridgun
-module main
+hardware :: UART0 @ 0x1000_0000
+  tx_data : Int @ 0x00
+  status  : Int @ 0x04
+```
 
--- 1. Modelamos las métricas de un archivo con un ADT (Capítulo 6)
-type Metricas = Metricas
-  archivo :: Str
-  lineas  :: Int
-  bytes   :: Int
+Y para trabajar con el sistema operativo:
 
--- 2. Función pura para contar saltos de línea con recursión de cola (Capítulos 4 y 8.5)
-fn :: contar_saltos Str Int Int Int => Int
-contar_saltos texto pos limite acum
-  | pos >= limite                      = acum
-  | str_char_at texto pos == "\n"      = contar_saltos texto (pos + 1) limite (acum + 1)
-  | otherwise                          = contar_saltos texto (pos + 1) limite acum
+| Primitiva | Firma | Qué hace |
+|---|---|---|
+| `cli_args` | `=> [String]` | Argumentos de línea de comandos (`argv`). |
+| `read_file` / `write_file` | `String => String` / `String String => ()` | Lectura y escritura íntegra de archivos en disco. |
+| `read_bytes` / `write_bytes` | `String => [Int]` / `String [Int] => ()` | Lectura y escritura binaria exacta byte a byte (`0..255`). |
+| `list_dir` / `file_lstat` | `String => [String]` / `String => ...` | Listado de directorios e inspección de metadatos POSIX (`lstat`). |
+| `sha256_file` / `sha256_str` | `String => String` | Hash criptográfico SHA-256 nativo. |
+| `sys_exec` / `shell_exec` | `... => Int` | Ejecución de procesos del sistema operativo. |
+| `sys_getcwd` / `sys_chdir` | `=> String` / `String => Int` | Consultar o cambiar el directorio de trabajo. |
+| `sys_getenv` / `sys_setenv` | `String => String` / `String String => Int` | Variables de entorno del proceso. |
+| `sys_getuid` / `sys_getgid` | `=> Int` | UID y GID reales del proceso (`doas`, herramientas de seguridad). |
+| `sys_exit` | `Int => ()` | Terminar el proceso con código de salida. |
 
-fn :: numero_de_lineas Str => Int
-numero_de_lineas texto = contar_saltos texto 0 (str_len texto) 0
+---
 
--- 3. Analizamos un archivo dentro de una región léxica temporal (Capítulo 8.1)
-fn :: analizar_archivo Str => Metricas
-analizar_archivo ruta
-  | not (fs_exists ruta) = Metricas ruta 0 0
-  | otherwise =
-    region r_archivo
-      contenido = fs_read ruta
-      n_lineas  = numero_de_lineas contenido
-      n_bytes   = str_len contenido
-      Metricas ruta n_lineas n_bytes
+## 8.6. Caso de Estudio Real: Construyendo `rg-wc`, una utilidad Unix paralela
 
--- 4. Formateamos una fila del informe con interpolación (Capítulo 5)
-fn :: formatear_metrica Metricas => Str
-formatear_metrica (Metricas ruta lin byt) =
-  "{lin}\t{byt}\t{ruta}"
+Vamos a unir todo lo aprendido desde el Capítulo 01 hasta aquí en un programa real de sistemas: una versión paralela de la herramienta Unix `wc` (contador de líneas y bytes para múltiples archivos) escrita en Ridgun puro:
 
--- 5. Sumamos totales usando fold (Capítulo 7)
+```ridgun
+-- 1. Modelamos las métricas de un archivo con un registro ADT (Capítulo 06)
+type Metricas = archivo: String, lineas: Int, bytes: Int
+
+-- 2. Contamos saltos de línea (código ASCII 10) con recursión de cola TCO (Capítulo 04)
+fn :: contar_saltos String Int Int Int => Int
+      contar_saltos texto  pos fin acum =
+        | pos >= fin                   = acum
+        | (str_char_at texto pos) == 10 = contar_saltos texto (pos + 1) fin (acum + 1)
+        | otherwise                    = contar_saltos texto (pos + 1) fin acum
+
+fn :: numero_de_lineas String => Int
+      numero_de_lineas texto  =  contar_saltos texto 0 (str_len texto) 0
+
+-- 3. Analizamos un archivo y devolvemos su estructura Metricas
+fn :: analizar_archivo String => Metricas
+      analizar_archivo ruta   =
+        contenido = read_file ruta
+        || numero_de_lineas contenido -> n_lineas
+        || str_len contenido          -> n_bytes ||.
+        Metricas ruta n_lineas n_bytes
+
+-- 4. Formateamos cada fila y sumamos totales con `fold` y `||` (Capítulo 07)
+fn :: formatear_metrica Metricas => String
+      formatear_metrica m        =  "{lineas m}\t{bytes m}\t{archivo m}"
+
 fn :: sumar_lineas Int Metricas => Int
-sumar_lineas acc (Metricas _ lin _) = acc + lin
+      sumar_lineas acc m        =  acc + (lineas m)
 
 fn :: sumar_bytes Int Metricas => Int
-sumar_bytes acc (Metricas _ _ byt) = acc + byt
+      sumar_bytes acc m        =  acc + (bytes m)
 
--- 6. Procesamos la lista de archivos usando un grafo where (Capítulo 7)
-fn :: generar_informe [Str] => Str
-generar_informe rutas = "{cuerpo}\n{totales_lineas}\t{totales_bytes}\ttotal"
-  where
-    metricas       = map analizar_archivo rutas
-    filas          = map formatear_metrica metricas
-    cuerpo         = str_join filas "\n"
-    totales_lineas = fold sumar_lineas 0 metricas
-    totales_bytes  = fold sumar_bytes 0 metricas
+fn :: generar_informe [String] => String
+      generar_informe rutas    =
+        metricas = map analizar_archivo rutas
+        || map formatear_metrica metricas -> filas
+        || fold sumar_lineas 0 metricas   -> total_l
+        || fold sumar_bytes 0 metricas    -> total_b ||.
+        "{filas}\nTotal: {total_l} líneas, {total_b} bytes"
 
--- 7. Punto de entrada del sistema
 fn :: main => ()
-main =
-  args = cli_args ()
-  if length args <= 1
-    eprint "Uso: rg-wc <archivo1> [archivo2 ...]"
-    sys_exit 1
-  else
-    rutas = drop 1 args
-    print (generar_informe rutas)
+      main =
+        echo (generar_informe ["README.md", "AGENTS.md"])
 ```
 
-Párate un segundo a mirar esas ~55 líneas de código.
-
-* No hay ni un solo `null`, ni una excepción no controlada, ni una variable mutable global.
-* El bucle `contar_saltos` se compila a un `loop` nativo con 0 bytes de gasto de pila gracias al TCO automático.
-* En `generar_informe`, el bloque `where` descubre solo que `cuerpo`, `totales_lineas` y `totales_bytes` dependen de `metricas`, pero son independientes entre sí.
-* Cada archivo se lee y procesa dentro de su propia `region r_archivo`.
-* Y cuando ejecutas `ridgunc build main.rg -o rg-wc`, obtienes un binario nativo autónomo de unos ~370 KB listo para copiar a `/usr/local/bin`.
+Párate un segundo a mirar esas ~40 líneas de código:
+- No hay ni un solo `null`, ni una excepción descontrolada, ni un `Mutex`.
+- `contar_saltos` se compila a un `loop` nativo con 0 bytes de pila gracias al TCO automático.
+- `map analizar_archivo rutas` procesa los archivos en paralelo en todos los núcleos de tu CPU, y el bloque `||` calcula simultáneamente las filas formateadas, el total de líneas y el total de bytes.
+- La memoria temporal se libera determinísticamente mediante **`RMM1`/`RMM2`**.
+- Y cuando ejecutas `ridgunc build rg_wc.rg -o rg-wc`, obtienes un binario nativo autónomo de ~350 KB listo para copiar a `/usr/local/bin`.
 
 ---
 
-## 8.7 Hoja de Ruta Final: Las 10 Reglas de Oro del Programador Ridgun
+## 8.7. Hoja de Ruta Final: Las 10 Reglas de Oro del Programador Ridgun
 
-Has llegado al final del libro. Si quieres tener una chuleta mental (o impresa junto al monitor) con la esencia de todo lo que hemos recorrido desde el Capítulo 00, aquí tienes los **10 mandamientos del buen código Ridgun**:
-
-1. **Toda función lleva su pasaporte (`fn ::`):** escribe siempre primero el contrato de tipos y después las ecuaciones. Te ayudará a pensar antes de picar código y el compilador será tu mejor copiloto.
-2. **Alinea tus `=` y tus `|`:** deja que `stable format` (o `ridgun-mode` en Emacs) mantenga tus ecuaciones y guardas como una tabla limpia que se lee de un vistazo.
-3. **Usa *Pattern Matching* para la forma y Guardas (`|`) para las condiciones:** no anides escaleras infinitas de `if / else`. Desestructura el dato a la izquierda y filtra con guardas en cascada a la derecha.
-4. **Cierra siempre con `| otherwise =`:** nunca dejes una función a merced de la casualidad; haz que tus guardas y patrones sean exhaustivos.
-5. **Modela tu dominio con ADTs (`type`):** haz que los estados ilegales sean irrepresentables. Si una función puede fallar de forma esperada, devuelve un `Option<a>` o un `Result<a, e>` en lugar de valores mágicos como `-1` o `""`.
-6. **Piensa en transformaciones (`map`, `filter`, `fold`):** evita escribir recursión manual cuando una combinación de funciones de orden superior expresa tu intención en una sola línea.
-7. **Declara el *qué* con `where` y deja el *cómo* (y el paralelismo) al compilador:** agrupa los subcálculos independientes en un bloque `where` puro para que Ridgun construya el DAG y aproveche todos los núcleos de tu CPU sin *data races*.
-8. **Ponle dimensiones a tus Tensores (`Tensor<DType, [Dims]>`):** deja que el compilador cace los errores de formas matriciales antes de ejecutar ni un solo cálculo.
-9. **Acota la memoria temporal con `region`:** cuando proceses lotes grandes de datos intermedios, envuélvelos en una región léxica para liberar la memoria de forma determinista y en tiempo $O(1)$.
-10. **Confía en `stable check` y `stable test`:** si pasa el verificador de tipos de Ridgun y tus tests en `src/test/ridgun/` están en verde, puedes desplegar tranquilo un viernes a las 18:00.
+1. **Escribe siempre primero el contrato (`=>`) y después las ecuaciones (`=`):** pensar en los tipos primero hace que el compilador trabaje para ti.
+2. **Deja que `stable format` maquete tus tablas:** escribe con un espacio y deja que la herramienta alinee columnas, `=>`, `=` y `->`.
+3. **Recuerda la regla universal del `=`:** detrás de cualquier `=` puedes abrir un bloque secuencial, un árbol de guardas `|` o un grafo paralelo `||`.
+4. **Usa `|.` y `||.` solo cuando cierres un bloque anidado para volver a un nivel superior:** mantén los árboles de decisión profundos compactos y sin ambigüedad.
+5. **Inmutable por defecto (`x = ...`), mutable explícito (`mut x = ...`):** usa `mut` únicamente cuando un acumulador local lo pida de verdad.
+6. **Usa operadores booleanos claros en minúsculas (`and`, `or`, `xor`, `not`) y cierra siempre tus guardas con `| otherwise =`.**
+7. **Modela tu dominio con ADTs (`type`):** usa registros con `with campo: valor` y tipos suma (`Option`, `Result`) en lugar de `null`.
+8. **Paraleliza declarando dependencias con `|| expr -> var` y `map` / `filter`:** deja que el compilador verifique que no hay ciclos y reparta el trabajo entre los núcleos.
+9. **Ponle dimensiones simbólicas a tus Tensores (`Tensor[N, K]`) y subíndices a tus contracciones (`a_ik @ b_kj`).**
+10. **Confía en `RMM` (`RMM1`/`RMM2`), acota entradas externas con `with region` y verifica siempre con `stable check` y `stable test`.**
 
 ¡Feliz viaje programando en Ridgun!

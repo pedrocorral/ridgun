@@ -45,10 +45,10 @@ En Ridgun, **el código es esa tabla**:
 
 ```ridgun
 autorizar String   String   Bool  Int   => String
-autorizar "activo" "admin"  _     cuota
+autorizar "activo" "admin"  _     cuota =
   | cuota > 0 = "Procesando petición"
   | otherwise = "Denegado: sin cuota"
-autorizar "activo" "editor" True  cuota
+autorizar "activo" "editor" True  cuota =
   | cuota > 0 = "Procesando petición"
   | otherwise = "Denegado: sin cuota"
 autorizar _        _        _     _     =  "Denegado: no autorizado"
@@ -73,17 +73,16 @@ Hoy hasta el teléfono más modesto tiene 8 núcleos, y cualquier servidor o por
 - ¿Y si bloqueo el `Mutex` A y luego el B en un hilo, y el B y luego el A en otro? (*Deadlock*).
 - ¿Y si contamino toda mi base de código con `async` y `await` de arriba abajo?
 
-En Ridgun, **toda función es pura y todo dato es inmutable**. Eso tiene una consecuencia mágica: **dos expresiones que no dependen una de la otra jamás pueden interferir entre sí**.
+En Ridgun, **toda función es pura y todo dato es inmutable por defecto**. Eso tiene una consecuencia mágica: **dos expresiones que no dependen una de la otra jamás pueden interferir entre sí**.
 
-Por eso, en Ridgun no tienes que gestionar hilos para aprovechar tu CPU. Solo declaras **qué depende de qué** en un bloque `where`:
+Por eso, en Ridgun no tienes que gestionar hilos para aprovechar tu CPU. Solo declaras **qué depende de qué** con barras paralelas `||` y flechas `->`:
 
 ```ridgun
 informe_mensual Datos => Informe
 informe_mensual d     =  combinar metricas_red metricas_disco metricas_cpu
-  where
-    analizar_red d   -> metricas_red
-    analizar_disco d -> metricas_disco
-    analizar_cpu d   -> metricas_cpu
+  || analizar_red d   -> metricas_red
+  || analizar_disco d -> metricas_disco
+  || analizar_cpu d   -> metricas_cpu
 ```
 
 Tú solo has escrito tres líneas limpias indicando de dónde sale cada dato. El compilador ve que las tres ramas son independientes y sabe que puede lanzarlas en paralelo sin que exista ni la más mínima posibilidad de un *data race* o un *deadlock*.
@@ -97,16 +96,16 @@ Los lenguajes funcionales clásicos (Haskell, OCaml, Erlang, Clojure) son maravi
 - Controlar exactamente cuánta memoria RAM puede consumir una operación antes de abortarla limpiamente.
 - Escribir utilidades del sistema operativo (`ls`, `find`, `sh`, `doas`, `make`) o tocar registros de hardware (`MMIO`).
 
-Ridgun te da **toda la elegancia del mundo funcional puro, pero con gestión de memoria determinista basada en regiones**:
+Ridgun te da **toda la elegancia del mundo funcional puro, pero con Gestión de Memoria de Ridgun (`RMM`: `RMM1` estática y `RMM2` por conteo de asignaciones en cascada) más regiones léxicas con cuota exacta (`with region`)**:
 
 ```ridgun
-parsear_paquete String => Result Paquete OutOfMemory
+parsear_paquete String => Result
 parsear_paquete crudo  =
   with region 16_KB do
     decodificar_trama crudo
 ```
 
-Si un atacante te envía un paquete malicioso diseñado para explotar la memoria, al superar el byte 16.384 la región se corta al instante, libera su arena en $O(1)$ y te devuelve `Err OutOfMemory`. Sin caídas del proceso, sin pausas de GC y sin fugas de memoria.
+Cada estructura temporal es liberada de forma determinista por el compilador (`RMM1` / `RMM2`) en el instante en que deja de usarse, y si un atacante te envía un paquete malicioso diseñado para explotar la memoria, al superar el byte 16.384 la región se corta al instante, libera su arena en $O(1)$ y te devuelve `Err OutOfMemory`. Sin caídas del proceso, sin pausas de GC y sin fugas de memoria.
 
 ---
 

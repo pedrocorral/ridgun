@@ -33,7 +33,7 @@ ridgunc compile experimento.rg -o experimento.rgc
 ### El superpoder oculto de `ridgunc check`
 Cuando lanzas `ridgunc check`, no solo te dice *"0 errores"*. También te chiva qué estrategia ha elegido el analizador estático para cada una de tus funciones:
 - **`InlineSequential`**: *"Esta función es pequeñita y directa; la voy a ejecutar en línea sin meter sobrecoste de planificación"*.
-- **`LazyStealableTask`**: *"Aquí hay recursión o un grafo `where`; la preparo para que otros núcleos de CPU puedan robar trabajo si hace falta"*.
+- **`LazyStealableTask`**: *"Aquí hay recursión o un grafo paralelo `||`; la preparo para que otros núcleos de CPU puedan robar trabajo si hace falta"*.
 
 ### El bisturí de `ridgunc build` (Por qué tus binarios no pesan 20 MB)
 Cuando ejecutas `ridgunc build`, el compilador no se limita a escupir todo el código de las librerías que hayas importado:

@@ -120,15 +120,14 @@ Reconocer a los clásicos es de buena educación, pero si Ridgun fuera solo un "
 
 Hay **siete cosas** que hemos diseñado e integrado en Ridgun que no vas a encontrar juntas —y muchas de ellas, ni siquiera por separado— en ningún otro lenguaje actual:
 
-### 1. Bloques `where` que son grafos paralelos reales (`->`), no simple azúcar sintáctico
-En Haskell, un `where` es solo una forma bonita de ordenar variables locales que luego se evalúan perezosamente en un único hilo. En el resto de lenguajes, `where` ni siquiera existe.
-En Ridgun, **un bloque `where` es un Grafo Acíclico Dirigido (DAG) de ejecución paralela**:
+### 1. Bloques paralelos `||` con `->` que son grafos paralelos reales, no simple azúcar sintáctico
+En otros lenguajes funcionales un bloque de variables locales solo ordena expresiones que luego se evalúan en un único hilo.
+En Ridgun, **un bloque `||` con flechas `->` es un Grafo Acíclico Dirigido (DAG) de ejecución paralela** sin siquiera necesitar escribir palabras clave extra como `where`:
 ```ridgun
 informe_anual Int => Int
 informe_anual id  =  ingresos - gastos
-  where
-    calcular_ventas id -> ingresos
-    calcular_costes id -> gastos
+  || calcular_ventas id -> ingresos
+  || calcular_costes id -> gastos
 ```
 Tú dibujas las flechas de flujo (`->`). El compilador analiza quién depende de quién, **verifica estáticamente que no hayas creado ningún ciclo infinito**, y lanza las ramas independientes en paralelo sin que escribas ni un solo `async`, `await`, `Future` ni `Mutex`.
 
@@ -147,16 +146,16 @@ En la mayoría de los lenguajes, o te aguantas con `+`, `-`, `*` o como mucho de
 En Ridgun puedes crear **operadores que son frases legibles con tantos huecos tipados como quieras** (incluyendo palabras contextuales como `type` o `with`):
 ```ridgun
 op :: Int limitado_entre Int y Int => Int
-      x   limitado_entre min y max
+      x   limitado_entre min y max =
         | x < min   = min
         | x > max   = max
         | otherwise = x
 ```
 Y luego en tu código escribes `velocidad limitado_entre 0 y 120`. Se lee como castellano (o inglés), pero está 100% tipado y compilado a código nativo.
 
-### 4. Máscaras visuales sobre secuencias (`s["-+-"]` y `s["+~"]`)
+### 4. Máscaras visuales sobre secuencias (`s(+ _)` y `s["-+-"]`)
 ¿Alguna vez has tenido que escribir una ensalada de índices `filter(\(i, x) -> i % 2 == 0)` solo para quedarte con los elementos pares o extraer un patrón rítmico de una lista?
-En Ridgun le pasas directamente una **máscara visual** entre corchetes:
+En Ridgun le pasas directamente una **máscara visual**:
 - `datos["-+-"]`: descarta el primero (`-`), se queda el segundo (`+`), descarta el tercero (`-`).
 - `datos["+-~"]`: el símbolo `~` repite el patrón `+-` en bucle hasta el final de la lista (todos los índices pares de un plumazo).
 Cero aritmética de índices, cero errores *off-by-one*.
@@ -173,12 +172,12 @@ intercambiar (x, y) =  (y, x)
 ### 6. Cero archivos de configuración extraños: `build.rg` es Ridgun puro
 Olvídate de aprender TOML para Cargo, JSON para npm, XML para Maven o la sintaxis arcana de `Makefile` con tabuladores invisibles. En Ridgun, la receta que construye tu proyecto (`build.rg`) **es un archivo `.rg` más**, con las mismas funciones puras y el mismo *pattern matching* que el resto de tu código.
 
-### 7. La "Santísima Trinidad" que parecía imposible: Nivel Haskell + Memoria sin GC ni Lifetimes + Binarios de ~350 KB
+### 7. La "Santísima Trinidad" que parecía imposible: Nivel Haskell + Memoria RMM sin GC ni Lifetimes + Binarios de ~350 KB
 Hasta hoy tenías que elegir:
 - Si querías expresividad funcional pura (Haskell, OCaml, Elixir), pagabas con un recolector de basura y un runtime pesado.
 - Si querías binarios diminutos de sistema sin recolector de basura (C, Rust, Zig), pagabas gestionando punteros o peleándote con el *borrow checker* y escribiendo código imperativo lleno de `let mut`.
 
-Ridgun rompe ese dilema combinando **regiones léxicas (`with region`)** que liberan arenas enteras en $O(1)$, **recursión de cola transformada en bucles nativos (`loop`)**, y **poda de grafo de llamadas (*Tree-Shaking*)** desde `main`. El resultado: escribes código declarativo de altísimo nivel y obtienes un ejecutable ELF autónomo de **~350 KB** capaz de competir de tú a tú con herramientas escritas en C.
+Ridgun rompe ese dilema combinando **Ridgun Memory Management (`RMM`: `RMM1` estática y `RMM2` por conteo de asignaciones en cascada)**, **regiones léxicas (`with region`)** que liberan arenas enteras en $O(1)$, **recursión de cola transformada en bucles nativos (`loop`)**, y **poda de grafo de llamadas (*Tree-Shaking*)** desde `main`. El resultado: escribes código declarativo de altísimo nivel y obtienes un ejecutable ELF autónomo de **~350 KB** capaz de competir de tú a tú con herramientas escritas en C.
 
 Ahora sí: con las cartas sobre la mesa, vamos al **Capítulo 02** para poner a trabajar a **`ridgunc`** y **`stable`**.
 

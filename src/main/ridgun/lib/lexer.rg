@@ -83,12 +83,13 @@ fn :: classify_word String => RToken
         | w == "hardware" = TokHardware
         | w == "where" = TokWhere
         | w == "otherwise" = TokOtherwise
+        | w == "mut" = TokMut
         | w == "True" = TokTrue
         | w == "False" = TokFalse
-        | w == "AND" = TokAnd
-        | w == "OR" = TokOr
-        | w == "XOR" = TokXor
-        | w == "NOT" = TokNot
+        | w == "and" OR w == "AND" = TokAnd
+        | w == "or" OR w == "OR" = TokOr
+        | w == "xor" OR w == "XOR" = TokXor
+        | w == "not" OR w == "NOT" = TokNot
         | otherwise = TokIdent w
 
 fn :: unescape_char Int => String
@@ -168,7 +169,9 @@ fn :: lex_one_tok String Int Int Int Int => (RToken, Int)
         | c == 33 AND c2 == 61 = (TokNeq, pos + 2)
         | c == 62 AND c2 == 61 = (TokGtEq, pos + 2)
         | c == 60 AND c2 == 61 = (TokLtEq, pos + 2)
+        | c == 124 AND c2 == 124 AND (str_char_at src (pos + 2)) == 46 = (TokDoublePipeDot, pos + 3)
         | c == 124 AND c2 == 124 = (TokDoublePipe, pos + 2)
+        | c == 124 AND c2 == 46 = (TokPipeDot, pos + 2)
         | c == 46 AND c2 == 46 AND (str_char_at src (pos + 2)) == 46 = (TokEllipsis, pos + 3)
         | c == 58 = (TokColon, pos + 1)
         | c == 61 = (TokEquals, pos + 1)

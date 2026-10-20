@@ -5,7 +5,7 @@
 -- ============================================================
 
 -- 1. Lexical Tokens produced by lexer.rg
-type RToken = TokFn | TokOp | TokType | TokImport | TokGlobal | TokContext | TokShared | TokWith | TokDo | TokAtomic | TokHardware | TokWhere | TokOtherwise | TokTrue | TokFalse | TokAnd | TokOr | TokXor | TokNot | TokIdent String | TokInt Int | TokReal String | TokStr String | TokRawStr String | TokColonColon | TokColon | TokFatArrow | TokArrow | TokEquals | TokEqEq | TokNeq | TokGt | TokLt | TokGtEq | TokLtEq | TokPlus | TokMinus | TokStar | TokSlash | TokPercent | TokAt | TokPipe | TokDoublePipe | TokLParen | TokRParen | TokLBracket | TokIdxLBracket | TokRBracket | TokComma | TokEllipsis | TokNewline | TokEof
+type RToken = TokFn | TokOp | TokType | TokImport | TokGlobal | TokContext | TokShared | TokWith | TokDo | TokAtomic | TokHardware | TokWhere | TokOtherwise | TokMut | TokTrue | TokFalse | TokAnd | TokOr | TokXor | TokNot | TokIdent String | TokInt Int | TokReal String | TokStr String | TokRawStr String | TokColonColon | TokColon | TokFatArrow | TokArrow | TokEquals | TokEqEq | TokNeq | TokGt | TokLt | TokGtEq | TokLtEq | TokPlus | TokMinus | TokStar | TokSlash | TokPercent | TokAt | TokPipe | TokPipeDot | TokDoublePipe | TokDoublePipeDot | TokLParen | TokRParen | TokLBracket | TokIdxLBracket | TokRBracket | TokComma | TokEllipsis | TokNewline | TokEof
 
 -- 2. Patterns in Function & Operator Cases
 type RPattern = PatInt Int | PatReal String | PatStr String | PatBool Bool | PatVar String | PatWild | PatEmpty | PatCons RPattern RPattern | PatTuple [RPattern] | PatCtor String [RPattern] | PatSeqBind String
@@ -14,7 +14,7 @@ type RPattern = PatInt Int | PatReal String | PatStr String | PatBool Bool | Pat
 type RBinOp = OpAdd | OpSub | OpMul | OpDiv | OpMod | OpEq | OpNeq | OpGt | OpLt | OpGtEq | OpLtEq | OpAnd | OpOr | OpXor | OpConcat | OpFlatJoin | OpMatMul
 
 -- 4. Statements inside an indented block
-type RStmt = StmtLet String RExpr | StmtExpr RExpr | StmtAtomic String RExpr | StmtIndexAssign String [RExpr] RExpr
+type RStmt = StmtLet String RExpr | StmtMut String RExpr | StmtExpr RExpr | StmtAtomic String RExpr | StmtIndexAssign String [RExpr] RExpr
 
 -- 5. Where-block Producer-Consumer Binding (expr -> target_var or expr -> target_var[i, j])
 type RWhereBind = WhereBind RExpr String [Int]
@@ -23,7 +23,7 @@ type RWhereBind = WhereBind RExpr String [Int]
 type RGuard = GuardBranch RExpr RExpr
 
 -- 7. Expressions (Full Ridgun v0.9.0 AST)
-type RExpr = EInt Int | EReal String | EStr String | EStrInterp [RExpr] | EBool Bool | EUnit | EVar String | ENot RExpr | EOut RExpr | EBin RBinOp RExpr RExpr | ECall String [RExpr] | EEcho [RExpr] | EList [RExpr] | ETuple [RExpr] | ETensor [RExpr] | EEinsum [RExpr] [String] | EHadamard RBinOp RExpr String RExpr String | EIndex RExpr [RExpr] | EIndexAssign String [RExpr] RExpr | ESeqSelect RExpr String | EBlock [RStmt] | EWhere RExpr [RWhereBind] | EParPipe [RExpr] | EWithCtx String RExpr RExpr | EWithRegion Int RExpr | EAtomicUpdate String RExpr | ELoadContext String RExpr | ELoadShared String RExpr
+type RExpr = EInt Int | EReal String | EStr String | EStrInterp [RExpr] | EBool Bool | EUnit | EVar String | ENot RExpr | EOut RExpr | EBin RBinOp RExpr RExpr | ECall String [RExpr] | EEcho [RExpr] | EList [RExpr] | ETuple [RExpr] | ETensor [RExpr] | EEinsum [RExpr] [String] | EHadamard RBinOp RExpr String RExpr String | EIndex RExpr [RExpr] | EIndexAssign String [RExpr] RExpr | ESeqSelect RExpr String | EBlock [RStmt] | EGuard [RGuard] | EWhere RExpr [RWhereBind] | EParPipe [RExpr] | EWithCtx String RExpr RExpr | EWithRegion Int RExpr | EAtomicUpdate String RExpr | ELoadContext String RExpr | ELoadShared String RExpr
 
 -- 8. Function Case & Function Definition
 type RFnCase = FnCase [RPattern] [RGuard] RExpr

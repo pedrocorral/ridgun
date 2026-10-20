@@ -33,17 +33,17 @@ Ridgun prueba las filas **de arriba abajo**:
 
 ---
 
-## 4.2. Guardas booleanas (`|`): Tu bisturí para rangos y condiciones
+## 4.2. Guardas booleanas (`|`): Tu bisturí para rangos, variables condicionales y árboles de decisión
 
-*"Vale, el pattern matching mola cuando busco el `200` o el `404`. ¿Pero qué hago si quiero comprobar si `nota >= 5` o si `edad > 18 AND edad < 65`? ¡No voy a escribir 47 filas con todos los números del 18 al 65!"*
+*"Vale, el pattern matching mola cuando busco el `200` o el `404`. ¿Pero qué hago si quiero comprobar si `nota >= 5` o si `edad > 18 and edad < 65`? ¡No voy a escribir 47 filas con todos los números del 18 al 65!"*
 
 ¡Claro que no! Para eso están las **guardas (`|`)**.
 
-Cuando el resultado depende de una desigualdad o de una combinación lógica, debajo del encabezado de la función abres una escalera de barras verticales `|`:
+Cuando el resultado depende de una desigualdad o de una combinación lógica, después del `=` de la función (o de cualquier variable local) abres una escalera de barras verticales `|`:
 
 ```ridgun
 calificar Int => String
-calificar nota
+calificar nota =
   | nota < 0   = "Nota imposible (¿puntos negativos?)"
   | nota < 5   = "Suspenso"
   | nota < 7   = "Aprobado"
@@ -53,40 +53,85 @@ calificar nota
 ```
 
 Míralo bien:
-- Se lee de arriba abajo igual que una tabla de tarifas.
-- Cada línea `| condicion = resultado` se comprueba en orden. En cuanto una da `True`, devuelve ese resultado y se acabó.
+- El signo `=` del encabezado (`calificar nota =`) se alinea debajo de `=>` igual que en cualquier otra función.
+- Debajo se lee de arriba abajo igual que una tabla de tarifas: cada línea `| condicion = resultado` se comprueba en orden. En cuanto una da `True`, devuelve ese resultado y se acabó.
 - Al final pones **`| otherwise = ...`**, que significa literalmente *"en cualquier otro caso"* (tu red de seguridad para que nunca quede un camino sin retorno).
 
-### Lógica booleana en inglés llano (`AND`, `OR`, `XOR`, `NOT`)
+### Lógica booleana en minúsculas claras (`and`, `or`, `xor`, `not`)
 ¿Te has fijado en que muchos lenguajes usan `|` para bits, `||` para booleanos, `!` para negar... y cuando lees una condición compleja parece que un gato ha caminado sobre el teclado (`if (!a && (b || c))`)?
 
-En Ridgun, como `|` ya es el símbolo sagrado de las guardas y de los tipos algebraicos, y `||` es el operador de paralelismo, **los operadores booleanos se escriben con palabras claras en mayúsculas**:
+En Ridgun, como `|` ya es el símbolo sagrado de las guardas y de los tipos algebraicos, y `||` es el operador de paralelismo, **los operadores booleanos se escriben con palabras claras en minúsculas**:
 
-- **`AND`**: se cumplen las dos cosas (`edad >= 18 AND tiene_carnet`).
-- **`OR`**: se cumple al menos una (`dia == "sabado" OR dia == "domingo"`).
-- **`XOR`**: se cumple una u otra, pero no las dos a la vez.
-- **`NOT`**: invierte el booleano (`NOT (esta_vacio texto)`).
+- **`and`**: se cumplen las dos cosas (`edad >= 18 and tiene_carnet`).
+- **`or`**: se cumple al menos una (`dia == "sabado" or dia == "domingo"`).
+- **`xor`**: se cumple una u otra, pero no las dos a la vez.
+- **`not`**: invierte el booleano (`not (esta_vacio texto)`).
 
 Mira qué limpio queda el clásico problema de los años bisiestos:
 
 ```ridgun
 es_bisiesto Int => Bool
-es_bisiesto a
+es_bisiesto a =
   | (a % 400) == 0                = True
-  | (a % 4) == 0 AND (a % 100) != 0 = True
+  | (a % 4) == 0 and (a % 100) != 0 = True
   | otherwise                     = False
 ```
 
 Cero símbolos crípticos. Lo lee alguien que no sabe Ridgun y lo entiende a la primera.
 
-### Bloques de varias líneas dentro de una guarda (`| cond =` + bloque indentado)
-*"Oye, ¿y si en una de las ramas de `|` necesito calcular dos o tres variables locales antes de devolver el resultado? ¿Tengo que crear una función auxiliar aparte solo para eso?"*
+### Variables locales condicionales (`x =` + `|`)
+Como en Ridgun todo `=` sigue la misma regla, **también puedes usar `|` para asignar una variable local** sin tener que crear una función auxiliar aparte:
 
-¡Ni hablar! Igual que después del `=` de una función normal puedes abrir un bloque indentado de varias líneas, **después del `=` de cualquier guarda `| cond =` o `| otherwise =` también puedes hacer un salto de línea y abrir un bloque indentado**:
+```ridgun
+precio_billete Int Bool => Int
+precio_billete base es_familia_numerosa =
+  descuento =
+    | es_familia_numerosa = 20
+    | base > 100          = 10
+    | otherwise           = 0
+  base - (base * descuento / 100)
+```
+
+### Árboles de decisión anidados y el limitador compacto `|.`
+*"¿Y si dentro de una rama `| cond =` o `| otherwise =` quiero abrir otro sub-árbol de guardas `|` de 3 o 4 niveles de profundidad y luego volver a un nivel superior?"*
+
+Puedes anidar `|` dentro de `|` tantos niveles como quieras. Y cuando un bloque `|` anidado termina pero debajo siguen más ramas de un nivel padre (o más sentencias del bloque), colocas **`|.`** al final de su última línea (`| otherwise = valor |.`) para indicar sin ninguna ambigüedad que ese sub-árbol se cierra y vuelves al nivel anterior:
+
+```ridgun
+enrutar_peticion Int    Int Bool      Bool     Int        Int       => Int
+enrutar_peticion metodo rol firmada   es_admin tamano_kb  limitado  =
+  | metodo == 0 =
+    | tamano_kb == 0 = 204
+    | otherwise      = 200 |.
+  | metodo == 1 =
+    | not firmada = 401
+    | otherwise =
+      -- Nivel 2: petición POST firmada
+      | limitado > 0 =
+        -- Nivel 3: control de rate-limit
+        | es_admin =
+          -- Nivel 4: excepción para administradores
+          | tamano_kb > 10000 = 413
+          | otherwise         = 202 |.
+        | otherwise = 429 |.
+      | tamano_kb > 1000 =
+        -- Nivel 3: hemos vuelto desde el Nivel 4 gracias a `|.`
+        | rol >= 2 and es_admin = 201
+        | otherwise             = 413 |.
+      | otherwise = 201 |.
+  | otherwise = 405
+```
+
+Fíjate en lo limpio que es:
+- En un árbol simple de 1 nivel (o al final de toda la función) **nunca hace falta poner `|.`** (sería ruido innecesario).
+- Solo escribes `|.` al cerrar una rama anidada cuando debajo continúa una rama de un nivel superior.
+
+### Bloques de varias líneas dentro de una guarda (`| cond =` + bloque indentado)
+Igual que después del `=` de una función normal puedes abrir un bloque indentado de varias líneas, **después del `=` de cualquier guarda `| cond =` o `| otherwise =` también puedes hacer un salto de línea y abrir un bloque secuencial**:
 
 ```ridgun
 ajustar_ventana Int Int => Int
-ajustar_ventana idx limite
+ajustar_ventana idx limite =
   | idx >= limite =
       tope = limite - 1
       escalado = tope * 2
@@ -143,7 +188,7 @@ Cada vez que en otro lenguaje pensarías *"voy a hacer un bucle `while` con un �
 
 ```ridgun
 buscar_caracter_loop String Int Int Int     => Int
-buscar_caracter_loop texto  pos fin buscado
+buscar_caracter_loop texto  pos fin buscado =
   | pos >= fin                        = -1
   | (str_char_at texto pos) == buscado = pos
   | otherwise                         = buscar_caracter_loop texto (pos + 1) fin buscado

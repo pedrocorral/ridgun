@@ -6,22 +6,22 @@ En casi todos los lenguajes de programación hay un momento dramático en la vid
 
 Se hace el silencio en la sala. Todo el mundo sabe lo que viene después: semanas cazando *race conditions* fantasma que solo ocurren los martes con luna llena, bloqueos mutuos (*deadlocks*) y errores irreproducibles.
 
-En Ridgun, cuando alguien dice *"hay que paralelizarlo"*, cambias tres letras (`map` por `pmap`, o pones tus cálculos en un bloque `where`) y te vas a tomar un café.
+En Ridgun, cuando alguien dice *"hay que paralelizarlo"*, `map` y `filter` ya son paralelos por defecto, o pones tus cálculos en un bloque paralelo `||` con flechas `->` y te vas a tomar un café.
 
-¿Por qué? Porque **cuando tus funciones son puras y tus datos son inmutables, dos núcleos de CPU trabajando a la vez jamás pueden pisarse la manguera**.
+¿Por qué? Porque **cuando tus funciones son puras y tus datos son inmutables por defecto, dos núcleos de CPU trabajando a la vez jamás pueden pisarse la manguera**.
 
 Vamos a verlo paso a paso.
 
 ---
 
-## 7.1. Funciones que reciben funciones: `map`, `filter`, `fold` y el turbo `pmap`
+## 7.1. Funciones que reciben funciones: `map`, `seq_map`, `filter`, `seq_filter` y `fold`
 
 En Ridgun una función es un valor más. Puedes pasarla por parámetro igual que pasas el número `7`.
 
-El lenguaje trae de serie el cuarteto fantástico para transformar listas sin escribir ni una sola recursión manual:
+El lenguaje trae de serie los combinadores de colecciones para transformar listas sin escribir ni una sola recursión manual:
 
-### 1. `map` y `pmap`: Transformar cada elemento (en fila india o con todos los núcleos a la vez)
-Supón que tienes una función `costoso Int => Int` y una lista con mil números:
+### 1. `map` (paralelo por defecto) y `seq_map` (secuencial)
+Supón que tienes una función `costoso Int => Int` y una lista con números:
 
 ```ridgun
 costoso Int => Int
@@ -30,19 +30,18 @@ costoso x   =  (x * x) + (x * 3)
 main => ()
 main =
   datos = [1, 2, 3, 4, 5, 6, 7, 8]
-  -- Versión normal:
+  -- Paralelo multicore por defecto:
   r1 = map costoso datos
-  -- Versión paralela multicore (work-stealing):
-  r2 = pmap costoso datos
+  -- Secuencial estricto de izquierda a derecha:
+  r2 = seq_map costoso datos
   echo r1
   echo r2
 ```
 
-Fíjate en la diferencia entre `r1` y `r2`: **una sola letra (`p`)**.
-- Con **`pmap`**, el runtime de Ridgun reparte los elementos de `datos` entre los hilos trabajadores de tu procesador y reconstruye la lista final **exactamente en el mismo orden**, garantizando que `pmap f xs == map f xs`.
+- Con **`map`**, el runtime de Ridgun reparte los elementos de `datos` entre los hilos trabajadores de tu procesador y reconstruye la lista final **exactamente en el mismo orden**, garantizando que `map f xs == seq_map f xs`.
 - ¿Y si tu función hace efectos de entrada/salida (como imprimir en pantalla o escribir en un archivo) y quieres forzar a que vaya estrictamente de izquierda a derecha de uno en uno? Usas **`seq_map`**.
 
-### 2. `filter` (y `seq_filter`): Quedarte solo con los que cumplan una condición
+### 2. `filter` (paralelo) y `seq_filter` (secuencial): Quedarte solo con los que cumplan una condición
 Le pasas una función que devuelva `Bool` (un *predicado*) y una lista:
 
 ```ridgun
@@ -55,7 +54,7 @@ main =
   echo limpios  -- Imprime [10, 42]
 ```
 
-### 3. `fold` (también llamado `foldl` / `foldr`): Reducir toda una lista a un solo resultado
+### 3. `fold`: Reducir toda una lista a un solo resultado
 Le pasas una función combinadora de dos argumentos `(Acumulado Elemento => Acumulado)`, el valor inicial y la lista:
 
 ```ridgun
@@ -77,7 +76,7 @@ ejecutar_dos_veces f        x =  f (f x)
 
 ---
 
-## 7.2. La joya de la corona: Bloques `where` como Grafos Paralelos (DAGs)
+## 7.2. La joya de la corona: Bloques `||` con `->` como Grafos Paralelos (DAGs)
 
 Aquí es donde Ridgun cambia tu forma de pensar.
 
@@ -86,7 +85,7 @@ En un lenguaje imperativo normal, cuando escribes tres líneas seguidas:
 2. Luego la línea 2 (aunque no tenga nada que ver con la línea 1).
 3. Luego la línea 3.
 
-Eso es obligar al ordenador a trabajar con orejeras. En Ridgun, cuando usas un bloque **`where`**, no estás dando órdenes secuenciales: estás dibujando un **Grafo Acíclico Dirigido (DAG)** con flechas `->` que dicen qué dato alimenta a qué variable:
+Eso es obligar al ordenador a trabajar con orejeras. En Ridgun, cuando usas barras paralelas **`||`** con flechas **`->`** (sin necesidad de escribir ninguna palabra clave como `where`), no estás dando órdenes secuenciales: estás dibujando un **Grafo Acíclico Dirigido (DAG)** que dice qué cálculo alimenta a qué variable:
 
 ```ridgun
 fib Int => Int
@@ -100,47 +99,47 @@ fact n   =  n * (fact (n - 1))
 
 super_calculo => Int
 super_calculo =  rama_izquierda + rama_derecha
-  where
-    fib 10  -> rama_izquierda
-    fact 6  -> rama_derecha
+  || fib 10 -> rama_izquierda
+  || fact 6 -> rama_derecha
 ```
 
 Léelo en voz alta:
-- *"Quiero calcular `rama_izquierda + rama_derecha`, **donde** (`where`) `fib 10` va a `rama_izquierda` (`->`) y `fact 6` va a `rama_derecha` (`->`)."*
+- *"Quiero calcular `rama_izquierda + rama_derecha`, mientras en paralelo (`||`) `fib 10` va a `rama_izquierda` (`->`) y `fact 6` va a `rama_derecha` (`->`)."*
 
-### Lo que hace `ridgunc` entre bambalinas con tu `where`:
-1. Mira las flechas `->` y arma el árbol de dependencias.
-2. **Caza ciclos estáticamente**: si por error escribes `a + 1 -> b` y `b + 1 -> a`, el compilador te dice en el acto *"¡Quietos! Hay una dependencia circular en tu `where`"* y no te deja compilar un cuelgue infinito.
+### Lo que hace `ridgunc` entre bambalinas con tus líneas `||`:
+1. Mira las flechas `->` y arma el árbol de dependencias (DAG).
+2. **Caza ciclos estáticamente**: si por error escribes `|| a + 1 -> b` y `|| b + 1 -> a`, el compilador te dice en el acto *"¡Quietos! Hay una dependencia circular"* y no te deja compilar un cuelgue infinito.
 3. Ve que `fib 10` y `fact 6` no dependen el uno del otro, así que tienen luz verde para correr en paralelo antes de sumarse en `rama_izquierda + rama_derecha`.
 
-Incluso puedes montar un pipeline de varias plantas dentro del mismo `where` y el compilador deducirá solito qué plantas pueden ir a la vez y cuáles tienen que esperar:
+Incluso puedes montar un pipeline de varias plantas dentro del mismo bloque `||` —ya sea al pie de la expresión o justo después del `=`— y el compilador deducirá solito qué plantas pueden ir a la vez y cuáles tienen que esperar:
 
 ```ridgun
 balance_trimestral Int => Int
-balance_trimestral base =  beneficio_neto
-  where
-    base * 100              -> ventas_brutas
-    base * 40               -> costes_fijos
-    ventas_brutas - costes_fijos -> beneficio_bruto
-    beneficio_bruto * 80 / 100   -> beneficio_neto
+balance_trimestral base =
+  || base * 100                  -> ventas_brutas
+  || base * 40                   -> costes_fijos
+  || ventas_brutas - costes_fijos -> beneficio_bruto ||.
+  beneficio_bruto * 80 / 100
 ```
 
-Aquí `ventas_brutas` y `costes_fijos` arrancan en paralelo; cuando ambos están listos se calcula `beneficio_bruto`, y de ahí sale `beneficio_neto`. Todo sin un solo `async`, `Future`, `Promise` ni `Mutex`.
+Fíjate en el detalle **`||.`** al final de la última línea `||`: igual que `|.` cierra un árbol de guardas anidado, **`||.`** cierra el bloque paralelo `||` cuando debajo siguen sentencias secuenciales normales. Aquí `ventas_brutas` y `costes_fijos` arrancan en paralelo; cuando ambos están listos se calcula `beneficio_bruto`, y finalmente se devuelve `beneficio_bruto * 80 / 100`. Todo sin un solo `async`, `Future`, `Promise` ni `Mutex`.
 
 ---
 
-## 7.3. El atajo `||`: Tuberías paralelas al vuelo
+## 7.3. El atajo `||` sin nombres: Tuberías paralelas que devuelven una tupla
 
-¿Y si solo quieres lanzar dos o tres cálculos en paralelo y recogerlos juntos en una tupla sin siquiera inventar nombres de variables en un `where`?
+¿Y si solo quieres lanzar dos o tres cálculos en paralelo y recogerlos juntos en una tupla sin siquiera inventar nombres de variables con `->`?
 
-Usas la doble barra vertical **`||`**:
+Usas `||` directamente:
 
 ```ridgun
 par_paralelo Int => (Int, Int)
-par_paralelo n   =  (fib n) || (fact n)
+par_paralelo n   =
+  || fib n
+  || fact n
 ```
 
-Directo, visual y devuelve `(fib n, fact n)`.
+Directo, visual y devuelve la tupla `(fib n, fact n)`.
 
 ---
 

@@ -744,10 +744,28 @@ fn :: finish_tuple_lit RExpr ([RExpr], [RToken]) => (RExpr, [RToken])
 
 -- ── Guards, ParPipes, Blocks & Where Clauses ────────────────
 
+fn :: strip_optional_pipe_dot [RToken]          => (Bool, [RToken])
+      strip_optional_pipe_dot (TokPipeDot:rest) =  (True, rest)
+      strip_optional_pipe_dot (TokNewline:rest) =  strip_pipe_dot_after_nl rest (skip_newlines rest)
+      strip_optional_pipe_dot ts                =  (False, ts)
+
+fn :: strip_pipe_dot_after_nl [RToken] [RToken]          => (Bool, [RToken])
+      strip_pipe_dot_after_nl _        (TokPipeDot:rest) =  (True, rest)
+      strip_pipe_dot_after_nl orig_ts  _                 =  (False, orig_ts)
+
+fn :: finish_otherwise_guard (RExpr, [RToken]) => ([RGuard], [RToken])
+      finish_otherwise_guard (body, rest)      =
+        dot_res = strip_optional_pipe_dot rest
+        finish_otherwise_after_dot body dot_res
+
+fn :: finish_otherwise_after_dot RExpr (Bool, [RToken]) => ([RGuard], [RToken])
+      finish_otherwise_after_dot body  (_, after_dot)   =
+        ([GuardBranch (EBool True) body], after_dot)
+
 fn :: parse_guards [RToken]       => ([RGuard], [RToken])
       parse_guards (TokPipe:TokOtherwise:TokEquals:rest) =
         b = parse_case_body rest
-        parse_guards_cont (EBool True) b
+        finish_otherwise_guard b
       parse_guards (TokPipe:rest) =
         c = parse_expr rest
         parse_guard_after_cond c
@@ -763,12 +781,22 @@ fn :: parse_guard_after_cond (RExpr, [RToken]) => ([RGuard], [RToken])
 
 fn :: parse_guards_cont RExpr (RExpr, [RToken]) => ([RGuard], [RToken])
       parse_guards_cont cond  (body, rest)      =
+        dot_res = strip_optional_pipe_dot rest
+        parse_guards_after_dot cond body dot_res
+
+fn :: parse_guards_after_dot RExpr RExpr (Bool, [RToken]) => ([RGuard], [RToken])
+      parse_guards_after_dot cond  body  (True, after_dot) =
+        ([GuardBranch cond body], after_dot)
+      parse_guards_after_dot cond  body  (False, rest)     =
         trimmed = skip_newlines rest
         more = parse_guards trimmed
         prepend_guard (GuardBranch cond body) more
 
 fn :: prepend_guard RGuard ([RGuard], [RToken]) => ([RGuard], [RToken])
       prepend_guard g      (gs, rest)           =  ([g] :: gs, rest)
+
+fn :: finish_guard_expr ([RGuard], [RToken]) => (RExpr, [RToken])
+      finish_guard_expr (guards, rest)       =  (EGuard guards, rest)
 
 fn :: line_has_equals [RToken]       => Bool
       line_has_equals []             =  False
@@ -824,6 +852,45 @@ fn :: parse_int_indices [RToken]           => ([Int], [RToken])
 fn :: prepend_int Int ([Int], [RToken]) => ([Int], [RToken])
       prepend_int n   (ns, rest)        =  ([n] :: ns, rest)
 
+fn :: strip_optional_dpipe_dot [RToken]                => (Bool, [RToken])
+      strip_optional_dpipe_dot (TokDoublePipeDot:rest) =  (True, rest)
+      strip_optional_dpipe_dot (TokNewline:rest)       =  strip_dpipe_dot_after_nl rest (skip_newlines rest)
+      strip_optional_dpipe_dot ts                      =  (False, ts)
+
+fn :: strip_dpipe_dot_after_nl [RToken] [RToken]                => (Bool, [RToken])
+      strip_dpipe_dot_after_nl _        (TokDoublePipeDot:rest) =  (True, rest)
+      strip_dpipe_dot_after_nl orig_ts  _                       =  (False, orig_ts)
+
+fn :: parse_pipe_where_binds [RToken] => ([RWhereBind], [RToken])
+      parse_pipe_where_binds ts       =
+        clean = skip_newlines ts
+        parse_pipe_where_step ts clean
+
+fn :: parse_pipe_where_step [RToken] [RToken] => ([RWhereBind], [RToken])
+      parse_pipe_where_step _ (TokDoublePipe:rest)
+        | line_has_arrow rest = parse_pipe_where_target (parse_expr rest)
+      parse_pipe_where_step orig_ts _ = ([], orig_ts)
+
+fn :: parse_pipe_where_target (RExpr, [RToken]) => ([RWhereBind], [RToken])
+      parse_pipe_where_target (e, (TokArrow:(TokIdent v):TokIdxLBracket:rest)) =
+        idx_res = parse_int_indices rest
+        parse_pipe_where_indexed e v idx_res
+      parse_pipe_where_target (e, (TokArrow:(TokIdent v):rest)) =
+        dot_res = strip_optional_dpipe_dot rest
+        parse_pipe_where_after_dot (WhereBind e v []) dot_res
+      parse_pipe_where_target (_, rest) = ([], rest)
+
+fn :: parse_pipe_where_indexed RExpr String ([Int], [RToken]) => ([RWhereBind], [RToken])
+      parse_pipe_where_indexed e v (idxs, rest) =
+        dot_res = strip_optional_dpipe_dot rest
+        parse_pipe_where_after_dot (WhereBind e v idxs) dot_res
+
+fn :: parse_pipe_where_after_dot RWhereBind (Bool, [RToken]) => ([RWhereBind], [RToken])
+      parse_pipe_where_after_dot wb (True, after_dot) = ([wb], after_dot)
+      parse_pipe_where_after_dot wb (False, rest)     =
+        more = parse_pipe_where_binds rest
+        prepend_where wb more
+
 fn :: parse_where_binds [RToken] => ([RWhereBind], [RToken])
       parse_where_binds ts       =
         clean = skip_newlines ts
@@ -866,6 +933,8 @@ fn :: check_trailing_where_tok RExpr [RToken] [RToken] => (RExpr, [RToken])
       check_trailing_where_tok body _ (TokWhere:after_w) =
         w_res = parse_where_binds after_w
         finish_where_expr body w_res
+      check_trailing_where_tok body _ (TokDoublePipe:after_dp)
+        | line_has_arrow after_dp = finish_where_expr body (parse_pipe_where_binds ([TokDoublePipe] :: after_dp))
       check_trailing_where_tok body orig_rest _ = (body, orig_rest)
 
 fn :: finish_where_expr RExpr ([RWhereBind], [RToken]) => (RExpr, [RToken])
@@ -879,6 +948,12 @@ fn :: parse_par_pipe_branches [RToken] => ([RExpr], [RToken])
 
 fn :: parse_par_pipe_more (RExpr, [RToken]) => ([RExpr], [RToken])
       parse_par_pipe_more (e, rest)         =
+        dot_res = strip_optional_dpipe_dot rest
+        parse_par_pipe_after_dot e dot_res
+
+fn :: parse_par_pipe_after_dot RExpr (Bool, [RToken]) => ([RExpr], [RToken])
+      parse_par_pipe_after_dot e     (True, after_dot) =  ([e], after_dot)
+      parse_par_pipe_after_dot e     (False, rest)     =
         clean = skip_newlines rest
         parse_par_pipe_check e rest clean
 
@@ -891,9 +966,43 @@ fn :: parse_par_pipe_check RExpr [RToken]  [RToken] => ([RExpr], [RToken])
 fn :: finish_par_pipe ([RExpr], [RToken]) => (RExpr, [RToken])
       finish_par_pipe (branches, rest)    =  (EParPipe branches, rest)
 
+fn :: parse_case_body_dpipe [RToken] => (RExpr, [RToken])
+      parse_case_body_dpipe (TokDoublePipe:rest)
+        | line_has_arrow rest = finish_dpipe_where_block (parse_pipe_where_binds ([TokDoublePipe] :: rest))
+        | otherwise = finish_par_pipe (parse_par_pipe_branches ([TokDoublePipe] :: rest))
+      parse_case_body_dpipe ts = finish_par_pipe (parse_par_pipe_branches ts)
+
+fn :: finish_dpipe_where_block ([RWhereBind], [RToken]) => (RExpr, [RToken])
+      finish_dpipe_where_block (binds, rest) =
+        stmts_res = parse_block_stmts_safe rest
+        wrap_dpipe_where_stmts binds stmts_res
+
+fn :: wrap_dpipe_where_stmts [RWhereBind] ([RStmt], [RToken]) => (RExpr, [RToken])
+      wrap_dpipe_where_stmts binds (stmts, rest) =
+        (EWhere (EBlock stmts) binds, rest)
+
+fn :: parse_let_rhs [RToken]          => (RExpr, [RToken])
+      parse_let_rhs (TokNewline:rest) =
+        clean = skip_newlines rest
+        parse_let_rhs_newline rest clean
+      parse_let_rhs (TokPipe:rest)    =
+        finish_guard_expr (parse_guards ([TokPipe] :: rest))
+      parse_let_rhs (TokDoublePipe:rest) =
+        finish_par_pipe (parse_par_pipe_branches ([TokDoublePipe] :: rest))
+      parse_let_rhs ts                =
+        check_trailing_comma_and_where (parse_expr ts)
+
+fn :: parse_let_rhs_newline [RToken]  [RToken] => (RExpr, [RToken])
+      parse_let_rhs_newline _         (TokPipe:rest) =
+        finish_guard_expr (parse_guards ([TokPipe] :: rest))
+      parse_let_rhs_newline _         (TokDoublePipe:rest) =
+        finish_par_pipe (parse_par_pipe_branches ([TokDoublePipe] :: rest))
+      parse_let_rhs_newline orig_rest _        =
+        check_trailing_comma_and_where (parse_expr orig_rest)
+
 fn :: parse_block_line_ident String [RToken]         => ([RStmt], [RToken])
       parse_block_line_ident name   (TokEquals:rest) =
-        e_res = parse_expr rest
+        e_res = parse_let_rhs rest
         finish_let_stmt name e_res
       parse_block_line_ident name   (TokIdxLBracket:rest)
         | line_has_equals rest = parse_block_idx_assign name ([TokIdxLBracket] :: rest) (collect_bracket_indices ([TokIdxLBracket] :: rest) [])
@@ -918,6 +1027,14 @@ fn :: finish_let_stmt String (RExpr, [RToken]) => ([RStmt], [RToken])
         more = parse_block_stmts_safe rest
         prepend_stmt (StmtLet v e) more
 
+fn :: finish_mut_stmt String (RExpr, [RToken]) => ([RStmt], [RToken])
+      finish_mut_stmt v      (e, rest)         =
+        more = parse_block_stmts_safe rest
+        prepend_stmt (StmtMut v e) more
+
+fn :: finish_dpipe_stmt (RExpr, [RToken]) => ([RStmt], [RToken])
+      finish_dpipe_stmt (e, rest)         =  ([StmtExpr e], rest)
+
 fn :: finish_expr_stmt (RExpr, [RToken]) => ([RStmt], [RToken])
       finish_expr_stmt (e, rest)
         | (NOT (is_echo_expr e)) AND (next_line_has_guard rest) = ([StmtExpr e], rest)
@@ -931,6 +1048,13 @@ fn :: parse_block_stmts_safe [RToken] => ([RStmt], [RToken])
 fn :: parse_block_safe_dispatch [RToken]       => ([RStmt], [RToken])
       parse_block_safe_dispatch []             =  ([], [])
       parse_block_safe_dispatch (TokPipe:rest) =  ([], [TokPipe] :: rest)
+      parse_block_safe_dispatch (TokPipeDot:rest) = ([], [TokPipeDot] :: rest)
+      parse_block_safe_dispatch (TokDoublePipeDot:rest) = ([], [TokDoublePipeDot] :: rest)
+      parse_block_safe_dispatch (TokDoublePipe:rest)
+        | line_has_arrow rest = finish_dpipe_stmt (parse_case_body_dpipe ([TokDoublePipe] :: rest))
+      parse_block_safe_dispatch (TokMut:(TokIdent name):TokEquals:rest) =
+        e_res = parse_let_rhs rest
+        finish_mut_stmt name e_res
       parse_block_safe_dispatch (TokAtomic:(TokIdent var_name):TokEquals:rest) =
         e_res = parse_expr rest
         finish_atomic_stmt var_name e_res
@@ -957,15 +1081,19 @@ fn :: parse_case_body [RToken]          => (RExpr, [RToken])
       parse_case_body (TokNewline:rest) =
         clean = skip_newlines rest
         parse_case_body_newline rest clean
+      parse_case_body (TokPipe:rest)    =
+        finish_guard_expr (parse_guards ([TokPipe] :: rest))
       parse_case_body (TokDoublePipe:rest) =
-        finish_par_pipe (parse_par_pipe_branches ([TokDoublePipe] :: rest))
+        parse_case_body_dpipe ([TokDoublePipe] :: rest)
       parse_case_body ts                =
         e_res = parse_expr ts
         check_trailing_comma_and_where e_res
 
 fn :: parse_case_body_newline [RToken]  [RToken] => (RExpr, [RToken])
+      parse_case_body_newline _         (TokPipe:rest) =
+        finish_guard_expr (parse_guards ([TokPipe] :: rest))
       parse_case_body_newline _         (TokDoublePipe:rest) =
-        finish_par_pipe (parse_par_pipe_branches ([TokDoublePipe] :: rest))
+        parse_case_body_dpipe ([TokDoublePipe] :: rest)
       parse_case_body_newline orig_rest _        =
         stmts_res = parse_block_stmts_safe orig_rest
         finish_block_body stmts_res
@@ -986,9 +1114,16 @@ fn :: parse_fn_case_after_pats ([RPattern], [RToken]) => (RFnCase, [RToken])
         g_res = parse_guards ([TokPipe] :: rest)
         finish_guarded_case pats g_res
       parse_fn_case_after_pats (pats, (TokEquals:rest)) =
-        b_res = parse_case_body rest
-        finish_body_case pats b_res
+        parse_fn_case_after_eq pats rest (skip_newlines rest)
       parse_fn_case_after_pats (pats, rest)           =  (FnCase pats [] EUnit, rest)
+
+fn :: parse_fn_case_after_eq [RPattern] [RToken]  [RToken]       => (RFnCase, [RToken])
+      parse_fn_case_after_eq pats       _         (TokPipe:rest) =
+        g_res = parse_guards ([TokPipe] :: rest)
+        finish_guarded_case pats g_res
+      parse_fn_case_after_eq pats       orig_rest _              =
+        b_res = parse_case_body orig_rest
+        finish_body_case pats b_res
 
 fn :: finish_guarded_case [RPattern] ([RGuard], [RToken]) => (RFnCase, [RToken])
       finish_guarded_case pats       (guards, rest)       =  (FnCase pats guards EUnit, rest)
@@ -1071,6 +1206,10 @@ fn :: scan_op_header [RToken] [String] [String] [Bool] => ([String], [String], [
         scan_op_header rest (words :: ["type"]) params (tmpl :: [False])
       scan_op_header (TokWith:rest) words params tmpl =
         scan_op_header rest (words :: ["with"]) params (tmpl :: [False])
+      scan_op_header (TokAnd:rest) words params tmpl =
+        scan_op_header rest (words :: ["and"]) params (tmpl :: [False])
+      scan_op_header (TokOr:rest) words params tmpl =
+        scan_op_header rest (words :: ["or"]) params (tmpl :: [False])
       scan_op_header (TokPlus:rest) words params tmpl =
         scan_op_header rest (words :: ["+"]) params (tmpl :: [False])
       scan_op_header (TokMinus:rest) words params tmpl =
@@ -1096,6 +1235,8 @@ fn :: match_op_keyword RToken       String => Bool
       match_op_keyword (TokIdent s) kw     =  s == kw
       match_op_keyword TokType      kw     =  kw == "type"
       match_op_keyword TokWith      kw     =  kw == "with"
+      match_op_keyword TokAnd       kw     =  kw == "and"
+      match_op_keyword TokOr        kw     =  kw == "or"
       match_op_keyword TokPlus      kw     =  kw == "+"
       match_op_keyword TokMinus     kw     =  kw == "-"
       match_op_keyword TokStar      kw     =  kw == "*"
@@ -1476,12 +1617,20 @@ fn :: finish_postfix_stack String    [RExpr]     [RExpr]          => RExpr
       finish_postfix_stack _         _           ((ECall f a):[]) =  ECall f a
       finish_postfix_stack orig_name normed_args _                =  ECall orig_name normed_args
 
+fn :: flatten_mixfix_rhs RExpr              [RArityEntry] => [RExpr]
+      flatten_mixfix_rhs (ECall "__chain__" args) _       =  args
+      flatten_mixfix_rhs (ECall r_name r_args) arities
+        | (lookup_arity arities r_name) < 0 AND (NOT (is_std_builtin r_name)) = [EVar r_name] :: r_args
+      flatten_mixfix_rhs other              _             =  [other]
+
 fn :: norm_expr RExpr              [RArityEntry] => RExpr
       norm_expr (EVar name)        arities
         | (lookup_arity arities name) == 0 = ECall name []
         | otherwise = EVar name
       norm_expr (ENot inner)       arities       =  ENot (norm_expr inner arities)
       norm_expr (EOut inner)       arities       =  EOut (norm_expr inner arities)
+      norm_expr (EBin OpAnd (ECall fn_name args) r) arities
+        | (lookup_arity arities fn_name) < 0 AND (has_arity_prefix arities fn_name) = norm_call fn_name (args :: [EVar "and"] :: (flatten_mixfix_rhs r arities)) arities
       norm_expr (EBin bop l r)     arities       =  EBin bop (norm_expr l arities) (norm_expr r arities)
       norm_expr (ECall fn_name args) arities     =  norm_call fn_name args arities
       norm_expr (EEcho args)       arities       =  EEcho (fold_echo_args args arities)
@@ -1495,6 +1644,7 @@ fn :: norm_expr RExpr              [RArityEntry] => RExpr
       norm_expr (EIndexAssign t idxs v) arities  =  EIndexAssign t (norm_expr_list idxs arities) (norm_expr v arities)
       norm_expr (ESeqSelect b m)   arities       =  ESeqSelect (norm_expr b arities) m
       norm_expr (EBlock stmts)     arities       =  EBlock (norm_stmt_list stmts arities)
+      norm_expr (EGuard guards)    arities       =  EGuard (norm_guard_list guards arities)
       norm_expr (EWhere body binds) arities      =  EWhere (norm_expr body arities) (norm_where_list binds arities)
       norm_expr (EParPipe branches) arities      =  EParPipe (norm_expr_list branches arities)
       norm_expr (EWithCtx c v b)   arities       =  EWithCtx c (norm_expr v arities) (norm_expr b arities)
@@ -1511,6 +1661,7 @@ fn :: norm_expr_list [RExpr] [RArityEntry] => [RExpr]
 fn :: norm_stmt_list [RStmt]            [RArityEntry] => [RStmt]
       norm_stmt_list []                 _             =  []
       norm_stmt_list ((StmtLet v e):ss) arities       =  [StmtLet v (norm_expr e arities)] :: (norm_stmt_list ss arities)
+      norm_stmt_list ((StmtMut v e):ss) arities       =  [StmtMut v (norm_expr e arities)] :: (norm_stmt_list ss arities)
       norm_stmt_list ((StmtExpr e):ss)  arities       =  [StmtExpr (norm_expr e arities)] :: (norm_stmt_list ss arities)
       norm_stmt_list ((StmtAtomic v e):ss) arities    =  [StmtAtomic v (norm_expr e arities)] :: (norm_stmt_list ss arities)
       norm_stmt_list ((StmtIndexAssign t idxs e):ss) arities = [StmtIndexAssign t (norm_expr_list idxs arities) (norm_expr e arities)] :: (norm_stmt_list ss arities)

@@ -114,6 +114,7 @@ fn :: count_expr_self_calls String  RExpr              => Int
       count_expr_self_calls fn_name (EIndexAssign _ idxs v) = (count_expr_list_calls fn_name idxs) + (count_expr_self_calls fn_name v)
       count_expr_self_calls fn_name (ESeqSelect b _)   =  count_expr_self_calls fn_name b
       count_expr_self_calls fn_name (EBlock stmts)     =  count_stmt_list_calls fn_name stmts
+      count_expr_self_calls fn_name (EGuard guards)    =  count_guard_calls fn_name guards
       count_expr_self_calls fn_name (EWhere body binds) = (count_expr_self_calls fn_name body) + (count_where_calls fn_name binds)
       count_expr_self_calls fn_name (EParPipe branches) = count_expr_list_calls fn_name branches
       count_expr_self_calls fn_name (EWithCtx _ v b)   =  (count_expr_self_calls fn_name v) + (count_expr_self_calls fn_name b)
@@ -130,6 +131,7 @@ fn :: count_expr_list_calls String  [RExpr] => Int
 fn :: count_stmt_list_calls String  [RStmt]            => Int
       count_stmt_list_calls _       []                 =  0
       count_stmt_list_calls fn_name ((StmtLet _ e):ss) =  (count_expr_self_calls fn_name e) + (count_stmt_list_calls fn_name ss)
+      count_stmt_list_calls fn_name ((StmtMut _ e):ss) =  (count_expr_self_calls fn_name e) + (count_stmt_list_calls fn_name ss)
       count_stmt_list_calls fn_name ((StmtExpr e):ss)  =  (count_expr_self_calls fn_name e) + (count_stmt_list_calls fn_name ss)
       count_stmt_list_calls fn_name ((StmtAtomic _ e):ss) = (count_expr_self_calls fn_name e) + (count_stmt_list_calls fn_name ss)
       count_stmt_list_calls fn_name ((StmtIndexAssign _ idxs e):ss) = (count_expr_list_calls fn_name idxs) + (count_expr_self_calls fn_name e) + (count_stmt_list_calls fn_name ss)
@@ -194,6 +196,8 @@ fn :: collect_expr_effects RExpr String [RFnSummary] [String] Bool RCostTier => 
         collect_expr_effects_tuple b cur_fn summaries r1
       collect_expr_effects (EBlock stmts) cur_fn summaries muts yld cost =
         collect_stmt_list_effects stmts cur_fn summaries muts yld cost
+      collect_expr_effects (EGuard guards) cur_fn summaries muts yld cost =
+        collect_guards_effects guards cur_fn summaries muts yld cost
       collect_expr_effects (EList elems) cur_fn summaries muts yld cost =
         collect_expr_list_effects elems cur_fn summaries muts yld cost
       collect_expr_effects (ETuple elems) cur_fn summaries muts yld cost =
@@ -224,6 +228,9 @@ fn :: collect_expr_list_effects_tuple [RExpr] String [RFnSummary] ([String], Boo
 fn :: collect_stmt_list_effects [RStmt] String [RFnSummary] [String] Bool RCostTier => ([String], Bool, RCostTier)
       collect_stmt_list_effects [] _ _ muts yld cost = (muts, yld, cost)
       collect_stmt_list_effects ((StmtLet _ e):ss) cur_fn summaries muts yld cost =
+        r1 = collect_expr_effects e cur_fn summaries muts yld cost
+        collect_stmt_list_effects_tuple ss cur_fn summaries r1
+      collect_stmt_list_effects ((StmtMut _ e):ss) cur_fn summaries muts yld cost =
         r1 = collect_expr_effects e cur_fn summaries muts yld cost
         collect_stmt_list_effects_tuple ss cur_fn summaries r1
       collect_stmt_list_effects ((StmtExpr e):ss) cur_fn summaries muts yld cost =
@@ -553,6 +560,8 @@ fn :: check_expr_safety RExpr String [String] [RFnSummary] [String] => ([String]
         check_where_block_safety fn_name body binds mut_vars summaries moved
       check_expr_safety (EBlock stmts) fn_name mut_vars summaries moved =
         check_stmt_list_safety stmts fn_name mut_vars summaries moved
+      check_expr_safety (EGuard guards) fn_name mut_vars summaries moved =
+        check_guards_safety guards fn_name mut_vars summaries moved
       check_expr_safety (EBin _ l r) fn_name mut_vars summaries moved =
         r1 = check_expr_safety l fn_name mut_vars summaries moved
         check_expr_safety_tuple r fn_name mut_vars summaries r1
@@ -605,11 +614,24 @@ fn :: is_tensor_expr RExpr       => Bool
       is_tensor_expr (ETensor _) =  True
       is_tensor_expr _           =  False
 
+fn :: check_guards_safety [RGuard] String [String] [RFnSummary] [String] => ([String], [RAnalysisError])
+      check_guards_safety [] _ _ _ moved = (moved, [])
+      check_guards_safety ((GuardBranch c b):gs) fn_name mut_vars summaries moved =
+        r1 = check_expr_safety c fn_name mut_vars summaries moved
+        r2 = check_expr_safety_tuple b fn_name mut_vars summaries r1
+        check_guards_safety_tuple gs fn_name mut_vars summaries r2
+
+fn :: check_guards_safety_tuple [RGuard] String [String] [RFnSummary] ([String], [RAnalysisError]) => ([String], [RAnalysisError])
+      check_guards_safety_tuple gs fn_name mut_vars summaries (moved, errs) =
+        merge_moved_errs errs (check_guards_safety gs fn_name mut_vars summaries moved)
+
 fn :: check_stmt_list_safety [RStmt] String [String] [RFnSummary] [String] => ([String], [RAnalysisError])
       check_stmt_list_safety [] _ _ _ moved = (moved, [])
       check_stmt_list_safety ((StmtLet v val_e):ss) fn_name mut_vars summaries moved
         | is_tensor_expr val_e = check_stmt_list_safety_tuple ss fn_name (add_unique_str v mut_vars) summaries (check_expr_safety val_e fn_name (add_unique_str v mut_vars) summaries moved)
         | otherwise = check_stmt_list_safety_tuple ss fn_name mut_vars summaries (check_expr_safety val_e fn_name mut_vars summaries moved)
+      check_stmt_list_safety ((StmtMut v val_e):ss) fn_name mut_vars summaries moved =
+        check_stmt_list_safety_tuple ss fn_name (add_unique_str v mut_vars) summaries (check_expr_safety val_e fn_name (add_unique_str v mut_vars) summaries moved)
       check_stmt_list_safety ((StmtExpr e):ss) fn_name mut_vars summaries moved =
         r1 = check_expr_safety e fn_name mut_vars summaries moved
         check_stmt_list_safety_tuple ss fn_name mut_vars summaries r1
