@@ -65,6 +65,67 @@ fn :: guard_block_calc Int Int   => Int
           next_i = idx + 1
           next_i * 3
 
+fn :: elegir Bool [Int] [Int] => [Int]
+      elegir cond a     b
+        | cond = a
+        | otherwise = b
+
+-- @tests FR-COMP-002
+fn :: cmm_trace_elegir Bool => (Int, Int, Int, Int, Int, Int)
+      cmm_trace_elegir cond =
+        base_live = cmm_live_blocks
+        base_freed = cmm_cond_freed
+        base_spared = cmm_cond_spared
+        a = [10, 20, 30]
+        b = [40, 50, 60]
+        vivos_ab = cmm_live_blocks - base_live
+        c = elegir cond a b
+        vivos_tras_elegir = cmm_live_blocks - base_live
+        _ = list_len a
+        vivos_tras_usar_a = cmm_live_blocks - base_live
+        _ = list_len c
+        vivos_tras_usar_c = cmm_live_blocks - base_live
+        delta_freed = cmm_cond_freed - base_freed
+        delta_spared = cmm_cond_spared - base_spared
+        (vivos_ab, vivos_tras_elegir, vivos_tras_usar_a, vivos_tras_usar_c, delta_freed, delta_spared)
+
+fn :: cmm_check_ptr_identity Bool => (Bool, Bool)
+      cmm_check_ptr_identity cond =
+        a = [1, 2, 3]
+        b = [4, 5, 6]
+        c = elegir cond a b
+        same_a = cmm_same_ptr a c
+        same_b = cmm_same_ptr b c
+        (same_a, same_b)
+
+fn :: cmm_trace_cascada Bool Bool => (Int, Int, Int)
+      cmm_trace_cascada c1   c2   =
+        base = cmm_live_blocks
+        a = [1, 2]
+        b = [3, 4]
+        d = [5, 6]
+        c = elegir c1 a b
+        e = elegir c2 c d
+        vivos_tras_cascada = cmm_live_blocks - base
+        _ = list_len a
+        vivos_tras_a = cmm_live_blocks - base
+        _ = list_len e
+        vivos_tras_e = cmm_live_blocks - base
+        (vivos_tras_cascada, vivos_tras_a, vivos_tras_e)
+
+fn :: rmm2_trace_nested => (Int, Int, Int)
+      rmm2_trace_nested =
+        base = cmm_live_blocks
+        a = [10, 20]
+        b = [30, 40]
+        xs = [a, b]
+        vivos_inicial = cmm_live_blocks - base
+        _ = list_len xs
+        vivos_tras_xs = cmm_live_blocks - base
+        _ = list_len a
+        vivos_final = cmm_live_blocks - base
+        (vivos_inicial, vivos_tras_xs, vivos_final)
+
 fn :: main => ()
       main =
         echo "=== Core Language, ADTs, Mixfix, Variadics & Higher-Order Ops ==="
@@ -98,4 +159,13 @@ fn :: main => ()
         assert_equals (filter is_even [1, 2, 3, 4, 5, 6]) [2, 4, 6]
         assert_equals (seq_filter is_even [1, 2, 3, 4, 5, 6]) [2, 4, 6]
         assert_equals (fold add_pair 0 [1, 2, 3, 4, 5]) 15
+        echo "=== RMM2 Assignment & Cascaded Structure Counting ==="
+        assert_equals (cmm_check_ptr_identity True) (True, False)
+        assert_equals (cmm_check_ptr_identity False) (False, True)
+        assert_equals (cmm_trace_elegir True) (2, 1, 1, 0, 2, 1)
+        assert_equals (cmm_trace_elegir False) (2, 2, 1, 0, 2, 1)
+        assert_equals (cmm_trace_cascada True True) (1, 1, 0)
+        assert_equals (cmm_trace_cascada False False) (2, 1, 0)
+        assert_equals (rmm2_trace_nested) (3, 1, 0)
         echo "=== All core language tests passed ==="
+

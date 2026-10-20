@@ -763,3 +763,31 @@ Ridgun functions are pure by default, allowing collection combinators to execute
    - **Filesystem**: `list_dir`, `file_lstat`, `sha256_file`, `sys_mkdir`, `sys_chmod`.
    - **Process & Environment**: `sys_exec`, `sys_chdir`, `sys_getcwd`, `sys_getenv`, `sys_setenv`, `sys_exit`.
    - **Security & Privilege Separation**: `sys_getuid`, `sys_getgid`, `sys_username`, `sys_user_groups`, `sys_lookup_uid_gid`, `sys_setresgid`, `sys_setgroups`, `sys_setresuid`, `sys_execve`, `sys_read_pass`.
+
+---
+
+## Ridgun Memory Management (RMM): `RMM1` (CMM) & `RMM2` (`FR-COMP-002`)
+
+Ridgun manages heap memory (`String`, `[a]`, `(a, b)`, ADTs, `Tensor`) deterministically without a tracing Garbage Collector (GC) through **Ridgun Memory Management (RMM)**:
+
+1. **Policy `RMM1` — Compiled Memory Management (CMM Linear + Conditional)**:
+   - Applied when control flow and called functions are statically known at compile time over non-nested bindings:
+     - **Linear CMM (`rg_cmm_move` / `rg_cmm_drop`)**: The compiler determines the exact last-use statement of every local variable at compile time, moving returned variables (`rg_cmm_move(&mut lv_x)`) and emitting unconditional deallocation (`rg_cmm_drop(&mut lv_x)`) immediately after a variable's last use when no may-aliases remain live.
+     - **Conditional CMM (`rg_cmm_drop_unless` / `ptr(a) != ptr(c)`)**: When a static branching call (`c = elegir cond a b`) returns one of several candidate inputs and one or more candidates remain live alongside `c`, the compiler builds the **Ancestor May-Alias Table (`RCmmAlias`)** and emits a 1-cycle pointer-identity guard at each variable's static last-use statement:
+       ```ridgun
+       a = crear_a ()          -- Allocates M1
+       b = crear_b ()          -- Allocates M2
+       c = elegir cond a b     -- b dies here while c is live -> if ptr(b) != ptr(c) { free(b) }
+       imprimir a              -- a dies here while c is live -> if ptr(a) != ptr(c) { free(a) }
+       usar c                  -- c dies here (no live peers) -> free(c) (unconditional)
+       ```
+2. **Policy `RMM2` — Assignment & Cascaded Structure Counting (Anonymous Functions, Nested Containers & Multi-thread)**:
+   - Unifies memory management when control flow is dynamic (anonymous functions / higher-order callbacks), when structures nest inside other structures (`xs = [a, b, ..., z]`, `xs[3] = a`), and across threads:
+     - **Primitive Scalars (`Int`, `Real`, `Bool`, `()`)**: Never counted; copied by value on the stack/registers.
+     - **Heap Structures (`CmmBox<T>`)**: Carry their own counter (`rc`), starting at `1` on creation, incremented (`+1`) on variable or container-slot assignment (`b = a`, `xs[3] = a`), untouched (`+0`) on read-only borrows, transferred without decrement on `return`, and decremented (`-1`) when a non-returned variable dies.
+     - **Parent-to-Child Cascade**: When a parent structure's counter (`xs`) reaches `0`, `xs` is freed and decrements (`-1`) each of its direct child structures `a, b, ..., z` one by one, recursively freeing any child whose counter reaches `0`.
+3. **Policy `RMM3`** *(Reserved)*:
+   - Reserved for a subsequent aggressive static optimization policy.
+   - See [`docs/etc/cmm_architecture.md`](../etc/cmm_architecture.md) for the complete `RMM1` and `RMM2` specification.
+
+

@@ -1,25 +1,26 @@
 ---
-updated: 2026-10-17T19:55
-active_task: TASK-0004
+updated: 2026-10-19T15:25
+active_task: TASK-0002
 agent_runtime: gemini
 ---
 # Session state — read this first when resuming
 
 ## Where we are (3 lines max)
-- Active `TASK-0004`: Released Ridgun & `stable` v0.9.3 with `stable/main.rg` rewritten using natural-language `op ::` operators, `FR-TOOL-001` documented, and `stable format` implemented in `src/main/ridgun/lib/formatter.rg`.
-- Verified `./target/stable format`, `./target/stable test` (4/4 Ridgun suites), `cargo test` (162/162 Rust tests), and `aix docs validate` (0 errors).
+- Branch `dev/CMM`: documented and implemented **Compiled Memory Management (CMM)** and **Conditional CMM (`ptr(x) != ptr(c)`)** (`FR-COMP-002`) in `src/main/ridgun/lib/compiler.rg` and `src/main/ridgun/lib/typecheck.rg`, without introducing mutable variable syntax.
+- Self-hosted Stage 1 and Stage 2 bootstrap of `target/ridgunc` and `target/stable` completed under CMM.
+- Added `elegir` and cascaded `elegir` liveness and pointer-identity verification tests to `src/test/ridgun/test_core_language.rg`.
 ## Files to load for the active task (nothing else)
-- `src/main/ridgun/stable/main.rg`
-- `src/main/ridgun/lib/formatter.rg`
-- `src/main/ridgun/lib/parser.rg`
-- `docs/requirements/functional/tooling/FR-TOOL-001-canonical-source-code-formatting.md`
+- `docs/requirements/functional/compiler/FR-COMP-002-compiled-memory-management-cmm.md`
+- `docs/etc/cmm_architecture.md`
 - `docs/lang/spec.md`
+- `src/main/ridgun/lib/compiler.rg`
+- `src/main/ridgun/lib/typecheck.rg`
+- `src/test/ridgun/test_core_language.rg`
 ## Last verified facts (tests green? migrations applied? env?)
-- `./target/stable test`: 4/4 Ridgun test suites passed (0 failures).
-- `cargo test`: 117 unit + 45 integration tests passed (0 failures).
-- `./target/stable format`: idempotently formats `build.rg`, `src/main/ridgun/stable/main.rg`, and `src/main/ridgun/lib/formatter.rg`.
-- `aix docs validate`: 0 errors.
+- Stage 1 & Stage 2 `target/ridgunc` and `target/stable` bootstrapped cleanly under CMM.
+- `cmm_trace_elegir True` -> `(2, 1, 1, 0, 1, 1)` and `cmm_trace_elegir False` -> `(2, 2, 1, 0, 1, 1)` verified.
+- `cmm_trace_cascada True True` -> `(1, 1, 0)` and `cmm_trace_cascada False False` -> `(2, 1, 0)` verified.
 ## Immediate next action
-- Present the v0.9.3 commit to the user.
+- Review CMM results with the user on `dev/CMM` before proceeding to the next phase.
 ## Blockers / questions for the user
 - None.

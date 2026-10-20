@@ -3,6 +3,7 @@
 | Path | What | Read when |
 |---|---|---|
 | `architecture.md` | Bytecode VM architecture and `.rgc` format | Working on bytecode compiler, loader, or VM |
+| `cmm_architecture.md` | Compiled Memory Management (CMM) & Conditional CMM (`ptr(a) != ptr(c)`) (`FR-COMP-002`) | Working on compile-time memory management, liveness, or alias-guarded drops |
 | `next_gen_architecture.md` | Approved v2.0 architectural blueprint (DAGs, Freeze, Regions, Tiering, `--seed`) | Implementing v2.0 VM, memory, or static analysis |
 | `parallelism.md` | Green threads, work-stealing scheduler, mailboxes, channels | Working on scheduler, threads, or concurrency |
 | `interop.md` | C/C++ FFI and Python bridge specification | Working on FFI or PyO3 interop |
