@@ -6,7 +6,7 @@ En gairebé tots els llenguatges de programació hi ha un moment dramàtic en la
 
 Es fa el silenci a la sala. Tothom sap què ve després: setmanes caçant *race conditions* fantasma que només passen els dimarts amb lluna plena, bloquejos mutus (*deadlocks*) i errors irreproduïbles.
 
-En Ridgun, quan algú diu *"cal paral·lelitzar-ho"*, `map` i `filter` ja són paral·lels per defecte, o poses els teus càlculs en un bloc paral·lel `||` amb fletxes `->` i te'n vas a fer un cafè.
+En Ridgun, quan algú diu *"cal paral·lelitzar-ho"*, n'hi ha prou d'anteposar `||` a les teves operacions de llista (**`||map`** i **`||filter`**) o posar els teus càlculs en un bloc paral·lel `||` amb fletxes `->` i te'n vas a fer un cafè.
 
 Per què? Perquè **quan les teves funcions són pures i les teves dades són immutables per defecte, dos nuclis de CPU treballant alhora mai no es poden trepitjar la mànega**.
 
@@ -14,13 +14,13 @@ Vegem-ho pas a pas.
 
 ---
 
-## 7.1. Funcions que reben funcions: `map`, `seq_map`, `filter`, `seq_filter` i `fold`
+## 7.1. Funcions que reben funcions: `map`, `||map`, `filter`, `||filter` i `fold`
 
 En Ridgun una funció és un valor més. Pots passar-la per paràmetre igual que passes el número `7`.
 
-El llenguatge porta de sèrie els combinadors de col·leccions per transformar llistes sense escriure ni una sola recursió manual:
+El llenguatge porta de sèrie els combinadors de col·leccions per transformar llistes sense escriure ni una sola recursió manual, tant en mode seqüencial (`map`, `filter`, `fold`) com en mode paral·lel multicore amb el prefix `||` (**`||map`**, **`||filter`**):
 
-### 1. `map` (paral·lel per defecte) i `seq_map` (seqüencial)
+### 1. `map` (seqüencial) i `||map` (paral·lel multicore)
 Suposa que tens una funció `costos Int => Int` i una llista amb números:
 
 ```ridgun
@@ -30,18 +30,18 @@ costos x   =  (x * x) + (x * 3)
 main => ()
 main =
   dades = [1, 2, 3, 4, 5, 6, 7, 8]
-  -- Paral·lel multicore per defecte:
-  r1 = map costos dades
   -- Seqüencial estricte d'esquerra a dreta:
-  r2 = seq_map costos dades
+  r1 = map costos dades
+  -- Paral·lel multicore amb el prefix `||`:
+  r2 = ||map costos dades
   echo r1
   echo r2
 ```
 
-- Amb **`map`**, el runtime de Ridgun reparteix els elements de `dades` entre els fils treballadors del teu processador i reconstrueix la llista final **exactament en el mateix ordre**, garantint que `map f xs == seq_map f xs`.
-- I si la teva funció fa efectes d'entrada/sortida (com imprimir per pantalla o escriure en un fitxer) i vols forçar que vagi estrictament d'esquerra a dreta d'un en un? Fas servir **`seq_map`**.
+- Amb **`map`**, Ridgun aplica la funció element a element d'esquerra a dreta en el fil actual (ideal per a llistes petites o funcions amb efectes d'entrada/sortida ordenats).
+- Amb **`||map`**, el runtime de Ridgun reparteix els elements de `dades` entre els fils treballadors del teu processador i reconstrueix la llista final **exactament en el mateix ordre**, garantint que `||map f xs == map f xs`.
 
-### 2. `filter` (paral·lel) i `seq_filter` (seqüencial): Quedar-te només amb els que compleixin una condició
+### 2. `filter` (seqüencial) i `||filter` (paral·lel): Quedar-te només amb els que compleixin una condició
 Li passes una funció que retorni `Bool` (un *predicat*) i una llista:
 
 ```ridgun
@@ -51,7 +51,9 @@ es_positiu n   =  n > 0
 main => ()
 main =
   nets = filter es_positiu [-5, 10, 0, -2, 42]
-  echo nets  -- Imprimeix [10, 42]
+  nets_par = ||filter es_positiu [-5, 10, 0, -2, 42]
+  echo nets      -- Imprimeix [10, 42]
+  echo nets_par  -- Imprimeix [10, 42]
 ```
 
 ### 3. `fold`: Reduir tota una llista a un sol resultat

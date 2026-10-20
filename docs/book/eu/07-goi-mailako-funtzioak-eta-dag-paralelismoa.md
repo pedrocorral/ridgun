@@ -6,7 +6,7 @@ Ia programazio-lengoaia guztietan une dramatiko bat egoten da proiektu baten biz
 
 Isiltasuna nagusitzen da aretoan. Mundu guztiak daki zer datorren ondoren: asteak ilargi beteko astearteetan bakarrik gertatzen diren *race condition* mamuak, elkar-blokeatzeak (*deadlock*-ak) eta erreproduzitu ezinezko erroreak ehizatzen.
 
-Ridgunen, norbaitek *"paralelizatu egin behar da"* esaten duenean, `map` eta `filter` paraleloak dira dagoeneko lehenespenez, edo zure kalkuluak `->` geziak dituen `||` bloke paralelo batean jartzen dituzu eta kafe bat hartzera joaten zara.
+Ridgunen, norbaitek *"paralelizatu egin behar da"* esaten duenean, nahikoa da zerrenda-eragiketen aurrean `||` jartzea (**`||map`** eta **`||filter`**) edo zure kalkuluak `->` geziak dituen `||` bloke paralelo batean jartzea eta kafe bat hartzera joatea.
 
 Zergatik? **Zure funtzioak puruak direnean eta zure datuak aldaezinak direnean lehenespenez, aldi berean lanean ari diren bi PUZ nukleok ezin diotelako inoiz elkarri mahuka zapaldu**.
 
@@ -14,13 +14,13 @@ Ikus dezagun urratsez urrats.
 
 ---
 
-## 7.1. Funtzioak jasotzen dituzten funtzioak: `map`, `seq_map`, `filter`, `seq_filter` eta `fold`
+## 7.1. Funtzioak jasotzen dituzten funtzioak: `map`, `||map`, `filter`, `||filter` eta `fold`
 
 Ridgunen funtzio bat beste balio bat gehiago da. Parametro bidez pasa dezakezu `7` zenbakia pasatzen duzun bezalaxe.
 
-Lengoaiak bilduma-konbinatzaileak dakartza seriean, zerrendak eskuzko errekurtsio bakar bat ere idatzi gabe eraldatzeko:
+Lengoaiak bilduma-konbinatzaileak dakartza seriean, zerrendak eskuzko errekurtsio bakar bat ere idatzi gabe eraldatzeko, bai modu sekuentzialean (`map`, `filter`, `fold`) bai nukleo anitzeko modu paraleloan `||` aurrizkiarekin (**`||map`**, **`||filter`**):
 
-### 1. `map` (paraleloa lehenespenez) eta `seq_map` (sekuentziala)
+### 1. `map` (sekuentziala) eta `||map` (nukleo anitzeko paraleloa)
 Demagun `garestia Int => Int` funtzio bat eta zenbakiak dituen zerrenda bat dituzula:
 
 ```ridgun
@@ -30,18 +30,18 @@ garestia x   =  (x * x) + (x * 3)
 main => ()
 main =
   datuak = [1, 2, 3, 4, 5, 6, 7, 8]
-  -- Nukleo anitzeko paraleloa lehenespenez:
-  r1 = map garestia datuak
   -- Sekuentzial zorrotza ezkerretik eskuinera:
-  r2 = seq_map garestia datuak
+  r1 = map garestia datuak
+  -- Nukleo anitzeko paraleloa `||` aurrizkiarekin:
+  r2 = ||map garestia datuak
   echo r1
   echo r2
 ```
 
-- **`map`**-ekin, Ridgunen runtime-ak `datuak` zerrendako elementuak zure prozesadoreko hari langileen artean banatzen ditu eta azken zerrenda **zehazki ordena berean** berreraikitzen du, `map f xs == seq_map f xs` bermatuz.
-- Eta zure funtzioak sarrera/irteera efektuak egiten baditu (pantailan inprimatzea edo fitxategi batean idaztea bezala) eta ezkerretik eskuinera banan-banan zorrotz joatera behartu nahi baduzu? **`seq_map`** erabiltzen duzu.
+- **`map`**-ekin, Ridgunek funtzioa elementuz elementu aplikatzen du ezkerretik eskuinera uneko harian (zerrenda txikietarako edo ordenatutako sarrera/irteera efektuak dituzten funtzioetarako bikaina).
+- **`||map`**-ekin, Ridgunen runtime-ak `datuak` zerrendako elementuak zure prozesadoreko hari langileen artean banatzen ditu eta azken zerrenda **zehazki ordena berean** berreraikitzen du, `||map f xs == map f xs` bermatuz.
 
-### 2. `filter` (paraleloa) eta `seq_filter` (sekuentziala): Baldintza bat betetzen dutenekin bakarrik geratzea
+### 2. `filter` (sekuentziala) eta `||filter` (paraleloa): Baldintza bat betetzen dutenekin bakarrik geratzea
 `Bool` itzultzen duen funtzio bat (*predikatu* bat) eta zerrenda bat pasatzen dizkiozu:
 
 ```ridgun
@@ -51,7 +51,9 @@ positiboa_da n   =  n > 0
 main => ()
 main =
   garbiak = filter positiboa_da [-5, 10, 0, -2, 42]
-  echo garbiak  -- [10, 42] inprimatzen du
+  garbiak_par = ||filter positiboa_da [-5, 10, 0, -2, 42]
+  echo garbiak      -- [10, 42] inprimatzen du
+  echo garbiak_par  -- [10, 42] inprimatzen du
 ```
 
 ### 3. `fold`: Zerrenda oso bat emaitza bakar batera murriztea

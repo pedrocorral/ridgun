@@ -526,6 +526,26 @@ fn :: fmt_check_block_opener String Int => Bool
         | len >= 3 AND (str_slice clean (len - 3) len) == " do" = True
         | otherwise = False
 
+fn :: fmt_line_closes_block String    => Bool
+      fmt_line_closes_block prev_text =
+        clean = fmt_trim (fmt_strip_comment prev_text)
+        len = str_len clean
+        (len >= 2 AND (str_slice clean (len - 2) len) == "|.") OR (len >= 3 AND (str_slice clean (len - 3) len) == "||.")
+
+fn :: fmt_guard_indent Int    Int         Int         String    => Int
+      fmt_guard_indent base_g orig_indent prev_indent prev_text =
+        prev_clean = fmt_trim (fmt_strip_comment prev_text)
+        fmt_guard_indent_clean base_g orig_indent prev_indent prev_text prev_clean
+
+fn :: fmt_guard_indent_clean Int Int Int String String => Int
+      fmt_guard_indent_clean base_g orig_indent prev_indent prev_text prev_clean
+        | str_starts_with prev_clean "||" = base_g
+        | fmt_line_opens_block prev_text = fmt_max base_g (prev_indent + 2)
+        | fmt_line_closes_block prev_text AND orig_indent >= base_g AND orig_indent < prev_indent = orig_indent
+        | fmt_line_closes_block prev_text = fmt_max base_g (prev_indent - 2)
+        | str_starts_with prev_clean "|" = fmt_max base_g prev_indent
+        | otherwise = base_g
+
 fn :: fmt_format_group_body FmtSig [String] Int String Bool => [String]
       fmt_format_group_body _ [] _ _ _ = []
       fmt_format_group_body geom (line:rest) prev_indent prev_text in_where =
@@ -548,15 +568,25 @@ fn :: fmt_format_group_line FmtSig String String String Int [String] Int String 
       fmt_format_group_line geom _ _ _ _ rest _ _ in_where NoClause (WhereBindInfo w_lhs w_rhs) =
         f_line = fmt_format_where_line geom w_lhs w_rhs
         [f_line] :: (fmt_format_group_body geom rest ((fmt_sig_base_col_from geom) + 4) f_line in_where)
-      fmt_format_group_line geom _ tr tr_clean _ rest prev_indent prev_text in_where NoClause NoWhereBind
+      fmt_format_group_line geom _ tr tr_clean orig_indent rest prev_indent prev_text in_where NoClause NoWhereBind
         | tr_clean == "where" = [(fmt_spaces ((fmt_sig_base_col_from geom) + 2)) + tr] :: (fmt_format_group_body geom rest ((fmt_sig_base_col_from geom) + 2) "where" True)
-        | str_starts_with tr_clean "|" = [(fmt_spaces ((fmt_sig_base_col_from geom) + 2)) + tr] :: (fmt_format_group_body geom rest ((fmt_sig_base_col_from geom) + 2) tr False)
+        | str_starts_with tr_clean "||" = [(fmt_spaces ((fmt_sig_base_col_from geom) + 2)) + tr] :: (fmt_format_group_body geom rest ((fmt_sig_base_col_from geom) + 2) tr False)
+        | str_starts_with tr_clean "|" =
+          g_ind = fmt_guard_indent ((fmt_sig_base_col_from geom) + 2) orig_indent prev_indent prev_text
+          [(fmt_spaces g_ind) + tr] :: (fmt_format_group_body geom rest g_ind tr False)
         | str_starts_with tr "--" = [fmt_indent_body_line prev_indent prev_text tr] :: (fmt_format_group_body geom rest prev_indent prev_text in_where)
         | otherwise = [fmt_indent_body_line prev_indent prev_text tr] :: (fmt_format_group_body geom rest (fmt_next_body_indent prev_indent prev_text) tr in_where)
 
 fn :: fmt_next_body_indent Int         String    => Int
-      fmt_next_body_indent prev_indent prev_text
+      fmt_next_body_indent prev_indent prev_text =
+        prev_clean = fmt_trim (fmt_strip_comment prev_text)
+        fmt_next_body_indent_clean prev_indent prev_text prev_clean
+
+fn :: fmt_next_body_indent_clean Int         String    String     => Int
+      fmt_next_body_indent_clean prev_indent prev_text prev_clean
         | fmt_line_opens_block prev_text = prev_indent + 2
+        | fmt_line_closes_block prev_text = fmt_max 8 (prev_indent - 2)
+        | (str_starts_with prev_clean "|") AND (NOT (str_starts_with prev_clean "||")) = fmt_max 8 (prev_indent - 2)
         | otherwise = prev_indent
 
 fn :: fmt_indent_body_line Int         String    String => String

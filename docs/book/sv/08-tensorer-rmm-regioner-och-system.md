@@ -195,7 +195,7 @@ fn :: summera_bytes Int Matvarden => Int
 
 fn :: generera_rapport [String] => String
       generera_rapport sokvagar =
-        matvarden = map analysera_fil sokvagar
+        matvarden = ||map analysera_fil sokvagar
         || map formatera_matvarde matvarden -> rader_ut
         || fold summera_rader 0 matvarden   -> total_r
         || fold summera_bytes 0 matvarden   -> total_b ||.
@@ -209,7 +209,7 @@ fn :: main => ()
 Stanna upp en sekund och titta på dessa ~40 rader kod:
 - Det finns inte ett enda `null`, inget okontrollerat undantag och inget `Mutex`.
 - `rakna_radbrytningar` kompileras till en inbyggd `loop` med 0 byte stackminne tack vare automatisk TCO.
-- `map analysera_fil sokvagar` bearbetar filerna parallellt på alla kärnor i din processor, och `||`-blocket beräknar samtidigt de formaterade raderna, totalt antal rader och totalt antal byte.
+- `||map analysera_fil sokvagar` bearbetar filerna parallellt på alla kärnor i din processor, och `||`-blocket beräknar samtidigt de formaterade raderna, totalt antal rader och totalt antal byte.
 - Det tillfälliga minnet frigörs deterministiskt via **`RMM1`/`RMM2`**.
 - Och när du kör `ridgunc build rg_wc.rg -o rg-wc` får du en fristående inbyggd binär på ~350 KB, färdig att kopieras till `/usr/local/bin`.
 
@@ -224,7 +224,7 @@ Stanna upp en sekund och titta på dessa ~40 rader kod:
 5. **Oföränderligt som standard (`x = ...`), uttryckligt föränderligt (`mut x = ...`):** använd `mut` endast när en lokal ackumulator verkligen kräver det.
 6. **Använd tydliga booleska operatorer i gemener (`and`, `or`, `xor`, `not`) och avsluta alltid dina vakter med `| otherwise =`.**
 7. **Modellera din domän med ADT (`type`):** använd poster med `with falt: varde` och summatyper (`Option`, `Result`) i stället för `null`.
-8. **Parallellisera genom att deklarera beroenden med `|| expr -> var` samt `map` / `filter`:** låt kompilatorn verifiera att det inte finns några cykler och fördela arbetet mellan kärnorna.
+8. **Parallellisera genom att deklarera beroenden med `|| expr -> var` samt `||map` / `||filter`:** låt kompilatorn verifiera att det inte finns några cykler och fördela arbetet mellan kärnorna.
 9. **Sätt symboliska dimensioner på dina tensorer (`Tensor[N, K]`) och index på dina kontraktioner (`a_ik @ b_kj`).**
 10. **Lita på `RMM` (`RMM1`/`RMM2`), avgränsa extern indata med `with region` och verifiera alltid med `stable check` och `stable test`.**
 

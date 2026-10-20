@@ -53,9 +53,9 @@ Learn Ridgun from scratch—from your first tabular function to parallel DAGs, s
 2. **Unified `=` Block Grammar (`(none)`, `|`, `||`) & Compact Nested Closers (`|.` / `||.`)**:
    - Every `=` (in functions, operators, local bindings `x =`, or guard branches) accepts sequential lines, conditional guard blocks (`|`), or parallel DAG blocks (`||`).
    - Guard branches can nest 3–4+ levels deep to form rich decision trees, using the compact inline **`|.`** closer (`| otherwise = val |.`) only when returning to an outer branch level below.
-3. **Parallel DAG Blocks (`|| expr -> var`) & Multicore Combinators (`map`, `filter`)**:
+3. **Parallel DAG Blocks (`|| expr -> var`) & Multicore Combinators (`||map`, `||filter`)**:
    - Parallel dataflow dependencies are declared directly with `|| expr -> var` (no `where` keyword required). The static analyzer verifies cycle freedom at compile time and schedules independent branches in parallel.
-   - `map` and `filter` execute in parallel by default (`seq_map` and `seq_filter` provide strict left-to-right sequential execution).
+   - `map`, `filter`, and `fold` execute sequentially left-to-right, while **`||map`** and **`||filter`** distribute list elements across multicore worker threads using Ridgun's `||` parallel prefix.
 4. **Immutable by Default (`x = ...`) with Explicit `mut` (`mut x = ...`)**:
    - Local bindings are immutable constants unless declared with `mut x = expr`, preventing accidental rebinding in the same scope.
 5. **Deterministic Memory Without a Garbage Collector (`RMM1`, `RMM2` & `with region`)**:

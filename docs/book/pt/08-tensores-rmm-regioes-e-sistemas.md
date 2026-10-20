@@ -195,7 +195,7 @@ fn :: somar_bytes Int Metricas => Int
 
 fn :: gerar_relatorio [String] => String
       gerar_relatorio caminhos =
-        metricas = map analisar_ficheiro caminhos
+        metricas = ||map analisar_ficheiro caminhos
         || map formatar_metrica metricas -> linhas_fmt
         || fold somar_linhas 0 metricas  -> total_l
         || fold somar_bytes 0 metricas   -> total_b ||.
@@ -209,7 +209,7 @@ fn :: main => ()
 Pare um segundo para olhar para essas ~40 linhas de código:
 - Não há um único `null`, nem uma exceção descontrolada, nem um `Mutex`.
 - `contar_quebras` é compilada para um `loop` nativo com 0 bytes de pilha graças ao TCO automático.
-- `map analisar_ficheiro caminhos` processa os ficheiros em paralelo em todos os núcleos do seu CPU, e o bloco `||` calcula simultaneamente as linhas formatadas, o total de linhas e o total de bytes.
+- `||map analisar_ficheiro caminhos` processa os ficheiros em paralelo em todos os núcleos do seu CPU, e o bloco `||` calcula simultaneamente as linhas formatadas, o total de linhas e o total de bytes.
 - A memória temporária é libertada de forma determinística mediante **`RMM1`/`RMM2`**.
 - E quando executa `ridgunc build rg_wc.rg -o rg-wc`, obtém um binário nativo autónomo de ~350 KB pronto para copiar para `/usr/local/bin`.
 
@@ -224,7 +224,7 @@ Pare um segundo para olhar para essas ~40 linhas de código:
 5. **Imutável por omissão (`x = ...`), mutável explícito (`mut x = ...`):** use `mut` unicamente quando um acumulador local o exigir de verdade.
 6. **Use operadores booleanos claros em minúsculas (`and`, `or`, `xor`, `not`) e feche sempre as suas guardas com `| otherwise =`.**
 7. **Modele o seu domínio com ADTs (`type`):** use registos com `with campo: valor` e tipos soma (`Option`, `Result`) em vez de `null`.
-8. **Paralelize declarando dependências com `|| expr -> var` e `map` / `filter`:** deixe que o compilador verifique que não há ciclos e distribua o trabalho pelos núcleos.
+8. **Paralelize declarando dependências com `|| expr -> var` e `||map` / `||filter`:** deixe que o compilador verifique que não há ciclos e distribua o trabalho pelos núcleos.
 9. **Ponha dimensões simbólicas nos seus Tensores (`Tensor[N, K]`) e subscritos nas suas contrações (`a_ik @ b_kj`).**
 10. **Confie no `RMM` (`RMM1`/`RMM2`), limite entradas externas com `with region` e verifique sempre com `stable check` e `stable test`.**
 

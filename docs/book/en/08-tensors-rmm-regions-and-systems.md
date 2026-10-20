@@ -195,7 +195,7 @@ fn :: sum_bytes Int Metrics => Int
 
 fn :: generate_report [String] => String
       generate_report paths    =
-        metrics = map analyze_file paths
+        metrics = ||map analyze_file paths
         || map format_metric metrics -> rows
         || fold sum_lines 0 metrics  -> total_l
         || fold sum_bytes 0 metrics  -> total_b ||.
@@ -209,7 +209,7 @@ fn :: main => ()
 Pause for a second and look at those ~40 lines of code:
 - There is not a single `null`, unchecked exception, or `Mutex`.
 - `count_newlines` compiles down to a native `loop` using 0 bytes of stack thanks to automatic TCO.
-- `map analyze_file paths` processes files in parallel across all cores of your CPU, and the `||` block computes the formatted rows, total lines, and total bytes simultaneously.
+- `||map analyze_file paths` processes files in parallel across all cores of your CPU, and the `||` block computes the formatted rows, total lines, and total bytes simultaneously.
 - Temporary memory is freed deterministically via **`RMM1`/`RMM2`**.
 - And when you run `ridgunc build rg_wc.rg -o rg-wc`, you get a self-contained ~350 KB native binary ready to copy into `/usr/local/bin`.
 
@@ -224,7 +224,7 @@ Pause for a second and look at those ~40 lines of code:
 5. **Immutable by default (`x = ...`), explicitly mutable (`mut x = ...`):** reach for `mut` only when a local accumulator genuinely calls for it.
 6. **Use clear lowercase boolean operators (`and`, `or`, `xor`, `not`) and always close your guards with `| otherwise =`.**
 7. **Model your domain with ADTs (`type`):** use records with `with field: value` and sum types (`Option`, `Result`) instead of `null`.
-8. **Parallelize by declaring dependencies with `|| expr -> var` and `map` / `filter`:** let the compiler verify acyclicity and distribute work across cores.
+8. **Parallelize by declaring dependencies with `|| expr -> var` and `||map` / `||filter`:** let the compiler verify acyclicity and distribute work across cores.
 9. **Give your Tensors symbolic dimensions (`Tensor[N, K]`) and your contractions explicit indices (`a_ik @ b_kj`).**
 10. **Trust `RMM` (`RMM1`/`RMM2`), bound untrusted inputs with `with region`, and always verify with `stable check` and `stable test`.**
 

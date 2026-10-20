@@ -184,4 +184,4 @@ main =
 
 Du har precis tillverkat din egen polymorfa ternära operator och ett formaterings-DSL på **3 rader** i Ridgun.
 
-I **Kapitel 07** ska vi sätta alla kärnor i din processor i arbete samtidigt utan att fälla en enda svettdroppe: **högre ordningens funktioner (`map`, `seq_map`, `filter`, `seq_filter`, `fold`), parallella `||`-grafer med `->` och samtidiga kanaler**.
+I **Kapitel 07** ska vi sätta alla kärnor i din processor i arbete samtidigt utan att fälla en enda svettdroppe: **högre ordningens funktioner (`map`, `||map`, `filter`, `||filter`, `fold`), parallella `||`-grafer med `->` och samtidiga kanaler**.

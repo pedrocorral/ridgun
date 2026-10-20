@@ -6,7 +6,7 @@ In almost every programming language there is a dramatic moment in the life of a
 
 Silence falls over the room. Everyone knows what comes next: weeks chasing phantom *race conditions* that only happen on Tuesdays during a full moon, *deadlocks*, and irreproducible bugs.
 
-In Ridgun, when someone says *"we need to parallelize this"*, `map` and `filter` are already parallel by default, or you drop your calculations into a parallel `||` block with `->` arrows and go grab a coffee.
+In Ridgun, when someone says *"we need to parallelize this"*, you simply prefix your list operations with `||` (**`||map`** and **`||filter`**) or drop your calculations into a parallel `||` block with `->` arrows and go grab a coffee.
 
 Why? Because **when your functions are pure and your data is immutable by default, two CPU cores working side by side can never step on each other's toes**.
 
@@ -14,13 +14,13 @@ Let's walk through it step by step.
 
 ---
 
-## 7.1. Functions That Take Functions: `map`, `seq_map`, `filter`, `seq_filter`, and `fold`
+## 7.1. Functions That Take Functions: `map`, `||map`, `filter`, `||filter`, and `fold`
 
 In Ridgun a function is just another value. You can pass it as an argument the exact same way you pass the number `7`.
 
-The language comes out of the box with collection combinators so you can transform lists without writing a single manual recursion:
+The language comes out of the box with collection combinators so you can transform lists without writing a single manual recursion, both in sequential mode (`map`, `filter`, `fold`) and in multicore parallel mode using the `||` prefix (**`||map`**, **`||filter`**):
 
-### 1. `map` (parallel by default) and `seq_map` (sequential)
+### 1. `map` (sequential) and `||map` (multicore parallel)
 Suppose you have a function `expensive Int => Int` and a list of numbers:
 
 ```ridgun
@@ -30,18 +30,18 @@ expensive x   =  (x * x) + (x * 3)
 main => ()
 main =
   data = [1, 2, 3, 4, 5, 6, 7, 8]
-  -- Multicore parallel by default:
-  r1 = map expensive data
   -- Strict left-to-right sequential:
-  r2 = seq_map expensive data
+  r1 = map expensive data
+  -- Multicore parallel with the `||` prefix:
+  r2 = ||map expensive data
   echo r1
   echo r2
 ```
 
-- With **`map`**, the Ridgun runtime distributes the elements of `data` across your processor's worker threads and reassembles the final list **in the exact same order**, guaranteeing that `map f xs == seq_map f xs`.
-- What if your function performs I/O side effects (such as printing to the screen or writing to a file) and you want to force strict one-by-one execution from left to right? Use **`seq_map`**.
+- With **`map`**, Ridgun applies the function element by element from left to right on the current thread (ideal for small lists or functions with ordered I/O side effects).
+- With **`||map`**, the Ridgun runtime distributes the elements of `data` across your processor's worker threads and reassembles the final list **in the exact same order**, guaranteeing that `||map f xs == map f xs`.
 
-### 2. `filter` (parallel) and `seq_filter` (sequential): Keeping only elements that match a condition
+### 2. `filter` (sequential) and `||filter` (parallel): Keeping only elements that match a condition
 You pass a function that returns `Bool` (a *predicate*) and a list:
 
 ```ridgun
@@ -51,7 +51,9 @@ is_positive n   =  n > 0
 main => ()
 main =
   clean = filter is_positive [-5, 10, 0, -2, 42]
-  echo clean  -- Prints [10, 42]
+  clean_par = ||filter is_positive [-5, 10, 0, -2, 42]
+  echo clean      -- Prints [10, 42]
+  echo clean_par  -- Prints [10, 42]
 ```
 
 ### 3. `fold`: Reducing an entire list down to a single result

@@ -31,41 +31,19 @@ Reading budget: `docs/lang/spec.md` (only when a construct is unfamiliar), `buil
      head_or []     d =  d
      head_or (x:_)  _ =  x
      ```
-3. **Pattern Matching, Guards (`|`), and Multi-Line Guard Blocks**:
-   - Multiple cases repeat the function or operator pattern:
-     ```ridgun
-     fn :: fib Int => Int
-           fib 0   =  0
-           fib 1   =  1
-           fib n   =  (fib (n - 1)) + (fib (n - 2))
-     ```
-   - Guards omit `=` after patterns and put `| cond = ...` and `| otherwise = ...` on indented lines.
-   - **Both single-line expressions AND indented multi-line blocks are supported after `=` in guards**:
-     ```ridgun
-     fn :: step_bound Int Int => Int
-           step_bound idx limit
-             | idx >= limit =
-                 capped = limit - 1
-                 scaled = capped * 2
-                 scaled + 1
-             | otherwise = idx + 1
-     ```
-   - **No `if/then/else` or `match/case` keywords**: always use pattern matching cases or guards (`| cond = ...` / `| otherwise = ...`).
-4. **Indented Statement Blocks**:
-   - Allowed after `fn_name pats =`, `op_words pats =`, or `| cond =` followed by a newline and 2-space indentation:
-     ```ridgun
-     fn :: run_step String => Int
-           run_step path =
-             raw = read_file path
-             _ = echo "Loaded {path}"
-             str_len raw
-     ```
+3. **Unified `=` Grammar (`(none)`, `|`, `||`) & Nested Block Closers (`|.` / `||.`) (`FR-COMP-003`)**:
+   - Every function clause (`fn ::`), operator clause (`op ::`), local variable binding (`x =` / `mut x =`), and guard branch (`| cond =` / `| otherwise =`) ends with `=` and accepts: (1) inline expression (with optional `|| expr -> var` below), (2) sequential indented lines `(none)`, (3) conditional guard block `| cond = ...`, or (4) parallel block `|| expr -> var` / `|| expr` (`where` is removed).
+   - Guarded clauses always include `=` before the guard block (`name pats =` followed by `| cond = ...`), local variables can be assigned via `|` (`x =` followed by `| cond = ...`), and guards can nest up to 4+ levels (`|` inside `| cond =` or `| otherwise =`).
+   - When a nested `|` or `||` block finishes and execution returns to an outer level below it, close the inner block with `|.` (or `||.`), preferably inline at the end of its last line (`| otherwise = val |.`).
+4. **Immutable (`x = ...`) vs Mutable (`mut x = ...`) Local Variables**:
+   - Local bindings `x = expr` are immutable by default; declare mutable variables with `mut x = expr` and reassign them in the same scope with `x = new_expr` (under `RMM2`, `new_expr` gets `+1` before old `x` gets `-1`).
    - Discard `()` return values of intermediate side-effect calls with `_ = ...`; the last line of the block is the return value.
-5. **Logical, Comparison & List Operators**:
-   - Logical operators are UPPERCASE words: `AND`, `OR`, `XOR`, `NOT` (never `&&`, `||`, `!`).
+5. **Logical, Comparison, List & Higher-Order Operators**:
+   - Logical operators are lowercase words: `and`, `or`, `xor`, `not` (never `&&`, `||`, `!`).
    - List literal: `[1, 2, 3]`. Pattern destructuring: `[]`, `(x:xs)`, `(a:b:[])`.
    - List concatenation uses `::` between two lists: `[head_item] :: tail_list` or `list_a :: [last_item]`.
    - String concatenation uses `+`: `"hello " + name`.
+   - Higher-order collection operations (`FR-COMP-001`): `map f xs`, `filter p xs`, and `fold f init xs` execute sequentially left-to-right; **`||map f xs`** and **`||filter p xs`** execute in parallel across multicore worker threads.
 6. **Strings: Interpolated (`"..."`), Brace Escaping (`\{`/`\}` and `{{`/`}}`), and Raw (`'...'`)**:
    - Double quotes `"Hello, {name}!"` interpolate variables `{var}` or expressions `{fn x}`.
    - Escape literal braces inside `"..."` using EITHER `\{` and `\}` (e.g., `"\$\{VAR:-default\}"`) OR `{{` and `}}` (e.g., `"{{braces}}"`).

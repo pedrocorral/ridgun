@@ -159,6 +159,11 @@ fn :: tok_ident String Int Int => (RToken, Int)
         word = str_slice src pos end_id
         (classify_word word, end_id)
 
+fn :: tok_dpipe_ident String Int Int => (RToken, Int)
+      tok_dpipe_ident src    pos len =
+        end_id = scan_ident_end src (pos + 2) len
+        (TokIdent (str_slice src pos end_id), end_id)
+
 fn :: lex_one_tok String Int Int Int Int => (RToken, Int)
       lex_one_tok src pos len c c2
         | c == 10 = (TokNewline, pos + 1)
@@ -170,6 +175,7 @@ fn :: lex_one_tok String Int Int Int Int => (RToken, Int)
         | c == 62 AND c2 == 61 = (TokGtEq, pos + 2)
         | c == 60 AND c2 == 61 = (TokLtEq, pos + 2)
         | c == 124 AND c2 == 124 AND (str_char_at src (pos + 2)) == 46 = (TokDoublePipeDot, pos + 3)
+        | c == 124 AND c2 == 124 AND (is_alpha (str_char_at src (pos + 2))) = tok_dpipe_ident src pos len
         | c == 124 AND c2 == 124 = (TokDoublePipe, pos + 2)
         | c == 124 AND c2 == 46 = (TokPipeDot, pos + 2)
         | c == 46 AND c2 == 46 AND (str_char_at src (pos + 2)) == 46 = (TokEllipsis, pos + 3)

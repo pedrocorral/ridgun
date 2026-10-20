@@ -195,7 +195,7 @@ fn :: sumar_bytes Int Metriques => Int
 
 fn :: generar_informe [String] => String
       generar_informe rutes    =
-        metriques = map analitzar_fitxer rutes
+        metriques = ||map analitzar_fitxer rutes
         || map formatar_metrica metriques -> files
         || fold sumar_linies 0 metriques  -> total_l
         || fold sumar_bytes 0 metriques   -> total_b ||.
@@ -209,7 +209,7 @@ fn :: main => ()
 Atura't un segon a mirar aquestes ~40 línies de codi:
 - No hi ha ni un sol `null`, ni una excepció descontrolada, ni un `Mutex`.
 - `comptar_salts` es compila a un `loop` natiu amb 0 bytes de pila gràcies al TCO automàtic.
-- `map analitzar_fitxer rutes` processa els fitxers en paral·lel en tots els nuclis de la teva CPU, i el bloc `||` calcula simultàniament les files formatades, el total de línies i el total de bytes.
+- `||map analitzar_fitxer rutes` processa els fitxers en paral·lel en tots els nuclis de la teva CPU, i el bloc `||` calcula simultàniament les files formatades, el total de línies i el total de bytes.
 - La memòria temporal s'allibera determinísticament mitjançant **`RMM1`/`RMM2`**.
 - I quan executes `ridgunc build rg_wc.rg -o rg-wc`, obtens un binari natiu autònom de ~350 KB a punt per copiar a `/usr/local/bin`.
 
@@ -224,7 +224,7 @@ Atura't un segon a mirar aquestes ~40 línies de codi:
 5. **Immutable per defecte (`x = ...`), mutable explícit (`mut x = ...`):** fes servir `mut` únicament quan un acumulador local ho demani de debò.
 6. **Fes servir operadors booleans clars en minúscules (`and`, `or`, `xor`, `not`) i tanca sempre les teves guardes amb `| otherwise =`.**
 7. **Modela el teu domini amb ADTs (`type`):** fes servir registres amb `with camp: valor` i tipus suma (`Option`, `Result`) en lloc de `null`.
-8. **Paral·lelitza declarant dependències amb `|| expr -> var` i `map` / `filter`:** deixa que el compilador verifiqui que no hi ha cicles i reparteixi la feina entre els nuclis.
+8. **Paral·lelitza declarant dependències amb `|| expr -> var` i `||map` / `||filter`:** deixa que el compilador verifiqui que no hi ha cicles i reparteixi la feina entre els nuclis.
 9. **Posa dimensions simbòliques als teus Tensors (`Tensor[N, K]`) i subíndexs a les teves contraccions (`a_ik @ b_kj`).**
 10. **Confia en `RMM` (`RMM1`/`RMM2`), afita entrades externes amb `with region` i verifica sempre amb `stable check` i `stable test`.**
 

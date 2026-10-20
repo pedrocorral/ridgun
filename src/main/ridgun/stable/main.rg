@@ -131,26 +131,35 @@ op :: project name of StableConfig => String
 
 -- ── Task 1: `check` (Typecheck & Static Analysis of Project) ─
 
-op :: check modules [String]         ok Int  err Int   => (Int, Int)
-      check modules []               ok ok_c err err_c =  (ok_c, err_c)
-      check modules (path:rem_files) ok ok_c err err_c =
+fn :: check_single_module String => (Int, Int)
+      check_single_module path   =
         raw = load_rg_source path
         toks = tokenize_src raw
         prog_ast = parse_tokens toks
         errs = typecheck_program prog_ast
-        check module step path rest rem_files ok ok_c err err_c prog prog_ast errors errs
+        report check module path prog prog_ast errors errs
 
-op :: check module step String rest [String] ok Int err Int prog RProgram errors [RTypeError] => (Int, Int)
-      check module step path rest rem_files ok ok_c err err_c prog prog_ast errors [] =
+op :: report check module String prog RProgram errors [RTypeError] => (Int, Int)
+      report check module path   prog prog_ast errors []           =
         fn_c = count_fn_defs prog_ast
         ty_c = count_type_defs prog_ast
         _ = echo "  [ok]   {path} ({fn_c} fn, {ty_c} types)"
-        check modules rem_files ok (ok_c + 1) err err_c
-      check module step path rest rem_files ok ok_c err err_c prog _ errors errs =
+        (1, 0)
+      report check module path   prog _        errors errs         =
         ec = type_err_count errs
         _ = echo "  [err]  {path}: {ec} error(s)"
         _ = print error lines (format_type_errors errs)
-        check modules rem_files ok ok_c err (err_c + ec)
+        (0, ec)
+
+op :: sum check results [(Int, Int)] ok Int  err Int   => (Int, Int)
+      sum check results []           ok ok_c err err_c =  (ok_c, err_c)
+      sum check results ((o, e):rem_results) ok ok_c err err_c =
+        sum check results rem_results ok (ok_c + o) err (err_c + e)
+
+op :: check modules [String] ok Int  err Int   => (Int, Int)
+      check modules files    ok ok_c err err_c =
+        results = ||map check_single_module files
+        sum check results results ok ok_c err err_c
 
 op :: print error lines [String] => ()
       print error lines []       =  ()
@@ -195,14 +204,28 @@ op :: rgc artifact name for String base String    => String
       rgc artifact name for path   base "main.rg" =  (target name from entry path) + "_main.rgc"
       rgc artifact name for _      base bname     =  bname + "c"
 
-op :: compile modules [String]         into String  count Int   => Int
-      compile modules []               into _       count c_acc =  c_acc
-      compile modules (path:rem_files) into out_dir count c_acc =
+op :: pair paths [String]         with dir String  => [(String, String)]
+      pair paths []               with dir _       =  []
+      pair paths (path:rem_files) with dir out_dir =
+        [(out_dir, path)] :: (pair paths rem_files with dir out_dir)
+
+fn :: compile_single_module (String, String) => Int
+      compile_single_module (out_dir, path)  =
         bname = base filename of path at 0 len (str_len path) slash (0 - 1)
         out_rgc = out_dir + "/" + (rgc artifact name for path base bname)
         fn_c = emit_rgc_file path out_rgc
         _ = echo "  [rgc]  {path} -> {out_rgc} ({fn_c} functions)"
-        compile modules rem_files into out_dir count (c_acc + 1)
+        1
+
+op :: sum ints [Int]     acc Int   => Int
+      sum ints []        acc total =  total
+      sum ints (n:rem_n) acc total =  sum ints rem_n acc (total + n)
+
+op :: compile modules [String] into String  count Int   => Int
+      compile modules files    into out_dir count c_acc =
+        pairs = pair paths files with dir out_dir
+        counts = ||map compile_single_module pairs
+        sum ints counts acc c_acc
 
 op :: run task compile on StableConfig => Int
       run task compile on (ProjectConfig name_str ver main_ep sdir tdir out_dir) =
@@ -226,13 +249,22 @@ op :: build target from String     into String  version String => Int
         st_code = build_native_executable entry_path out_bin
         report build of out_bin status st_code
 
-op :: build entry list [String] into String version String errors Int => Int
-      build entry list [] into _ version _ errors err_acc = err_acc
-      build entry list (epath:rem_entries) into out_dir version ver errors err_acc =
+op :: pair entries [String] with dir String version String => [(String, String, String)]
+      pair entries [] with dir _ version _ = []
+      pair entries (epath:rem_paths) with dir out_dir version ver =
+        [(out_dir, ver, epath)] :: (pair entries rem_paths with dir out_dir version ver)
+
+fn :: build_single_entry (String, String, String) => Int
+      build_single_entry (out_dir, ver, epath)    =
         tname = target name from entry epath
         out_bin = out_dir + "/" + tname
-        st_code = build target from epath into out_bin version ver
-        build entry list rem_entries into out_dir version ver errors (err_acc + st_code)
+        build target from epath into out_bin version ver
+
+op :: build entry list [String] into String version String errors Int => Int
+      build entry list entries into out_dir version ver errors err_acc =
+        triples = pair entries entries with dir out_dir version ver
+        codes = ||map build_single_entry triples
+        sum ints codes acc err_acc
 
 op :: run task build on StableConfig args [String]  => Int
       run task build on (ProjectConfig name_str ver main_ep sdir _ out_dir) args [] =
@@ -294,29 +326,35 @@ op :: exec binary if built Int  path String  args [String]   => Int
 
 -- ── Task 5: `test` (Discover, Check, Build & Run Tests) ─────
 
-op :: execute test suites [String] passed Int failed Int => (Int, Int)
-      execute test suites [] passed pass_c failed fail_c = (pass_c, fail_c)
-      execute test suites (tpath:rem_suites) passed pass_c failed fail_c =
+fn :: run_single_test_suite String => (Int, Int)
+      run_single_test_suite tpath  =
         _ = echo "[info] Compiling & running test suite: {tpath}"
-        _ = shell_exec "mkdir -p target"
-        st_code = build_native_executable tpath "target/.stable_test_bin"
-        run single test binary st_code suite tpath rest rem_suites passed pass_c failed fail_c
+        bname = base filename of tpath at 0 len (str_len tpath) slash (0 - 1)
+        bin_path = "target/.stable_test_" + bname + "_bin"
+        st_code = build_native_fast_executable tpath bin_path
+        run built test binary st_code suite tpath binary bin_path
 
-op :: run single test binary Int suite String rest [String] passed Int failed Int => (Int, Int)
-      run single test binary 0 suite tpath rest rem_suites passed pass_c failed fail_c =
-        run_st = shell_exec "./target/.stable_test_bin; _st=$?; rm -f target/.stable_test_bin; exit $_st"
-        record test outcome run_st suite tpath rest rem_suites passed pass_c failed fail_c
-      run single test binary _ suite tpath rest rem_suites passed pass_c failed fail_c =
+op :: run built test binary Int suite String binary String   => (Int, Int)
+      run built test binary 0   suite tpath  binary bin_path =
+        run_st = shell_exec ("./" + bin_path + "; _st=$?; rm -f " + bin_path + "; exit $_st")
+        record single test outcome run_st suite tpath
+      run built test binary _   suite tpath  binary _        =
         _ = echo "  [FAIL] {tpath} (compilation/typecheck failed)"
-        execute test suites rem_suites passed pass_c failed (fail_c + 1)
+        (0, 1)
 
-op :: record test outcome Int suite String rest [String] passed Int failed Int => (Int, Int)
-      record test outcome 0 suite tpath rest rem_suites passed pass_c failed fail_c =
+op :: record single test outcome Int suite String => (Int, Int)
+      record single test outcome 0   suite tpath  =
         _ = echo "  [PASS] {tpath}"
-        execute test suites rem_suites passed (pass_c + 1) failed fail_c
-      record test outcome _ suite tpath rest rem_suites passed pass_c failed fail_c =
+        (1, 0)
+      record single test outcome _   suite tpath  =
         _ = echo "  [FAIL] {tpath} (non-zero exit status)"
-        execute test suites rem_suites passed pass_c failed (fail_c + 1)
+        (0, 1)
+
+op :: execute test suites [String] passed Int    failed Int    => (Int, Int)
+      execute test suites suites   passed pass_c failed fail_c =
+        _ = shell_exec "mkdir -p target"
+        results = ||map run_single_test_suite suites
+        sum check results results ok pass_c err fail_c
 
 op :: run task test on StableConfig => Int
       run task test on (ProjectConfig name_str _ _ _ tdir _) =
@@ -360,11 +398,13 @@ op :: format file at String => Int
         formatted_src = format ridgun source raw
         apply formatted content path orig raw formatted formatted_src
 
-op :: format file list [String]         changed Int   total Int   => (Int, Int)
-      format file list []               changed chg_c total tot_c =  (chg_c, tot_c)
-      format file list (path:rem_paths) changed chg_c total tot_c =
-        delta = format file at path
-        format file list rem_paths changed (chg_c + delta) total (tot_c + 1)
+fn :: format_single_file String => Int
+      format_single_file path   =  format file at path
+
+op :: format file list [String] changed Int   total Int   => (Int, Int)
+      format file list paths    changed chg_c total tot_c =
+        deltas = ||map format_single_file paths
+        (sum ints deltas acc chg_c, tot_c + (list_str_len paths))
 
 op :: include build file if present => [String]
       include build file if present

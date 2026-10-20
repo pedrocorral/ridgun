@@ -832,17 +832,17 @@ fn :: main => ()
 
 ---
 
-## Parallel & Sequential Higher-Order Collection Operations (`FR-COMP-001`)
+## Sequential & Parallel Higher-Order Collection Operations (`FR-COMP-001`)
 
-Ridgun functions are pure by default, allowing collection combinators to execute **in parallel by default** while offering explicit `seq_*` variants when strict left-to-right sequential execution is desired:
+Ridgun provides standard sequential collection combinators (`map`, `filter`, `fold`) alongside explicit multicore parallel combinators prefixed with `||` (`||map`, `||filter`):
 
 | Built-in | Signature | Execution Model |
 |---|---|---|
-| `map` | `(a => b) [a] => [b]` | **Parallel by default**: evaluates `f x` across list elements concurrently, preserving output order. |
-| `seq_map` | `(a => b) [a] => [b]` | **Sequential**: evaluates `f x` strictly left-to-right on the calling thread. |
-| `filter` | `(a => Bool) [a] => [a]` | **Parallel by default**: evaluates predicate `p x` concurrently and retains matching elements in order. |
-| `seq_filter` | `(a => Bool) [a] => [a]` | **Sequential**: evaluates predicate `p x` strictly left-to-right on the calling thread. |
-| `fold` | `(b a => b) b [a] => b` | **Sequential left fold**: accumulates `acc = f acc x` from left to right starting from `init`. |
+| `map` | `(A => B) [A] => [B]` | **Sequential**: evaluates `f x` strictly left-to-right on the calling thread. |
+| `||map` | `(A => B) [A] => [B]` | **Parallel (`||`)**: evaluates `f x` across list elements concurrently on worker threads, preserving output order. |
+| `filter` | `(A => Bool) [A] => [A]` | **Sequential**: evaluates predicate `p x` strictly left-to-right on the calling thread. |
+| `||filter` | `(A => Bool) [A] => [A]` | **Parallel (`||`)**: evaluates predicate `p x` concurrently on worker threads and retains matching elements in order. |
+| `fold` | `(B A => B) B [A] => B` | **Sequential left fold**: accumulates `acc = f acc x` from left to right starting from `init`. |
 
 ---
 

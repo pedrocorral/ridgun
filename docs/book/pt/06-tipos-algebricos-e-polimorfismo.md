@@ -184,4 +184,4 @@ main =
 
 Acabou de fabricar o seu próprio operador ternário polimórfico e um DSL de formatação em **3 linhas** de Ridgun.
 
-No **Capítulo 07** vamos pôr todos os núcleos do seu processador a trabalhar ao mesmo tempo sem derramar uma gota de suor: **funções de ordem superior (`map`, `seq_map`, `filter`, `seq_filter`, `fold`), grafos paralelos `||` com `->` e canais concorrentes**.
+No **Capítulo 07** vamos pôr todos os núcleos do seu processador a trabalhar ao mesmo tempo sem derramar uma gota de suor: **funções de ordem superior (`map`, `||map`, `filter`, `||filter`, `fold`), grafos paralelos `||` com `->` e canais concorrentes**.

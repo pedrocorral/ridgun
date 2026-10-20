@@ -6,7 +6,7 @@ En casi todos los lenguajes de programación hay un momento dramático en la vid
 
 Se hace el silencio en la sala. Todo el mundo sabe lo que viene después: semanas cazando *race conditions* fantasma que solo ocurren los martes con luna llena, bloqueos mutuos (*deadlocks*) y errores irreproducibles.
 
-En Ridgun, cuando alguien dice *"hay que paralelizarlo"*, `map` y `filter` ya son paralelos por defecto, o pones tus cálculos en un bloque paralelo `||` con flechas `->` y te vas a tomar un café.
+En Ridgun, cuando alguien dice *"hay que paralelizarlo"*, basta con anteponer `||` a tus operaciones de lista (**`||map`** y **`||filter`**) o poner tus cálculos en un bloque paralelo **`||`** con flechas `->` y te vas a tomar un café.
 
 ¿Por qué? Porque **cuando tus funciones son puras y tus datos son inmutables por defecto, dos núcleos de CPU trabajando a la vez jamás pueden pisarse la manguera**.
 
@@ -14,13 +14,13 @@ Vamos a verlo paso a paso.
 
 ---
 
-## 7.1. Funciones que reciben funciones: `map`, `seq_map`, `filter`, `seq_filter` y `fold`
+## 7.1. Funciones que reciben funciones: `map`, `||map`, `filter`, `||filter` y `fold`
 
 En Ridgun una función es un valor más. Puedes pasarla por parámetro igual que pasas el número `7`.
 
-El lenguaje trae de serie los combinadores de colecciones para transformar listas sin escribir ni una sola recursión manual:
+El lenguaje trae de serie los combinadores de colecciones para transformar listas sin escribir ni una sola recursión manual, tanto en modo secuencial (`map`, `filter`, `fold`) como en modo paralelo multicore con el prefijo `||` (**`||map`**, **`||filter`**):
 
-### 1. `map` (paralelo por defecto) y `seq_map` (secuencial)
+### 1. `map` (secuencial) y `||map` (paralelo multicore)
 Supón que tienes una función `costoso Int => Int` y una lista con números:
 
 ```ridgun
@@ -30,18 +30,18 @@ costoso x   =  (x * x) + (x * 3)
 main => ()
 main =
   datos = [1, 2, 3, 4, 5, 6, 7, 8]
-  -- Paralelo multicore por defecto:
-  r1 = map costoso datos
   -- Secuencial estricto de izquierda a derecha:
-  r2 = seq_map costoso datos
+  r1 = map costoso datos
+  -- Paralelo multicore con el prefijo `||`:
+  r2 = ||map costoso datos
   echo r1
   echo r2
 ```
 
-- Con **`map`**, el runtime de Ridgun reparte los elementos de `datos` entre los hilos trabajadores de tu procesador y reconstruye la lista final **exactamente en el mismo orden**, garantizando que `map f xs == seq_map f xs`.
-- ¿Y si tu función hace efectos de entrada/salida (como imprimir en pantalla o escribir en un archivo) y quieres forzar a que vaya estrictamente de izquierda a derecha de uno en uno? Usas **`seq_map`**.
+- Con **`map`**, Ridgun aplica la función elemento a elemento de izquierda a derecha en el hilo actual (ideal para listas pequeñas o funciones con efectos de entrada/salida ordenados).
+- Con **`||map`**, el runtime de Ridgun reparte los elementos de `datos` entre los hilos trabajadores de tu procesador y reconstruye la lista final **exactamente en el mismo orden**, garantizando que `||map f xs == map f xs`.
 
-### 2. `filter` (paralelo) y `seq_filter` (secuencial): Quedarte solo con los que cumplan una condición
+### 2. `filter` (secuencial) y `||filter` (paralelo): Quedarte solo con los que cumplan una condición
 Le pasas una función que devuelva `Bool` (un *predicado*) y una lista:
 
 ```ridgun
@@ -51,7 +51,9 @@ es_positivo n   =  n > 0
 main => ()
 main =
   limpios = filter es_positivo [-5, 10, 0, -2, 42]
-  echo limpios  -- Imprime [10, 42]
+  limpios_par = ||filter es_positivo [-5, 10, 0, -2, 42]
+  echo limpios      -- Imprime [10, 42]
+  echo limpios_par  -- Imprime [10, 42]
 ```
 
 ### 3. `fold`: Reducir toda una lista a un solo resultado

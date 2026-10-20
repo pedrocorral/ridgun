@@ -6,7 +6,7 @@ I nästan alla programmeringsspråk finns det ett dramatiskt ögonblick i ett pr
 
 Det blir knäpptyst i rummet. Alla vet vad som väntar härnäst: veckor av jakt på spöklika *race conditions* som bara inträffar på tisdagar vid fullmåne, ömsesidiga låsningar (*deadlocks*) och fel som inte går att återskapa.
 
-När någon i Ridgun säger *"vi måste parallellisera det"*, är `map` och `filter` redan parallella som standard, eller så lägger du dina beräkningar i ett parallellt `||`-block med pilar `->` och går och tar en kaffe.
+När någon i Ridgun säger *"vi måste parallellisera det"*, räcker det med att sätta `||` framför dina listoperationer (**`||map`** och **`||filter`**) eller lägga dina beräkningar i ett parallellt `||`-block med pilar `->` och gå och ta en kaffe.
 
 Varför? Därför att **när dina funktioner är rena och dina data är oföränderliga (*immutable*) som standard, kan två processorkärnor som arbetar samtidigt aldrig trampa på varandras slangar**.
 
@@ -14,13 +14,13 @@ Låt oss gå igenom det steg för steg.
 
 ---
 
-## 7.1. Funktioner som tar emot funktioner: `map`, `seq_map`, `filter`, `seq_filter` och `fold`
+## 7.1. Funktioner som tar emot funktioner: `map`, `||map`, `filter`, `||filter` och `fold`
 
 I Ridgun är en funktion ett värde som alla andra. Du kan skicka in den som parameter precis som du skickar in talet `7`.
 
-Språket har inbyggda samlingskombinatorer för att omvandla listor utan att skriva en enda manuell rekursion:
+Språket har inbyggda samlingskombinatorer för att omvandla listor utan att skriva en enda manuell rekursion, både i sekventiellt läge (`map`, `filter`, `fold`) och i flerkärnigt parallellt läge med prefixet `||` (**`||map`**, **`||filter`**):
 
-### 1. `map` (parallell som standard) och `seq_map` (sekventiell)
+### 1. `map` (sekventiell) och `||map` (parallell över flera kärnor)
 Anta att du har en funktion `tung Int => Int` och en lista med tal:
 
 ```ridgun
@@ -30,18 +30,18 @@ tung x   =  (x * x) + (x * 3)
 main => ()
 main =
   data = [1, 2, 3, 4, 5, 6, 7, 8]
-  -- Parallell över flera kärnor som standard:
-  r1 = map tung data
   -- Strikt sekventiell från vänster till höger:
-  r2 = seq_map tung data
+  r1 = map tung data
+  -- Parallell över flera kärnor med prefixet `||`:
+  r2 = ||map tung data
   echo r1
   echo r2
 ```
 
-- Med **`map`** fördelar Ridguns körtidsmiljö elementen i `data` mellan arbetstrådarna i din processor och bygger upp slutlistan **i exakt samma ordning**, vilket garanterar att `map f xs == seq_map f xs`.
-- Och om din funktion utför in-/utmatningseffekter (som att skriva ut på skärmen eller skriva till en fil) och du vill tvinga den att gå strikt från vänster till höger, ett element i taget? Då använder du **`seq_map`**.
+- Med **`map`** tillämpar Ridgun funktionen element för element från vänster till höger i den aktuella tråden (perfekt för små listor eller funktioner med ordnade in-/utmatningseffekter).
+- Med **`||map`** fördelar Ridguns körtidsmiljö elementen i `data` mellan arbetstrådarna i din processor och bygger upp slutlistan **i exakt samma ordning**, vilket garanterar att `||map f xs == map f xs`.
 
-### 2. `filter` (parallell) och `seq_filter` (sekventiell): Behåll bara dem som uppfyller ett villkor
+### 2. `filter` (sekventiell) och `||filter` (parallell): Behåll bara dem som uppfyller ett villkor
 Du skickar in en funktion som returnerar `Bool` (ett *predikat*) och en lista:
 
 ```ridgun
@@ -51,7 +51,9 @@ ar_positiv n   =  n > 0
 main => ()
 main =
   rena = filter ar_positiv [-5, 10, 0, -2, 42]
-  echo rena  -- Skriver ut [10, 42]
+  rena_par = ||filter ar_positiv [-5, 10, 0, -2, 42]
+  echo rena      -- Skriver ut [10, 42]
+  echo rena_par  -- Skriver ut [10, 42]
 ```
 
 ### 3. `fold`: Reducera en hel lista till ett enda resultat

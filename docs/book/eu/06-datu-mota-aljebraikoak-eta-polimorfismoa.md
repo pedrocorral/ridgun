@@ -184,4 +184,4 @@ main =
 
 Zure eragile hirutar polimorfiko propioa eta formateatzeko DSL bat fabrikatu berri dituzu Ridguneko **3 lerrotan**.
 
-**07. kapituluan** zure prozesadorearen nukleo guztiak aldi berean lanean jarriko ditugu izerdi tanta bat ere bota gabe: **goi-mailako funtzioak (`map`, `seq_map`, `filter`, `seq_filter`, `fold`), `||` grafo paraleloak `->` geziekin eta kanal konkurrenteak**.
+**07. kapituluan** zure prozesadorearen nukleo guztiak aldi berean lanean jarriko ditugu izerdi tanta bat ere bota gabe: **goi-mailako funtzioak (`map`, `||map`, `filter`, `||filter`, `fold`), `||` grafo paraleloak `->` geziekin eta kanal konkurrenteak**.

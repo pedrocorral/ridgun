@@ -128,7 +128,7 @@ fn :: rmm2_trace_nested => (Int, Int, Int)
 
 -- @tests FR-COMP-003
 -- 1. Unified `=` before `|` and 4-level nested decision tree with inline `|.` closers
-fn :: route_request Int    Int  Bool      Bool     Int        Int          => Int
+fn :: route_request Int Int Bool Bool Int Int => Int
       route_request method role is_signed is_admin payload_kb rate_limited =
         | method == 0 =
           | payload_kb == 0 = 204
@@ -228,9 +228,9 @@ fn :: main => ()
         assert_equals "setenv \{ ok \}" 'setenv { ok }'
         assert_equals "{{double}}" '{double}'
         assert_equals (map double_val [1, 2, 3, 4, 5]) [2, 4, 6, 8, 10]
-        assert_equals (seq_map double_val [1, 2, 3, 4, 5]) [2, 4, 6, 8, 10]
+        assert_equals (||map double_val [1, 2, 3, 4, 5]) [2, 4, 6, 8, 10]
         assert_equals (filter is_even [1, 2, 3, 4, 5, 6]) [2, 4, 6]
-        assert_equals (seq_filter is_even [1, 2, 3, 4, 5, 6]) [2, 4, 6]
+        assert_equals (||filter is_even [1, 2, 3, 4, 5, 6]) [2, 4, 6]
         assert_equals (fold add_pair 0 [1, 2, 3, 4, 5]) 15
         echo "=== RMM2 Assignment & Cascaded Structure Counting ==="
         assert_equals (cmm_check_ptr_identity True) (True, False)

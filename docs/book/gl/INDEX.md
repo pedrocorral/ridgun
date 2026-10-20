@@ -10,5 +10,5 @@
 | `04-pattern-matching-e-gardas.md` | Capítulo 04: Pattern matching, gardas `|`, árbores aniñadas con `|.` e TCO | Control de fluxo funcional e bucles recursivos |
 | `05-listas-tuplas-e-secuencias.md` | Capítulo 05: Listas, tuplas, funcións variádicas e máscaras de secuencias | Traballar con coleccións e tubaxes de datos |
 | `06-tipos-alxebricos-e-polimorfismo.md` | Capítulo 06: ADTs (rexistros e tipos suma), polimorfismo (`A`..`Z`) e operadores `op` | Modelar dominios de datos e funcións xenéricas |
-| `07-orde-superior-e-paralelismo-dag.md` | Capítulo 07: `map`/`seq_map`/`filter`/`fold`, DAGs paralelos con `||` e `->`, e canles | Programación funcional de orde superior e concorrencia |
+| `07-orde-superior-e-paralelismo-dag.md` | Capítulo 07: `map`/`||map`/`filter`/`||filter`/`fold`, DAGs paralelos con `||` e `->`, e canles | Programación funcional de orde superior e concorrencia |
 | `08-tensores-rmm-rexions-e-sistemas.md` | Capítulo 08: Tensores, memoria compilada RMM (`RMM1`/`RMM2`), rexións e sistemas POSIX | Cálculo numérico, memoria determinista e ferramentas UNIX |

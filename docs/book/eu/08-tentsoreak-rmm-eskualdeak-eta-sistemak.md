@@ -195,7 +195,7 @@ fn :: batu_byteak Int Metrikak => Int
 
 fn :: sortu_txostena [String] => String
       sortu_txostena bideak   =
-        metrikak = map aztertu_fitxategia bideak
+        metrikak = ||map aztertu_fitxategia bideak
         || map formateatu_metrika metrikak -> errenkadak
         || fold batu_lerroak 0 metrikak    -> guztira_l
         || fold batu_byteak 0 metrikak     -> guztira_b ||.
@@ -209,7 +209,7 @@ fn :: main => ()
 Gelditu segundo batez ~40 kode-lerro horiei begiratzeko:
 - Ez dago `null` bakar bat ere, ez kontrolik gabeko salbuespenik, ez `Mutex`-ik.
 - `zenbatu_jauziak` 0 pila-byteko `loop` natibo batera konpilatzen da TCO automatikoari esker.
-- `map aztertu_fitxategia bideak` deiak fitxategiak paraleloan prozesatzen ditu zure PUZaren nukleo guztietan, eta `||` blokeak aldi berean kalkulatzen ditu formateatutako errenkadak, lerroen guztizkoa eta byteen guztizkoa.
+- `||map aztertu_fitxategia bideak` deiak fitxategiak paraleloan prozesatzen ditu zure PUZaren nukleo guztietan, eta `||` blokeak aldi berean kalkulatzen ditu formateatutako errenkadak, lerroen guztizkoa eta byteen guztizkoa.
 - Aldi baterako memoria modu deterministan askatzen da **`RMM1`/`RMM2`** bidez.
 - Eta `ridgunc build rg_wc.rg -o rg-wc` exekutatzen duzunean, `/usr/local/bin`-era kopiatzeko prest dagoen ~350 KB-ko bitar natibo autonomo bat lortzen duzu.
 
@@ -224,7 +224,7 @@ Gelditu segundo batez ~40 kode-lerro horiei begiratzeko:
 5. **Aldaezina lehenespenez (`x = ...`), aldakor esplizitua (`mut x = ...`):** erabili `mut` metatzaile lokal batek benetan eskatzen duenean soilik.
 6. **Erabili eragile boolear argiak letra xehez (`and`, `or`, `xor`, `not`) eta itxi beti zure zainak `| otherwise =`-rekin.**
 7. **Modelatu zure domeinua ADTekin (`type`):** erabili erregistroak `with eremua: balioa`-rekin eta batuketa-motak (`Option`, `Result`) `null`-en ordez.
-8. **Paralelizatu mendekotasunak `|| adier -> ald` eta `map` / `filter`-ekin deklaratuz:** utzi konpiladoreari ziklorik ez dagoela egiaztatzen eta lana nukleoen artean banatzen.
+8. **Paralelizatu mendekotasunak `|| adier -> ald` eta `||map` / `||filter`-ekin deklaratuz:** utzi konpiladoreari ziklorik ez dagoela egiaztatzen eta lana nukleoen artean banatzen.
 9. **Jarri dimentsio sinbolikoak zure Tentsoreei (`Tensor[N, K]`) eta azpiindizeak zure uzkurdurei (`a_ik @ b_kj`).**
 10. **Fido izan `RMM`-z (`RMM1`/`RMM2`), mugatu kanpoko sarrerak `with region`-ekin eta egiaztatu beti `stable check` eta `stable test`-ekin.**
 

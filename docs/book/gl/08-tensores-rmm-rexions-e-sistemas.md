@@ -195,7 +195,7 @@ fn :: sumar_bytes Int Metricas => Int
 
 fn :: xerar_informe [String] => String
       xerar_informe rutas    =
-        metricas = map analizar_ficheiro rutas
+        metricas = ||map analizar_ficheiro rutas
         || map formatar_metrica metricas -> filas
         || fold sumar_linas 0 metricas   -> total_l
         || fold sumar_bytes 0 metricas   -> total_b ||.
@@ -209,7 +209,7 @@ fn :: main => ()
 Párate un segundo a mirar esas ~40 liñas de código:
 - Non hai nin un só `null`, nin unha excepción descontrolada, nin un `Mutex`.
 - `contar_saltos` compílase a un `loop` nativo con 0 bytes de pila grazas ao TCO automático.
-- `map analizar_ficheiro rutas` procesa os ficheiros en paralelo en todos os núcleos da túa CPU, e o bloque `||` calcula simultaneamente as filas formatadas, o total de liñas e o total de bytes.
+- `||map analizar_ficheiro rutas` procesa os ficheiros en paralelo en todos os núcleos da túa CPU, e o bloque `||` calcula simultaneamente as filas formatadas, o total de liñas e o total de bytes.
 - A memoria temporal libérase deterministicamente mediante **`RMM1`/`RMM2`**.
 - E cando executas `ridgunc build rg_wc.rg -o rg-wc`, obtés un binario nativo autónomo de ~350 KB listo para copiar a `/usr/local/bin`.
 
@@ -224,7 +224,7 @@ Párate un segundo a mirar esas ~40 liñas de código:
 5. **Inmutable por defecto (`x = ...`), mutable explícito (`mut x = ...`):** usa `mut` unicamente cando un acumulador local o pida de verdade.
 6. **Usa operadores booleanos claros en minúsculas (`and`, `or`, `xor`, `not`) e pecha sempre as túas gardas con `| otherwise =`.**
 7. **Modela o teu dominio con ADTs (`type`):** usa rexistros con `with campo: valor` e tipos suma (`Option`, `Result`) en lugar de `null`.
-8. **Paraleliza declarando dependencias con `|| expr -> var` e `map` / `filter`:** deixa que o compilador verifique que non hai ciclos e reparta o traballo entre os núcleos.
+8. **Paraleliza declarando dependencias con `|| expr -> var` e `||map` / `||filter`:** deixa que o compilador verifique que non hai ciclos e reparta o traballo entre os núcleos.
 9. **Ponlle dimensións simbólicas aos teus Tensores (`Tensor[N, K]`) e subíndices ás túas contraccións (`a_ik @ b_kj`).**
 10. **Confía en `RMM` (`RMM1`/`RMM2`), acouta entradas externas con `with region` e verifica sempre con `stable check` e `stable test`.**
 

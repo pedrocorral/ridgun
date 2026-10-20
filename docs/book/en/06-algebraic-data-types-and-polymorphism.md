@@ -184,4 +184,4 @@ main =
 
 You just built your own polymorphic ternary operator and a formatting DSL in **3 lines** of Ridgun.
 
-In **Chapter 07** we will put every core of your processor to work at once without breaking a sweat: **higher-order functions (`map`, `seq_map`, `filter`, `seq_filter`, `fold`), parallel `||` graphs with `->`, and concurrent channels**.
+In **Chapter 07** we will put every core of your processor to work at once without breaking a sweat: **higher-order functions (`map`, `||map`, `filter`, `||filter`, `fold`), parallel `||` graphs with `->`, and concurrent channels**.

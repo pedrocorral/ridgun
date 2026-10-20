@@ -71,7 +71,7 @@ fn :: report_build_status String     String     Int  => ()
 fn :: run_cli_run String     => ()
       run_cli_run input_path =
         _ = shell_exec "mkdir -p target"
-        status = build_native_executable input_path "target/.ridgunc_run_bin"
+        status = build_native_fast_executable input_path "target/.ridgunc_run_bin"
         exec_built_run status
 
 fn :: exec_built_run Int => ()
