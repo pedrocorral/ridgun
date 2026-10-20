@@ -1,148 +1,208 @@
-# Ridgun
+# Ridgun (`v0.9.3`)
 
-**A programming language built for massive parallelism.**
+**A tabular, pure-by-default functional & systems programming language built for massive parallelism, symbolic tensor algebra, and deterministic zero-GC memory management.**
 
-Ridgun is a new programming language designed from the ground up to execute tasks in parallel. It compiles to bytecode and runs on a custom virtual machine with a built-in parallel scheduler, lightweight green threads, and a work-stealing execution model.
+Ridgun combines the declarative clarity of tabular functional programming with native systems performance. Its self-hosted compiler (**`ridgunc`**) and project manager/formatter (**`stable`**) are written 100% in Ridgun itself (`src/main/ridgun/`) and produce standalone native Linux ELF executables (~350 KB) with zero Garbage Collector pauses.
+
+---
+
+## 📖 The Ridgun Book — Complete Guide in 7 Languages
+
+Learn Ridgun from scratch—from your first tabular function to parallel DAGs, symbolic tensors, and `RMM1`/`RMM2` deterministic memory management—in your preferred language:
+
+| Language | Online Interactive Book (`HTML`) | Markdown Chapters (`00`–`08`) |
+|---|---|---|
+| 🇪🇸 **Español** | [**El Libro de Ridgun (`es/index.html`)**](docs/book/es/index.html) | [`docs/book/es/INDEX.md`](docs/book/es/INDEX.md) — [Cap. 00](docs/book/es/00-por-que-necesito-ridgun.md) · [01](docs/book/es/01-bienvenido-a-ridgun.md) · [02](docs/book/es/02-primeros-pasos-y-herramientas.md) · [03](docs/book/es/03-funciones-tipos-y-alineacion.md) · [04](docs/book/es/04-pattern-matching-y-guardas.md) · [05](docs/book/es/05-listas-tuplas-y-secuencias.md) · [06](docs/book/es/06-tipos-algebraicos-y-polimorfismo.md) · [07](docs/book/es/07-orden-superior-y-paralelismo-dag.md) · [08](docs/book/es/08-tensores-regiones-y-sistemas.md) |
+| 🇬🇧 **English** | [**The Ridgun Book (`en/index.html`)**](docs/book/en/index.html) | [`docs/book/en/INDEX.md`](docs/book/en/INDEX.md) — [Ch. 00](docs/book/en/00-why-do-i-need-ridgun.md) · [01](docs/book/en/01-welcome-to-ridgun.md) · [02](docs/book/en/02-getting-started-and-tooling.md) · [03](docs/book/en/03-functions-types-and-alignment.md) · [04](docs/book/en/04-pattern-matching-and-guards.md) · [05](docs/book/en/05-lists-tuples-and-sequences.md) · [06](docs/book/en/06-algebraic-data-types-and-polymorphism.md) · [07](docs/book/en/07-higher-order-functions-and-dag-parallelism.md) · [08](docs/book/en/08-tensors-rmm-regions-and-systems.md) |
+| 🇵🇹 **Português** | [**O Livro do Ridgun (`pt/index.html`)**](docs/book/pt/index.html) | [`docs/book/pt/INDEX.md`](docs/book/pt/INDEX.md) — [Cap. 00](docs/book/pt/00-por-que-preciso-do-ridgun.md) · [01](docs/book/pt/01-bem-vindo-ao-ridgun.md) · [02](docs/book/pt/02-primeiros-passos-e-ferramentas.md) · [03](docs/book/pt/03-funcoes-tipos-e-alinhamento.md) · [04](docs/book/pt/04-pattern-matching-e-guardas.md) · [05](docs/book/pt/05-listas-tuplas-e-sequencias.md) · [06](docs/book/pt/06-tipos-algebricos-e-polimorfismo.md) · [07](docs/book/pt/07-ordem-superior-e-paralelismo-dag.md) · [08](docs/book/pt/08-tensores-rmm-regioes-e-sistemas.md) |
+| 🇸🇪 **Svenska** | [**Boken om Ridgun (`sv/index.html`)**](docs/book/sv/index.html) | [`docs/book/sv/INDEX.md`](docs/book/sv/INDEX.md) — [Kap. 00](docs/book/sv/00-varfor-behover-jag-ridgun.md) · [01](docs/book/sv/01-valkommen-till-ridgun.md) · [02](docs/book/sv/02-forsta-stegen-och-verktyg.md) · [03](docs/book/sv/03-funktioner-typer-och-justering.md) · [04](docs/book/sv/04-monstermatchning-och-vakter.md) · [05](docs/book/sv/05-listor-tupler-och-sekvenser.md) · [06](docs/book/sv/06-algebraiska-datatyper-och-polymorfism.md) · [07](docs/book/sv/07-hogre-ordningen-och-dag-parallellism.md) · [08](docs/book/sv/08-tensorer-rmm-regioner-och-system.md) |
+| 🏴 **Català** | [**El Llibre de Ridgun (`ca/index.html`)**](docs/book/ca/index.html) | [`docs/book/ca/INDEX.md`](docs/book/ca/INDEX.md) — [Cap. 00](docs/book/ca/00-per-que-necessito-ridgun.md) · [01](docs/book/ca/01-benvingut-a-ridgun.md) · [02](docs/book/ca/02-primers-passos-i-eines.md) · [03](docs/book/ca/03-funcions-tipus-i-alineacio.md) · [04](docs/book/ca/04-pattern-matching-i-guardes.md) · [05](docs/book/ca/05-llistes-tuples-i-sequencies.md) · [06](docs/book/ca/06-tipus-algebraics-i-polimorfisme.md) · [07](docs/book/ca/07-ordre-superior-i-parallelisme-dag.md) · [08](docs/book/ca/08-tensors-rmm-regions-i-sistemes.md) |
+| 🏴 **Galego** | [**O Libro de Ridgun (`gl/index.html`)**](docs/book/gl/index.html) | [`docs/book/gl/INDEX.md`](docs/book/gl/INDEX.md) — [Cap. 00](docs/book/gl/00-por-que-preciso-ridgun.md) · [01](docs/book/gl/01-benvido-a-ridgun.md) · [02](docs/book/gl/02-primeiros-pasos-e-ferramentas.md) · [03](docs/book/gl/03-funcions-tipos-e-alinamento.md) · [04](docs/book/gl/04-pattern-matching-e-gardas.md) · [05](docs/book/gl/05-listas-tuplas-e-secuencias.md) · [06](docs/book/gl/06-tipos-alxebricos-e-polimorfismo.md) · [07](docs/book/gl/07-orde-superior-e-paralelismo-dag.md) · [08](docs/book/gl/08-tensores-rmm-rexions-e-sistemas.md) |
+| 🏴 **Euskara** | [**Ridgun Liburua (`eu/index.html`)**](docs/book/eu/index.html) | [`docs/book/eu/INDEX.md`](docs/book/eu/INDEX.md) — [00. kap.](docs/book/eu/00-zergatik-behar-dut-ridgun.md) · [01](docs/book/eu/01-ongi-etorri-ridgunera.md) · [02](docs/book/eu/02-lehen-urratsak-eta-tresnak.md) · [03](docs/book/eu/03-funtzioak-motak-eta-lerrokatzea.md) · [04](docs/book/eu/04-eredu-bat-etortzea-eta-zainak.md) · [05](docs/book/eu/05-zerrendak-tuplak-eta-sekuentziak.md) · [06](docs/book/eu/06-datu-mota-aljebraikoak-eta-polimorfismoa.md) · [07](docs/book/eu/07-goi-mailako-funtzioak-eta-dag-paralelismoa.md) · [08](docs/book/eu/08-tentsoreak-rmm-eskualdeak-eta-sistemak.md) |
+
+---
 
 ## Quick Start
 
+ Ridgun ships with two self-hosted tools—**`ridgunc`** (the single-file compiler & runner) and **`stable`** (the project manager, typechecker, test runner, and canonical tabular formatter)—configured via a pure Ridgun [`build.rg`](build.rg) file (no YAML, JSON, or TOML):
+
 ```bash
-# Build
-cargo build --release
+# Type-check all project modules in src/main/ridgun/
+./target/stable check
 
-# Run a program
-./target/release/ridgun run my_program.rg <function> [args...]
+# Compile & run all test suites in src/test/ridgun/
+./target/stable test
 
-# Examples
-./target/release/ridgun run my_program.rg sum 3 4          # → 7
-./target/release/ridgun run my_program.rg factorial 5      # → 120
-./target/release/ridgun run my_program.rg fib 10           # → 55
+# Format all .rg source files into canonical tabular alignment
+./target/stable format
 
-# Install system-wide (optional)
-cargo install --path .
-ridgun run my_program.rg factorial 10
+# Build all project targets into target/
+./target/stable built
+
+# Compile or run a single .rg file directly with ridgunc
+./target/ridgunc check my_program.rg
+./target/ridgunc run my_program.rg
+./target/ridgunc build my_program.rg -o my_program
 ```
 
-## Key Design Principles
+---
 
-- **Parallelism is the default.** Concurrency isn't bolted on — it's the foundation. Ridgun's VM manages thousands of lightweight processes out of the box.
-- **Safe by design.** Message passing and channels replace shared mutable state. Data races are impossible at the language level.
-- **Interop without compromise.** Call C/C++ libraries directly via FFI (LibTorch, OpenBLAS, etc.) with full parallelism. Use the Python bridge to access any `pip install`-able library when convenience matters more than GIL avoidance.
-- **Compile once, schedule smart.** Ridgun source compiles to bytecode. The VM's work-stealing scheduler distributes green threads across OS threads automatically.
+## What Makes Ridgun Different?
 
-## Architecture
+1. **Code as a 2D Table (`=>`, `=`, `->`)**: Type signatures act as column headers. Pattern-matching clauses align each argument beneath its type and align `=` beneath `=>`. `stable format` (and GNU Emacs `ridgun-mode`) formats your code automatically.
+2. **Unified `=` Block Grammar (`(none)`, `|`, `||`) & Compact Nested Closers (`|.` / `||.`)**:
+   - Every `=` (in functions, operators, local bindings `x =`, or guard branches) accepts sequential lines, conditional guard blocks (`|`), or parallel DAG blocks (`||`).
+   - Guard branches can nest 3–4+ levels deep to form rich decision trees, using the compact inline **`|.`** closer (`| otherwise = val |.`) only when returning to an outer branch level below.
+3. **Parallel DAG Blocks (`|| expr -> var`) & Multicore Combinators (`map`, `filter`)**:
+   - Parallel dataflow dependencies are declared directly with `|| expr -> var` (no `where` keyword required). The static analyzer verifies cycle freedom at compile time and schedules independent branches in parallel.
+   - `map` and `filter` execute in parallel by default (`seq_map` and `seq_filter` provide strict left-to-right sequential execution).
+4. **Immutable by Default (`x = ...`) with Explicit `mut` (`mut x = ...`)**:
+   - Local bindings are immutable constants unless declared with `mut x = expr`, preventing accidental rebinding in the same scope.
+5. **Deterministic Memory Without a Garbage Collector (`RMM1`, `RMM2` & `with region`)**:
+   - **Policy `RMM1` (Compiled Memory Management)**: Static last-use deallocation (`rg_cmm_drop`), zero-copy return moves (`rg_cmm_move`), and 1-cycle pointer-identity guards (`ptr(a) != ptr(c)`) for branching functions.
+   - **Policy `RMM2` (Assignment & Cascaded Structure Counting)**: Incoming function arguments are untouched (`+0`/`-0`), local/container assignments add `+1`, returned locals are spared in transit, and non-returned locals cascade `-1` through child structures on scope exit.
+   - **Lexical Regions (`with region 64_KB do`)**: Enforce hard byte quotas on untrusted workloads and free entire arenas in $O(1)$.
+6. **Natural-Language Mixfix Operators (`op ::`), Polymorphism (`A`..`Z`), and Symbolic Tensors (`@`)**:
+   - Define N-ary natural-language operators (`op :: clamp Int between Int and Int => Int`).
+   - Single uppercase letters (`A`..`Z`) act as zero-noise polymorphic type variables.
+   - Native `Tensor[N, K]` types check symbolic dimensions at compile time and support Einstein summation (`A_ik @ B_kj`) and Hadamard broadcasting (`A_ij * B_j`).
 
-```
-Ridgun Source (.rg)
-        │
-        ▼
-  ┌──────────┐
-  │  Lexer   │
-  │  Parser  │   Source → AST
-  └────┬─────┘
-       │
-       ▼
-  ┌──────────┐
-  │ Compiler │   AST → Bytecode
-  └────┬─────┘
-       │
-       ▼
-  ┌──────────┐
-  │ Ridgun   │   Custom VM
-  │   VM     │   • Green threads
-  │          │   • Work-stealing scheduler
-  │          │   • FFI + Python bridge
-  └──────────┘
-```
+---
 
 ## A Taste of Ridgun
 
 ```ridgun
--- Functions are defined with fn ::
-fn :: sum int int => int
-sum a b = a + b
+-- 1. Tabular pattern matching & zero-noise polymorphism (A..Z)
+head_or [A]   A => A
+head_or []    d =  d
+head_or (x:_) _ =  x
 
--- Operators read like natural language
-op :: add int to int => int
-add a to b = a + b
+-- 2. Natural-language mixfix operator with `=` + `|` guards
+op :: clamp Int between Int and Int => Int
+      clamp x   between lo  and hi  =
+        | x < lo    = lo
+        | x > hi    = hi
+        | otherwise = x
 
--- Parallelism is a first-class syntactic primitive
-op :: run conf and conf in parallel => res, res
-run a and b in parallel = res_a, res_b
-  where
-    run my own process a -> res_a
-    run my own process b -> res_b
+-- 3. Multi-level decision tree with compact inline `|.` closers
+fn :: route_request Int    Int  Bool      Bool     Int        Int          => Int
+      route_request method role is_signed is_admin payload_kb rate_limited =
+        | method == 0 =
+          | payload_kb == 0 = 204
+          | otherwise       = 200 |.
+        | method == 1 =
+          | not is_signed = 401
+          | otherwise =
+            | rate_limited > 0 =
+              | is_admin =
+                | payload_kb > 10000 = 413
+                | otherwise          = 202 |.
+              | otherwise = 429 |.
+            | payload_kb > 1000 =
+              | role >= 2 and is_admin = 201
+              | otherwise              = 413 |.
+            | otherwise = 201 |.
+        | otherwise = 405
+
+-- 4. Parallel DAG block (`|| expr -> var`) without `where` + `||.` closer
+fn :: quarterly_balance Int  => Int
+      quarterly_balance base =
+        || base * 100                 -> gross_sales
+        || base * 40                  -> fixed_costs
+        || gross_sales - fixed_costs  -> gross_profit ||.
+        gross_profit * 80 / 100
+
+-- 5. Conditional local variable (`x = | ...`) and explicit `mut` accumulator
+fn :: compute_total Bool   Int => Int
+      compute_total is_vip raw =
+        discount =
+          | is_vip and raw > 50 = 20
+          | otherwise           = 0
+        mut total = raw - discount
+        total = total + 5
+        total
+
+-- 6. Symbolic-dimension Tensor contraction (Einstein summation `@`)
+fn :: linear_layer Tensor[B, In] Tensor[In, Out] Tensor[B, Out] => Tensor[B, Out]
+      linear_layer x             weights         bias           =  (x_bi @ weights_io) + bias
 ```
 
-## Project Structure
+---
 
-The `src/` layout is inspired by **Scala's sbt** — mirrored `main`/`test` trees with language-specific subdirectories.
+## Self-Hosted Architecture (`src/main/ridgun/`)
 
+```text
+Ridgun Source (.rg) + build.rg
+              │
+              ▼
+  ┌────────────────────────┐
+  │  lexer.rg & parser.rg  │  Tokenization, Mixfix Resolution, Unified `=` (`|`, `||`, `|.`, `||.`)
+  └───────────┬────────────┘
+              │
+              ▼
+  ┌────────────────────────┐
+  │      typecheck.rg      │  Polymorphic `A..Z`, `mut` Immutability Check, Symbolic Tensor Dims
+  └───────────┬────────────┘
+              │
+              ▼
+  ┌────────────────────────┐
+  │       analyzer.rg      │  Static `||` DAG Cycle Detection & Work-Stealing Strategy Inference
+  └───────────┬────────────┘
+              │
+              ▼
+  ┌────────────────────────┐
+  │       compiler.rg      │  Call-Graph Tree-Shaking, TCO (`loop`), `RMM1` & `RMM2` Memory Codegen
+  └─────┬────────────┬─────┘
+        │            │
+        ▼            ▼
+  Native ELF    Bytecode (`.rgc`)
+ (~350 KB AOT)   (`vm.rg` Stack VM)
 ```
+
+---
+
+## Project Layout
+
+```text
 ridgun/
-├── docs/
-│   ├── lang/              # Language specification and samples
-│   ├── dev/               # Development policies and coding standards
-│   │   └── disabled/      # Future reference (out of scope)
-│   └── etc/               # Architecture, VM, interop, roadmap
+├── build.rg                   # Pure-Ridgun project manifest for `stable`
+├── editors/
+│   └── emacs/ridgun-mode.el   # GNU Emacs major mode with tabular alignment
 ├── src/
-│   ├── main/
-│   │   ├── ridgun/        # Ridgun source (.rg) — standard library
-│   │   └── rust/          # Rust source — VM, compiler, scheduler
-│   └── test/
-│       ├── ridgun/        # Ridgun test programs (.rg)
-│       └── rust/          # Rust unit and integration tests
-├── tsk/                   # Task definitions (security workflows, SCA, SAST)
-├── tst/                   # High-level test suites (V-Model)
-├── LICENSE                # Apache 2.0
-└── README.md
+│   ├── main/ridgun/
+│   │   ├── lib/
+│   │   │   ├── ast.rg         # Compiler & VM Algebraic Data Types
+│   │   │   ├── lexer.rg       # Lexical scanner & byte-unit literals (_KB, _MB, _GB)
+│   │   │   ├── parser.rg      # Recursive-descent parser & mixfix normalizer
+│   │   │   ├── typecheck.rg   # Typechecker, A..Z unification & tensor shape checker
+│   │   │   ├── analyzer.rg    # Static parallel DAG & strategy analyzer
+│   │   │   ├── compiler.rg    # RMM1/RMM2 analyzer, AOT native emitter & .rgc compiler
+│   │   │   ├── formatter.rg   # Canonical tabular code formatter (`stable format`)
+│   │   │   └── vm.rg          # Meta-circular stack virtual machine
+│   │   ├── ridgunc/main.rg    # Self-hosted `ridgunc` CLI entry point
+│   │   └── stable/main.rg     # Self-hosted `stable` project manager CLI entry point
+│   └── test/ridgun/           # Self-hosted Ridgun test suites (`test_*.rg`)
+├── docs/
+│   ├── book/                  # The Ridgun Book in 7 languages (es, ca, gl, eu, en, pt, sv)
+│   ├── lang/spec.md           # Formal language specification
+│   ├── etc/cmm_architecture.md# RMM1 & RMM2 memory management architecture
+│   └── requirements/          # Functional requirements (FR-COMP-*, FR-TOOL-*, FR-VM-*)
+└── target/                    # Compiled self-hosted binaries (`ridgunc`, `stable`)
 ```
 
-## Implementation Language
+---
 
-The VM and compiler are implemented in **Rust** — chosen for its memory safety guarantees, zero-cost abstractions, and excellent concurrency primitives. Rust dogfoods the "safe parallelism" philosophy that Ridgun embodies.
-
-## Documentation
+## Technical Documentation
 
 | Document | Description |
 |---|---|
-| [Language Spec](docs/lang/spec.md) | Syntax, functions, operators, parallelism primitives |
-| [Architecture](docs/etc/architecture.md) | VM internals, bytecode format, compilation pipeline |
-| [Parallelism](docs/etc/parallelism.md) | Green threads, scheduler, channels, message passing |
-| [Interop](docs/etc/interop.md) | FFI for C/C++ libraries, Python bridge via PyO3 |
-| [Process](docs/etc/process.md) | Development methodology: Spiral + V-Model + OWASP SAMM |
-| [Roadmap](docs/etc/roadmap.md) | Development phases and milestones |
-| [SAST Policy](docs/dev/sast_policy.md) | Static analysis policy and security gates |
+| [**Language Specification (`docs/lang/spec.md`)**](docs/lang/spec.md) | Complete syntax, type system, unified `=` blocks, `|` / `|.` decision trees, `||` DAGs, `mut`, ADTs, tensors, and canonical formatting rules |
+| [**RMM Memory Architecture (`docs/etc/cmm_architecture.md`)**](docs/etc/cmm_architecture.md) | Detailed design of `RMM1` (Linear & Conditional CMM) and `RMM2` (Assignment & Cascaded Structure Counting) |
+| [**FR-COMP-003 (`docs/requirements/functional/compiler/`)**](docs/requirements/functional/compiler/FR-COMP-003-unified-equals-grammar-guards-parallel-pipes-and-mut.md) | Requirement specification for unified `=` grammar, `|.` / `||.` closers, `mut`, and lowercase logical operators |
+| [**FR-COMP-002 (`docs/requirements/functional/compiler/`)**](docs/requirements/functional/compiler/FR-COMP-002-compiled-memory-management-cmm.md) | Requirement specification for `RMM1` and `RMM2` deterministic memory management |
+| [**Roadmap & Active Tasks (`docs/road-map/INDEX.md`)**](docs/road-map/INDEX.md) | Current session state, completed milestones, and backlog (including native `x86_64` & `ARM64` Raspberry Pi ELF64 backend in [`TASK-0006`](docs/road-map/pending/backlog/TASK-0006-implement-native-x86-64-and-arm64-elf64-compiler-backend.md)) |
 
-## Pending Work
-
-*Assessed by qwen3.6:27b on 2025-06-02*
-
-The following areas have been implemented or remain pending:
-
-| # | Area | Priority | Status | Description |
-|---|---|---|---|---|
-| 1 | **Concurrency primitives** | High | **Completed** | Full VM integration with mailbox-based message passing, thread blocking, and join operations implemented. Spawn/Send/Recv/Join instructions now functional. |
-| 2 | **Type system** | Medium | **Completed** | Generics via type variables, unification-based type inference, tuple types, and algebraic data types all implemented. 12 new tests added. |
-| 3 | **Advanced pattern matching** | Medium | **Completed** | Tuple patterns, constructor patterns, record patterns, negative literals, and nested destructuring all implemented. |
-| 4 | **Documentation** | Low | **Completed** | Comprehensive tutorials, language reference, and example programs added. New `docs/lang/tutorials.md` and `examples/demo.rg` created. |
-| 5 | **Test coverage** | High | **Completed** | 108 unit tests + 18 integration tests passing, including new tests for type inference, generic unification, tuple patterns, and concurrency. |
-
-### What Was Implemented
-
-All 5 pending items identified in the initial assessment have now been completed:
-
-1. **Concurrency primitives**: VM rewritten with proper thread isolation, blocking semantics, and mailbox message passing
-2. **Type system**: Type variables, unification algorithm, tuple types, comprehensive type inference
-3. **Pattern matching**: Extended AST with Tuple, Constructor, Record, NegLit; parser and typechecker updated
-4. **Documentation**: New tutorials covering generics, tuples, concurrency, best practices, and 80+ line example program
-5. **Tests**: 45+ new tests added across type checking, unification, pattern matching, and VM operations
-
-### Current Status
-
-- **All builds pass**: `cargo build` succeeds with no errors
-- **All tests pass**: 126 tests passing (108 unit + 18 integration)
-- **No pending blockers**: Project foundation is stable and complete
+---
 
 ## License
 
