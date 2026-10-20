@@ -8,6 +8,23 @@ import re
 
 BOOK_DIR = os.path.dirname(os.path.abspath(__file__))
 
+ALL_LANGS = ["es", "ca", "gl", "eu", "en", "pt", "sv"]
+
+
+def make_lang_links(active_code, is_root=False):
+    links = []
+    for code in ALL_LANGS:
+        label = code.upper()
+        if is_root:
+            href = f"{code}/index.html"
+        elif code == active_code:
+            href = "index.html"
+        else:
+            href = f"../{code}/index.html"
+        links.append((label, href, code == active_code))
+    return links
+
+
 EDITIONS = [
     {
         "code": "es",
@@ -27,12 +44,67 @@ EDITIONS = [
         "search_hits_label": "Resultados para",
         "search_empty_label": "No se encontraron coincidencias para",
         "chapter_prefix_re": r"^Cap[íi]tulo\s+\d+\s*[:—-]\s*",
-        "lang_links": [
-            ("ES", "index.html", True),
-            ("EN", "../en/index.html", False),
-            ("PT", "../pt/index.html", False),
-            ("SV", "../sv/index.html", False),
-        ],
+        "lang_links": make_lang_links("es"),
+    },
+    {
+        "code": "ca",
+        "dir": os.path.join(BOOK_DIR, "ca"),
+        "out_path": os.path.join(BOOK_DIR, "ca", "index.html"),
+        "html_lang": "ca",
+        "page_title": "El Llibre de Ridgun — Guia Completa del Llenguatge",
+        "brand_title": "El Llibre de Ridgun",
+        "brand_subtitle": "De zero a expert en programació funcional tabular i de sistemes",
+        "search_placeholder": "Cerca al llibre (ex. ||, Tensor, RMM2, TCO...)",
+        "footer_text": "9 capítols (00–08) · Català",
+        "theme_label": "☀️ / 🌙 Tema",
+        "copy_label": "Copia",
+        "copied_label": "Copiat!",
+        "prev_label": "&larr; Capítol anterior",
+        "next_label": "Capítol següent &rarr;",
+        "search_hits_label": "Resultats per a",
+        "search_empty_label": "No s'han trobat coincidències per a",
+        "chapter_prefix_re": r"^Cap[íi]tol\s+\d+\s*[:—-]\s*",
+        "lang_links": make_lang_links("ca"),
+    },
+    {
+        "code": "gl",
+        "dir": os.path.join(BOOK_DIR, "gl"),
+        "out_path": os.path.join(BOOK_DIR, "gl", "index.html"),
+        "html_lang": "gl",
+        "page_title": "O Libro de Ridgun — Guía Completa da Linguaxe",
+        "brand_title": "O Libro de Ridgun",
+        "brand_subtitle": "De cero a experto en programación funcional tabular e de sistemas",
+        "search_placeholder": "Buscar no libro (ex. ||, Tensor, RMM2, TCO...)",
+        "footer_text": "9 capítulos (00–08) · Galego",
+        "theme_label": "☀️ / 🌙 Tema",
+        "copy_label": "Copiar",
+        "copied_label": "Copiado!",
+        "prev_label": "&larr; Capítulo anterior",
+        "next_label": "Seguinte capítulo &rarr;",
+        "search_hits_label": "Resultados para",
+        "search_empty_label": "Non se atoparon coincidencias para",
+        "chapter_prefix_re": r"^Cap[íi]tulo\s+\d+\s*[:—-]\s*",
+        "lang_links": make_lang_links("gl"),
+    },
+    {
+        "code": "eu",
+        "dir": os.path.join(BOOK_DIR, "eu"),
+        "out_path": os.path.join(BOOK_DIR, "eu", "index.html"),
+        "html_lang": "eu",
+        "page_title": "Ridgun Liburua — Lengoaiaren Gida Osoa",
+        "brand_title": "Ridgun Liburua",
+        "brand_subtitle": "Hutsetik aditura taula bidezko programazio funtzional eta sistemikoan",
+        "search_placeholder": "Bilatu liburuan (adib. ||, Tensor, RMM2, TCO...)",
+        "footer_text": "9 kapitulu (00–08) · Euskara",
+        "theme_label": "☀️ / 🌙 Gaia",
+        "copy_label": "Kopiatu",
+        "copied_label": "Kopiatuta!",
+        "prev_label": "&larr; Aurreko kapitulua",
+        "next_label": "Hurrengo kapitulua &rarr;",
+        "search_hits_label": "Emaitzak honentzat:",
+        "search_empty_label": "Ez da bat-etortzerik aurkitu honentzat:",
+        "chapter_prefix_re": r"^(?:\d+\.\s*kapitulua|Kapitulua\s+\d+)\s*[:—-]\s*",
+        "lang_links": make_lang_links("eu"),
     },
     {
         "code": "en",
@@ -52,12 +124,7 @@ EDITIONS = [
         "search_hits_label": "Results for",
         "search_empty_label": "No matches found for",
         "chapter_prefix_re": r"^Chapter\s+\d+\s*[:—-]\s*",
-        "lang_links": [
-            ("ES", "../es/index.html", False),
-            ("EN", "index.html", True),
-            ("PT", "../pt/index.html", False),
-            ("SV", "../sv/index.html", False),
-        ],
+        "lang_links": make_lang_links("en"),
     },
     {
         "code": "pt",
@@ -77,12 +144,7 @@ EDITIONS = [
         "search_hits_label": "Resultados para",
         "search_empty_label": "Nenhuma correspondência encontrada para",
         "chapter_prefix_re": r"^Cap[íi]tulo\s+\d+\s*[:—-]\s*",
-        "lang_links": [
-            ("ES", "../es/index.html", False),
-            ("EN", "../en/index.html", False),
-            ("PT", "index.html", True),
-            ("SV", "../sv/index.html", False),
-        ],
+        "lang_links": make_lang_links("pt"),
     },
     {
         "code": "sv",
@@ -102,12 +164,7 @@ EDITIONS = [
         "search_hits_label": "Resultat för",
         "search_empty_label": "Inga träffar hittades för",
         "chapter_prefix_re": r"^Kapitel\s+\d+\s*[:—-]\s*",
-        "lang_links": [
-            ("ES", "../es/index.html", False),
-            ("EN", "../en/index.html", False),
-            ("PT", "../pt/index.html", False),
-            ("SV", "index.html", True),
-        ],
+        "lang_links": make_lang_links("sv"),
     },
     {
         "code": "root",
@@ -127,12 +184,7 @@ EDITIONS = [
         "search_hits_label": "Resultados para",
         "search_empty_label": "No se encontraron coincidencias para",
         "chapter_prefix_re": r"^Cap[íi]tulo\s+\d+\s*[:—-]\s*",
-        "lang_links": [
-            ("ES", "es/index.html", True),
-            ("EN", "en/index.html", False),
-            ("PT", "pt/index.html", False),
-            ("SV", "sv/index.html", False),
-        ],
+        "lang_links": make_lang_links("es", is_root=True),
     },
 ]
 
