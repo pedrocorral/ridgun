@@ -219,10 +219,14 @@ Ridgun achieves deterministic memory management with **zero Garbage Collector pa
 ---
 
 ## 7. Toolchain & Verification Workflow (`stable` and `ridgunc`)
-1. **Format**: `./target/stable format [file.rg ...]` (or `stable format --check` to verify canonical tabular alignment).
-2. **Type-check & Static Analysis**: `./target/stable check` (checks all modules in `src/main/ridgun/` in parallel) or `./target/ridgunc check <file.rg>`.
-3. **Run Tests**: `./target/stable test` (compiles and runs all `src/test/ridgun/test_*.rg` suites in parallel via `||map`).
-4. **Build Native ELF64 Executables**:
+1. **Scaffold / Dependencies (`FR-TOOL-002`)**:
+   - `stable new <name>` or `stable init`: create `build.rg`, `src/main/ridgun/<name>/main.rg`, `src/test/ridgun/test_main.rg`, and `.gitignore`.
+   - `stable deps` or `stable add <git_url_or_path>`: synchronize `dependencies` from `build.rg` into `.stable/deps/`.
+   - `stable install [target]`: build and install native ELF64 binaries into `~/.local/bin/` and `bin/`.
+2. **Format**: `./target/stable format [file.rg ...]` (to apply canonical tabular alignment).
+3. **Type-check & Static Analysis**: `./target/stable check` (checks all modules in `src/main/ridgun/` in parallel) or `./target/ridgunc check <file.rg>`.
+4. **Run Tests**: `./target/stable test` (compiles and runs all `src/test/ridgun/test_*.rg` suites in parallel via `||map`).
+5. **Build Native ELF64 Executables**:
    - Project targets: `./target/stable built`
    - Single file (`x86_64` default): `./target/ridgunc build <entry.rg> -o <output_bin>`
    - Cross-compile for `ARM64` (`AArch64` / Raspberry Pi): `./target/ridgunc build --target arm64-linux <entry.rg> -o <output_bin_arm64>`

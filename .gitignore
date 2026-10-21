@@ -31,3 +31,4 @@ editors/vscode/out/
 .opencode/skills/
 
 bin/
+.aix/

@@ -308,22 +308,71 @@ fn :: arm64_encode_fns [RNativeFn] Int          [RLabelEntry] [Int] => [Int]
         arm64_encode_fns rest rodata_vaddr fn_table (acc :: fn_bytes)
 
 -- ── Freestanding Linux ARM64 (AArch64) Syscall Runtime Kernel (Region 1) ──
+-- Each jump table slot `i` (`0..55`) at `0x401000 + i*8` is 8 bytes (two 32-bit
+-- AArch64 instructions). Short 2-instruction primitives execute inline inside their
+-- 8-byte jump table slot; multi-instruction routines branch (`B`) to `0x4011C0+`.
+
+fn :: arm64_rt_slot Int => [Int]
+      -- rt_0 (_start): branch to 0x4011C0 (+112 words)
+      arm64_rt_slot 0   =  (u32_le 335544432) :: (u32_le 3573751839)
+      -- rt_1 (rg_init_frame): branch to 0x4011E8 (+121 words from slot 1)
+      arm64_rt_slot 1   =  (u32_le 335544441) :: (u32_le 3573751839)
+      -- rt_2 (rg_epilogue): MOV X0, X2 ; RET
+      arm64_rt_slot 2   =  (u32_le 2852258784) :: (u32_le 3596551104)
+      -- rt_3 (rg_tco_copy): branch to 0x401204 (+126 words from slot 3)
+      arm64_rt_slot 3   =  (u32_le 335544446) :: (u32_le 3573751839)
+      -- rt_5 (rg_clone): NOP ; RET (X0 already holds value)
+      arm64_rt_slot 5   =  (u32_le 3573751839) :: (u32_le 3596551104)
+      -- rt_6 (rg_drop): NOP ; RET
+      arm64_rt_slot 6   =  (u32_le 3573751839) :: (u32_le 3596551104)
+      -- rt_7 (rg_cmm_move): LDR X0, [X0] ; RET
+      arm64_rt_slot 7   =  (u32_le 4181721088) :: (u32_le 3596551104)
+      -- rt_8 (rg_store_local): STR X1, [X0] ; RET
+      arm64_rt_slot 8   =  (u32_le 4177526785) :: (u32_le 3596551104)
+      -- rt_9 (rg_rebind_local): STR X1, [X0] ; RET
+      arm64_rt_slot 9   =  (u32_le 4177526785) :: (u32_le 3596551104)
+      -- rt_10 (rg_cmm_drop): STR XZR, [X0] ; RET
+      arm64_rt_slot 10  =  (u32_le 4177526815) :: (u32_le 3596551104)
+      -- rt_20 (rg_as_bool): UBFX X0, X0, #1, #1 ; RET
+      arm64_rt_slot 20  =  (u32_le 3544253440) :: (u32_le 3596551104)
+      -- rt_21 (rg_match_int): branch to 0x401220 (+94 words from slot 21)
+      arm64_rt_slot 21  =  (u32_le 335544414) :: (u32_le 3573751839)
+      -- rt_24 (rg_match_bool): branch to 0x401230 (+92 words from slot 24)
+      arm64_rt_slot 24  =  (u32_le 335544412) :: (u32_le 3573751839)
+      -- rt_34 (rg_not): EOR X0, X0, #2 ; RET
+      arm64_rt_slot 34  =  (u32_le 3531538432) :: (u32_le 3596551104)
+      -- rt_37 (rg_bin_op): branch to 0x401240 (+70 words from slot 37)
+      arm64_rt_slot 37  =  (u32_le 335544390) :: (u32_le 3573751839)
+      -- Default slot: RET ; NOP
+      arm64_rt_slot _   =  (u32_le 3596551104) :: (u32_le 3573751839)
 
 fn :: arm64_rt_stub_table Int [Int] => [Int]
       arm64_rt_stub_table idx acc
         | idx >= 56 = acc
         | otherwise =
-          entry = (u32_le 3596551104) :: (u32_le 3573751839)
+          entry = arm64_rt_slot idx
           arm64_rt_stub_table (idx + 1) (acc :: entry)
 
 fn :: build_arm64_rt_kernel => [Int]
       build_arm64_rt_kernel =
-        -- Jump table entry 0 (_start at 0x401000) branches to 0x4011C0 (offset +448 = +112 words)
-        jt0 = (u32_le 335544432) :: (u32_le 3573751839)
-        jt_rest = arm64_rt_stub_table 1 jt0
-        -- _start at 0x4011C0: load main_vaddr from 0x400080, call it, then SYS_exit_group(0) (x8=94, svc #0)
-        start_code = (arm64_mov_imm64 9 4194432) :: (u32_le 4181721386) :: (arm64_mov_sp_to_reg 0) :: (u32_le 3594453280) :: (u32_le 3531603968) :: (u32_le 3531605192) :: (u32_le 3556769793) :: (u32_le 3573751839)
-        jt_rest :: start_code
+        jt = arm64_rt_stub_table 0 []
+        -- 0x4011C0 (_start, 10 words = 40 bytes):
+        -- Load main_vaddr from 0x400080, pass SP in X0, BLR X10, then SYS_exit_group(0) (X8=94, SVC #0)
+        start_code = (arm64_mov_imm64 9 4194432) :: (u32_le 4181721386) :: (arm64_mov_sp_to_reg 0) :: (u32_le 3594453280) :: (u32_le 3531603968) :: (u32_le 3531605192) :: (u32_le 3556769793)
+        -- 0x4011E8 (rg_init_frame, 7 words = 28 bytes):
+        -- Copy X2 args from [X1] into [X0]
+        init_frame_code = (u32_le 3019898978) :: (u32_le 4165009449) :: (u32_le 4160815113) :: (u32_le 3407873090) :: (u32_le 1409286141) :: (u32_le 3596551104) :: (u32_le 3573751839)
+        -- 0x401204 (rg_tco_copy, 7 words = 28 bytes):
+        -- Copy X2 args from [X0 + X1*8] into [X0]
+        tco_code = (u32_le 2335705099) :: (u32_le 3019898978) :: (u32_le 4165009545) :: (u32_le 4160815113) :: (u32_le 3407873090) :: (u32_le 1409286141) :: (u32_le 3596551104)
+        -- 0x401220 (rg_match_int, 4 words = 16 bytes): ASR X0, X0, #1 ; CMP X0, X1 ; CSET X0, EQ ; RET
+        match_int_code = (u32_le 2470575104) :: (u32_le 3942711327) :: (u32_le 2594117600) :: (u32_le 3596551104)
+        -- 0x401230 (rg_match_bool, 4 words = 16 bytes): UBFX X0, X0, #1, #1 ; CMP X0, X1 ; CSET X0, EQ ; RET
+        match_bool_code = (u32_le 3544253440) :: (u32_le 3942711327) :: (u32_le 2594117600) :: (u32_le 3596551104)
+        -- 0x401240 (rg_bin_op, 12 words = 48 bytes):
+        -- LDR X9, [X1] ; ASR X9, X9, #1 ; ASR X10, X2, #1 ; ADD/SUB/MUL dispatch ; LSL X0, X0, #1 ; ORR X0, X0, #1 ; RET
+        binop_code = (u32_le 4181721129) :: (u32_le 2470575399) :: (u32_le 2470575178) :: (u32_le 3942649856) :: (u32_le 1409286148) :: (u32_le 2332688681) :: (u32_le 335544323) :: (u32_le 3406430505) :: (u32_le 2583691561) :: (u32_le 3544186880) :: (u32_le 2990538752) :: (u32_le 3596551104)
+        jt :: start_code :: init_frame_code :: tco_code :: match_int_code :: match_bool_code :: binop_code
 
 -- ── Public ARM64 ELF64 Image Builder ─────────────────────────
 

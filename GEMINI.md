@@ -2,5 +2,5 @@ Read and follow `AGENTS.md` at the repository root. It is the single source of a
 
 ## Scoped instructions
 Read these before working on matching files:
-- `custom/languages/ridgun` (when touching **/*.rg, build.rg): read `.aix/custom/instructions/languages/ridgun.md` — Use when writing, refactoring, or reviewing Ridgun (.rg) source files or build.rg: syntax rules, type signatures, guards, ADTs, parallel where-DAGs, regions, and stable/ridgunc verification.
+- `custom/languages/ridgun` (when touching **/*.rg, build.rg): read `.aix/custom/instructions/languages/ridgun.md` — Use when writing, refactoring, or reviewing Ridgun (.rg) source files or build.rg: syntax rules, type signatures, guards, ADTs, parallel || DAGs, RMM1/RMM2 memory, regions, and stable/ridgunc ELF64 verification.
 

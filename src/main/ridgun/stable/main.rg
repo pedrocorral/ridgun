@@ -9,6 +9,7 @@
 -- `build` / `built [target]`, `run [target] [args...]`, `test`,
 -- `compile`, `check`, `clean`, `info`, `reload`, `help`, `exit`.
 -- @implements FR-TOOL-001
+-- @implements FR-TOOL-002
 -- ============================================================
 import ast
 import lexer
@@ -459,9 +460,148 @@ op :: run task info on StableConfig => Int
         _ = echo "  Target Dir   : {out_dir}/"
         0
 
+-- ── Task 8: `new`, `init`, `deps`, `add`, and `install` (`FR-TOOL-002`) ──
+
+op :: extract string list from [RExpr]         => [String]
+      extract string list from []              =  []
+      extract string list from ((EStr s):rest) =  [s] :: (extract string list from rest)
+      extract string list from (_:rest)        =  extract string list from rest
+
+op :: extract list function body from [RFnDef]    named String => [String]
+      extract list function body from []          named _      =  []
+      extract list function body from ((FnDef fn_name _ _ ((FnCase _ _ (EList items)):_)):rem_fns) named target
+        | fn_name == target = extract string list from items
+        | otherwise = extract list function body from rem_fns named target
+      extract list function body from ((FnDef fn_name _ _ ((FnCase _ _ (EStr val)):_)):rem_fns) named target
+        | fn_name == target = split words of val
+        | otherwise = extract list function body from rem_fns named target
+      extract list function body from (_:rem_fns) named target =
+        extract list function body from rem_fns named target
+
+op :: extract deps from program RProgram        => [String]
+      extract deps from program (Program fns _) =
+        extract list function body from fns named "dependencies"
+
+op :: load dependencies from String     => [String]
+      load dependencies from build_path
+        | NOT (file build_path exists) = []
+        | otherwise =
+          toks = tokenize_src (read_file build_path)
+          extract deps from program (parse_tokens toks)
+
+op :: scaffold project named String in String => Int
+      scaffold project named pname  in root   =
+        _ = shell_exec ('mkdir -p "' + root + '/src/main/ridgun/' + pname + '" "' + root + '/src/main/ridgun/lib" "' + root + '/src/test/ridgun" "' + root + '/target"')
+        build_content = '-- build.rg — Ridgun Project Build Definition\n\nfn :: project_name => String\n      project_name =  "' + pname + '"\n\nfn :: project_version => String\n      project_version =  "0.1.0"\n\nfn :: main_entry => String\n      main_entry =  "src/main/ridgun/' + pname + '/main.rg"\n\nfn :: source_dir => String\n      source_dir =  "src/main/ridgun"\n\nfn :: test_dir => String\n      test_dir =  "src/test/ridgun"\n\nfn :: target_dir => String\n      target_dir =  "target"\n\nfn :: dependencies => [String]\n      dependencies =  []\n'
+        main_content = '-- src/main/ridgun/' + pname + '/main.rg\n\nfn :: greet String => String\n      greet who    =  "Hello from " + who + "!"\n\nfn :: main => ()\n      main =  echo (greet "' + pname + '")\n'
+        test_content = '-- src/test/ridgun/test_main.rg\n\nfn :: main => ()\n      main =  echo "=== All ' + pname + ' tests passed ==="\n'
+        gitignore_content = '/target/\n/.stable/\n'
+        _ = write_file (root + "/build.rg") build_content
+        _ = write_file (root + "/src/main/ridgun/" + pname + "/main.rg") main_content
+        _ = write_file (root + "/src/test/ridgun/test_main.rg") test_content
+        _ = write_file (root + "/.gitignore") gitignore_content
+        _ = echo "[success] Scaffolded Ridgun project '{pname}' in {root}/"
+        0
+
+op :: run task new args [String]  => Int
+      run task new args []        =
+        _ = echo "[error] Usage: stable new <project_name>"
+        1
+      run task new args (pname:_)
+        | file (pname + "/build.rg") exists =
+          _ = echo "[error] Project '{pname}' already exists at {pname}/build.rg"
+          1
+        | otherwise = scaffold project named pname in pname
+
+op :: run task init args [String] => Int
+      run task init args _
+        | file "build.rg" exists =
+          _ = echo "[info] build.rg already exists in current directory."
+          0
+        | otherwise =
+          cwd = sys_getcwd
+          pname = base filename of cwd at 0 len (str_len cwd) slash (0 - 1)
+          scaffold project named pname in "."
+
+op :: fetch dependency source String into String => Int
+      fetch dependency source dep    into dest
+        | (str_starts_with dep "http://") OR (str_starts_with dep "https://") OR (str_starts_with dep "git@") =
+          shell_exec ('if [ -d "' + dest + '/.git" ]; then git -C "' + dest + '" pull -q; else git clone -q "' + dep + '" "' + dest + '"; fi')
+        | otherwise =
+          shell_exec ('rm -rf "' + dest + '" && cp -r "' + dep + '" "' + dest + '"')
+
+op :: sync single dependency String => Int
+      sync single dependency dep    =
+        bname = base filename of dep at 0 len (str_len dep) slash (0 - 1)
+        dest = ".stable/deps/" + bname
+        _ = shell_exec 'mkdir -p .stable/deps src/main/ridgun/lib'
+        st = fetch dependency source dep into dest
+        _ = shell_exec ('cp -f "' + dest + '"/src/main/ridgun/lib/*.rg src/main/ridgun/lib/ 2>/dev/null || cp -f "' + dest + '"/*.rg src/main/ridgun/lib/ 2>/dev/null || true')
+        _ = echo "  [dep]  {dep} -> {dest}"
+        st
+
+op :: sync dependency list [String] => Int
+      sync dependency list []       =
+        _ = echo "  [ok]   No external dependencies declared in build.rg."
+        0
+      sync dependency list (d:ds)   =
+        _ = sync single dependency d
+        sync dependency list ds
+
+op :: run task deps => Int
+      run task deps =
+        deps = load dependencies from "build.rg"
+        _ = echo "[info] Synchronizing dependencies from build.rg into .stable/deps/ ..."
+        _ = sync dependency list deps
+        _ = echo "[success] Dependencies synchronized."
+        0
+
+op :: format dep items [String] => String
+      format dep items []       =  ""
+      format dep items (d:[])   =  '"' + d + '"'
+      format dep items (d:ds)   =  '"' + d + '", ' + (format dep items ds)
+
+op :: append dep block if needed String    => ()
+      append dep block if needed dep_block
+        | NOT (file "build.rg" exists) = write_file "build.rg" dep_block
+        | str_contains (read_file "build.rg") "dependencies" = ()
+        | otherwise = write_file "build.rg" ((read_file "build.rg") + dep_block)
+
+op :: run task add args [String]    => Int
+      run task add args []          =
+        _ = echo "[error] Usage: stable add <git_url_or_path>"
+        1
+      run task add args (new_dep:_) =
+        cur_deps = load dependencies from "build.rg"
+        all_deps = cur_deps :: [new_dep]
+        dep_block = '\nfn :: dependencies => [String]\n      dependencies =  [' + (format dep items all_deps) + ']\n'
+        _ = append dep block if needed dep_block
+        _ = sync single dependency new_dep
+        _ = echo "[success] Added dependency '{new_dep}'."
+        0
+
+op :: install built binaries Int from String  => Int
+      install built binaries 0   from out_dir =
+        home = sys_getenv "HOME"
+        inst_dir = home + "/.local/bin"
+        _ = shell_exec ('mkdir -p "' + inst_dir + '" bin && for f in "' + out_dir + '"/*; do if [ -f "$f" ] && [ -x "$f" ]; then cp -f "$f" "' + inst_dir + '/" && cp -f "$f" bin/; fi; done')
+        _ = echo "[success] Installed executable(s) from {out_dir}/ into {inst_dir}/ and bin/."
+        0
+      install built binaries st  from _       =  st
+
+op :: run task install on StableConfig args [String] => Int
+      run task install on (ProjectConfig name_str ver main_ep sdir tdir out_dir) args extra =
+        build_st = run task build on (ProjectConfig name_str ver main_ep sdir tdir out_dir) args extra
+        install built binaries build_st from out_dir
+
 op :: run task help => Int
       run task help =
         _ = echo "Available `stable` commands:"
+        _ = echo "  new <name>                  Create a new Ridgun project directory with build.rg and src/"
+        _ = echo "  init                        Initialize build.rg and src/ in the current directory"
+        _ = echo "  deps                        Synchronize dependencies from build.rg into .stable/deps/"
+        _ = echo "  add <dep>                   Add a Git URL or path dependency to build.rg and sync .stable/deps/"
+        _ = echo "  install [target]            Build and install native ELF64 executable(s) into ~/.local/bin/ and bin/"
         _ = echo "  build | built [target]      Compile all executables (or [target]) into target/<target>"
         _ = echo "  run [target] [args...]      Build (if needed) and run executable (default: main_entry)"
         _ = echo "  test                        Discover, typecheck, compile, and execute all test suites in src/test/ridgun/"
@@ -499,6 +639,11 @@ op :: execute command [String] on StableConfig => (Bool, StableConfig, Int)
         _ = echo "[info] Reloaded build.rg — current project is '{pname}'"
         (True, new_cfg, 0)
       execute command ("check":_) on cfg = (True, cfg, run task check on cfg)
+      execute command ("new":extra) on cfg = (True, cfg, run task new args extra)
+      execute command ("init":extra) on cfg = (True, cfg, run task init args extra)
+      execute command ("deps":_) on cfg = (True, cfg, run task deps)
+      execute command ("add":extra) on cfg = (True, cfg, run task add args extra)
+      execute command ("install":extra) on cfg = (True, cfg, run task install on cfg args extra)
       execute command ("format":extra) on cfg = (True, cfg, run task format on cfg args extra)
       execute command ("fmt":extra) on cfg = (True, cfg, run task format on cfg args extra)
       execute command ("compile":_) on cfg = (True, cfg, run task compile on cfg)

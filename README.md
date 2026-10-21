@@ -36,8 +36,13 @@ Learn Ridgun from scratch—from your first tabular function to parallel DAGs, s
 # Format all .rg source files into canonical tabular alignment
 ./target/stable format
 
-# Build all project targets into target/
+# Build all project targets into target/ (or install into ~/.local/bin/)
 ./target/stable built
+./target/stable install
+
+# Scaffold a new project or synchronize dependencies from build.rg
+./target/stable new my_app
+./target/stable deps
 
 # Compile or run a single .rg file directly with ridgunc (x86_64 or ARM64 Raspberry Pi)
 ./target/ridgunc check my_program.rg
