@@ -122,11 +122,29 @@ fn :: process items [Int] => (Int, [Int])
         total       = fold add pair 0 seq_doubled
         (total, par_evens)
 
--- 9. Zero-Argument Entrypoint (`fn :: main => ()`)
+-- 9. Multi-Word Functions Starting With `filter`/`map`/`fold` & Logical `and`/`or` (`FR-COMP-005`)
+fn :: filter section loop Int Int => Int
+      filter section loop a   b   =  (a * 10) + b
+
+fn :: is comment or flag String => Bool
+      is comment or flag line   =
+        (str starts with line "--") or (str starts with line "#")
+
+-- 10. Custom `stable` Tasks & Plugins in `build.rg` (`FR-TOOL-003`, `FR-COMP-006`)
+fn :: project kind => String
+      project kind =  "both"
+
+fn :: plugins => [String]
+      plugins =  []
+
+fn :: task check all => String
+      task check all =  "./bin/stable check"
+
+-- 11. Zero-Argument Entrypoint (`fn :: main => ()`)
 fn :: main => ()
       main =
         spec  = enable tls (ServerSpec "localhost" 8080 False)
         code  = route request 1 2 True True 500 0
         res   = process items [1, 2, 3, 4, 5]
-        total = fst res
+        total = (fst res) + (filter section loop 4 2)
         echo "Server {host spec}:{port spec} code={code} total={total}"

@@ -5,6 +5,7 @@
 -- parser.rg, analyzer.rg, typecheck.rg, compiler.rg, vm.rg,
 -- elf64.rg, x86_64.rg, arm64.rg
 -- @implements FR-COMP-004
+-- @implements FR-COMP-006
 -- ============================================================
 import ast
 import lexer
@@ -35,7 +36,7 @@ fn :: print_error_lines [String]    => ()
 
 fn :: run_cli_check String     => ()
       run_cli_check input_path =
-        raw_src = load_rg_source input_path
+        raw_src = load_rg_with_libs input_path
         toks = tokenize_src raw_src
         prog = parse_tokens toks
         errs = typecheck_program prog
@@ -58,6 +59,50 @@ fn :: run_cli_compile String     String     => ()
       run_cli_compile input_path output_rgc =
         fn_c = emit_rgc_file input_path output_rgc
         echo "[ridgunc compile] {input_path} -> {output_rgc} ({fn_c} functions)"
+
+fn :: str_ends_with_suffix String String => Bool
+      str_ends_with_suffix s      suf    =
+        slen = str_len s
+        suflen = str_len suf
+        slen >= suflen AND (str_slice s (slen - suflen) slen) == suf
+
+fn :: strip_rg_ext String => String
+      strip_rg_ext path
+        | str_ends_with_suffix path ".rg" = str_slice path 0 ((str_len path) - 3)
+        | otherwise = path
+
+fn :: run_cli_build_lib String     String     String      => ()
+      run_cli_build_lib input_path output_out target_arch
+        | str_ends_with_suffix output_out ".so" =
+          st = build_native_target_shared_library input_path output_out target_arch
+          report_so_status input_path output_out st
+        | str_ends_with_suffix output_out ".rglib" =
+          st = emit_rglib_file input_path output_out
+          report_rglib_status input_path output_out st
+        | otherwise =
+          rglib_out = output_out + ".rglib"
+          so_out = output_out + ".so"
+          st1 = emit_rglib_file input_path rglib_out
+          st2 = build_native_target_shared_library input_path so_out target_arch
+          _ = report_rglib_status input_path rglib_out st1
+          report_so_status input_path so_out st2
+
+fn :: run_cli_build_so String     String    String      => ()
+      run_cli_build_so input_path output_so target_arch =
+        status = build_native_target_shared_library input_path output_so target_arch
+        report_so_status input_path output_so status
+
+fn :: report_rglib_status String     String     Int  => ()
+      report_rglib_status input_path output_lib 0    =
+        echo "[ridgunc build --lib] Ridgun library bundle created: {input_path} -> {output_lib}"
+      report_rglib_status _          output_lib code =
+        echo "[ridgunc build --lib] Failed to build {output_lib} (exit code {code})"
+
+fn :: report_so_status String     String    Int  => ()
+      report_so_status input_path output_so 0    =
+        echo "[ridgunc build --so] Native ELF64 shared library (.so) created: {input_path} -> {output_so}"
+      report_so_status _          output_so code =
+        echo "[ridgunc build --so] Failed to build {output_so} (exit code {code})"
 
 fn :: run_cli_build String     String     => ()
       run_cli_build input_path output_bin =
@@ -119,6 +164,8 @@ fn :: run_cli_help => ()
         echo "  check   <file.rg>                              Typecheck and analyze static strategies"
         echo "  compile <file.rg> [-o out.rgc]                 Emit .rgc bytecode artifact"
         echo "  build   <file.rg> [-o binary] [--target arch]  Build standalone native ELF64 executable"
+        echo "  build   --lib <file.rg> [-o out.rglib]         Build reusable Ridgun library (.rglib & .so)"
+        echo "  build   --so  <file.rg> [-o out.so]            Build native ELF64 shared library (ET_DYN .so)"
         echo "  version | -v | --version                       Show compiler version"
         echo "  help    | -h | --help                          Show this help message"
 
@@ -134,6 +181,19 @@ fn :: dispatch_cli [String]        => ()
       dispatch_cli ("check":input_path:_) = run_cli_check input_path
       dispatch_cli ("compile":input_path:"-o":output_rgc:_) = run_cli_compile input_path output_rgc
       dispatch_cli ("compile":input_path:_) = run_cli_compile input_path "{input_path}c"
+      dispatch_cli ("build":"--lib":"--target":target_arch:input_path:"-o":output_out:_) = run_cli_build_lib input_path output_out target_arch
+      dispatch_cli ("build":"--lib":input_path:"-o":output_out:"--target":target_arch:_) = run_cli_build_lib input_path output_out target_arch
+      dispatch_cli ("build":"--lib":input_path:"-o":output_out:_) = run_cli_build_lib input_path output_out "x86_64-linux"
+      dispatch_cli ("build":"--lib":input_path:_) = run_cli_build_lib input_path (strip_rg_ext input_path) "x86_64-linux"
+      dispatch_cli ("build":input_path:"--lib":"-o":output_out:_) = run_cli_build_lib input_path output_out "x86_64-linux"
+      dispatch_cli ("build":input_path:"--lib":_) = run_cli_build_lib input_path (strip_rg_ext input_path) "x86_64-linux"
+      dispatch_cli ("build":"--so":"--target":target_arch:input_path:"-o":output_so:_) = run_cli_build_so input_path output_so target_arch
+      dispatch_cli ("build":"--so":input_path:"-o":output_so:"--target":target_arch:_) = run_cli_build_so input_path output_so target_arch
+      dispatch_cli ("build":"--so":input_path:"-o":output_so:_) = run_cli_build_so input_path output_so "x86_64-linux"
+      dispatch_cli ("build":"--so":input_path:_) = run_cli_build_so input_path ((strip_rg_ext input_path) + ".so") "x86_64-linux"
+      dispatch_cli ("build":input_path:"--so":"-o":output_so:"--target":target_arch:_) = run_cli_build_so input_path output_so target_arch
+      dispatch_cli ("build":input_path:"--so":"-o":output_so:_) = run_cli_build_so input_path output_so "x86_64-linux"
+      dispatch_cli ("build":input_path:"--so":_) = run_cli_build_so input_path ((strip_rg_ext input_path) + ".so") "x86_64-linux"
       dispatch_cli ("build":"--target":target_arch:input_path:"-o":output_bin:_) = run_cli_build_target input_path output_bin target_arch
       dispatch_cli ("build":"--target":target_arch:input_path:_) = run_cli_build_target input_path "a.out" target_arch
       dispatch_cli ("build":input_path:"-o":output_bin:"--target":target_arch:_) = run_cli_build_target input_path output_bin target_arch

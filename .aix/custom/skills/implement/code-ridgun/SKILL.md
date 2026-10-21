@@ -240,14 +240,16 @@ Ridgun achieves deterministic memory management with **zero Garbage Collector pa
 ---
 
 ## 7. Toolchain & Verification Workflow (`stable` and `ridgunc`)
-1. **Scaffold / Dependencies (`FR-TOOL-002`)**:
-   - `stable new <name>` or `stable init`: create `build.rg`, `src/main/ridgun/<name>/main.rg`, `src/test/ridgun/test main.rg`, and `.gitignore`.
+1. **Scaffold / Dependencies / Plugins (`FR-TOOL-002`, `FR-TOOL-003`)**:
+   - `stable new [--lib] <name>` or `stable init [--lib]`: create `build.rg`, `src/main/ridgun/...`, `src/test/ridgun/test main.rg`, and `.gitignore`.
    - `stable deps` or `stable add <git_url_or_path>`: synchronize `dependencies` from `build.rg` into `.stable/deps/`.
+   - `stable tasks` / `stable plugins` / `stable <task_name>`: inspect or run custom `fn :: task <name> => String` definitions and `plugins/*.rg` extensions from `build.rg`.
    - `stable install [target]`: build and install native ELF64 binaries into `~/.local/bin/` and `bin/`.
 2. **Format**: `./target/stable format [file.rg ...]` (to apply canonical tabular alignment).
 3. **Type-check & Static Analysis**: `./target/stable check` (checks all modules in `src/main/ridgun/` in parallel) or `./target/ridgunc check <file.rg>`.
 4. **Run Tests**: `./target/stable test` (compiles and runs all `src/test/ridgun/test*.rg` suites in parallel via `||map`).
-5. **Build Native ELF64 Executables**:
-   - Project targets: `./target/stable built`
+5. **Build Native ELF64 Executables & Libraries (`FR-COMP-004`, `FR-COMP-006`)**:
+   - Project targets: `./target/stable built` (or `./target/stable built lib` for `.rglib` + `.so` libraries)
    - Single file (`x86_64` default): `./target/ridgunc build <entry.rg> -o <output_bin>`
+   - Library bundle (`.rglib`) & ELF64 `ET_DYN` shared object (`.so`): `./target/ridgunc build --lib <lib.rg> -o <out.rglib>` and `./target/ridgunc build --so <lib.rg> -o <lib.so>`
    - Cross-compile for `ARM64` (`AArch64` / Raspberry Pi): `./target/ridgunc build --target arm64-linux <entry.rg> -o <output_bin_arm64>`

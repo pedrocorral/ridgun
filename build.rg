@@ -5,6 +5,9 @@
 fn :: project name => String
       project name =  "ridgunc"
 
+fn :: project kind => String
+      project kind =  "bin"
+
 fn :: project version => String
       project version =  "0.9.3"
 
@@ -19,3 +22,9 @@ fn :: test dir => String
 
 fn :: target dir => String
       target dir =  "target"
+
+fn :: task check all => String
+      task check all =  "./bin/stable check"
+
+fn :: task verify docs => String
+      task verify docs =  "aix docs validate"

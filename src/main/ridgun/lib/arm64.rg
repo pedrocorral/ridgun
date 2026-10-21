@@ -388,8 +388,8 @@ fn :: build_arm64_rt_kernel => [Int]
 
 -- ── Public ARM64 ELF64 Image Builder ─────────────────────────
 
-fn :: emit_arm64_elf RNativeProg => [Int]
-      emit_arm64_elf (NativeProg main_fid spawn_fid call2_fid binop_fid fns rodata_str) =
+fn :: emit_arm64_elf_type Int    RNativeProg => [Int]
+      emit_arm64_elf_type e_type (NativeProg main_fid spawn_fid call2_fid binop_fid fns rodata_str) =
         rt_bytes = build_arm64_rt_kernel
         rt_len = byte_list_len rt_bytes
         region2_vaddr = 4198400 + rt_len
@@ -402,4 +402,10 @@ fn :: emit_arm64_elf RNativeProg => [Int]
         spawn_vaddr = lookup_label_offset fn_table spawn_fid
         call2_vaddr = lookup_label_offset fn_table call2_fid
         binop_vaddr = lookup_label_offset fn_table binop_fid
-        build_elf64_image 183 main_vaddr spawn_vaddr call2_vaddr binop_vaddr rt_bytes rt_len code_bytes code_len rodata_str
+        build_elf64_image_type e_type 183 main_vaddr spawn_vaddr call2_vaddr binop_vaddr rt_bytes rt_len code_bytes code_len rodata_str
+
+fn :: emit_arm64_elf RNativeProg => [Int]
+      emit_arm64_elf nprog       =  emit_arm64_elf_type 2 nprog
+
+fn :: emit_arm64_shared_elf RNativeProg => [Int]
+      emit_arm64_shared_elf nprog       =  emit_arm64_elf_type 3 nprog

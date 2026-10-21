@@ -6,6 +6,7 @@
 -- Where-DAGs, ParPipes, Channels/Spawn/Join, Scoped Globals/Context/
 -- Shared Atomics, and Bare-Metal Hardware MMIO & Region Quotas.
 -- @implements FR-COMP-001
+-- @implements FR-COMP-006
 -- @implements FR-VM-001
 -- @implements FR-VM-002
 -- ============================================================
@@ -1894,7 +1895,33 @@ fn :: lower_program_to_native RProgram => RNativeProg
         all_native_fns = [main_wrapper, spawn_disp, call2_disp, binop_disp] :: user_native_fns :: field_native_fns
         NativeProg 1 2 3 4 all_native_fns rodata_str
 
--- ── Bytecode (.rgc) & Direct Native ELF64 Executable Emission ─
+fn :: build_lib_entry_wrapper Int       => RNativeFn
+      build_lib_entry_wrapper 0         =  NativeFn 1 "__rg_entry_main" 0 2 [NLoadImmRaw 0, NReturn]
+      build_lib_entry_wrapper entry_fid =  NativeFn 1 "__rg_entry_main" 0 2 [NCallFn entry_fid 0 0, NReturn]
+
+fn :: lower_library_to_native RProgram => RNativeProg
+      lower_library_to_native (Program raw_fns tys) =
+        field_tbl = collect_typedef_fields tys []
+        raw_fn_names = collect_fn_names raw_fns
+        sigs = (build_cg_sigs raw_fns) :: (build_field_cg_sigs field_tbl raw_fn_names)
+        fns = prep_fndef_list raw_fns sigs
+        fn_names = collect_fn_names fns
+        str_pool = build_str_pool fns (collect_field_names field_tbl)
+        rodata_str = pool_rodata str_pool
+        str_tbl = pool_entries str_pool
+        fn_tbl1 = build_fn_table_fndefs fns 5 []
+        fn_tbl = build_fn_table_fields field_tbl fn_names (5 + (list_str_len fn_names)) fn_tbl1
+        entry_fid = lookup_fn_id fn_tbl "main"
+        main_wrapper = build_lib_entry_wrapper entry_fid
+        spawn_disp = NativeFn 2 "__rg_dispatch_spawn" 2 4 (build_spawn_dispatch_instrs fn_tbl str_tbl 1 [])
+        call2_disp = NativeFn 3 "__rg_dispatch_call2" 3 6 (build_call2_dispatch_instrs fn_tbl str_tbl 1 [])
+        binop_disp = NativeFn 4 "__rg_dispatch_binop" 3 6 (build_binop_dispatch_instrs fn_tbl str_tbl 1 [])
+        user_native_fns = lower_fndef_list fns str_tbl fn_tbl field_tbl
+        field_native_fns = lower_field_getter_fns field_tbl fn_names fn_tbl
+        all_native_fns = [main_wrapper, spawn_disp, call2_disp, binop_disp] :: user_native_fns :: field_native_fns
+        NativeProg 1 2 3 4 all_native_fns rodata_str
+
+-- ── Bytecode (.rgc), Library (.rglib / .so), & ELF64 Emission ─
 
 fn :: join_summaries [String] => String
       join_summaries []       =  ""
@@ -1909,7 +1936,7 @@ fn :: emit_rgc_payload RProgram String  => String
 
 fn :: emit_rgc_file String     String      => Int
       emit_rgc_file input_path output_path =
-        raw_src = load_rg_source input_path
+        raw_src = load_rg_with_libs input_path
         toks = tokenize_src raw_src
         prog = parse_tokens toks
         errs = typecheck_program prog
@@ -1924,15 +1951,45 @@ fn :: emit_rgc_after_check RProgram String  String      [RTypeError] => Int
         _ = echo (format_type_errors errs)
         0 - (type_err_count errs)
 
+fn :: emit_rglib_payload RProgram String  => String
+      emit_rglib_payload prog     raw_src =
+        fn_count = count_fn_defs prog
+        ty_count = count_type_defs prog
+        summaries = join_summaries (analyze_rprogram prog)
+        "-- RGLIB1\n-- SELF_HOSTED_COMPILER: ridgunc v0.9.3\n-- FUNCTIONS: {fn_count}\n-- TYPES: {ty_count}\n{summaries}{raw_src}"
+
+fn :: emit_rglib_file String     String      => Int
+      emit_rglib_file input_path output_path =
+        raw_src = load_rg_with_libs input_path
+        toks = tokenize_src raw_src
+        prog = parse_tokens toks
+        errs = typecheck_program prog
+        emit_rglib_after_check prog raw_src output_path errs
+
+fn :: emit_rglib_after_check RProgram String  String      [RTypeError] => Int
+      emit_rglib_after_check prog     raw_src output_path []           =
+        payload = emit_rglib_payload prog raw_src
+        _ = write_file output_path payload
+        0
+      emit_rglib_after_check _        _       _           errs         =
+        _ = echo (format_type_errors errs)
+        1
+
 fn :: emit_elf_for_target RNativeProg String        => [Int]
       emit_elf_for_target nprog       "arm64"       =  emit_arm64_elf nprog
       emit_elf_for_target nprog       "arm64-linux" =  emit_arm64_elf nprog
       emit_elf_for_target nprog       "aarch64"     =  emit_arm64_elf nprog
       emit_elf_for_target nprog       _             =  emit_x86_64_elf nprog
 
+fn :: emit_shared_elf_for_target RNativeProg String        => [Int]
+      emit_shared_elf_for_target nprog       "arm64"       =  emit_arm64_shared_elf nprog
+      emit_shared_elf_for_target nprog       "arm64-linux" =  emit_arm64_shared_elf nprog
+      emit_shared_elf_for_target nprog       "aarch64"     =  emit_arm64_shared_elf nprog
+      emit_shared_elf_for_target nprog       _             =  emit_x86_64_shared_elf nprog
+
 fn :: build_native_target_executable String     String     String      => Int
       build_native_target_executable input_path output_bin target_arch =
-        raw_src = load_rg_source input_path
+        raw_src = load_rg_with_libs input_path
         toks = tokenize_src raw_src
         prog = parse_tokens toks
         errs = typecheck_program prog
@@ -1946,6 +2003,27 @@ fn :: build_native_target_after_check RProgram String String [RTypeError] => Int
       build_native_target_after_check _ _ _ errs =
         _ = echo (format_type_errors errs)
         1
+
+fn :: build_native_target_shared_library String     String    String      => Int
+      build_native_target_shared_library input_path output_so target_arch =
+        raw_src = load_rg_with_libs input_path
+        toks = tokenize_src raw_src
+        prog = parse_tokens toks
+        errs = typecheck_program prog
+        build_native_shared_after_check prog output_so target_arch errs
+
+fn :: build_native_shared_after_check RProgram String String [RTypeError] => Int
+      build_native_shared_after_check prog output_so target_arch [] =
+        nprog = lower_library_to_native prog
+        elf_bytes = emit_shared_elf_for_target nprog target_arch
+        write_elf64_executable output_so elf_bytes
+      build_native_shared_after_check _ _ _ errs =
+        _ = echo (format_type_errors errs)
+        1
+
+fn :: build_native_shared_library String     String    => Int
+      build_native_shared_library input_path output_so =
+        build_native_target_shared_library input_path output_so "x86_64-linux"
 
 fn :: build_native_executable String     String     => Int
       build_native_executable input_path output_bin =

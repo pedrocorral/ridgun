@@ -301,8 +301,8 @@ fn :: rt_x86_64_kernel_hex => String
 
 -- ── Public x86_64 ELF64 Image Builder ────────────────────────
 
-fn :: emit_x86_64_elf RNativeProg => [Int]
-      emit_x86_64_elf (NativeProg main_fid spawn_fid call2_fid binop_fid fns rodata_str) =
+fn :: emit_x86_64_elf_type Int    RNativeProg => [Int]
+      emit_x86_64_elf_type e_type (NativeProg main_fid spawn_fid call2_fid binop_fid fns rodata_str) =
         rt_hex = rt_x86_64_kernel_hex
         rt_len = (str_len rt_hex) / 2
         rt_bytes = hex_to_bytes rt_hex
@@ -316,4 +316,10 @@ fn :: emit_x86_64_elf RNativeProg => [Int]
         spawn_vaddr = lookup_label_offset fn_table spawn_fid
         call2_vaddr = lookup_label_offset fn_table call2_fid
         binop_vaddr = lookup_label_offset fn_table binop_fid
-        build_elf64_image 62 main_vaddr spawn_vaddr call2_vaddr binop_vaddr rt_bytes rt_len code_bytes code_len rodata_str
+        build_elf64_image_type e_type 62 main_vaddr spawn_vaddr call2_vaddr binop_vaddr rt_bytes rt_len code_bytes code_len rodata_str
+
+fn :: emit_x86_64_elf RNativeProg => [Int]
+      emit_x86_64_elf nprog       =  emit_x86_64_elf_type 2 nprog
+
+fn :: emit_x86_64_shared_elf RNativeProg => [Int]
+      emit_x86_64_shared_elf nprog       =  emit_x86_64_elf_type 3 nprog

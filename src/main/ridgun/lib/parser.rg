@@ -6,6 +6,7 @@
 -- hadamard, sequences/masks, where-DAG, || pipes, string interp.
 -- @implements FR-COMP-001
 -- @implements FR-COMP-005
+-- @implements FR-COMP-006
 -- ============================================================
 import ast
 import lexer
@@ -1658,7 +1659,7 @@ fn :: has_longer_arity_prefix [RArityEntry] String  [RExpr]         => Bool
 
 fn :: norm_call String  [RExpr] [RArityEntry] => RExpr
       norm_call fn_name args    arities
-        | is_std_builtin fn_name = ECall fn_name (norm_expr_list (maybe_collapse_args args (std_builtin_arity fn_name) arities) arities)
+        | (is_std_builtin fn_name) AND (NOT (has_longer_arity_prefix arities fn_name args)) = ECall fn_name (norm_expr_list (maybe_collapse_args args (std_builtin_arity fn_name) arities) arities)
         | (lookup_arity arities fn_name) >= 0 AND (NOT (has_longer_arity_prefix arities fn_name args)) = ECall fn_name (norm_expr_list (maybe_collapse_args args (lookup_arity arities fn_name) arities) arities)
         | fn_name == "__chain__" = norm_call_chain args arities (extract_mixfix_call "" args arities [])
         | otherwise = norm_call_mixfix fn_name args arities (extract_mixfix_call "" ([EVar fn_name] :: args) arities [])
@@ -1700,8 +1701,20 @@ fn :: finish_postfix_stack String    [RExpr]     [RExpr]          => RExpr
 fn :: flatten_mixfix_rhs RExpr [RArityEntry] => [RExpr]
       flatten_mixfix_rhs (ECall "__chain__" args) _ = args
       flatten_mixfix_rhs (ECall r_name r_args) arities
-        | (lookup_arity arities r_name) < 0 AND (NOT (is_std_builtin r_name)) = [EVar r_name] :: r_args
+        | ((lookup_arity arities r_name) < 0 AND (NOT (is_std_builtin r_name))) OR (has_longer_arity_prefix arities r_name r_args) = [EVar r_name] :: r_args
       flatten_mixfix_rhs other _             =  [other]
+
+fn :: can_absorb_mixfix_conj String  [RExpr] String    RExpr [RArityEntry] => Bool
+      can_absorb_mixfix_conj fn_name args    conj_word r     arities       =
+        full_args = [EVar fn_name] :: args :: [EVar conj_word] :: (flatten_mixfix_rhs r arities)
+        full_res = extract_mixfix_call "" full_args arities []
+        can_absorb_mixfix_verify conj_word arities full_res
+
+fn :: can_absorb_mixfix_verify String    [RArityEntry] (String, [RExpr])       => Bool
+      can_absorb_mixfix_verify conj_word arities       (full_mangled, full_ops) =
+        ar = lookup_arity arities full_mangled
+        c_ops = maybe_collapse_args full_ops ar arities
+        (str_contains full_mangled ("_" + conj_word)) AND (arity_matches ar (expr_list_count c_ops))
 
 fn :: norm_expr RExpr              [RArityEntry] => RExpr
       norm_expr (EVar name)        arities
@@ -1710,13 +1723,13 @@ fn :: norm_expr RExpr              [RArityEntry] => RExpr
       norm_expr (ENot inner)       arities       =  ENot (norm_expr inner arities)
       norm_expr (EOut inner)       arities       =  EOut (norm_expr inner arities)
       norm_expr (EBin OpAnd (EVar fn_name) r) arities
-        | (lookup_arity arities fn_name) < 0 AND (has_arity_prefix arities (fn_name + "_and")) = norm_call fn_name ([EVar "and"] :: (flatten_mixfix_rhs r arities)) arities
+        | (lookup_arity arities fn_name) < 0 AND (can_absorb_mixfix_conj fn_name [] "and" r arities) = norm_call fn_name ([EVar "and"] :: (flatten_mixfix_rhs r arities)) arities
       norm_expr (EBin OpAnd (ECall fn_name args) r) arities
-        | (lookup_arity arities fn_name) < 0 AND (has_arity_prefix arities fn_name) = norm_call fn_name (args :: [EVar "and"] :: (flatten_mixfix_rhs r arities)) arities
+        | (lookup_arity arities fn_name) < 0 AND (can_absorb_mixfix_conj fn_name args "and" r arities) = norm_call fn_name (args :: [EVar "and"] :: (flatten_mixfix_rhs r arities)) arities
       norm_expr (EBin OpOr (EVar fn_name) r) arities
-        | (lookup_arity arities fn_name) < 0 AND (has_arity_prefix arities (fn_name + "_or")) = norm_call fn_name ([EVar "or"] :: (flatten_mixfix_rhs r arities)) arities
+        | (lookup_arity arities fn_name) < 0 AND (can_absorb_mixfix_conj fn_name [] "or" r arities) = norm_call fn_name ([EVar "or"] :: (flatten_mixfix_rhs r arities)) arities
       norm_expr (EBin OpOr (ECall fn_name args) r) arities
-        | (lookup_arity arities fn_name) < 0 AND (has_arity_prefix arities fn_name) = norm_call fn_name (args :: [EVar "or"] :: (flatten_mixfix_rhs r arities)) arities
+        | (lookup_arity arities fn_name) < 0 AND (can_absorb_mixfix_conj fn_name args "or" r arities) = norm_call fn_name (args :: [EVar "or"] :: (flatten_mixfix_rhs r arities)) arities
       norm_expr (EBin bop l r)     arities       =  EBin bop (norm_expr l arities) (norm_expr r arities)
       norm_expr (ECall fn_name args) arities     =  norm_call fn_name args arities
       norm_expr (EEcho args)       arities       =  EEcho (fold_echo_args (collapse_fn_ref_args args arities) arities)
@@ -1775,14 +1788,170 @@ fn :: normalize_program RProgram          => RProgram
         arities = collect_fn_arities fns
         Program (norm_fndef_list fns arities) tys
 
+-- ── Library & Module Import Resolution (`.rglib` / `.rg`) ────
+
+fn :: is_core_compiler_mod String      => Bool
+      is_core_compiler_mod "ast"       =  True
+      is_core_compiler_mod "lexer"     =  True
+      is_core_compiler_mod "parser"    =  True
+      is_core_compiler_mod "analyzer"  =  True
+      is_core_compiler_mod "typecheck" =  True
+      is_core_compiler_mod "compiler"  =  True
+      is_core_compiler_mod "vm"        =  True
+      is_core_compiler_mod "elf64"     =  True
+      is_core_compiler_mod "x86_64"    =  True
+      is_core_compiler_mod "arm64"     =  True
+      is_core_compiler_mod "formatter" =  True
+      is_core_compiler_mod _           =  False
+
+fn :: join_words_space [String] => String
+      join_words_space []       =  ""
+      join_words_space (w:[])   =  w
+      join_words_space (w:ws)   =  w + " " + (join_words_space ws)
+
+fn :: collect_import_words [RToken]          [String] => ([String], [RToken])
+      collect_import_words []                acc      =  (acc, [])
+      collect_import_words (TokEof:rest)     acc      =  (acc, [TokEof] :: rest)
+      collect_import_words (TokNewline:rest) acc      =  (acc, rest)
+      collect_import_words ((TokIdent w):rest) acc    =  collect_import_words rest (acc :: [w])
+      collect_import_words (TokType:rest)    acc      =  collect_import_words rest (acc :: ["type"])
+      collect_import_words (TokWith:rest)    acc      =  collect_import_words rest (acc :: ["with"])
+      collect_import_words (_:rest)          acc      =  (acc, skip_to_newline rest)
+
+fn :: try_read_candidate_paths [String] => String
+      try_read_candidate_paths []       =  ""
+      try_read_candidate_paths (p:ps)   =
+        content = read_file p
+        try_read_candidate_step content ps
+
+fn :: try_read_candidate_step String  [String] => String
+      try_read_candidate_step ""      ps       =  try_read_candidate_paths ps
+      try_read_candidate_step content _        =  content
+
+fn :: resolve_import_candidates Bool [String] => [String]
+      resolve_import_candidates True (p:_)    =
+        [p, p + ".rglib", p + ".rg", "target/" + p, "dist/" + p, "lib/" + p, ".stable/deps/" + p]
+      resolve_import_candidates False []      =  []
+      resolve_import_candidates False (w:[])
+        | is_core_compiler_mod w = []
+        | otherwise =
+          [w + ".rglib", "target/" + w + ".rglib", "dist/" + w + ".rglib", "lib/" + w + ".rglib", ".stable/deps/" + w + ".rglib", "src/main/ridgun/lib/" + w + ".rglib"]
+      resolve_import_candidates False words   =
+        u_name = join_words_underscore words
+        sp_name = join_words_space words
+        [u_name + ".rglib", sp_name + ".rglib", "target/" + u_name + ".rglib", "target/" + sp_name + ".rglib", "dist/" + u_name + ".rglib", "lib/" + u_name + ".rglib", "lib/" + sp_name + ".rglib", ".stable/deps/" + u_name + ".rglib", "src/main/ridgun/lib/" + u_name + ".rglib", sp_name + ".rg", "lib/" + sp_name + ".rg", "src/main/ridgun/lib/" + sp_name + ".rg"]
+
+fn :: parse_import_stmt [RToken] [RFnDef] [RTypeDef] => RProgram
+      parse_import_stmt ((TokStr path):rest) fns tys =
+        cands = resolve_import_candidates True [path]
+        parse_import_with_src (try_read_candidate_paths cands) (skip_to_newline rest) fns tys
+      parse_import_stmt ((TokRawStr path):rest) fns tys =
+        cands = resolve_import_candidates True [path]
+        parse_import_with_src (try_read_candidate_paths cands) (skip_to_newline rest) fns tys
+      parse_import_stmt rest fns tys =
+        w_res = collect_import_words rest []
+        parse_import_words w_res fns tys
+
+fn :: parse_import_words ([String], [RToken]) [RFnDef] [RTypeDef] => RProgram
+      parse_import_words (words, after_line) fns tys =
+        cands = resolve_import_candidates False words
+        parse_import_with_src (try_read_candidate_paths cands) after_line fns tys
+
+fn :: parse_import_with_src String  [RToken]   [RFnDef] [RTypeDef] => RProgram
+      parse_import_with_src ""      after_line fns      tys        =
+        parse_items after_line fns tys
+      parse_import_with_src lib_src after_line fns      tys        =
+        lib_prog = parse_items (tokenize_src lib_src) fns tys
+        continue_after_import lib_prog after_line
+
+fn :: continue_after_import RProgram            [RToken]   => RProgram
+      continue_after_import (Program fns2 tys2) after_line =
+        parse_items after_line fns2 tys2
+
+fn :: rglib_dir_of String Int Int Int => String
+      rglib_dir_of fpath  pos len last_slash
+        | pos >= len AND last_slash < 0 = "."
+        | pos >= len = str_slice fpath 0 last_slash
+        | (str_char_at fpath pos) == 47 = rglib_dir_of fpath (pos + 1) len pos
+        | otherwise = rglib_dir_of fpath (pos + 1) len last_slash
+
+fn :: strip_quotes_len String Int => String
+      strip_quotes_len s      n
+        | n >= 2 AND ((str_char_at s 0) == 34 OR (str_char_at s 0) == 39) = str_slice s 1 (n - 1)
+        | otherwise = s
+
+fn :: strip_quotes String => String
+      strip_quotes s      =  strip_quotes_len s (str_len s)
+
+fn :: resolve_rglib_clean String String => String
+      resolve_rglib_clean pdir   spec
+        | is_core_compiler_mod spec = ""
+        | str_contains spec ".rglib" =
+          try_read_candidate_paths [spec, pdir + "/" + spec, "target/" + spec, "dist/" + spec, "lib/" + spec, ".stable/deps/" + spec]
+        | otherwise =
+          try_read_candidate_paths [pdir + "/" + spec + ".rglib", pdir + "/lib/" + spec + ".rglib", spec + ".rglib", "target/" + spec + ".rglib", "dist/" + spec + ".rglib", "lib/" + spec + ".rglib", ".stable/deps/" + spec + ".rglib", "src/main/ridgun/lib/" + spec + ".rglib"]
+
+fn :: rglib_trim_lead String Int Int => String
+      rglib_trim_lead s      pos len
+        | pos >= len = ""
+        | (str_char_at s pos) == 32 OR (str_char_at s pos) == 9 OR (str_char_at s pos) == 13 = rglib_trim_lead s (pos + 1) len
+        | otherwise = str_slice s pos len
+
+fn :: rglib_trim_trail String Int => String
+      rglib_trim_trail s      end_pos
+        | end_pos <= 0 = ""
+        | (str_char_at s (end_pos - 1)) == 32 OR (str_char_at s (end_pos - 1)) == 9 OR (str_char_at s (end_pos - 1)) == 13 = rglib_trim_trail s (end_pos - 1)
+        | otherwise = str_slice s 0 end_pos
+
+fn :: rglib_trim String => String
+      rglib_trim s      =
+        s1 = rglib_trim_lead s 0 (str_len s)
+        rglib_trim_trail s1 (str_len s1)
+
+fn :: resolve_rglib_for_spec String String   => String
+      resolve_rglib_for_spec pdir   raw_spec =
+        resolve_rglib_clean pdir (strip_quotes (rglib_trim raw_spec))
+
+fn :: append_rglib_resolved String String  => String
+      append_rglib_resolved acc    ""      =  acc
+      append_rglib_resolved acc    lib_src =  acc + lib_src + "\n"
+
+fn :: append_rglib_from_line String String String => String
+      append_rglib_from_line pdir   line   acc
+        | str_starts_with line "import " =
+          spec = str_slice line 7 (str_len line)
+          lib_src = resolve_rglib_for_spec pdir spec
+          append_rglib_resolved acc lib_src
+        | otherwise = acc
+
+fn :: scan_rglib_imports String String Int Int Int String => String
+      scan_rglib_imports pdir   s      pos len line_start acc
+        | pos >= len =
+          line = rglib_trim (str_slice s line_start len)
+          append_rglib_from_line pdir line acc
+        | (str_char_at s pos) == 10 =
+          line = rglib_trim (str_slice s line_start pos)
+          acc2 = append_rglib_from_line pdir line acc
+          scan_rglib_imports pdir s (pos + 1) len (pos + 1) acc2
+        | otherwise =
+          scan_rglib_imports pdir s (pos + 1) len line_start acc
+
+fn :: load_rg_with_libs String     => String
+      load_rg_with_libs input_path =
+        base_src = load_rg_source input_path
+        raw_file = read_file input_path
+        pdir = rglib_dir_of input_path 0 (str_len input_path) (0 - 1)
+        lib_prefix = scan_rglib_imports pdir raw_file 0 (str_len raw_file) 0 ""
+        lib_prefix + base_src
+
 -- ── Top-Level Program Loop ──────────────────────────────────
 
 fn :: parse_items [RToken]           [RFnDef] [RTypeDef] => RProgram
-      parse_items []                 fns      tys        =  normalize_program (Program fns tys)
-      parse_items (TokEof:_)         fns      tys        =  normalize_program (Program fns tys)
+      parse_items []                 fns      tys        =  Program fns tys
+      parse_items (TokEof:_)         fns      tys        =  Program fns tys
       parse_items (TokNewline:rest)  fns      tys        =  parse_items rest fns tys
       parse_items (TokAt:rest)       fns      tys        =  parse_items (skip_to_newline rest) fns tys
-      parse_items (TokImport:rest)   fns      tys        =  parse_items (skip_to_newline rest) fns tys
+      parse_items (TokImport:rest)   fns      tys        =  parse_import_stmt rest fns tys
       parse_items (TokFn:rest)       fns      tys        =
         f_res = parse_fn_decl ([TokFn] :: rest)
         parse_items_after_fn f_res fns tys
@@ -1890,7 +2059,7 @@ fn :: parse_items_after_type (RTypeDef, [RToken]) [RFnDef] [RTypeDef] => RProgra
         parse_items rest fns (merge_type_def tys tdef)
 
 fn :: parse_tokens [RToken] => RProgram
-      parse_tokens toks     =  parse_items toks [] []
+      parse_tokens toks     =  normalize_program (parse_items toks [] [])
 
 fn :: count_fndef_list [RFnDef] => Int
       count_fndef_list []       =  0

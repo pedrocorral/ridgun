@@ -38,16 +38,22 @@ Learn Ridgun from scratch—from your first tabular function to parallel DAGs, s
 
 # Build all project targets into target/ (or install into ~/.local/bin/)
 ./target/stable built
+./target/stable built lib
 ./target/stable install
 
-# Scaffold a new project or synchronize dependencies from build.rg
+# Scaffold a new app or library project, list tasks/plugins, or sync dependencies
 ./target/stable new my_app
+./target/stable new --lib my_lib
+./target/stable tasks
+./target/stable plugins
 ./target/stable deps
 
-# Compile or run a single .rg file directly with ridgunc (x86_64 or ARM64 Raspberry Pi)
+# Compile or run a single .rg file or library directly with ridgunc (x86_64 or ARM64 Raspberry Pi)
 ./target/ridgunc check my_program.rg
 ./target/ridgunc run my_program.rg
 ./target/ridgunc build my_program.rg -o my_program
+./target/ridgunc build --lib my_lib.rg -o my_lib.rglib
+./target/ridgunc build --so my_lib.rg -o libmy_lib.so
 ./target/ridgunc build --target arm64-linux my_program.rg -o my_program_arm64
 ```
 

@@ -261,6 +261,26 @@ expand type Something = Bool
 fn :: describe something Something => String
       describe something (Bool b)  =  "bool:{b}"
 
+-- Parser edge cases from unix-tools:
+-- 1) Multi-word calls on the left of logical `and` / `or`
+fn :: is comment or flag String => Bool
+      is comment or flag t      =
+        (str starts with t "--") or (str starts with t "#")
+
+fn :: is scoped flag String => Bool
+      is scoped flag t      =
+        (str starts with t "--") and (str contains t "=")
+
+-- 2) Multi-word functions starting with `filter`, `map`, or `fold`
+fn :: filter section loop Int Int => Int
+      filter section loop a   b   =  (a * 10) + b
+
+fn :: map item value Int => Int
+      map item value x   =  x + 100
+
+fn :: fold pair sum Int Int => Int
+      fold pair sum x   y   =  x + y + 1
+
 fn :: main => ()
       main =
         echo "=== Core Language, ADTs, Mixfix, Variadics & Higher-Order Ops ==="
@@ -347,4 +367,12 @@ fn :: main => ()
         assert equals (describe something (MyStruct 3.5 7)) "struct:3.5:7"
         assert equals (describe something True) "bool:True"
         assert equals (describe something (Bool False)) "bool:False"
+        assert equals (is comment or flag "--help") True
+        assert equals (is comment or flag "#comment") True
+        assert equals (is comment or flag "plain") False
+        assert equals (is scoped flag "--mode=fast") True
+        assert equals (is scoped flag "--mode") False
+        assert equals (filter section loop 4 2) 42
+        assert equals (map item value 23) 123
+        assert equals (fold pair sum 10 20) 31
         echo "=== All core language tests passed ==="

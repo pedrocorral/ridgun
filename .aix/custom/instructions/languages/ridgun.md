@@ -11,6 +11,8 @@ Read and follow the `implement-code-ridgun` skill before editing any `.rg` file.
 
 ## Layout and 100% pure-Ridgun ELF64 toolchain (`v0.9.3`)
 - Shared modules live in `src/main/ridgun/lib/*.rg`; executable entrypoints live in `src/main/ridgun/<target>/main.rg` (compiled directly to standalone Linux ELF64 executables at `target/<target>` without Rust, C, or `rustc`).
+- Library compilation (`FR-COMP-006`): modules without `fn :: main => ()` can be compiled as `.rglib` bundles (`ridgunc build --lib <file.rg> -o <out.rglib>`) and native Linux ELF64 `ET_DYN` shared objects (`ridgunc build --so <file.rg> -o <lib.so>`), or built via `stable built lib` (`fn :: project kind => String` = `"lib"` in `build.rg`, scaffolded via `stable new --lib <name>`).
+- Extensible `stable` (`FR-TOOL-003`): projects can declare custom tasks in `build.rg` (`fn :: task <name> => String`) and load plugins (`fn :: plugins => [String]`, `plugins/*.rg`, `.stable/plugins/*.rg`); inspect via `stable tasks` and `stable plugins`.
 - Test suites live in `src/test/ridgun/test*.rg` (including space-separated names such as `src/test/ridgun/test basics.rg` and `src/test/ridgun/test core language.rg`) and import `test` (`assert equals` / `assert_equals`, `assert true` / `assert_true`).
 - Verify every `.rg` change with `stable check` and `stable test` (or `ridgunc check <file.rg>` / `ridgunc run <file.rg>`); apply canonical tabular formatting with `stable format [file...]` (`FR-TOOL-001`, aesthetic only — not enforced by `ridgunc`); build native ELF64 binaries with `stable built` or `ridgunc build [--target x86_64-linux|arm64-linux] <entry.rg> -o <binary>`.
 

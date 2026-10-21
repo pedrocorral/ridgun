@@ -4,3 +4,4 @@
 |---|---|---|---|
 | `FR-TOOL-001` | `FR-TOOL-001-canonical-source-code-formatting.md` | Canonical aesthetic source code formatting (`stable format`) | `implemented` |
 | `FR-TOOL-002` | `FR-TOOL-002-project-scaffolding-dependencies-and-install.md` | Project scaffolding (`new`/`init`), dependency management (`deps`/`add`), and binary installation (`install`) in `stable` | `implemented` |
+| `FR-TOOL-003` | `FR-TOOL-003-extensible-stable-plugins-and-custom-tasks.md` | Extensible `stable` architecture (custom `task` definitions in `build.rg`, `plugins`, and open command extensions for frameworks) | `implemented` |
