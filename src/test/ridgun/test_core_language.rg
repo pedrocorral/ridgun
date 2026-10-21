@@ -1,6 +1,10 @@
 -- ============================================================
 -- src/test/ridgun/test_core_language.rg
 -- Ridgun Test Suite: ADTs, Custom Operators & Variadics
+-- @tests FR-COMP-001
+-- @tests FR-COMP-002
+-- @tests FR-COMP-003
+-- @tests FR-COMP-005
 -- ============================================================
 
 import test
@@ -199,6 +203,48 @@ fn :: eval_logic_ops Bool Bool => (Bool, Bool, Bool, Bool)
       eval_logic_ops a    b    =
         (a and b, a or b, a xor b, not a)
 
+-- ============================================================
+-- FR-COMP-005: Shared ADT Constructors, `expand type`, and Automatic `fn ::` Merging
+-- ============================================================
+
+type ParseOut = Parsed Int | Error String
+type DbOut    = Rows Int   | Error Int String
+type MiniExpr = Var String | Lit Int
+type MiniPat  = Var String | Lit Int | Wild
+
+fn :: describe_parse ParseOut    => String
+      describe_parse (Parsed n)  =  "parsed:{n}"
+      describe_parse (Error msg) =  "parse_err:{msg}"
+
+fn :: describe_db DbOut             => String
+      describe_db (Rows count)      =  "rows:{count}"
+      describe_db (Error code text) =  "db_err:{code}:{text}"
+
+fn :: expr_name MiniExpr   => String
+      expr_name (Var name) =  "expr_var:{name}"
+      expr_name (Lit n)    =  "expr_lit:{n}"
+
+fn :: pat_name MiniPat    => String
+      pat_name (Var name) =  "pat_var:{name}"
+      pat_name (Lit n)    =  "pat_lit:{n}"
+      pat_name Wild       =  "pat_wild"
+
+type AppErr = IoError String | Timeout Int
+
+fn :: format_app_err AppErr        => String
+      format_app_err (IoError msg) =  "IO:{msg}"
+      format_app_err (Timeout ms)  =  "TO:{ms}"
+      format_app_err _             =  "UNKNOWN"
+
+expand type AppErr = AuthError String | DbError Int String
+
+fn :: format_app_err AppErr           => String
+      format_app_err (AuthError user) =  "AUTH:{user}"
+      format_app_err (DbError   code db) = "DB:{code}:{db}"
+
+type AppConfig        = host: String, port: Int
+expand type AppConfig = tls: Bool
+
 fn :: main => ()
       main =
         echo "=== Core Language, ADTs, Mixfix, Variadics & Higher-Order Ops ==="
@@ -260,5 +306,21 @@ fn :: main => ()
         assert_equals (parallel_dag_bottom 6 4) 26
         assert_equals (mut_accum_and_rebind 5) (34, 1, 1)
         assert_equals (eval_logic_ops True False) (False, True, True, False)
+        echo "=== FR-COMP-005: Shared ADT Constructors, expand type, and Clause Merging ==="
+        assert_equals (describe_parse (Error "unexpected token")) "parse_err:unexpected token"
+        assert_equals (describe_db (Error 500 "deadlock")) "db_err:500:deadlock"
+        assert_equals (expr_name (Var "x")) "expr_var:x"
+        assert_equals (pat_name (Var "x")) "pat_var:x"
+        assert_equals (expr_name (Lit 42)) "expr_lit:42"
+        assert_equals (pat_name (Lit 42)) "pat_lit:42"
+        assert_equals (format_app_err (IoError "disk full")) "IO:disk full"
+        assert_equals (format_app_err (Timeout 3000)) "TO:3000"
+        assert_equals (format_app_err (AuthError "alice")) "AUTH:alice"
+        assert_equals (format_app_err (DbError 504 "primary")) "DB:504:primary"
+        cfg0 = AppConfig "localhost" 8080 False
+        cfg1 = cfg0 with tls: True, port: 8443
+        assert_equals (host cfg1) "localhost"
+        assert_equals (port cfg1) 8443
+        assert_equals (tls cfg1) True
         echo "=== All core language tests passed ==="
 

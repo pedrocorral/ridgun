@@ -5,6 +5,7 @@
 -- context, shared, hardware, @packed/@repr, tensors, einsum,
 -- hadamard, sequences/masks, where-DAG, || pipes, string interp.
 -- @implements FR-COMP-001
+-- @implements FR-COMP-005
 -- ============================================================
 import ast
 import lexer
@@ -44,6 +45,7 @@ fn :: is_top_keyword RToken      => Bool
 
 fn :: is_top_decl_start [RToken]    => Bool
       is_top_decl_start (TokType:(TokIdent name):TokEquals:_) = is_upper_ident name
+      is_top_decl_start ((TokIdent "expand"):TokType:(TokIdent name):TokEquals:_) = is_upper_ident name
       is_top_decl_start (TokType:_) =  False
       is_top_decl_start ts          =  is_top_keyword (tok_head ts)
 
@@ -1718,13 +1720,82 @@ fn :: parse_items [RToken]           [RFnDef] [RTypeDef] => RProgram
       parse_items (TokType:(TokIdent name):TokEquals:rest) fns tys =
         t_res = parse_type_decl ([TokType, TokIdent name, TokEquals] :: rest)
         parse_items_after_type t_res fns tys
+      parse_items ((TokIdent "expand"):TokType:(TokIdent name):TokEquals:rest) fns tys =
+        t_res = parse_type_decl ([TokType, TokIdent name, TokEquals] :: rest)
+        parse_items_after_type t_res fns tys
       parse_items ts                 fns      tys
         | line_has_fat_arrow ts = parse_items_after_fn (parse_bare_decl ts) fns tys
         | otherwise = parse_items (skip_to_newline (tok_tail ts)) fns tys
 
+fn :: is_catchall_pat RPattern   => Bool
+      is_catchall_pat PatWild    =  True
+      is_catchall_pat (PatVar _) =  True
+      is_catchall_pat _          =  False
+
+fn :: all_catchall_pats [RPattern] => Bool
+      all_catchall_pats []         =  True
+      all_catchall_pats (p:ps)
+        | is_catchall_pat p = all_catchall_pats ps
+        | otherwise = False
+
+fn :: is_catchall_case RFnCase            => Bool
+      is_catchall_case (FnCase [] _ _)    =  False
+      is_catchall_case (FnCase pats [] _) =  all_catchall_pats pats
+      is_catchall_case (FnCase _ _ _)     =  False
+
+fn :: filter_specific_cases [RFnCase] => [RFnCase]
+      filter_specific_cases []        =  []
+      filter_specific_cases (c:cs)
+        | is_catchall_case c = filter_specific_cases cs
+        | otherwise = [c] :: (filter_specific_cases cs)
+
+fn :: filter_catchall_cases [RFnCase] => [RFnCase]
+      filter_catchall_cases []        =  []
+      filter_catchall_cases (c:cs)
+        | is_catchall_case c = [c] :: (filter_catchall_cases cs)
+        | otherwise = filter_catchall_cases cs
+
+fn :: merge_fn_cases [RFnCase] [RFnCase] => [RFnCase]
+      merge_fn_cases old_cs    new_cs    =
+        (filter_specific_cases old_cs) :: (filter_specific_cases new_cs) :: (filter_catchall_cases new_cs) :: (filter_catchall_cases old_cs)
+
+fn :: has_fn_def [RFnDef] String => Bool
+      has_fn_def []       _      =  False
+      has_fn_def ((FnDef k _ _ _):fs) target
+        | k == target = True
+        | otherwise = has_fn_def fs target
+
+fn :: update_fn_def [RFnDef] RFnDef => [RFnDef]
+      update_fn_def []       _      =  []
+      update_fn_def ((FnDef k old_ps old_ret old_cs):fs) (FnDef target new_ps new_ret new_cs)
+        | k == target = [FnDef k old_ps old_ret (merge_fn_cases old_cs new_cs)] :: (update_fn_def fs (FnDef target new_ps new_ret new_cs))
+        | otherwise = [FnDef k old_ps old_ret old_cs] :: (update_fn_def fs (FnDef target new_ps new_ret new_cs))
+
+fn :: merge_fn_def [RFnDef] RFnDef => [RFnDef]
+      merge_fn_def fns      (FnDef name ps ret cs)
+        | has_fn_def fns name = update_fn_def fns (FnDef name ps ret cs)
+        | otherwise = fns :: [FnDef name ps ret cs]
+
+fn :: has_type_def [RTypeDef] String => Bool
+      has_type_def []         _      =  False
+      has_type_def ((TypeDef k _ _):ts) target
+        | k == target = True
+        | otherwise = has_type_def ts target
+
+fn :: update_type_def [RTypeDef] RTypeDef => [RTypeDef]
+      update_type_def []         _        =  []
+      update_type_def ((TypeDef k old_vs old_fs):ts) (TypeDef target new_vs new_fs)
+        | k == target = [TypeDef k (old_vs :: new_vs) (old_fs :: new_fs)] :: (update_type_def ts (TypeDef target new_vs new_fs))
+        | otherwise = [TypeDef k old_vs old_fs] :: (update_type_def ts (TypeDef target new_vs new_fs))
+
+fn :: merge_type_def [RTypeDef] RTypeDef => [RTypeDef]
+      merge_type_def tys        (TypeDef name vs fs)
+        | has_type_def tys name = update_type_def tys (TypeDef name vs fs)
+        | otherwise = tys :: [TypeDef name vs fs]
+
 fn :: parse_items_after_fn (RFnDef, [RToken]) [RFnDef] [RTypeDef] => RProgram
       parse_items_after_fn (fdef, rest)       fns      tys        =
-        parse_items rest (fns :: [fdef]) tys
+        parse_items rest (merge_fn_def fns fdef) tys
 
 fn :: parse_items_after_fndefs ([RFnDef], [RToken]) [RFnDef] [RTypeDef] => RProgram
       parse_items_after_fndefs (new_fns, rest) fns tys =
@@ -1732,7 +1803,7 @@ fn :: parse_items_after_fndefs ([RFnDef], [RToken]) [RFnDef] [RTypeDef] => RProg
 
 fn :: parse_items_after_type (RTypeDef, [RToken]) [RFnDef] [RTypeDef] => RProgram
       parse_items_after_type (tdef, rest) fns tys =
-        parse_items rest fns (tys :: [tdef])
+        parse_items rest fns (merge_type_def tys tdef)
 
 fn :: parse_tokens [RToken] => RProgram
       parse_tokens toks     =  parse_items toks [] []

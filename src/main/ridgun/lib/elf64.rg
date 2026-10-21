@@ -76,59 +76,52 @@ fn :: hex_byte_at String Int => Int
       hex_byte_at s      pos =
         ((hex_nibble (str_char_at s pos)) * 16) + (hex_nibble (str_char_at s (pos + 1)))
 
-fn :: hex_to_bytes_loop String Int        Int [Int] => [Int]
-      hex_to_bytes_loop s      pos        len acc
-        | pos >= len = acc
-        | (pos + 32) <= len =
+fn :: hex_to_bytes_chunk String Int       Int [Int] => [Int]
+      hex_to_bytes_chunk s      pos       end acc
+        | pos >= end = acc
+        | (pos + 8) <= end =
           b0 = hex_byte_at s pos
           b1 = hex_byte_at s (pos + 2)
           b2 = hex_byte_at s (pos + 4)
           b3 = hex_byte_at s (pos + 6)
-          b4 = hex_byte_at s (pos + 8)
-          b5 = hex_byte_at s (pos + 10)
-          b6 = hex_byte_at s (pos + 12)
-          b7 = hex_byte_at s (pos + 14)
-          b8 = hex_byte_at s (pos + 16)
-          b9 = hex_byte_at s (pos + 18)
-          b10 = hex_byte_at s (pos + 20)
-          b11 = hex_byte_at s (pos + 22)
-          b12 = hex_byte_at s (pos + 24)
-          b13 = hex_byte_at s (pos + 26)
-          b14 = hex_byte_at s (pos + 28)
-          b15 = hex_byte_at s (pos + 30)
-      hex_to_bytes_loop s      (pos + 32) len (acc :: [b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15])
+      hex_to_bytes_chunk s      (pos + 8) end (acc :: [b0, b1, b2, b3])
         | otherwise =
-          hex_to_bytes_loop s (pos + 2) len (acc :: [hex_byte_at s pos])
+          hex_to_bytes_chunk s (pos + 2) end (acc :: [hex_byte_at s pos])
+
+fn :: hex_to_bytes_range String Int   Int => [Int]
+      hex_to_bytes_range s      start end
+        | start >= end = []
+        | (end - start) <= 64 = hex_to_bytes_chunk s start end []
+        | otherwise =
+          half_pairs = ((end - start) / 4) * 2
+          mid = start + half_pairs
+          (hex_to_bytes_range s start mid) :: (hex_to_bytes_range s mid end)
 
 fn :: hex_to_bytes String => [Int]
-      hex_to_bytes s      =  hex_to_bytes_loop s 0 (str_len s) []
+      hex_to_bytes s      =  hex_to_bytes_range s 0 (str_len s)
 
-fn :: str_to_bytes_loop String Int        Int [Int] => [Int]
-      str_to_bytes_loop s      pos        len acc
-        | pos >= len = acc
-        | (pos + 16) <= len =
+fn :: str_to_bytes_chunk String Int       Int [Int] => [Int]
+      str_to_bytes_chunk s      pos       end acc
+        | pos >= end = acc
+        | (pos + 4) <= end =
           b0 = str_char_at s pos
           b1 = str_char_at s (pos + 1)
           b2 = str_char_at s (pos + 2)
           b3 = str_char_at s (pos + 3)
-          b4 = str_char_at s (pos + 4)
-          b5 = str_char_at s (pos + 5)
-          b6 = str_char_at s (pos + 6)
-          b7 = str_char_at s (pos + 7)
-          b8 = str_char_at s (pos + 8)
-          b9 = str_char_at s (pos + 9)
-          b10 = str_char_at s (pos + 10)
-          b11 = str_char_at s (pos + 11)
-          b12 = str_char_at s (pos + 12)
-          b13 = str_char_at s (pos + 13)
-          b14 = str_char_at s (pos + 14)
-          b15 = str_char_at s (pos + 15)
-      str_to_bytes_loop s      (pos + 16) len (acc :: [b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15])
+      str_to_bytes_chunk s      (pos + 4) end (acc :: [b0, b1, b2, b3])
         | otherwise =
-          str_to_bytes_loop s (pos + 1) len (acc :: [str_char_at s pos])
+          str_to_bytes_chunk s (pos + 1) end (acc :: [str_char_at s pos])
+
+fn :: str_to_bytes_range String Int   Int => [Int]
+      str_to_bytes_range s      start end
+        | start >= end = []
+        | (end - start) <= 32 = str_to_bytes_chunk s start end []
+        | otherwise =
+          mid = start + ((end - start) / 2)
+          (str_to_bytes_range s start mid) :: (str_to_bytes_range s mid end)
 
 fn :: str_to_bytes String => [Int]
-      str_to_bytes s      =  str_to_bytes_loop s 0 (str_len s) []
+      str_to_bytes s      =  str_to_bytes_range s 0 (str_len s)
 
 fn :: zero_bytes_loop Int   [Int] => [Int]
       zero_bytes_loop count acc

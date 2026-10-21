@@ -3,10 +3,23 @@
 -- Canonical Ridgun v0.9.3 Reference Cheatsheet for AI Agents
 -- ============================================================
 
--- 1. Sum Algebraic Data Types (ADTs) & Product Records
-type Shape = Circle Int | Rect Int Int
-
+-- 1. Sum ADTs, Shared Constructors, Open `expand type` & Product Records (`FR-COMP-005`)
+type Shape      = Circle Int | Rect Int Int
+type Expr       = Var String | Lit Int
+type Pat        = Var String | Lit Int | Wild
+type AppErr     = IoError String | Timeout Int
 type ServerSpec = host: String, port: Int, tls: Bool
+
+fn :: format_err AppErr        => String
+      format_err (IoError msg) =  "IO:{msg}"
+      format_err (Timeout ms)  =  "TO:{ms}"
+      format_err _             =  "UNKNOWN"
+
+expand type AppErr = AuthError String | DbError Int String
+
+fn :: format_err AppErr           => String
+      format_err (AuthError user) =  "AUTH:{user}"
+      format_err (DbError   code db) = "DB:{code}:{db}"
 
 -- 2. Tabular Pattern Matching & Polymorphic Generics (A..Z)
 fn :: head_or [A]   A => A

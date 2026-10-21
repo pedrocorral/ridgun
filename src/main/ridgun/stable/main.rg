@@ -159,7 +159,7 @@ op :: sum check results [(Int, Int)] ok Int  err Int   => (Int, Int)
 
 op :: check modules [String] ok Int  err Int   => (Int, Int)
       check modules files    ok ok_c err err_c =
-        results = ||map check_single_module files
+        results = map check_single_module files
         sum check results results ok ok_c err err_c
 
 op :: print error lines [String] => ()
@@ -225,7 +225,7 @@ op :: sum ints [Int]     acc Int   => Int
 op :: compile modules [String] into String  count Int   => Int
       compile modules files    into out_dir count c_acc =
         pairs = pair paths files with dir out_dir
-        counts = ||map compile_single_module pairs
+        counts = map compile_single_module pairs
         sum ints counts acc c_acc
 
 op :: run task compile on StableConfig => Int
@@ -264,7 +264,7 @@ fn :: build_single_entry (String, String, String) => Int
 op :: build entry list [String] into String version String errors Int => Int
       build entry list entries into out_dir version ver errors err_acc =
         triples = pair entries entries with dir out_dir version ver
-        codes = ||map build_single_entry triples
+        codes = map build_single_entry triples
         sum ints codes acc err_acc
 
 op :: run task build on StableConfig args [String]  => Int
@@ -354,7 +354,7 @@ op :: record single test outcome Int suite String => (Int, Int)
 op :: execute test suites [String] passed Int    failed Int    => (Int, Int)
       execute test suites suites   passed pass_c failed fail_c =
         _ = shell_exec "mkdir -p target"
-        results = ||map run_single_test_suite suites
+        results = map run_single_test_suite suites
         sum check results results ok pass_c err fail_c
 
 op :: run task test on StableConfig => Int
@@ -404,7 +404,7 @@ fn :: format_single_file String => Int
 
 op :: format file list [String] changed Int   total Int   => (Int, Int)
       format file list paths    changed chg_c total tot_c =
-        deltas = ||map format_single_file paths
+        deltas = map format_single_file paths
         (sum ints deltas acc chg_c, tot_c + (list_str_len paths))
 
 op :: include build file if present => [String]

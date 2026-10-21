@@ -510,6 +510,43 @@ type List = Empty | Cons Int List
 type Tree = Leaf Int | Node Tree Tree
 ```
 
+#### Shared Constructor Names Across Types (`FR-COMP-005`)
+
+Multiple `type` declarations can reuse the same variant constructor names (such as `Error`, `Var`, `Lit`, `None`) with the same or different arities. The typechecker disambiguates constructor patterns via the expected parameter type of the column, and resolves constructor calls by argument arity/types and union ADT return types:
+
+```ridgun
+type ParseOut = Parsed Int | Error String
+type DbOut    = Rows Int   | Error Int String
+type MiniExpr = Var String | Lit Int
+type MiniPat  = Var String | Lit Int | Wild
+```
+
+#### Open Type Extensions (`expand type`) & Automatic `fn ::` Clause Merging (`FR-COMP-005`)
+
+Existing Sum ADTs and Product Records can be extended with `expand type UpperName = ...`:
+
+- **Extending a Sum ADT**: appends new variant constructors to the existing type.
+- **Extending a Product Record**: appends new named fields (`field: Type`) and auto-generates their field accessor functions.
+- **Automatic `fn ::` / `op ::` Clause Merging (without `expand fn`)**: re-declaring an existing `fn ::` or `op ::` with new pattern clauses automatically merges those clauses into the existing function definition, placing specific constructor/literal pattern clauses **before** any catch-all (`_` / variable) fallback clause:
+
+```ridgun
+type AppErr = IoError String | Timeout Int
+
+fn :: format_app_err AppErr        => String
+      format_app_err (IoError msg) =  "IO:{msg}"
+      format_app_err (Timeout ms)  =  "TO:{ms}"
+      format_app_err _             =  "UNKNOWN"
+
+expand type AppErr = AuthError String | DbError Int String
+
+fn :: format_app_err AppErr              => String
+      format_app_err (AuthError user)    =  "AUTH:{user}"
+      format_app_err (DbError   code db) =  "DB:{code}:{db}"
+
+type AppConfig        = host: String, port: Int
+expand type AppConfig = tls: Bool
+```
+
 ---
 
 ## Unified `=` Grammar (`(none)`, `|`, `||`) & Local Variables (`FR-COMP-003`)

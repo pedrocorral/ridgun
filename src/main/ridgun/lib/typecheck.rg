@@ -10,6 +10,7 @@
 -- - Integrates Static Analyzer Errors (Where Cycles, Parallel
 --   Mutation Conflicts, Use-After-Channel-Send)
 -- @implements FR-COMP-001
+-- @implements FR-COMP-005
 -- @implements FR-VM-001
 -- @implements FR-VM-002
 -- ============================================================
@@ -163,6 +164,7 @@ fn :: types_compatible RType              RType              => Bool
       types_compatible (TyVar a)          (TyVar b)
         | a == b = True
         | (is_poly_type_var a) OR (is_poly_type_var b) = True
+        | (str_starts_with a "adt:") AND (str_starts_with b "adt:") AND ((str_contains a b) OR (str_contains b a)) = True
         | otherwise = False
       types_compatible (TyVar a)          _                  =  is_poly_type_var a
       types_compatible _                  (TyVar b)          =  is_poly_type_var b
@@ -212,10 +214,27 @@ fn :: builtin_fn_types => [RTypeBind]
       builtin_fn_types =
         [TypeBind "spawn" (TyFun [TyString] TyInt), TypeBind "join" (TyFun [TyInt] TyInt), TypeBind "new_bounded_channel" (TyFun [TyInt] TyInt), TypeBind "send_through" (TyFun [TyVar "A", TyInt] TyUnit), TypeBind "chan_send" (TyFun [TyVar "A", TyInt] TyUnit), TypeBind "receive_from" (TyFun [TyInt] (TyVar "A")), TypeBind "chan_recv" (TyFun [TyInt] (TyVar "A")), TypeBind "try_receive_from" (TyFun [TyInt] (TyVar "Option")), TypeBind "chan_try_recv" (TyFun [TyInt] (TyVar "Option")), TypeBind "receive_from_timeout" (TyFun [TyInt, TyInt] (TyVar "Option")), TypeBind "str_len" (TyFun [TyString] TyInt), TypeBind "str_char_at" (TyFun [TyString, TyInt] TyInt), TypeBind "str_slice" (TyFun [TyString, TyInt, TyInt] TyString), TypeBind "char_from_code" (TyFun [TyInt] TyString), TypeBind "str_concat" (TyFun [TyString, TyString] TyString), TypeBind "int_to_str" (TyFun [TyInt] TyString), TypeBind "str_to_int" (TyFun [TyString] TyInt), TypeBind "str_starts_with" (TyFun [TyString, TyString] TyBool), TypeBind "str_contains" (TyFun [TyString, TyString] TyBool), TypeBind "read_file" (TyFun [TyString] TyString), TypeBind "load_rg_source" (TyFun [TyString] TyString), TypeBind "read_bytes" (TyFun [TyString] (TyList TyInt)), TypeBind "write_bytes" (TyFun [TyString, TyList TyInt] TyUnit), TypeBind "write_file" (TyFun [TyString, TyString] TyUnit), TypeBind "shell_exec" (TyFun [TyString] TyInt), TypeBind "map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "||map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "||filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "fold" (TyFun [TyFun [TyVar "B", TyVar "A"] (TyVar "B"), TyVar "B", TyList (TyVar "A")] (TyVar "B")), TypeBind "list_dir" (TyFun [TyString] (TyList TyString)), TypeBind "file_lstat" (TyFun [TyString] (TyTuple [TyBool, TyString, TyInt, TyInt, TyInt, TyString, TyString, TyInt, TyString])), TypeBind "sha256_file" (TyFun [TyString] TyString), TypeBind "sha256_str" (TyFun [TyString] TyString), TypeBind "sys_mkdir" (TyFun [TyString, TyInt] TyInt), TypeBind "sys_chmod" (TyFun [TyString, TyInt] TyInt), TypeBind "sys_exec" (TyFun [TyString, TyList TyString, TyList TyString] TyInt), TypeBind "sys_chdir" (TyFun [TyString] TyInt), TypeBind "sys_getcwd" (TyFun [] TyString), TypeBind "sys_getenv" (TyFun [TyString] TyString), TypeBind "sys_setenv" (TyFun [TyString, TyString] TyInt), TypeBind "sys_exit" (TyFun [TyInt] TyUnit), TypeBind "sys_getuid" (TyFun [] TyInt), TypeBind "sys_getgid" (TyFun [] TyInt), TypeBind "sys_username" (TyFun [TyInt] TyString), TypeBind "sys_user_groups" (TyFun [TyString] (TyList TyString)), TypeBind "sys_lookup_uid_gid" (TyFun [TyString] (TyTuple [TyInt, TyInt])), TypeBind "sys_setresgid" (TyFun [TyInt] TyInt), TypeBind "sys_setgroups" (TyFun [TyList TyInt] TyInt), TypeBind "sys_setresuid" (TyFun [TyInt] TyInt), TypeBind "sys_execve" (TyFun [TyString, TyList TyString, TyList TyString] TyInt), TypeBind "sys_read_pass" (TyFun [TyString] TyString), TypeBind "cmm_live_blocks" (TyFun [] TyInt), TypeBind "cmm_cond_spared" (TyFun [] TyInt), TypeBind "cmm_cond_freed" (TyFun [] TyInt), TypeBind "cmm_same_ptr" (TyFun [TyVar "A", TyVar "A"] TyBool)]
 
+fn :: join_adt_ret_ty RType     RType     => RType
+      join_adt_ret_ty (TyVar a) (TyVar b)
+        | (str_starts_with a "adt:") AND (str_starts_with b "adt:") AND (NOT (str_contains a b)) = TyVar (a + "|" + b)
+        | otherwise = TyVar a
+      join_adt_ret_ty a         _         =  a
+
+fn :: put_ctor_local_bind [RTypeBind] String RType  => [RTypeBind]
+      put_ctor_local_bind locals      ctor   adt_ty =
+        prev = lookup_type_bind locals ctor
+        put_ctor_local_step locals ctor adt_ty prev
+
+fn :: put_ctor_local_step [RTypeBind] String RType (Bool, RType) => [RTypeBind]
+      put_ctor_local_step locals ctor adt_ty (True, prev_ty) =
+        put_type_bind locals ctor (join_adt_ret_ty prev_ty adt_ty)
+      put_ctor_local_step locals ctor adt_ty (False, _) =
+        put_type_bind locals ctor adt_ty
+
 fn :: register_variants [String] [RVariant] RType [RTypeBind] [RTypeBind] => ([RTypeBind], [RTypeBind])
       register_variants _ [] _ locals fns = (locals, fns)
       register_variants tnames ((TypeVariant ctor []):vs) adt_ty locals fns =
-        register_variants tnames vs adt_ty (put_type_bind locals ctor adt_ty) fns
+        register_variants tnames vs adt_ty (put_ctor_local_bind locals ctor adt_ty) fns
       register_variants tnames ((TypeVariant ctor arg_strs):vs) adt_ty locals fns =
         arg_tys = qualify_declared_adt_list tnames (parse_type_list_strs arg_strs)
         register_variants tnames vs adt_ty locals (put_type_bind fns ctor (TyFun arg_tys adt_ty))
@@ -288,6 +307,42 @@ fn :: extract_fun_params (Bool, RType) => [RType]
       extract_fun_params (True, (TyFun params _)) = params
       extract_fun_params _             =  []
 
+fn :: pat_list_arity [RPattern] => Int
+      pat_list_arity []         =  0
+      pat_list_arity (_:xs)     =  1 + (pat_list_arity xs)
+
+fn :: lookup_ctor_for_type [RTypeBind] String RType    Int   => (Bool, [RType])
+      lookup_ctor_for_type []          _      _        _     =  (False, [])
+      lookup_ctor_for_type ((TypeBind k (TyFun params ret_ty)):rest) target expected arity
+        | k == target AND (rtype_list_len params) == arity AND (types_compatible ret_ty expected) = (True, params)
+        | otherwise = lookup_ctor_for_type rest target expected arity
+      lookup_ctor_for_type (_:rest)    target expected arity =
+        lookup_ctor_for_type rest target expected arity
+
+fn :: lookup_ctor_by_arity [RTypeBind] String Int   => (Bool, [RType])
+      lookup_ctor_by_arity []          _      _     =  (False, [])
+      lookup_ctor_by_arity ((TypeBind k (TyFun params _)):rest) target arity
+        | k == target AND (rtype_list_len params) == arity = (True, params)
+        | otherwise = lookup_ctor_by_arity rest target arity
+      lookup_ctor_by_arity (_:rest)    target arity =
+        lookup_ctor_by_arity rest target arity
+
+fn :: ctor_param_types_for [RTypeBind] String    RType    Int   => [RType]
+      ctor_param_types_for fns         ctor_name expected arity =
+        by_ty = lookup_ctor_for_type fns ctor_name expected arity
+        ctor_param_types_fallback fns ctor_name arity by_ty
+
+fn :: ctor_param_types_fallback [RTypeBind] String Int (Bool, [RType]) => [RType]
+      ctor_param_types_fallback _ _ _ (True, params) = params
+      ctor_param_types_fallback fns ctor_name arity (False, _) =
+        by_ar = lookup_ctor_by_arity fns ctor_name arity
+        ctor_param_types_arity_fallback fns ctor_name by_ar
+
+fn :: ctor_param_types_arity_fallback [RTypeBind] String (Bool, [RType]) => [RType]
+      ctor_param_types_arity_fallback _ _ (True, params) = params
+      ctor_param_types_arity_fallback fns ctor_name (False, _) =
+        ctor_param_types fns ctor_name
+
 fn :: bind_pattern RPattern RType [RTypeBind] [RTypeBind] => [RTypeBind]
       bind_pattern (PatVar v) expected locals _ =
         put_type_bind locals v expected
@@ -298,8 +353,8 @@ fn :: bind_pattern RPattern RType [RTypeBind] [RTypeBind] => [RTypeBind]
         bind_pattern t (TyList elem_ty) locals1 fns
       bind_pattern (PatTuple pats) (TyTuple tys) locals fns =
         bind_tuple_pats pats tys 0 locals fns
-      bind_pattern (PatCtor ctor_name args) _ locals fns =
-        param_tys = ctor_param_types fns ctor_name
+      bind_pattern (PatCtor ctor_name args) expected locals fns =
+        param_tys = ctor_param_types_for fns ctor_name expected (pat_list_arity args)
         bind_tuple_pats args param_tys 0 locals fns
       bind_pattern _ _ locals _ = locals
 
@@ -660,11 +715,28 @@ fn :: check_call_target String [RType] [RTypeError] (Bool, RType) String => (RTy
 fn :: prepend_type_errs [RTypeError] (RType, [RTypeError]) => (RType, [RTypeError])
       prepend_type_errs errs1 (ty, errs2) = (ty, errs1 :: errs2)
 
+fn :: lookup_record_field_for_type [RTypeBind] String RType   => (Bool, RType)
+      lookup_record_field_for_type []          _      _       =  (False, TyInt)
+      lookup_record_field_for_type ((TypeBind k (TyFun (rec_ty:[]) fty)):rest) target base_ty
+        | k == target AND (types_compatible base_ty rec_ty) = (True, TyFun [rec_ty] fty)
+        | otherwise = lookup_record_field_for_type rest target base_ty
+      lookup_record_field_for_type (_:rest)    target base_ty =
+        lookup_record_field_for_type rest target base_ty
+
+fn :: lookup_record_field_bind [RTypeBind] String RType   => (Bool, RType)
+      lookup_record_field_bind fns         fname  base_ty =
+        by_ty = lookup_record_field_for_type fns fname base_ty
+        lookup_record_field_fallback fns fname by_ty
+
+fn :: lookup_record_field_fallback [RTypeBind] String (Bool, RType) => (Bool, RType)
+      lookup_record_field_fallback _ _ (True, ty) = (True, ty)
+      lookup_record_field_fallback fns fname (False, _) = lookup_type_bind fns fname
+
 fn :: check_record_update_fields (RType, [RTypeError]) [RExpr] String [RTypeBind] [RTypeBind] => (RType, [RTypeError])
       check_record_update_fields (base_ty, base_errs) [] _ _ _ = (base_ty, base_errs)
       check_record_update_fields (base_ty, base_errs) ((EStr fname):val_e:rest) fn_name locals fns =
         v_res = check_expr val_e fn_name locals fns
-        f_errs = check_one_record_field base_ty fname v_res fn_name (lookup_type_bind fns fname)
+        f_errs = check_one_record_field base_ty fname v_res fn_name (lookup_record_field_bind fns fname base_ty)
         check_record_update_fields (base_ty, base_errs :: f_errs) rest fn_name locals fns
       check_record_update_fields (base_ty, base_errs) (_:rest) fn_name locals fns =
         check_record_update_fields (base_ty, base_errs) rest fn_name locals fns
@@ -815,6 +887,37 @@ fn :: finish_binop_check RBinOp (RType, [RTypeError]) (RType, [RTypeError]) [RTy
         b_res = check_binop bop l_ty r_ty fns fn_name
         prepend_type_errs (l_errs :: r_errs) b_res
 
+fn :: args_match_params [RType] [RType] => Bool
+      args_match_params []      []      =  True
+      args_match_params (a:as)  (p:ps)
+        | types_compatible a p = args_match_params as ps
+        | otherwise = False
+      args_match_params _       _       =  False
+
+fn :: collect_matching_sigs [RTypeBind] String [RType] => [RType]
+      collect_matching_sigs []          _      _       =  []
+      collect_matching_sigs ((TypeBind k (TyFun param_tys ret_ty)):rest) target arg_tys
+        | k == target AND (rtype_list_len param_tys) == (rtype_list_len arg_tys) AND (args_match_params arg_tys param_tys) = [TyFun param_tys ret_ty] :: (collect_matching_sigs rest target arg_tys)
+        | otherwise = collect_matching_sigs rest target arg_tys
+      collect_matching_sigs (_:rest)    target arg_tys =
+        collect_matching_sigs rest target arg_tys
+
+fn :: merge_matching_sigs [RType] => (Bool, RType)
+      merge_matching_sigs []      =  (False, TyInt)
+      merge_matching_sigs (s:[])  =  (True, s)
+      merge_matching_sigs ((TyFun p1 r1):(TyFun _ r2):rest) =
+        merge_matching_sigs ([TyFun p1 (join_adt_ret_ty r1 r2)] :: rest)
+      merge_matching_sigs (s:_)   =  (True, s)
+
+fn :: resolve_callee_for_args String [RType] [RTypeBind] [RTypeBind] => (Bool, RType)
+      resolve_callee_for_args callee arg_tys locals fns =
+        matched = merge_matching_sigs (collect_matching_sigs fns callee arg_tys)
+        resolve_callee_args_fallback callee locals fns matched
+
+fn :: resolve_callee_args_fallback String [RTypeBind] [RTypeBind] (Bool, RType) => (Bool, RType)
+      resolve_callee_args_fallback _ _ _ (True, ty) = (True, ty)
+      resolve_callee_args_fallback callee locals fns (False, _) = resolve_callee_bind callee locals fns
+
 fn :: resolve_callee_bind String [RTypeBind] [RTypeBind] => (Bool, RType)
       resolve_callee_bind callee locals      fns         =
         fn_b = lookup_type_bind fns callee
@@ -835,7 +938,7 @@ fn :: specialize_hof_return String [RType] (RType, [RTypeError]) => (RType, [RTy
 fn :: finish_call_check String ([RType], [RTypeError]) String [RTypeBind] [RTypeBind] => (RType, [RTypeError])
       finish_call_check "spawn" (_, arg_errs) _ _ _ = (TyInt, arg_errs)
       finish_call_check callee (arg_tys, arg_errs) fn_name locals fns =
-        base_res = check_call_target callee arg_tys arg_errs (resolve_callee_bind callee locals fns) fn_name
+        base_res = check_call_target callee arg_tys arg_errs (resolve_callee_for_args callee arg_tys locals fns) fn_name
         specialize_hof_return callee arg_tys base_res
 
 fn :: check_where_binds [RWhereBind] String [RTypeBind] [RTypeBind] => ([RTypeBind], [RTypeError])

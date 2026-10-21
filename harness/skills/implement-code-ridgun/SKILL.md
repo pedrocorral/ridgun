@@ -125,7 +125,26 @@ Every `=` (in `fn ::`, `op ::`, local bindings `x =` / `mut x =`, and guard bran
   - Multicore parallel (work-stealing worker threads): **`||map f xs`** and **`||filter p xs`**.
 
 ### 3.5 Types, ADTs, Record Updates (`with`), and Natural-Language Mixfix (`op ::`)
-- **Sum ADTs**: `type Shape = Circle Int | Rect Int Int` or polymorphic `type Option A = None | Some A`.
+- **Sum ADTs & Shared Constructor Names (`FR-COMP-005`)**:
+  - `type Shape = Circle Int | Rect Int Int` or polymorphic `type Option A = None | Some A`.
+  - Multiple `type` declarations can share variant constructor names (such as `Error`, `Var`, `Lit`, `None`) with the same or different arities; the typechecker resolves them by expected column type and argument types.
+- **Open Type Extensions (`expand type`) & Automatic `fn ::` Clause Merging (`FR-COMP-005`)**:
+  - Append new variants to an existing Sum ADT or new fields to an existing Product Record using `expand type`:
+  ```ridgun
+  type AppErr = IoError String | Timeout Int
+
+  fn :: format_err AppErr        => String
+        format_err (IoError msg) =  "IO: {msg}"
+        format_err (Timeout ms)  =  "Timeout: {ms} ms"
+        format_err _             =  "Unknown error"
+
+  expand type AppErr = AuthError String | DbError Int String
+
+  -- Re-declaring `fn :: format_err` merges new clauses BEFORE the `_` catch-all:
+  fn :: format_err AppErr              => String
+        format_err (AuthError user)    =  "Auth failed: {user}"
+        format_err (DbError   code db) =  "DB {code}: {db}"
+  ```
 - **Product Records & Functional Updates (`with`)**:
   ```ridgun
   type Config = debug: Bool, threads: Int, name: String
