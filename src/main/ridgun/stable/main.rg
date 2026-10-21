@@ -1,6 +1,6 @@
 -- ============================================================
 -- src/main/ridgun/stable/main.rg
--- `stable` v0.9.4 — The Interactive Build Tool for Ridgun (100% Ridgun)
+-- `stable` v0.9.5 — The Interactive Build Tool for Ridgun (100% Ridgun)
 -- Written in Ridgun's natural-language mixfix operator style (`op :: ...`).
 -- Inspired by Scala's sbt: parses `build.rg` using the Ridgun
 -- compiler AST, supports `src/main/ridgun/lib/` + parallel
@@ -118,7 +118,7 @@ op :: extract function body from [RFnDef] named String default String => String
 
 op :: load build config from String     => StableConfig
       load build config from build_path
-        | NOT (file build_path exists) = ProjectConfig "ridgunc" "0.9.4" "src/main/ridgun/ridgunc/main.rg" "src/main/ridgun" "src/test/ridgun" "target"
+        | NOT (file build_path exists) = ProjectConfig "ridgunc" "0.9.5" "src/main/ridgun/ridgunc/main.rg" "src/main/ridgun" "src/test/ridgun" "target"
         | otherwise = parse build config source (read_file build_path)
 
 op :: parse build config source String => StableConfig
@@ -130,7 +130,7 @@ op :: parse build config source String => StableConfig
 op :: extract config from program RProgram        => StableConfig
       extract config from program (Program fns _) =
         name_str = extract function body from fns named "project_name" default "ridgunc"
-        ver = extract function body from fns named "project_version" default "0.9.4"
+        ver = extract function body from fns named "project_version" default "0.9.5"
         main_ep = extract function body from fns named "main_entry" default "src/main/ridgun/ridgunc/main.rg"
         sdir = extract function body from fns named "source_dir" default "src/main/ridgun"
         tdir = extract function body from fns named "test_dir" default "src/test/ridgun"
@@ -265,7 +265,7 @@ op :: extract kind from program RProgram        => String
       extract kind from program (Program fns _) =
         extract function body from fns named "project_kind" default "bin"
 
-op :: resolve lib entry for String in String default String => String
+op :: resolve lib entry for String in String default String  => String
       resolve lib entry for tname  in sdir   default main_ep
         | file tname exists = tname
         | file (sdir + "/lib/" + tname + ".rg") exists = sdir + "/lib/" + tname + ".rg"
@@ -293,7 +293,7 @@ op :: report library build of String    so String status1 Int status2 Int => Int
         _ = echo "[error] Library build failed for {out_rglib} / {out_so} (status {st1}, {st2})"
         1
 
-op :: run task build lib on StableConfig args [String] => Int
+op :: run task build lib on StableConfig args [String]  => Int
       run task build lib on (ProjectConfig name_str ver main_ep sdir _ out_dir) args [] =
         lib_ep = resolve lib entry for name_str in sdir default main_ep
         build library artifacts from lib_ep into out_dir named name_str version ver
@@ -324,10 +324,10 @@ op :: build entry list [String] into String version String errors Int => Int
         codes = map build_single_entry triples
         sum ints codes acc err_acc
 
-op :: run task build on StableConfig args [String]  => Int
-      run task build on cfg args ("lib":rest) =
+op :: run task build on StableConfig args [String]       => Int
+      run task build on cfg          args ("lib":rest)   =
         run task build lib on cfg args rest
-      run task build on cfg args ("--lib":rest) =
+      run task build on cfg          args ("--lib":rest) =
         run task build lib on cfg args rest
       run task build on (ProjectConfig name_str ver main_ep sdir tdir out_dir) args []
         | (load project kind from "build.rg") == "lib" =
@@ -583,8 +583,8 @@ op :: scaffold lib project named String in String => Int
         _ = echo "[success] Scaffolded Ridgun library project '{pname}' in {root}/"
         0
 
-op :: run task new args [String]  => Int
-      run task new args []        =
+op :: run task new args [String]          => Int
+      run task new args []                =
         _ = echo "[error] Usage: stable new [--lib] <project_name>"
         1
       run task new args ("--lib":pname:_)
@@ -603,7 +603,7 @@ op :: run task new args [String]  => Int
           1
         | otherwise = scaffold project named pname in pname
 
-op :: run task init args [String] => Int
+op :: run task init args [String]    => Int
       run task init args ("--lib":_)
         | file "build.rg" exists =
           _ = echo "[info] build.rg already exists in current directory."
@@ -705,8 +705,8 @@ op :: task display name of String   => String
       task display name of raw_name =
         replace underscores in raw_name at 0 len (str_len raw_name) acc ""
 
-op :: extract tasks from fns [RFnDef] origin String => [StableTask]
-      extract tasks from fns []       origin _      =  []
+op :: extract tasks from fns [RFnDef]    origin String     => [StableTask]
+      extract tasks from fns []          origin _          =  []
       extract tasks from fns ((FnDef fn_name _ _ ((FnCase _ _ (EStr cmd)):_)):rem_fns) origin orig_label
         | (str_starts_with fn_name "task_") AND ((str_len fn_name) > 5) =
           raw_key = str_slice fn_name 5 (str_len fn_name)
@@ -716,8 +716,8 @@ op :: extract tasks from fns [RFnDef] origin String => [StableTask]
       extract tasks from fns (_:rem_fns) origin orig_label =
         extract tasks from fns rem_fns origin orig_label
 
-op :: extract tasks from program RProgram origin String => [StableTask]
-      extract tasks from program (Program fns _) origin orig =
+op :: extract tasks from program RProgram        origin String => [StableTask]
+      extract tasks from program (Program fns _) origin orig   =
         extract tasks from fns fns origin orig
 
 op :: load tasks from file String origin String => [StableTask]
@@ -819,8 +819,8 @@ op :: pick longer task match (Bool, Int, String, String, [String]) and (Bool, In
         | otherwise = (True, len1, d1, c1, e1)
 
 op :: find matching custom task in [StableTask] for [String] => (Bool, Int, String, String, [String])
-      find matching custom task in []           for _        =  (False, 0, "", "", [])
-      find matching custom task in (t:rem_ts)   for args_list =
+      find matching custom task in [] for _ = (False, 0, "", "", [])
+      find matching custom task in (t:rem_ts) for args_list =
         m1 = match task entry t against args_list
         m2 = find matching custom task in rem_ts for args_list
         pick longer task match m1 and m2
@@ -875,8 +875,8 @@ op :: report plugin file list [String] => Int
         _ = print plugin files pfiles
         0
 
-op :: run custom shell task String command String extra [String] => Int
-      run custom shell task disp   command cmd    extra []       =
+op :: run custom shell task String command String extra [String]   => Int
+      run custom shell task disp   command cmd    extra []         =
         _ = echo "[task:{disp}] {cmd}"
         shell_exec cmd
       run custom shell task disp   command cmd    extra extra_args =
@@ -885,7 +885,7 @@ op :: run custom shell task String command String extra [String] => Int
         _ = echo "[task:{disp}] {full_cmd}"
         shell_exec full_cmd
 
-op :: run executable plugin String args [String] => Int
+op :: run executable plugin String args [String]   => Int
       run executable plugin ppath  args extra_args =
         _ = shell_exec "mkdir -p target"
         bname = base filename of ppath at 0 len (str_len ppath) slash (0 - 1)
@@ -925,40 +925,40 @@ op :: run task help => Int
 
 -- ── Command Parser & Extensible `StableCommand` Dispatcher ───
 
-op :: parse stable command [String] => (Bool, StableCommand, String)
-      parse stable command [] = (True, CmdNoop, "")
-      parse stable command ("exit":_) = (True, CmdExit, "")
-      parse stable command ("quit":_) = (True, CmdExit, "")
-      parse stable command ("q":_) = (True, CmdExit, "")
-      parse stable command ("help":_) = (True, CmdHelp, "")
-      parse stable command ("-h":_) = (True, CmdHelp, "")
-      parse stable command ("--help":_) = (True, CmdHelp, "")
-      parse stable command ("version":_) = (True, CmdVersion, "")
-      parse stable command ("-v":_) = (True, CmdVersion, "")
-      parse stable command ("info":_) = (True, CmdInfo, "")
-      parse stable command ("status":_) = (True, CmdInfo, "")
-      parse stable command ("reload":_) = (True, CmdReload, "")
-      parse stable command ("check":_) = (True, CmdCheck, "")
-      parse stable command ("new":extra) = (True, CmdNew extra, "")
-      parse stable command ("init":extra) = (True, CmdInit extra, "")
-      parse stable command ("deps":_) = (True, CmdDeps, "")
-      parse stable command ("add":extra) = (True, CmdAdd extra, "")
-      parse stable command ("install":extra) = (True, CmdInstall extra, "")
-      parse stable command ("format":extra) = (True, CmdFormat extra, "")
-      parse stable command ("fmt":extra) = (True, CmdFormat extra, "")
-      parse stable command ("compile":_) = (True, CmdCompile, "")
+op :: parse stable command [String]          => (Bool, StableCommand, String)
+      parse stable command []                =  (True, CmdNoop, "")
+      parse stable command ("exit":_)        =  (True, CmdExit, "")
+      parse stable command ("quit":_)        =  (True, CmdExit, "")
+      parse stable command ("q":_)           =  (True, CmdExit, "")
+      parse stable command ("help":_)        =  (True, CmdHelp, "")
+      parse stable command ("-h":_)          =  (True, CmdHelp, "")
+      parse stable command ("--help":_)      =  (True, CmdHelp, "")
+      parse stable command ("version":_)     =  (True, CmdVersion, "")
+      parse stable command ("-v":_)          =  (True, CmdVersion, "")
+      parse stable command ("info":_)        =  (True, CmdInfo, "")
+      parse stable command ("status":_)      =  (True, CmdInfo, "")
+      parse stable command ("reload":_)      =  (True, CmdReload, "")
+      parse stable command ("check":_)       =  (True, CmdCheck, "")
+      parse stable command ("new":extra)     =  (True, CmdNew extra, "")
+      parse stable command ("init":extra)    =  (True, CmdInit extra, "")
+      parse stable command ("deps":_)        =  (True, CmdDeps, "")
+      parse stable command ("add":extra)     =  (True, CmdAdd extra, "")
+      parse stable command ("install":extra) =  (True, CmdInstall extra, "")
+      parse stable command ("format":extra)  =  (True, CmdFormat extra, "")
+      parse stable command ("fmt":extra)     =  (True, CmdFormat extra, "")
+      parse stable command ("compile":_)     =  (True, CmdCompile, "")
       parse stable command ("build":"lib":extra) = (True, CmdBuildLib extra, "")
       parse stable command ("built":"lib":extra) = (True, CmdBuildLib extra, "")
       parse stable command ("build":"--lib":extra) = (True, CmdBuildLib extra, "")
       parse stable command ("built":"--lib":extra) = (True, CmdBuildLib extra, "")
-      parse stable command ("build":extra) = (True, CmdBuild extra, "")
-      parse stable command ("built":extra) = (True, CmdBuild extra, "")
-      parse stable command ("run":extra) = (True, CmdRun extra, "")
-      parse stable command ("test":_) = (True, CmdTest, "")
-      parse stable command ("clean":_) = (True, CmdClean, "")
-      parse stable command ("tasks":_) = (True, CmdTasks, "")
-      parse stable command ("plugins":_) = (True, CmdPlugins, "")
-      parse stable command args_list =
+      parse stable command ("build":extra)   =  (True, CmdBuild extra, "")
+      parse stable command ("built":extra)   =  (True, CmdBuild extra, "")
+      parse stable command ("run":extra)     =  (True, CmdRun extra, "")
+      parse stable command ("test":_)        =  (True, CmdTest, "")
+      parse stable command ("clean":_)       =  (True, CmdClean, "")
+      parse stable command ("tasks":_)       =  (True, CmdTasks, "")
+      parse stable command ("plugins":_)     =  (True, CmdPlugins, "")
+      parse stable command args_list         =
         custom_ts = load all custom tasks
         t_match = find matching custom task in custom_ts for args_list
         resolve extension command args_list match t_match
@@ -973,9 +973,9 @@ op :: resolve extension command [String] match (Bool, Int, String, String, [Stri
         (True, CmdNoop, "")
 
 op :: resolve plugin exec command String [String] path String => (Bool, StableCommand, String)
-      resolve plugin exec command first_w _      path ""    =
+      resolve plugin exec command first_w _ path "" =
         (False, CmdNoop, first_w)
-      resolve plugin exec command _       rest_w path ppath =
+      resolve plugin exec command _ rest_w path ppath =
         (True, CmdPluginExec ppath rest_w, "")
 
 -- Core `StableCommand` dispatch clauses
@@ -984,7 +984,7 @@ op :: dispatch command StableCommand on StableConfig => (Bool, StableConfig, Int
       dispatch command CmdExit on cfg = (False, cfg, 0)
       dispatch command CmdHelp on cfg = (True, cfg, run task help)
       dispatch command CmdVersion on cfg =
-        _ = echo "stable 0.9.4 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
+        _ = echo "stable 0.9.5 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
         (True, cfg, 0)
       dispatch command CmdInfo on cfg = (True, cfg, run task info on cfg)
       dispatch command CmdReload on _ =
@@ -1016,7 +1016,7 @@ op :: dispatch command StableCommand on StableConfig => (Bool, StableConfig, Int
         (True, cfg, run executable plugin ppath args extra)
 
 op :: execute command [String] on StableConfig => (Bool, StableConfig, Int)
-      execute command words on cfg =
+      execute command words    on cfg          =
         parsed = parse stable command words
         execute parsed command parsed on cfg
 
@@ -1050,7 +1050,7 @@ op :: repl continue with (Bool, StableConfig, Int) => ()
 
 op :: start interactive shell for StableConfig => ()
       start interactive shell for (ProjectConfig name_str ver main_ep sdir tdir out_dir) =
-        _ = echo "[info] Welcome to stable 0.9.4 (Ridgun Build Tool — 100% Ridgun)"
+        _ = echo "[info] Welcome to stable 0.9.5 (Ridgun Build Tool — 100% Ridgun)"
         _ = echo "[info] Loading project definition from build.rg ..."
         _ = echo "[info] Set current project to '{name_str}' v{ver} (main: {main_ep})"
         _ = echo "[info] Commands: 'built' (or 'build'), 'run', 'test', 'check', 'compile', 'clean', 'info', 'exit'"

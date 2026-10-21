@@ -1,6 +1,7 @@
 -- ============================================================
 -- src/main/ridgun/vm.rg
 -- Self-Hosted Ridgun Bytecode Virtual Machine in Ridgun
+-- @implements FR-COMP-007
 -- ============================================================
 import ast
 import lexer
@@ -147,6 +148,8 @@ fn :: vm_step_instr [RCompiledFn] [RInstr] RInstr Int [Int] [Int] => Int
         a = rstack_top s1
         s2 = rstack_pop s1
         vm_branch_neq fns code ip target_ip a b locals s2
+      vm_step_instr fns code (BPushCtx _) ip locals stack =
+        vm_exec_fn fns code (ip + 1) locals (rstack_pop stack)
       vm_step_instr fns code (BCall callee argc) ip locals stack =
         pop_res = pop_n_args stack argc []
         vm_invoke_callee fns code (ip + 1) locals callee pop_res

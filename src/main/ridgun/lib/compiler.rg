@@ -7,6 +7,7 @@
 -- Shared Atomics, and Bare-Metal Hardware MMIO & Region Quotas.
 -- @implements FR-COMP-001
 -- @implements FR-COMP-006
+-- @implements FR-COMP-007
 -- @implements FR-VM-001
 -- @implements FR-VM-002
 -- ============================================================
@@ -591,7 +592,7 @@ fn :: build_str_pool_loop [String] Int     String [RStrEntry] => RStrPool
 
 fn :: build_str_pool [RFnDef] [String]   => RStrPool
       build_str_pool fns      extra_strs =
-        base_strs = ["", "+", "-", "*", "/", "%"] :: extra_strs
+        base_strs = ["", "+", "-", "*", "/", "%", "Linux", "MacOS", "Windows", "X86_64", "Arm64"] :: extra_strs
         all_strs = collect_fndef_list_strs fns base_strs
         build_str_pool_loop all_strs 0 "" []
 
@@ -875,19 +876,23 @@ fn :: binop_op_tag RBinOp => String
       binop_op_tag OpMod  =  "%"
       binop_op_tag _      =  "+"
 
-fn :: builtin_zero_arg_id String            => Int
-      builtin_zero_arg_id "cli_args"        =  0
-      builtin_zero_arg_id "new_mailbox"     =  1
-      builtin_zero_arg_id "mailbox"         =  1
-      builtin_zero_arg_id "new_channel"     =  1
-      builtin_zero_arg_id "channel"         =  1
-      builtin_zero_arg_id "sys_getcwd"      =  2
-      builtin_zero_arg_id "sys_getuid"      =  3
-      builtin_zero_arg_id "sys_getgid"      =  4
-      builtin_zero_arg_id "cmm_live_blocks" =  5
-      builtin_zero_arg_id "cmm_cond_spared" =  6
-      builtin_zero_arg_id "cmm_cond_freed"  =  7
-      builtin_zero_arg_id _                 =  -1
+fn :: builtin_zero_arg_id String             => Int
+      builtin_zero_arg_id "cli_args"         =  0
+      builtin_zero_arg_id "new_mailbox"      =  1
+      builtin_zero_arg_id "mailbox"          =  1
+      builtin_zero_arg_id "new_channel"      =  1
+      builtin_zero_arg_id "channel"          =  1
+      builtin_zero_arg_id "sys_getcwd"       =  2
+      builtin_zero_arg_id "sys_getuid"       =  3
+      builtin_zero_arg_id "sys_getgid"       =  4
+      builtin_zero_arg_id "sys_getpid"       =  70
+      builtin_zero_arg_id "sys_time_ms"      =  71
+      builtin_zero_arg_id "sys_deadline_ms"  =  72
+      builtin_zero_arg_id "sys_remaining_ms" =  73
+      builtin_zero_arg_id "cmm_live_blocks"  =  5
+      builtin_zero_arg_id "cmm_cond_spared"  =  6
+      builtin_zero_arg_id "cmm_cond_freed"   =  7
+      builtin_zero_arg_id _                  =  -1
 
 fn :: builtin_call_id String             => Int
       builtin_call_id "cli_args"         =  0
@@ -955,6 +960,20 @@ fn :: builtin_call_id String             => Int
       builtin_call_id "fold"             =  61
       builtin_call_id "sys_exec"         =  62
       builtin_call_id "sys_execve"       =  63
+      builtin_call_id "sys_getpid"       =  70
+      builtin_call_id "sys_time_ms"      =  71
+      builtin_call_id "sys_deadline_ms"  =  72
+      builtin_call_id "sys_remaining_ms" =  73
+      builtin_call_id "sys_sleep_ms"     =  74
+      builtin_call_id "sys_open_mode"    =  75
+      builtin_call_id "sys_open"         =  76
+      builtin_call_id "sys_close"        =  77
+      builtin_call_id "sys_read_fd"      =  78
+      builtin_call_id "sys_write_fd"     =  79
+      builtin_call_id "sys_poll"         =  80
+      builtin_call_id "sys_terminate"    =  81
+      builtin_call_id "sys_kill"         =  82
+      builtin_call_id "sys_call"         =  83
       builtin_call_id _                  =  -1
 
 -- ── Expression & Statement Lowering to Native IR ─────────────
@@ -1004,6 +1023,10 @@ fn :: lower_var_expr RNativeEnv String [String] Int RNativeCode => RNativeCode
       lower_var_expr env name bound_locals sp st
         | (lookup_local bound_locals name) >= 0 =
           nc_emit st (NCloneSlot (env_var_slot env name)) sp
+        | name == "sys_os" =
+          nc_emit st (NLoadAdt0 (env_str_off env "Linux") 5) sp
+        | name == "sys_arch" =
+          nc_emit st (NLoadAdt0 (0 - 1) 0) sp
         | is_upper_ident name =
           off = env_str_off env name
           nc_emit st (NLoadAdt0 off (str_len name)) sp
@@ -1037,6 +1060,10 @@ fn :: lower_call_expr RNativeEnv String [RExpr] [String] Int RNativeCode => RNat
       lower_call_expr env fname [] bound_locals sp st
         | (lookup_local bound_locals fname) >= 0 =
           nc_emit st (NCloneSlot (env_var_slot env fname)) sp
+        | fname == "sys_os" =
+          nc_emit st (NLoadAdt0 (env_str_off env "Linux") 5) sp
+        | fname == "sys_arch" =
+          nc_emit st (NLoadAdt0 (0 - 1) 0) sp
       lower_call_expr env fname (a1:[]) bound_locals sp st
         | (lookup_local bound_locals fname) >= 0 =
           st1 = lower_expr env a1 bound_locals sp st
@@ -1170,6 +1197,11 @@ fn :: lower_expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
         count = rexpr_list_len branches
         st1 = lower_expr_list_to_slots env branches bound_locals sp 0 st
         nc_emit st1 (NMakeTuple sp count) (sp + count + 1)
+      lower_expr env (EWithCtx "__rg_timeout_ms__" val_e body) bound_locals sp st =
+        st1 = lower_expr env val_e bound_locals sp st
+        st2 = nc_emit_list st1 [NStoreSlot sp, NCallBuiltin 84 sp 1] (sp + 1)
+        st3 = lower_expr env body bound_locals sp st2
+        nc_emit_list st3 [NStoreSlot sp, NCallBuiltin 85 sp 1] (sp + 1)
       lower_expr env (EWithCtx ctx_name val_e body) bound_locals sp st =
         off = env_str_off env ctx_name
         klen = str_len ctx_name
@@ -1374,7 +1406,7 @@ fn :: lower_tco_arg_expr RNativeEnv RExpr [RExpr] [String] [String] Int RNativeC
         st1 = lower_tco_arg_list_to_slots env elems es bound_locals scope_vars sp 0 st
         nc_emit st1 (NMakeTuple sp count) (sp + count + 1)
       lower_tco_arg_expr env (ECall fname args) es bound_locals scope_vars sp st
-        | (lookup_local bound_locals fname) < 0 AND (NOT (is_upper_ident fname)) AND (builtin_call_id fname) < 0 AND fname != "__record_update__" AND fname != "__unpack2__" =
+        | (lookup_local bound_locals fname) < 0 AND (NOT (is_upper_ident fname)) AND (builtin_call_id fname) < 0 AND fname != "sys_os" AND fname != "sys_arch" AND fname != "__record_update__" AND fname != "__unpack2__" =
           count = rexpr_list_len args
           st1 = lower_tco_arg_list_to_slots env args es bound_locals scope_vars sp 0 st
           nc_emit st1 (NCallFn (env_fn_id env fname) sp count) (sp + count + 1)
@@ -1932,7 +1964,7 @@ fn :: emit_rgc_payload RProgram String  => String
         fn_count = count_fn_defs prog
         ty_count = count_type_defs prog
         summaries = join_summaries (analyze_rprogram prog)
-        "RGC1\n-- SELF_HOSTED_COMPILER: ridgunc v0.9.4\n-- FUNCTIONS: {fn_count}\n-- TYPES: {ty_count}\n{summaries}{raw_src}"
+        "RGC1\n-- SELF_HOSTED_COMPILER: ridgunc v0.9.5\n-- FUNCTIONS: {fn_count}\n-- TYPES: {ty_count}\n{summaries}{raw_src}"
 
 fn :: emit_rgc_file String     String      => Int
       emit_rgc_file input_path output_path =
@@ -1956,7 +1988,7 @@ fn :: emit_rglib_payload RProgram String  => String
         fn_count = count_fn_defs prog
         ty_count = count_type_defs prog
         summaries = join_summaries (analyze_rprogram prog)
-        "-- RGLIB1\n-- SELF_HOSTED_COMPILER: ridgunc v0.9.4\n-- FUNCTIONS: {fn_count}\n-- TYPES: {ty_count}\n{summaries}{raw_src}"
+        "-- RGLIB1\n-- SELF_HOSTED_COMPILER: ridgunc v0.9.5\n-- FUNCTIONS: {fn_count}\n-- TYPES: {ty_count}\n{summaries}{raw_src}"
 
 fn :: emit_rglib_file String     String      => Int
       emit_rglib_file input_path output_path =

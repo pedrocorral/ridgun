@@ -1,4 +1,4 @@
-# AGENTS.md — Ridgun Agent Harness (`v0.9.3`)
+# AGENTS.md — Ridgun Agent Harness (`v0.9.5`)
 
 Drop-in agent instructions for any AI coding assistant working on a **Ridgun (`.rg`)** repository.
 
@@ -7,7 +7,7 @@ Drop-in agent instructions for any AI coding assistant working on a **Ridgun (`.
 2. Read `harness/skills/implement-code-ridgun/SKILL.md` (complete grammar, anti-patterns table, built-in runtime functions, and toolchain workflow) and `harness/skills/implement-stable-project/SKILL.md` (`stable` commands, `.rglib`/`.so` library builds, custom tasks, and framework plugins).
 3. Inspect `harness/skills/implement-code-ridgun/references/cheatsheet.rg`, `harness/skills/implement-stable-project/references/build_cheatsheet.rg`, and `harness/skills/implement-stable-project/references/plugin_cheatsheet.rg` for canonical, verified examples.
 
-## 2. Core Golden Rules of Ridgun (`v0.9.3`)
+## 2. Core Golden Rules of Ridgun (`v0.9.5`)
 1. **100% Pure Ridgun Toolchain (Executables & Reusable Libraries)**:
    - The compiler (`target/ridgunc`) and project manager/formatter (`target/stable`) are 100% self-hosted in Ridgun (`src/main/ridgun/`) and emit standalone Linux ELF64 executables (`x86_64` and `ARM64` / Raspberry Pi), `.rglib` library bundles (`ridgunc build --lib`), and ELF64 `ET_DYN` shared objects (`ridgunc build --so`, `stable built lib`) directly without Rust, C, or `rustc`.
 2. **Extensible `stable` Tasks & Plugins (`FR-TOOL-003`)**:

@@ -3,6 +3,7 @@
 -- Pure-Ridgun Native ARM64 (AArch64) Machine-Code Assembler & ELF64 Emitter
 -- Targets Linux AArch64 / Raspberry Pi (EM_AARCH64 = 183)
 -- @implements FR-COMP-004
+-- @implements FR-COMP-007
 -- ============================================================
 
 import elf64
@@ -185,6 +186,8 @@ fn :: arm64_encode_instr RNativeInstr Int Int Int Int [RLabelEntry] [RLabelEntry
         (arm64_mov_imm64 0 (rodata_vaddr + off)) :: (arm64_mov_imm64 1 len) :: (arm64_bl_rt 11 (cur_vaddr + 32))
       arm64_encode_instr (NLoadStrLit off len) cur_vaddr _ _ rodata_vaddr _ _ =
         (arm64_mov_imm64 0 (rodata_vaddr + off)) :: (arm64_mov_imm64 1 len) :: (arm64_bl_rt 12 (cur_vaddr + 32))
+      arm64_encode_instr (NLoadAdt0 -1 0) cur_vaddr _ _ rodata_vaddr _ _ =
+        (arm64_mov_imm64 0 (rodata_vaddr + 28)) :: (arm64_mov_imm64 1 5) :: (arm64_bl_rt 13 (cur_vaddr + 32))
       arm64_encode_instr (NLoadAdt0 off len) cur_vaddr _ _ rodata_vaddr _ _ =
         (arm64_mov_imm64 0 (rodata_vaddr + off)) :: (arm64_mov_imm64 1 len) :: (arm64_bl_rt 13 (cur_vaddr + 32))
       arm64_encode_instr (NCloneSlot slot) cur_vaddr _ _ _ _ _ =
@@ -355,6 +358,8 @@ fn :: arm64_rt_slot Int => [Int]
       arm64_rt_slot 34  =  (u32_le 3531538432) :: (u32_le 3596551104)
       -- rt_37 (rg_bin_op): branch to 0x401240 (+70 words from slot 37)
       arm64_rt_slot 37  =  (u32_le 335544390) :: (u32_le 3573751839)
+      -- rt_55 (rg_call_builtin / PAL dispatch): branch to 0x401270 (+46 words from slot 55)
+      arm64_rt_slot 55  =  (u32_le 335544366) :: (u32_le 3573751839)
       -- Default slot: RET ; NOP
       arm64_rt_slot _   =  (u32_le 3596551104) :: (u32_le 3573751839)
 
@@ -384,7 +389,9 @@ fn :: build_arm64_rt_kernel => [Int]
         -- 0x401240 (rg_bin_op, 12 words = 48 bytes):
         -- LDR X9, [X1] ; ASR X9, X9, #1 ; ASR X10, X2, #1 ; ADD/SUB/MUL dispatch ; LSL X0, X0, #1 ; ORR X0, X0, #1 ; RET
         binop_code = (u32_le 4181721129) :: (u32_le 2470575399) :: (u32_le 2470575178) :: (u32_le 3942649856) :: (u32_le 1409286148) :: (u32_le 2332688681) :: (u32_le 335544323) :: (u32_le 3406430505) :: (u32_le 2583691561) :: (u32_le 3544186880) :: (u32_le 2990538752) :: (u32_le 3596551104)
-        jt :: start_code :: init_frame_code :: tco_code :: match_int_code :: match_bool_code :: binop_code
+        -- 0x401270 (rg_call_builtin PAL dispatch, 23 words = 92 bytes):
+        builtin_code = (u32_le 4043380767) :: (u32_le 1409286337) :: (u32_le 3531609480) :: (u32_le 3556769793) :: (u32_le 3544186880) :: (u32_le 2990538752) :: (u32_le 3596551104) :: (u32_le 4043387935) :: (u32_le 1409286401) :: (u32_le 4181721120) :: (u32_le 2470575104) :: (u32_le 3531605800) :: (u32_le 3556769793) :: (u32_le 3544186880) :: (u32_le 2990538752) :: (u32_le 3596551104) :: (u32_le 4043396127) :: (u32_le 1409286273) :: (u32_le 4181721120) :: (u32_le 4177526847) :: (u32_le 3596551104) :: (u32_le 3531603968) :: (u32_le 3596551104)
+        jt :: start_code :: init_frame_code :: tco_code :: match_int_code :: match_bool_code :: binop_code :: builtin_code
 
 -- ── Public ARM64 ELF64 Image Builder ─────────────────────────
 

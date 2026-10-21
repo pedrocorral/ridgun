@@ -1,4 +1,4 @@
-# Ridgun (`v0.9.4`)
+# Ridgun (`v0.9.5`)
 
 **A tabular, pure-by-default functional & systems programming language built for massive parallelism, symbolic tensor algebra, and deterministic zero-GC memory management.**
 

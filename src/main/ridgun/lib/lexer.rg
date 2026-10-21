@@ -2,8 +2,9 @@
 -- src/main/ridgun/lexer.rg
 -- Self-Hosted Ridgun Lexer (Full v0.9.0 Spec Scanner)
 -- Supports: Keywords, Identifiers, Int, Hex (0x...), Byte Units
--- (_KB/_MB/_GB), Real (f64), Interpolated Strings, Raw Strings,
+-- (_KB/_MB/_GB/_ms/_s/_min), Real (f64), Interpolated Strings, Raw Strings,
 -- Attributes (@), Ellipsis (...), and Operators.
+-- @implements FR-COMP-007
 -- ============================================================
 import ast
 
@@ -132,6 +133,9 @@ fn :: check_byte_unit_suffix String Int   Int Int => (RToken, Int)
         | (end_n + 3) <= len AND (str_slice src end_n (end_n + 3)) == "_KB" = (TokInt (val * 1024), end_n + 3)
         | (end_n + 3) <= len AND (str_slice src end_n (end_n + 3)) == "_MB" = (TokInt (val * 1048576), end_n + 3)
         | (end_n + 3) <= len AND (str_slice src end_n (end_n + 3)) == "_GB" = (TokInt (val * 1073741824), end_n + 3)
+        | (end_n + 4) <= len AND (str_slice src end_n (end_n + 4)) == "_min" = (TokInt (val * 60000), end_n + 4)
+        | (end_n + 3) <= len AND (str_slice src end_n (end_n + 3)) == "_ms" = (TokInt val, end_n + 3)
+        | (end_n + 2) <= len AND (str_slice src end_n (end_n + 2)) == "_s" AND ((end_n + 2) == len OR NOT (is_alnum (str_char_at src (end_n + 2)))) = (TokInt (val * 1000), end_n + 2)
         | otherwise = (TokInt val, end_n)
 
 fn :: tok_dec_or_real String Int Int   Int => (RToken, Int)

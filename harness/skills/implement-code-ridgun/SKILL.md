@@ -1,14 +1,14 @@
 ---
 name: implement-code-ridgun
-description: Implement, refactor or review Ridgun (.rg) code and build.rg definitions using the exact Ridgun v0.9.3 grammar, type system, RMM1/RMM2 deterministic memory rules, parallel || DAGs, and pure-Ridgun stable/ridgunc ELF64 toolchain; use for any Ridgun (.rg) change.
+description: Implement, refactor or review Ridgun (.rg) code and build.rg definitions using the exact Ridgun v0.9.5 grammar, type system, RMM1/RMM2 deterministic memory rules, parallel || DAGs, with timeout quotas, PAL primitives, and pure-Ridgun stable/ridgunc ELF64 toolchain; use for any Ridgun (.rg) change.
 ---
-# implement-code-ridgun (`v0.9.3`)
+# implement-code-ridgun (`v0.9.5`)
 
 Reading budget: `harness/skills/implement-code-ridgun/references/cheatsheet.rg` (or `docs/lang/spec.md` when a construct is unfamiliar), `build.rg`, and the target `.rg` files under `src/main/ridgun/` or `src/test/ridgun/`.
 
 ---
 
-## 1. Project & Architecture Overview (`v0.9.3`)
+## 1. Project & Architecture Overview (`v0.9.5`)
 - **100% Pure Ridgun (Zero Rust / Zero `rustc`)**: Both `ridgunc` (`src/main/ridgun/ridgunc/main.rg`) and `stable` (`src/main/ridgun/stable/main.rg`) are written 100% in Ridgun and emit standalone, statically linked Linux ELF64 executables directly to disk via `elf64.rg`, `x86_64.rg` (`EM_X86_64 = 62`), and `arm64.rg` (`EM_AARCH64 = 183` for Raspberry Pi).
 - **Project Layout**:
   - `build.rg`: Pure-Ridgun project manifest (`fn :: project name => String`, `project version`, `main entry`, `source dir`, `test dir`, `target dir`).
@@ -20,7 +20,7 @@ Reading budget: `harness/skills/implement-code-ridgun/references/cheatsheet.rg` 
 
 ## 2. LLM Anti-Patterns: "Never Write This → Write This Instead"
 
-| Common LLM Mistake (INVALID) | Correct Ridgun `v0.9.3` (VALID) | Why |
+| Common LLM Mistake (INVALID) | Correct Ridgun `v0.9.5` (VALID) | Why |
 |---|---|---|
 | `// comment` or `# comment` | `-- comment` | Only `--` starts a comment |
 | `import "lib/ast.rg"` | `import ast` | Bare module identifier, no quotes or path |
@@ -180,8 +180,9 @@ Ridgun achieves deterministic memory management with **zero Garbage Collector pa
    - **Rule 1 (Arguments Untouched)**: Entering/exiting a function adds `+0 / -0` to argument reference counts.
    - **Rule 2 (`+1` on Assignment)**: Binding a structure to a local variable (`x = s`), rebinding a `mut` variable (`x = new_s`), or storing it inside a parent container increments its reference count (`+1`).
    - **Rule 3 (`-1` on Scope Exit & Child Cascade)**: At function exit, the returned local variable is spared (`-0` in transit), while all other local structure variables are decremented (`-1`). When a parent container's count reaches `0`, it frees its own node and cascades `-1` to its direct children.
-3. **Lexical Arena Quotas (`with region`)**:
+3. **Lexical Arena & Timeout Quotas (`with region`, `with timeout`) (`FR-COMP-002`, `FR-COMP-007`)**:
    - `with region 64_KB do expr` allocates inside a bounded arena (`_KB`, `_MB`, `_GB`) and frees the entire region in $O(1)$ on block exit.
+   - `with timeout 500_ms do expr` (and `with region 64_MB, timeout 500_ms do expr`) establishes a monotonic deadline (`_ms`, `_s`, `_min`), clamps `sys poll` inside the block, and exposes `sys deadline ms` and `sys remaining ms`.
 
 ---
 
@@ -231,8 +232,19 @@ Ridgun achieves deterministic memory management with **zero Garbage Collector pa
 | | `sys_readlink p` / `sys_getcwd` / `sys_getenv k` | `String => String` / `=> String` | Read symlink, cwd, or env var |
 | | `sys_chdir p` | `String => Bool` | Change working directory |
 | | `sys_exit code` | `Int => ()` | Exit process immediately |
-| | `sys_getpid` / `sys_time_ms` | `=> Int` | Process ID / epoch time in ms |
+| | `sys_os` / `sys_arch` | `=> SysOs` / `=> SysArch` | Target OS (`Linux \| MacOS \| Windows`) & CPU arch (`X86_64 \| Arm64`) |
+| | `sys_getpid` / `sys_time_ms` | `=> Int` | Process ID / monotonic time in ms |
+| | `sys_deadline_ms` / `sys_remaining_ms` | `=> Int` | Active `with timeout` deadline / remaining budget in ms (`0` / `-1` if none) |
 | | `sys_sleep_ms ms` | `Int => ()` | Sleep for `ms` milliseconds |
+| | `sys_open_mode path mode` | `String String => Int` | Portable open (`"r"`, `"w"`, `"a"`, `"rw"`, `"w+"`, `"a+"` -> `fd >= 0` or `-errno`) |
+| | `sys_open path flags mode` | `String Int Int => Int` | PAL descriptor open (`flags`: `0`/`1`/`2`/`64`/`512`/`1024`/`2048` -> `fd >= 0` or `-errno`) |
+| | `sys_close fd` | `Int => Int` | Close descriptor (`0` or `-errno`) |
+| | `sys_read_fd fd max_bytes` | `Int Int => String` | Unbuffered descriptor read (`""` on EOF/error) |
+| | `sys_write_fd fd data` | `Int String => Int` | Unbuffered descriptor write (bytes written or `-errno`) |
+| | `sys_poll fd events timeout_ms` | `Int Int Int => Int` | Poll descriptor readiness (`1`=`POLLIN`, `4`=`POLLOUT`; clamped to `with timeout`) |
+| | `sys_terminate pid force` | `Int Bool => Int` | Portable process termination (`False` graceful, `True` forced) |
+| | `sys_kill pid sig` | `Int Int => Int` | Send normalized signal (`0`/`2`/`9`/`15`) to process `pid` |
+| | `sys_call nr a1 a2 a3 a4 a5 a6` | `Int Int Int Int Int Int Int => Int` | Escape hatch for raw 6-arg target-OS ABI syscall |
 | | `shell_exec cmd` | `String => Int` | Execute shell command and return exit code |
 | **RMM Diagnostics** | `cmm_same_ptr a b` | `[A] [A] => Bool` | `True` if `a` and `b` share the exact same heap pointer |
 | | `cmm_live_blocks` / `cmm_cond_freed` / `cmm_cond_spared` | `=> Int` | Live heap blocks, conditional frees, and spared return blocks |

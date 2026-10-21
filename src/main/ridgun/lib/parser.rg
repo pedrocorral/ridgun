@@ -7,6 +7,7 @@
 -- @implements FR-COMP-001
 -- @implements FR-COMP-005
 -- @implements FR-COMP-006
+-- @implements FR-COMP-007
 -- ============================================================
 import ast
 import lexer
@@ -376,7 +377,7 @@ fn :: is_atom_tok RToken        => Bool
 
 fn :: is_with_block_start [RToken] => Bool
       is_with_block_start (TokWith:(TokIdent s):_)
-        | s == "region" = True
+        | s == "region" OR s == "timeout" = True
       is_with_block_start (TokWith:(TokIdent _):TokEquals:_) = True
       is_with_block_start _        =  False
 
@@ -395,9 +396,33 @@ fn :: skip_do_token [RToken]     => [RToken]
       skip_do_token (TokDo:rest) =  rest
       skip_do_token ts           =  ts
 
+fn :: parse_with_region_after Int   [RToken] => (RExpr, [RToken])
+      parse_with_region_after quota (TokComma:(TokIdent t_kw):rest)
+        | t_kw == "timeout" =
+          d_res = parse_logic_expr rest
+          wrap_with_region quota (parse_with_ctx_body "__rg_timeout_ms__" d_res)
+      parse_with_region_after quota rest     =
+        wrap_with_region quota (parse_case_body (skip_do_token (skip_newlines rest)))
+
+fn :: parse_with_timeout_after (RExpr, [RToken]) => (RExpr, [RToken])
+      parse_with_timeout_after (dur_e, (TokComma:(TokIdent r_kw):(TokIdent l_kw):(TokInt quota):rest))
+        | r_kw == "region" AND l_kw == "limit" =
+          b_res = parse_case_body (skip_do_token (skip_newlines rest))
+          wrap_with_ctx "__rg_timeout_ms__" dur_e (wrap_with_region quota b_res)
+      parse_with_timeout_after (dur_e, (TokComma:(TokIdent r_kw):(TokInt quota):rest))
+        | r_kw == "region" =
+          b_res = parse_case_body (skip_do_token (skip_newlines rest))
+          wrap_with_ctx "__rg_timeout_ms__" dur_e (wrap_with_region quota b_res)
+      parse_with_timeout_after d_res             =
+        parse_with_ctx_body "__rg_timeout_ms__" d_res
+
 fn :: parse_with_expr [RToken] => (RExpr, [RToken])
       parse_with_expr (TokWith:(TokIdent r_kw):(TokIdent l_kw):(TokInt quota):rest)
-        | r_kw == "region" AND l_kw == "limit" = wrap_with_region quota (parse_case_body (skip_do_token rest))
+        | r_kw == "region" AND l_kw == "limit" = parse_with_region_after quota rest
+      parse_with_expr (TokWith:(TokIdent r_kw):(TokInt quota):rest)
+        | r_kw == "region" = parse_with_region_after quota rest
+      parse_with_expr (TokWith:(TokIdent t_kw):rest)
+        | t_kw == "timeout" = parse_with_timeout_after (parse_logic_expr rest)
       parse_with_expr (TokWith:(TokIdent ctx_name):TokEquals:rest) =
         v_res = parse_logic_expr rest
         parse_with_ctx_body ctx_name v_res
@@ -405,7 +430,12 @@ fn :: parse_with_expr [RToken] => (RExpr, [RToken])
       parse_with_expr []       =  (EUnit, [])
 
 fn :: wrap_with_region Int   (RExpr, [RToken]) => (RExpr, [RToken])
-      wrap_with_region quota (body, rest)      =  (EWithRegion quota body, rest)
+      wrap_with_region quota (body, rest)      =
+        dot_res = strip_optional_pipe_dot rest
+        finish_with_region quota body dot_res
+
+fn :: finish_with_region Int   RExpr (Bool, [RToken]) => (RExpr, [RToken])
+      finish_with_region quota body  (_, after_dot)   =  (EWithRegion quota body, after_dot)
 
 fn :: parse_with_ctx_body String   (RExpr, [RToken]) => (RExpr, [RToken])
       parse_with_ctx_body ctx_name (val_e, rest)     =
@@ -414,7 +444,12 @@ fn :: parse_with_ctx_body String   (RExpr, [RToken]) => (RExpr, [RToken])
         wrap_with_ctx ctx_name val_e b_res
 
 fn :: wrap_with_ctx String   RExpr (RExpr, [RToken]) => (RExpr, [RToken])
-      wrap_with_ctx ctx_name val_e (body, rest)      =  (EWithCtx ctx_name val_e body, rest)
+      wrap_with_ctx ctx_name val_e (body, rest)      =
+        dot_res = strip_optional_pipe_dot rest
+        finish_with_ctx ctx_name val_e body dot_res
+
+fn :: finish_with_ctx String   RExpr RExpr (Bool, [RToken]) => (RExpr, [RToken])
+      finish_with_ctx ctx_name val_e body  (_, after_dot)   =  (EWithCtx ctx_name val_e body, after_dot)
 
 fn :: parse_logic_expr [RToken] => (RExpr, [RToken])
       parse_logic_expr ts       =
@@ -1512,7 +1547,7 @@ fn :: arity_matches Int Int    => Bool
 
 fn :: builtin_arity_entries => [RArityEntry]
       builtin_arity_entries =
-        [ArityEntry "assert_equals" 2, ArityEntry "assert_true" 1, ArityEntry "send_through" 2, ArityEntry "receive_from" 1, ArityEntry "try_receive_from" 1, ArityEntry "receive_from_timeout" 2, ArityEntry "new_mailbox" 0, ArityEntry "new_channel" 0, ArityEntry "new_bounded_channel" 1, ArityEntry "chan_send" 2, ArityEntry "chan_recv" 1, ArityEntry "chan_try_recv" 1, ArityEntry "str_len" 1, ArityEntry "str_char_at" 2, ArityEntry "str_slice" 3, ArityEntry "str_contains" 2, ArityEntry "str_starts_with" 2, ArityEntry "str_concat" 2, ArityEntry "int_to_str" 1, ArityEntry "str_to_int" 1, ArityEntry "char_from_code" 1, ArityEntry "trim_str" 1, ArityEntry "read_file" 1, ArityEntry "load_rg_source" 1, ArityEntry "read_bytes" 1, ArityEntry "write_bytes" 2, ArityEntry "write_file" 2, ArityEntry "shell_exec" 1, ArityEntry "list_str_len" 1, ArityEntry "list_dir" 1, ArityEntry "file_lstat" 1, ArityEntry "sha256_file" 1, ArityEntry "sha256_str" 1, ArityEntry "sys_mkdir" 2, ArityEntry "sys_chmod" 2, ArityEntry "sys_exec" 3, ArityEntry "sys_chdir" 1, ArityEntry "sys_getcwd" 0, ArityEntry "sys_getenv" 1, ArityEntry "sys_setenv" 2, ArityEntry "sys_exit" 1, ArityEntry "sys_getuid" 0, ArityEntry "sys_getgid" 0, ArityEntry "sys_username" 1, ArityEntry "sys_user_groups" 1, ArityEntry "sys_lookup_uid_gid" 1, ArityEntry "sys_setresgid" 1, ArityEntry "sys_setgroups" 1, ArityEntry "sys_setresuid" 1, ArityEntry "sys_execve" 3, ArityEntry "sys_read_pass" 1, ArityEntry "cli_args" 0, ArityEntry "cmm_live_blocks" 0, ArityEntry "cmm_cond_spared" 0, ArityEntry "cmm_cond_freed" 0, ArityEntry "cmm_same_ptr" 2, ArityEntry "seq_map" 2, ArityEntry "par_map" 2, ArityEntry "seq_filter" 2, ArityEntry "par_filter" 2]
+        [ArityEntry "assert_equals" 2, ArityEntry "assert_true" 1, ArityEntry "send_through" 2, ArityEntry "receive_from" 1, ArityEntry "try_receive_from" 1, ArityEntry "receive_from_timeout" 2, ArityEntry "new_mailbox" 0, ArityEntry "new_channel" 0, ArityEntry "new_bounded_channel" 1, ArityEntry "chan_send" 2, ArityEntry "chan_recv" 1, ArityEntry "chan_try_recv" 1, ArityEntry "str_len" 1, ArityEntry "str_char_at" 2, ArityEntry "str_slice" 3, ArityEntry "str_contains" 2, ArityEntry "str_starts_with" 2, ArityEntry "str_concat" 2, ArityEntry "int_to_str" 1, ArityEntry "str_to_int" 1, ArityEntry "char_from_code" 1, ArityEntry "trim_str" 1, ArityEntry "read_file" 1, ArityEntry "load_rg_source" 1, ArityEntry "read_bytes" 1, ArityEntry "write_bytes" 2, ArityEntry "write_file" 2, ArityEntry "shell_exec" 1, ArityEntry "list_str_len" 1, ArityEntry "list_dir" 1, ArityEntry "file_lstat" 1, ArityEntry "sha256_file" 1, ArityEntry "sha256_str" 1, ArityEntry "sys_os" 0, ArityEntry "sys_arch" 0, ArityEntry "sys_mkdir" 2, ArityEntry "sys_chmod" 2, ArityEntry "sys_exec" 3, ArityEntry "sys_chdir" 1, ArityEntry "sys_getcwd" 0, ArityEntry "sys_getenv" 1, ArityEntry "sys_setenv" 2, ArityEntry "sys_exit" 1, ArityEntry "sys_getuid" 0, ArityEntry "sys_getgid" 0, ArityEntry "sys_getpid" 0, ArityEntry "sys_time_ms" 0, ArityEntry "sys_deadline_ms" 0, ArityEntry "sys_remaining_ms" 0, ArityEntry "sys_sleep_ms" 1, ArityEntry "sys_open_mode" 2, ArityEntry "sys_open" 3, ArityEntry "sys_close" 1, ArityEntry "sys_read_fd" 2, ArityEntry "sys_write_fd" 2, ArityEntry "sys_poll" 3, ArityEntry "sys_terminate" 2, ArityEntry "sys_kill" 2, ArityEntry "sys_call" 7, ArityEntry "sys_username" 1, ArityEntry "sys_user_groups" 1, ArityEntry "sys_lookup_uid_gid" 1, ArityEntry "sys_setresgid" 1, ArityEntry "sys_setgroups" 1, ArityEntry "sys_setresuid" 1, ArityEntry "sys_execve" 3, ArityEntry "sys_read_pass" 1, ArityEntry "cli_args" 0, ArityEntry "cmm_live_blocks" 0, ArityEntry "cmm_cond_spared" 0, ArityEntry "cmm_cond_freed" 0, ArityEntry "cmm_same_ptr" 2, ArityEntry "seq_map" 2, ArityEntry "par_map" 2, ArityEntry "seq_filter" 2, ArityEntry "par_filter" 2]
 
 fn :: collect_fn_arities [RFnDef] => [RArityEntry]
       collect_fn_arities []       =  builtin_arity_entries
@@ -1568,7 +1603,7 @@ fn :: can_complete_op [RArityEntry] String [RExpr]         => Bool
 fn :: extract_mixfix_call String [RExpr] [RArityEntry] [RExpr] => (String, [RExpr])
       extract_mixfix_call cur_name [] _ operands = (cur_name, operands)
       extract_mixfix_call cur_name ((EVar w):rest) arities operands
-        | (has_arity_prefix arities (join_op_word cur_name w)) AND (can_complete_op arities (join_op_word cur_name w) rest) = extract_mixfix_call (join_op_word cur_name w) rest arities operands
+        | (NOT ((is_std_builtin cur_name) AND (expr_list_count operands) > 0)) AND (has_arity_prefix arities (join_op_word cur_name w)) AND (can_complete_op arities (join_op_word cur_name w) rest) = extract_mixfix_call (join_op_word cur_name w) rest arities operands
         | otherwise = extract_mixfix_call cur_name rest arities (operands :: [EVar w])
       extract_mixfix_call cur_name (arg:rest) arities operands =
         extract_mixfix_call cur_name rest arities (operands :: [arg])
@@ -1581,52 +1616,68 @@ fn :: reduce_postfix_spine [RExpr]         [RArityEntry] [RExpr] => [RExpr]
       reduce_postfix_spine (item:rest)     arities       stack   =
         reduce_postfix_spine rest arities (stack :: [item])
 
-fn :: is_std_builtin String            => Bool
-      is_std_builtin "str_len"         =  True
-      is_std_builtin "str_char_at"     =  True
-      is_std_builtin "str_slice"       =  True
-      is_std_builtin "str_contains"    =  True
-      is_std_builtin "str_starts_with" =  True
-      is_std_builtin "int_to_str"      =  True
-      is_std_builtin "str_to_int"      =  True
-      is_std_builtin "char_from_code"  =  True
-      is_std_builtin "trim_str"        =  True
-      is_std_builtin "read_file"       =  True
-      is_std_builtin "load_rg_source"  =  True
-      is_std_builtin "read_bytes"      =  True
-      is_std_builtin "write_bytes"     =  True
-      is_std_builtin "write_file"      =  True
-      is_std_builtin "shell_exec"      =  True
-      is_std_builtin "list_str_len"    =  True
-      is_std_builtin "map"             =  True
-      is_std_builtin "||map"           =  True
-      is_std_builtin "filter"          =  True
-      is_std_builtin "||filter"        =  True
-      is_std_builtin "fold"            =  True
-      is_std_builtin "list_dir"        =  True
-      is_std_builtin "file_lstat"      =  True
-      is_std_builtin "sha256_file"     =  True
-      is_std_builtin "sha256_str"      =  True
-      is_std_builtin "sys_mkdir"       =  True
-      is_std_builtin "sys_chmod"       =  True
-      is_std_builtin "sys_exec"        =  True
-      is_std_builtin "sys_chdir"       =  True
-      is_std_builtin "sys_getcwd"      =  True
-      is_std_builtin "sys_getenv"      =  True
-      is_std_builtin "sys_setenv"      =  True
-      is_std_builtin "sys_exit"        =  True
-      is_std_builtin "sys_getuid"      =  True
-      is_std_builtin "sys_getgid"      =  True
-      is_std_builtin "sys_username"    =  True
-      is_std_builtin "sys_user_groups" =  True
+fn :: is_std_builtin String             => Bool
+      is_std_builtin "str_len"          =  True
+      is_std_builtin "str_char_at"      =  True
+      is_std_builtin "str_slice"        =  True
+      is_std_builtin "str_contains"     =  True
+      is_std_builtin "str_starts_with"  =  True
+      is_std_builtin "int_to_str"       =  True
+      is_std_builtin "str_to_int"       =  True
+      is_std_builtin "char_from_code"   =  True
+      is_std_builtin "trim_str"         =  True
+      is_std_builtin "read_file"        =  True
+      is_std_builtin "load_rg_source"   =  True
+      is_std_builtin "read_bytes"       =  True
+      is_std_builtin "write_bytes"      =  True
+      is_std_builtin "write_file"       =  True
+      is_std_builtin "shell_exec"       =  True
+      is_std_builtin "list_str_len"     =  True
+      is_std_builtin "map"              =  True
+      is_std_builtin "||map"            =  True
+      is_std_builtin "filter"           =  True
+      is_std_builtin "||filter"         =  True
+      is_std_builtin "fold"             =  True
+      is_std_builtin "list_dir"         =  True
+      is_std_builtin "file_lstat"       =  True
+      is_std_builtin "sha256_file"      =  True
+      is_std_builtin "sha256_str"       =  True
+      is_std_builtin "sys_os"           =  True
+      is_std_builtin "sys_arch"         =  True
+      is_std_builtin "sys_mkdir"        =  True
+      is_std_builtin "sys_chmod"        =  True
+      is_std_builtin "sys_exec"         =  True
+      is_std_builtin "sys_chdir"        =  True
+      is_std_builtin "sys_getcwd"       =  True
+      is_std_builtin "sys_getenv"       =  True
+      is_std_builtin "sys_setenv"       =  True
+      is_std_builtin "sys_exit"         =  True
+      is_std_builtin "sys_getuid"       =  True
+      is_std_builtin "sys_getgid"       =  True
+      is_std_builtin "sys_getpid"       =  True
+      is_std_builtin "sys_time_ms"      =  True
+      is_std_builtin "sys_deadline_ms"  =  True
+      is_std_builtin "sys_remaining_ms" =  True
+      is_std_builtin "sys_sleep_ms"     =  True
+      is_std_builtin "sys_open_mode"    =  True
+      is_std_builtin "sys_open"         =  True
+      is_std_builtin "sys_close"        =  True
+      is_std_builtin "sys_read_fd"      =  True
+      is_std_builtin "sys_write_fd"     =  True
+      is_std_builtin "sys_poll"         =  True
+      is_std_builtin "sys_terminate"    =  True
+      is_std_builtin "sys_kill"         =  True
+      is_std_builtin "sys_call"         =  True
+      is_std_builtin "sys_username"     =  True
+      is_std_builtin "sys_user_groups"  =  True
       is_std_builtin "sys_lookup_uid_gid" = True
-      is_std_builtin "sys_setresgid"   =  True
-      is_std_builtin "sys_setgroups"   =  True
-      is_std_builtin "sys_setresuid"   =  True
-      is_std_builtin "sys_execve"      =  True
-      is_std_builtin "sys_read_pass"   =  True
+      is_std_builtin "sys_setresgid"    =  True
+      is_std_builtin "sys_setgroups"    =  True
+      is_std_builtin "sys_setresuid"    =  True
+      is_std_builtin "sys_execve"       =  True
+      is_std_builtin "sys_read_pass"    =  True
       is_std_builtin "__record_update__" = True
-      is_std_builtin _                 =  False
+      is_std_builtin _                  =  False
 
 fn :: std_builtin_arity String     => Int
       std_builtin_arity "map"      =  2
@@ -1704,13 +1755,13 @@ fn :: flatten_mixfix_rhs RExpr [RArityEntry] => [RExpr]
         | ((lookup_arity arities r_name) < 0 AND (NOT (is_std_builtin r_name))) OR (has_longer_arity_prefix arities r_name r_args) = [EVar r_name] :: r_args
       flatten_mixfix_rhs other _             =  [other]
 
-fn :: can_absorb_mixfix_conj String  [RExpr] String    RExpr [RArityEntry] => Bool
-      can_absorb_mixfix_conj fn_name args    conj_word r     arities       =
+fn :: can_absorb_mixfix_conj String [RExpr] String RExpr [RArityEntry] => Bool
+      can_absorb_mixfix_conj fn_name args conj_word r arities =
         full_args = [EVar fn_name] :: args :: [EVar conj_word] :: (flatten_mixfix_rhs r arities)
         full_res = extract_mixfix_call "" full_args arities []
         can_absorb_mixfix_verify conj_word arities full_res
 
-fn :: can_absorb_mixfix_verify String    [RArityEntry] (String, [RExpr])       => Bool
+fn :: can_absorb_mixfix_verify String    [RArityEntry] (String, [RExpr]) => Bool
       can_absorb_mixfix_verify conj_word arities       (full_mangled, full_ops) =
         ar = lookup_arity arities full_mangled
         c_ops = maybe_collapse_args full_ops ar arities
@@ -1828,15 +1879,15 @@ fn :: try_read_candidate_step String  [String] => String
       try_read_candidate_step ""      ps       =  try_read_candidate_paths ps
       try_read_candidate_step content _        =  content
 
-fn :: resolve_import_candidates Bool [String] => [String]
-      resolve_import_candidates True (p:_)    =
+fn :: resolve_import_candidates Bool  [String] => [String]
+      resolve_import_candidates True  (p:_)    =
         [p, p + ".rglib", p + ".rg", "target/" + p, "dist/" + p, "lib/" + p, ".stable/deps/" + p]
-      resolve_import_candidates False []      =  []
+      resolve_import_candidates False []       =  []
       resolve_import_candidates False (w:[])
         | is_core_compiler_mod w = []
         | otherwise =
           [w + ".rglib", "target/" + w + ".rglib", "dist/" + w + ".rglib", "lib/" + w + ".rglib", ".stable/deps/" + w + ".rglib", "src/main/ridgun/lib/" + w + ".rglib"]
-      resolve_import_candidates False words   =
+      resolve_import_candidates False words    =
         u_name = join_words_underscore words
         sp_name = join_words_space words
         [u_name + ".rglib", sp_name + ".rglib", "target/" + u_name + ".rglib", "target/" + sp_name + ".rglib", "dist/" + u_name + ".rglib", "lib/" + u_name + ".rglib", "lib/" + sp_name + ".rglib", ".stable/deps/" + u_name + ".rglib", "src/main/ridgun/lib/" + u_name + ".rglib", sp_name + ".rg", "lib/" + sp_name + ".rg", "src/main/ridgun/lib/" + sp_name + ".rg"]
@@ -1848,12 +1899,12 @@ fn :: parse_import_stmt [RToken] [RFnDef] [RTypeDef] => RProgram
       parse_import_stmt ((TokRawStr path):rest) fns tys =
         cands = resolve_import_candidates True [path]
         parse_import_with_src (try_read_candidate_paths cands) (skip_to_newline rest) fns tys
-      parse_import_stmt rest fns tys =
+      parse_import_stmt rest     fns      tys        =
         w_res = collect_import_words rest []
         parse_import_words w_res fns tys
 
 fn :: parse_import_words ([String], [RToken]) [RFnDef] [RTypeDef] => RProgram
-      parse_import_words (words, after_line) fns tys =
+      parse_import_words (words, after_line)  fns      tys        =
         cands = resolve_import_candidates False words
         parse_import_with_src (try_read_candidate_paths cands) after_line fns tys
 
@@ -1864,11 +1915,11 @@ fn :: parse_import_with_src String  [RToken]   [RFnDef] [RTypeDef] => RProgram
         lib_prog = parse_items (tokenize_src lib_src) fns tys
         continue_after_import lib_prog after_line
 
-fn :: continue_after_import RProgram            [RToken]   => RProgram
+fn :: continue_after_import RProgram [RToken]   => RProgram
       continue_after_import (Program fns2 tys2) after_line =
         parse_items after_line fns2 tys2
 
-fn :: rglib_dir_of String Int Int Int => String
+fn :: rglib_dir_of String Int Int Int        => String
       rglib_dir_of fpath  pos len last_slash
         | pos >= len AND last_slash < 0 = "."
         | pos >= len = str_slice fpath 0 last_slash
@@ -1897,7 +1948,7 @@ fn :: rglib_trim_lead String Int Int => String
         | (str_char_at s pos) == 32 OR (str_char_at s pos) == 9 OR (str_char_at s pos) == 13 = rglib_trim_lead s (pos + 1) len
         | otherwise = str_slice s pos len
 
-fn :: rglib_trim_trail String Int => String
+fn :: rglib_trim_trail String Int     => String
       rglib_trim_trail s      end_pos
         | end_pos <= 0 = ""
         | (str_char_at s (end_pos - 1)) == 32 OR (str_char_at s (end_pos - 1)) == 9 OR (str_char_at s (end_pos - 1)) == 13 = rglib_trim_trail s (end_pos - 1)
@@ -1925,14 +1976,14 @@ fn :: append_rglib_from_line String String String => String
         | otherwise = acc
 
 fn :: scan_rglib_imports String String Int Int Int String => String
-      scan_rglib_imports pdir   s      pos len line_start acc
+      scan_rglib_imports pdir s pos len line_start acc
         | pos >= len =
           line = rglib_trim (str_slice s line_start len)
           append_rglib_from_line pdir line acc
         | (str_char_at s pos) == 10 =
           line = rglib_trim (str_slice s line_start pos)
           acc2 = append_rglib_from_line pdir line acc
-          scan_rglib_imports pdir s (pos + 1) len (pos + 1) acc2
+      scan_rglib_imports pdir s (pos + 1) len (pos + 1) acc2
         | otherwise =
           scan_rglib_imports pdir s (pos + 1) len line_start acc
 

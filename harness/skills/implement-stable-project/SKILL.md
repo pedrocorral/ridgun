@@ -2,13 +2,13 @@
 name: implement-stable-project
 description: Configure, scaffold, build, and extend Ridgun projects with `stable` (`build.rg`), including executable and reusable library compilation (`.rglib` and ELF64 `.so`), custom `fn :: task` commands, `plugins/*.rg` framework extensions, dependency management, and canonical formatting; use whenever working with `stable`, `build.rg`, libraries, or plugins.
 ---
-# implement-stable-project (`v0.9.3`)
+# implement-stable-project (`v0.9.5`)
 
 Reading budget: `harness/skills/implement-stable-project/references/build_cheatsheet.rg`, `harness/skills/implement-stable-project/references/plugin_cheatsheet.rg`, and the project's `build.rg`.
 
 ---
 
-## 1. Overview of `stable` (`v0.9.3`)
+## 1. Overview of `stable` (`v0.9.5`)
 `stable` (`src/main/ridgun/stable/main.rg`) is Ridgun's 100% self-hosted project manager, build orchestrator, test runner, dependency manager, canonical tabular formatter, and extensible plugin host.
 - **No external config formats**: `stable` uses `build.rg` (pure Ridgun functions) instead of TOML, YAML, or JSON.
 - **Multicore parallel execution**: `stable check`, `stable test`, and `stable format` process files concurrently via Ridgun's `||map`.

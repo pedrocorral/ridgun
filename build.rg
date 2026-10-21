@@ -9,7 +9,7 @@ fn :: project kind => String
       project kind =  "bin"
 
 fn :: project version => String
-      project version =  "0.9.4"
+      project version =  "0.9.5"
 
 fn :: main entry => String
       main entry =  "src/main/ridgun/ridgunc/main.rg"

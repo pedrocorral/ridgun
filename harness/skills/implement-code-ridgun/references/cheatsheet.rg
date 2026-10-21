@@ -1,6 +1,6 @@
 -- ============================================================
 -- harness/skills/implement-code-ridgun/references/cheatsheet.rg
--- Canonical Ridgun v0.9.3 Reference Cheatsheet for AI Agents
+-- Canonical Ridgun v0.9.5 Reference Cheatsheet for AI Agents
 -- ============================================================
 
 -- 1. Sum ADTs, Shared Constructors, Bare Type Variants, `expand type` & Product Records (`FR-COMP-005`)
@@ -140,11 +140,19 @@ fn :: plugins => [String]
 fn :: task check all => String
       task check all =  "./bin/stable check"
 
--- 11. Zero-Argument Entrypoint (`fn :: main => ()`)
+-- 11. Declarative Timeouts (`with timeout`) & Cross-Platform PAL Primitives (`FR-COMP-007`)
+fn :: check timeout budget => Int
+      check timeout budget =
+        with timeout 200_ms do
+          rem = sys remaining ms
+          rem
+
+-- 12. Zero-Argument Entrypoint (`fn :: main => ()`)
 fn :: main => ()
       main =
         spec  = enable tls (ServerSpec "localhost" 8080 False)
         code  = route request 1 2 True True 500 0
         res   = process items [1, 2, 3, 4, 5]
         total = (fst res) + (filter section loop 4 2)
-        echo "Server {host spec}:{port spec} code={code} total={total}"
+        rem   = check timeout budget
+        echo "Server {host spec}:{port spec} code={code} total={total} rem={rem}"
