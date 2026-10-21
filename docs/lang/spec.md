@@ -914,6 +914,29 @@ Ridgun provides standard sequential collection combinators (`map`, `filter`, `fo
    - **Filesystem**: `list_dir`, `file_lstat`, `sha256_file`, `sys_mkdir`, `sys_chmod`.
    - **Process & Environment**: `sys_exec`, `sys_chdir`, `sys_getcwd`, `sys_getenv`, `sys_setenv`, `sys_exit`.
    - **Security & Privilege Separation**: `sys_getuid`, `sys_getgid`, `sys_username`, `sys_user_groups`, `sys_lookup_uid_gid`, `sys_setresgid`, `sys_setgroups`, `sys_setresuid`, `sys_execve`, `sys_read_pass`.
+3. **Low-Level Linux FD, Polling, Syscall Bridge & Declarative `with timeout` Quotas (`FR-COMP-007`)**:
+   - **Duration Unit Literals**: Integer literals accept `_ms` (`* 1`), `_s` (`* 1000`), and `_min` (`* 60000`) suffixes (e.g., `500_ms`, `5_s`, `2_min`), complementing byte-unit suffixes (`_KB`, `_MB`, `_GB`).
+   - **Layer 1 — Minimal Kernel Primitives for `.rglib` System Libraries (`posix.rglib` / `io.rglib`)**:
+     - `sys open String Int Int => Int` (`path`, `flags`, `mode` -> `fd >= 0` or `-errno`)
+     - `sys close Int => Int` (`fd` -> `0` or `-errno`)
+     - `sys read fd Int Int => String` (`fd`, `max_bytes` -> string read from `fd`)
+     - `sys write fd Int String => Int` (`fd`, `data` -> bytes written or `-errno`)
+     - `sys poll Int Int Int => Int` (`fd`, `events`, `timeout_ms` -> `> 0` revents when ready, `0` on timeout, `< 0` on `-errno`)
+     - `sys kill Int Int => Int` (`pid`, `sig` -> `0` or `-errno`)
+     - `sys call Int Int Int Int Int Int Int => Int` (`nr`, `a1..a6` -> direct Linux `syscall` / `svc #0` bridge)
+     - `sys time ms => Int` and `sys sleep ms Int => ()` (monotonic millisecond clock and sleep)
+     - `sys deadline ms => Int` and `sys remaining ms => Int` (active lexical timeout deadline and remaining milliseconds, or `-1` when unbounded)
+   - **Layer 2 — Declarative `with timeout <duration> do` Execution Quota**:
+     - Just as `with region 64_KB do` sets a lexical byte quota, `with timeout 500_ms do` (or combined `with region 64_KB, timeout 500_ms do`) sets a lexical execution deadline (`sys_time_ms + duration_ms`) on the current thread context and restores the previous deadline upon block exit:
+       ```ridgun
+       with timeout 500_ms do
+         rem = sys remaining ms
+         rc  = sys poll fd 1 rem
+         rc
+       ```
+4. **Reusable Library Compilation (`.rglib` & ELF64 `.so`) and Extensible `stable` (`FR-COMP-006`, `FR-TOOL-003`)**:
+   - `ridgunc build --lib <file.rg> -o <out.rglib>` and `ridgunc build --so <file.rg> -o <lib.so>` (or `stable built lib` / `stable new --lib <name>`) compile modules without requiring `fn :: main => ()` and preserve all exported functions, operators, and types.
+   - `stable` discovers custom `fn :: task <words...> => String` commands and `fn :: plugins => [String]` extensions (`plugins/*.rg`, `.stable/plugins/*.rg`), listed via `stable tasks` and `stable plugins`.
 
 ---
 
