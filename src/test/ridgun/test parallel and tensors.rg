@@ -1,5 +1,5 @@
 -- ============================================================
--- src/test/ridgun/test_parallel_and_tensors.rg
+-- src/test/ridgun/test parallel and tensors.rg
 -- Ridgun Test Suite: Parallel where-DAG, Tensors & Regions
 -- ============================================================
 
@@ -14,14 +14,14 @@ fn :: fact Int => Int
       fact 0   =  1
       fact n   =  n * (fact (n - 1))
 
-fn :: parallel_dag_calc => Int
-      parallel_dag_calc =  a + b
+fn :: parallel dag calc => Int
+      parallel dag calc =  a + b
         where
           fib 10        -> a
           fact 6        -> b
 
-fn :: tensor_mut_calc => Int
-      tensor_mut_calc =
+fn :: tensor slice calc => Int
+      tensor slice calc =
         m = Tensor [[1, 2], [3, 4]]
         m[0, 1] = 50
         m[0][1] + m[1][0]
@@ -29,6 +29,6 @@ fn :: tensor_mut_calc => Int
 fn :: main => ()
       main =
         echo "=== Parallel where-DAG & Tensor Mutation ==="
-        assert_equals parallel_dag_calc 775
-        assert_equals tensor_mut_calc 53
+        assert equals (parallel dag calc) 775
+        assert equals (tensor slice calc) 53
         echo "=== All parallel & tensor tests passed ==="

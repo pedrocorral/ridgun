@@ -11,10 +11,10 @@ Reading budget: `harness/skills/implement-code-ridgun/references/cheatsheet.rg` 
 ## 1. Project & Architecture Overview (`v0.9.3`)
 - **100% Pure Ridgun (Zero Rust / Zero `rustc`)**: Both `ridgunc` (`src/main/ridgun/ridgunc/main.rg`) and `stable` (`src/main/ridgun/stable/main.rg`) are written 100% in Ridgun and emit standalone, statically linked Linux ELF64 executables directly to disk via `elf64.rg`, `x86_64.rg` (`EM_X86_64 = 62`), and `arm64.rg` (`EM_AARCH64 = 183` for Raspberry Pi).
 - **Project Layout**:
-  - `build.rg`: Pure-Ridgun project manifest (`project_name`, `project_version`, `main_entry`, `source_dir`, `test_dir`, `target_dir`).
+  - `build.rg`: Pure-Ridgun project manifest (`fn :: project name => String`, `project version`, `main entry`, `source dir`, `test dir`, `target dir`).
   - `src/main/ridgun/lib/*.rg`: Shared library modules (`ast`, `lexer`, `parser`, `typecheck`, `analyzer`, `compiler`, `elf64`, `x86_64`, `arm64`, `formatter`, `vm`). Imported by bare module name (`import ast`).
   - `src/main/ridgun/<target>/main.rg`: Executable entrypoints (`ridgunc/main.rg` -> `target/ridgunc`, `stable/main.rg` -> `target/stable`).
-  - `src/test/ridgun/test_*.rg`: Executable test suites (`import test`, `assert_equals`, `assert_true`), compiled and run in parallel by `stable test` via `||map`.
+  - `src/test/ridgun/test*.rg`: Executable test suites (`test basics.rg`, `test core language.rg`, etc.; `import test`, `assert equals`, `assert true`), compiled and run in parallel by `stable test` via `||map`.
 
 ---
 
@@ -31,34 +31,35 @@ Reading budget: `harness/skills/implement-code-ridgun/references/cheatsheet.rg` 
 | Guard clause without `=` (`clamp x lo hi \| x < lo = lo`) | `clamp x lo hi =` followed by `\| x < lo = lo` | Every clause and guard branch requires `=` (`FR-COMP-003`) |
 | Reassigning `x = x + 1` after `x = 0` | `mut x = 0` then `x = x + 1` | Local bindings are immutable unless declared with `mut` |
 | `par_map f xs` / `par_filter p xs` | `\|\|map f xs` / `\|\|filter p xs` | Parallel higher-order combinators use the `\|\|` prefix (`FR-COMP-001`) |
-| `map (\x -> x * 2) xs` | `map double_val xs` (with `fn :: double_val Int => Int`) | Higher-order combinators take named top-level functions (`FR-COMP-001`) |
-| `(a, b) = compute_pair x` in local block | `res = compute_pair x` then `a = fst res` (or destructure in function clause `helper (a, b) = ...`) | Local `=` binds a single variable name (`x = ...` or `mut x = ...`) |
+| `map (\x -> x * 2) xs` | `map double val xs` (with `fn :: double val Int => Int`) | Higher-order combinators take named top-level functions (`FR-COMP-001` / `FR-COMP-005`) |
+| `(a, b) = compute_pair x` in local block | `res = compute pair x` then `a = fst res` (or destructure in function clause `helper (a, b) = ...`) | Local `=` binds a single variable name (`x = ...` or `mut x = ...`) |
 | `Some x` in function argument pattern without parens | `unwrap (Some x) = x` | Constructor patterns with arguments must be parenthesized |
 
 ---
 
 ## 3. Core Syntax & Grammar Rules
 
-### 3.1 Signatures, Clauses & Zero-Noise Generics (`A`..`Z`)
+### 3.1 Signatures, Natural Spaces in `fn ::`, Clauses & Zero-Noise Generics (`A`..`Z`)
 - `fn ::` and `op ::` prefixes are optional (`add Int Int => Int` or `fn :: add Int Int => Int`).
-- **Tabular Column Alignment (`=>`, `=`, `->`)**: Each clause aligns its arguments under the corresponding type in the signature and aligns `=` under `=>`. Run `stable format` to format automatically.
+- **Natural-Language Spaces in `fn ::` and Built-in Calls (`FR-COMP-005`)**: Both `fn ::` and `op ::` support multi-word names separated by spaces (`fn :: format app err AppErr => String`, `fn :: project name => String`), and built-in/test functions can be called with spaces (`assert equals a b`, `str len s`, `read file p`, `cmm live blocks`) while keeping `_` backward-compatible.
+- **Tabular Column Alignment (`=>`, `=`, `->`)**: Each clause aligns its words and arguments under the corresponding tokens in the signature and aligns `=` under `=>`. Run `stable format` to format automatically.
 - **Parametric Polymorphism (`A`..`Z`)**: Single uppercase letters (`A`..`Z`) are polymorphic type variables unified across arguments and substituted into the return type:
   ```ridgun
-  fn :: list_len [A]    => Int
-        list_len []     =  0
-        list_len (_:xs) =  1 + (list_len xs)
+  fn :: list len [A]    => Int
+        list len []     =  0
+        list len (_:xs) =  1 + (list len xs)
 
   fn :: fst (A, B) => A
         fst (a, _) =  a
 
-  fn :: head_or [A]   A => A
-        head_or []    d =  d
-        head_or (x:_) _ =  x
+  fn :: head or [A]   A => A
+        head or []    d =  d
+        head or (x:_) _ =  x
   ```
 - **Variadic Last Parameter (`T...`)**:
   ```ridgun
-  fn :: sum_variadic Int... => Int
-        sum_variadic items  =  fold add_pair 0 items
+  fn :: sum variadic Int... => Int
+        sum variadic items  =  fold add pair 0 items
   ```
 
 ### 3.2 Unified `=` Grammar (`(none)`, `|`, `||`) & Closers (`|.` / `||.`) (`FR-COMP-003`)
@@ -118,8 +119,8 @@ Every `=` (in `fn ::`, `op ::`, local bindings `x =` / `mut x =`, and guard bran
   ```
 
 ### 3.4 First-Class Named Functions & Parallel Higher-Order Combinators (`FR-COMP-001`)
-- Function types use `(T1 T2 => Ret)` inside signatures: `fn :: apply_twice (Int => Int) Int => Int`.
-- Pass named top-level functions by bare identifier (`map double_val xs`, `filter is_even xs`, `fold add_pair 0 xs`).
+- Function types use `(T1 T2 => Ret)` inside signatures: `fn :: apply twice (Int => Int) Int => Int`.
+- Pass named top-level functions by bare single-word or space-separated multi-word name (`map double val xs`, `filter is even xs`, `fold add pair 0 xs`).
 - **Sequential vs Parallel Combinators**:
   - Sequential (left-to-right, deterministic side-effects): `map f xs`, `filter p xs`, `fold f init xs`.
   - Multicore parallel (work-stealing worker threads): **`||map f xs`** and **`||filter p xs`**.
@@ -134,24 +135,24 @@ Every `=` (in `fn ::`, `op ::`, local bindings `x =` / `mut x =`, and guard bran
   ```ridgun
   type AppErr = IoError String | Timeout Int
 
-  fn :: format_err AppErr        => String
-        format_err (IoError msg) =  "IO: {msg}"
-        format_err (Timeout ms)  =  "Timeout: {ms} ms"
-        format_err _             =  "Unknown error"
+  fn :: format err AppErr        => String
+        format err (IoError msg) =  "IO: {msg}"
+        format err (Timeout ms)  =  "Timeout: {ms} ms"
+        format err _             =  "Unknown error"
 
   expand type AppErr = AuthError String | DbError Int String
 
-  -- Re-declaring `fn :: format_err` merges new clauses BEFORE the `_` catch-all:
-  fn :: format_err AppErr              => String
-        format_err (AuthError user)    =  "Auth failed: {user}"
-        format_err (DbError   code db) =  "DB {code}: {db}"
+  -- Re-declaring `fn :: format err` merges new clauses BEFORE the `_` catch-all:
+  fn :: format err AppErr              => String
+        format err (AuthError user)    =  "Auth failed: {user}"
+        format err (DbError   code db) =  "DB {code}: {db}"
   ```
 - **Product Records & Functional Updates (`with`)**:
   ```ridgun
   type Config = debug: Bool, threads: Int, name: String
 
-  fn :: tune_config Config => Config
-        tune_config cfg    =  cfg with debug: True, threads: 16
+  fn :: tune config Config => Config
+        tune config cfg    =  cfg with debug: True, threads: 16
   ```
    Auto-generated field accessors: `debug cfg`, `threads cfg`, `name cfg`.
 - **Natural-Language Mixfix Operators (`op ::`)**:
@@ -240,12 +241,12 @@ Ridgun achieves deterministic memory management with **zero Garbage Collector pa
 
 ## 7. Toolchain & Verification Workflow (`stable` and `ridgunc`)
 1. **Scaffold / Dependencies (`FR-TOOL-002`)**:
-   - `stable new <name>` or `stable init`: create `build.rg`, `src/main/ridgun/<name>/main.rg`, `src/test/ridgun/test_main.rg`, and `.gitignore`.
+   - `stable new <name>` or `stable init`: create `build.rg`, `src/main/ridgun/<name>/main.rg`, `src/test/ridgun/test main.rg`, and `.gitignore`.
    - `stable deps` or `stable add <git_url_or_path>`: synchronize `dependencies` from `build.rg` into `.stable/deps/`.
    - `stable install [target]`: build and install native ELF64 binaries into `~/.local/bin/` and `bin/`.
 2. **Format**: `./target/stable format [file.rg ...]` (to apply canonical tabular alignment).
 3. **Type-check & Static Analysis**: `./target/stable check` (checks all modules in `src/main/ridgun/` in parallel) or `./target/ridgunc check <file.rg>`.
-4. **Run Tests**: `./target/stable test` (compiles and runs all `src/test/ridgun/test_*.rg` suites in parallel via `||map`).
+4. **Run Tests**: `./target/stable test` (compiles and runs all `src/test/ridgun/test*.rg` suites in parallel via `||map`).
 5. **Build Native ELF64 Executables**:
    - Project targets: `./target/stable built`
    - Single file (`x86_64` default): `./target/ridgunc build <entry.rg> -o <output_bin>`

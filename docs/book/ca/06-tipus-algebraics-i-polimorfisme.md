@@ -184,4 +184,32 @@ main =
 
 Acabes de fabricar-te el teu propi operador ternari polimòrfic i un DSL de formatat en **3 línies** de Ridgun.
 
+---
+
+## 6.7. Constructors compartits, variants de tipus directe, `expand type` i espais naturals a `fn ::`
+
+Ridgun porta els tipus algebraics i les funcions un pas més enllà en expressivitat i extensibilitat:
+
+1. **Constructors compartits entre diferents `type`**: Diversos tipus suma poden reutilitzar el mateix nom de constructor (`Error`, `Var`, `Lit`) amb igual o diferent aritat; el verificador de tipus els distingeix per la columna de la signatura.
+2. **Variants amb nom de tipus directe (`type Something = String | Int | MyStruct Float Int`)**: Quan una variant és un tipus primitiu (`String`, `Int`, `Float`/`Real`, `Bool`, `Char`), no cal repetir `Int Int` ni `String String`. Pots passar valors directes (`"hola"`, `42`) o constructors explícits (`String "hola"`, `Int 42`), i fer pattern matching tant amb literals (`"admin"`, `0`) com amb patrons tipats (`(String s)`, `(Int n)`).
+3. **Extensió oberta de tipus (`expand type`) i fusió automàtica de clàusules `fn ::`**: Amb `expand type` pots afegir noves variants a un tipus suma o nous camps a un registre. En tornar a declarar `fn ::` per a la mateixa funció, les noves clàusules es fusionen automàticament **abans** de qualsevol clàusula comodí `_` (sense necessitat d'escriure `expand fn`).
+4. **Espais naturals `" "` en lloc de `_` a `fn ::`, funcions natives i noms de fitxer**: Igual que a `op ::`, els noms de funció a `fn ::`, les crides a funcions natives (`assert equals`, `str len`, `read file`) i els fitxers `.rg` (`test core language.rg`) es poden escriure amb espais naturals:
+
+```ridgun
+type Something = String | Int | MyStruct Float Int
+
+fn :: descriure algo Something            => String
+      descriure algo "admin"              =  "admin_especial"
+      descriure algo 0                    =  "zero"
+      descriure algo (String   s)         =  "text:{s}"
+      descriure algo (Int      n)         =  "enter:{n}"
+      descriure algo (MyStruct ratio cnt) =  "estructura:{ratio}:{cnt}"
+      descriure algo _                    =  "altre"
+
+expand type Something = Bool
+
+fn :: descriure algo Something => String
+      descriure algo (Bool b)  =  "boolea:{b}"
+```
+
 Al **Capítol 07** posarem tots els nuclis del teu processador a treballar alhora sense vessar ni una gota de suor: **funcions d'ordre superior (`map`, `||map`, `filter`, `||filter`, `fold`), grafs paral·lels `||` amb `->` i canals concurrents**.

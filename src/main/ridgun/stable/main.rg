@@ -57,21 +57,21 @@ op :: join words [String] with spaces => String
 
 op :: list rg files in String => [String]
       list rg files in dir    =
-        _ = shell_exec ('mkdir -p target && ls -1 ' + dir + '/*.rg ' + dir + '/*/*.rg 2>/dev/null > target/.stable_files.txt || true')
+        _ = shell_exec ('mkdir -p target && ls -1 "' + dir + '"/*.rg "' + dir + '"/*/*.rg 2>/dev/null > target/.stable_files.txt || true')
         raw = read_file "target/.stable_files.txt"
         _ = shell_exec "rm -f target/.stable_files.txt"
         split lines of raw
 
 op :: list exec entries in String => [String]
       list exec entries in dir    =
-        _ = shell_exec ('mkdir -p target && ls -1 ' + dir + '/*/main.rg 2>/dev/null > target/.stable_entries.txt || true')
+        _ = shell_exec ('mkdir -p target && ls -1 "' + dir + '"/*/main.rg 2>/dev/null > target/.stable_entries.txt || true')
         raw = read_file "target/.stable_entries.txt"
         _ = shell_exec "rm -f target/.stable_entries.txt"
         split lines of raw
 
 op :: list test files in String => [String]
       list test files in dir    =
-        _ = shell_exec ('mkdir -p target && ls -1 ' + dir + '/test_*.rg 2>/dev/null > target/.stable_tfiles.txt || true')
+        _ = shell_exec ('mkdir -p target && ls -1 "' + dir + '"/test_*.rg "' + dir + '"/test\ *.rg 2>/dev/null > target/.stable_tfiles.txt || true')
         raw = read_file "target/.stable_tfiles.txt"
         _ = shell_exec "rm -f target/.stable_tfiles.txt"
         split lines of raw
@@ -337,7 +337,7 @@ fn :: run_single_test_suite String => (Int, Int)
 
 op :: run built test binary Int suite String binary String   => (Int, Int)
       run built test binary 0   suite tpath  binary bin_path =
-        run_st = shell_exec ("./" + bin_path + "; _st=$?; rm -f " + bin_path + "; exit $_st")
+        run_st = shell_exec ('"./' + bin_path + '"; _st=$?; rm -f "' + bin_path + '"; exit $_st')
         record single test outcome run_st suite tpath
       run built test binary _   suite tpath  binary _        =
         _ = echo "  [FAIL] {tpath} (compilation/typecheck failed)"
@@ -492,13 +492,13 @@ op :: load dependencies from String     => [String]
 op :: scaffold project named String in String => Int
       scaffold project named pname  in root   =
         _ = shell_exec ('mkdir -p "' + root + '/src/main/ridgun/' + pname + '" "' + root + '/src/main/ridgun/lib" "' + root + '/src/test/ridgun" "' + root + '/target"')
-        build_content = '-- build.rg — Ridgun Project Build Definition\n\nfn :: project_name => String\n      project_name =  "' + pname + '"\n\nfn :: project_version => String\n      project_version =  "0.1.0"\n\nfn :: main_entry => String\n      main_entry =  "src/main/ridgun/' + pname + '/main.rg"\n\nfn :: source_dir => String\n      source_dir =  "src/main/ridgun"\n\nfn :: test_dir => String\n      test_dir =  "src/test/ridgun"\n\nfn :: target_dir => String\n      target_dir =  "target"\n\nfn :: dependencies => [String]\n      dependencies =  []\n'
+        build_content = '-- build.rg — Ridgun Project Build Definition\n\nfn :: project name => String\n      project name =  "' + pname + '"\n\nfn :: project version => String\n      project version =  "0.1.0"\n\nfn :: main entry => String\n      main entry =  "src/main/ridgun/' + pname + '/main.rg"\n\nfn :: source dir => String\n      source dir =  "src/main/ridgun"\n\nfn :: test dir => String\n      test dir =  "src/test/ridgun"\n\nfn :: target dir => String\n      target dir =  "target"\n\nfn :: dependencies => [String]\n      dependencies =  []\n'
         main_content = '-- src/main/ridgun/' + pname + '/main.rg\n\nfn :: greet String => String\n      greet who    =  "Hello from " + who + "!"\n\nfn :: main => ()\n      main =  echo (greet "' + pname + '")\n'
-        test_content = '-- src/test/ridgun/test_main.rg\n\nfn :: main => ()\n      main =  echo "=== All ' + pname + ' tests passed ==="\n'
+        test_content = '-- src/test/ridgun/test main.rg\n\nfn :: main => ()\n      main =  echo "=== All ' + pname + ' tests passed ==="\n'
         gitignore_content = '/target/\n/.stable/\n'
         _ = write_file (root + "/build.rg") build_content
         _ = write_file (root + "/src/main/ridgun/" + pname + "/main.rg") main_content
-        _ = write_file (root + "/src/test/ridgun/test_main.rg") test_content
+        _ = write_file (root + "/src/test/ridgun/test main.rg") test_content
         _ = write_file (root + "/.gitignore") gitignore_content
         _ = echo "[success] Scaffolded Ridgun project '{pname}' in {root}/"
         0

@@ -106,9 +106,9 @@ Functions and natural-language/infix operators are declared by a type signature 
 
 - **Canonical prefixless form** (starts at column 0):
   ```ridgun
-  list_len [A]    => Int
-  list_len []     =  0
-  list_len (_:xs) =  1 + (list_len xs)
+  list len [A]    => Int
+  list len []     =  0
+  list len (_:xs) =  1 + (list len xs)
 
   swap A with B => (B, A)
   swap x with y =  (y, x)
@@ -117,7 +117,14 @@ Functions and natural-language/infix operators are declared by a type signature 
   ```ridgun
   fn :: sum Int Int => Int
         sum a   b   =  a + b
+
+  fn :: format app err AppErr        => String
+        format app err (IoError msg) =  "IO:{msg}"
   ```
+- **Natural-language spaces in `fn ::`, built-ins, and filenames (`FR-COMP-005`)**:
+  - `fn ::` declarations and calls support multi-word names separated by spaces (`fn :: format app err AppErr => String`, `fn :: project name => String`), just like `op ::` and prefixless declarations.
+  - Built-in runtime and test functions can be called with spaces (`assert equals a b`, `str len s`, `read file p`, `cmm live blocks`) while keeping `_` forms backward-compatible.
+  - First-class multi-word function references (`map double val xs`, `||map double val xs`, `filter is even xs`, `fold add pair 0 xs`) and `.rg` filenames with spaces (`src/test/ridgun/test core language.rg`) are supported natively by `ridgunc` and `stable`.
 
 ### Polymorphic Type Variables (`A`..`Z`) & Contextual Keywords (`type`, `with`)
 
@@ -534,28 +541,28 @@ Existing Sum ADTs and Product Records can be extended with `expand type UpperNam
 type Something = String | Int | MyStruct Float Int
 expand type Something = Bool
 
-fn :: describe_something Something            => String
-      describe_something "admin"              =  "special_admin"
-      describe_something 0                    =  "zero_int"
-      describe_something (String   s)         =  "str:{s}"
-      describe_something (Int      n)         =  "int:{n}"
-      describe_something (Bool     b)         =  "bool:{b}"
-      describe_something (MyStruct ratio cnt) =  "struct:{ratio}:{cnt}"
+fn :: describe something Something            => String
+      describe something "admin"              =  "special_admin"
+      describe something 0                    =  "zero_int"
+      describe something (String   s)         =  "str:{s}"
+      describe something (Int      n)         =  "int:{n}"
+      describe something (Bool     b)         =  "bool:{b}"
+      describe something (MyStruct ratio cnt) =  "struct:{ratio}:{cnt}"
 ```
 
 ```ridgun
 type AppErr = IoError String | Timeout Int
 
-fn :: format_app_err AppErr        => String
-      format_app_err (IoError msg) =  "IO:{msg}"
-      format_app_err (Timeout ms)  =  "TO:{ms}"
-      format_app_err _             =  "UNKNOWN"
+fn :: format app err AppErr        => String
+      format app err (IoError msg) =  "IO:{msg}"
+      format app err (Timeout ms)  =  "TO:{ms}"
+      format app err _             =  "UNKNOWN"
 
 expand type AppErr = AuthError String | DbError Int String
 
-fn :: format_app_err AppErr              => String
-      format_app_err (AuthError user)    =  "AUTH:{user}"
-      format_app_err (DbError   code db) =  "DB:{code}:{db}"
+fn :: format app err AppErr              => String
+      format app err (AuthError user)    =  "AUTH:{user}"
+      format app err (DbError   code db) =  "DB:{code}:{db}"
 
 type AppConfig        = host: String, port: Int
 expand type AppConfig = tls: Bool

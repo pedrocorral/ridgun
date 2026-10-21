@@ -59,8 +59,8 @@ my-super-tool/
 │   │       └── app/
 │   │           └── main.rg   # Entry point (`main => ()`)
 │   └── test/
-│       └── ridgun/           # Your test suites (`test_*.rg`)
-│           └── test_all.rg
+│       └── ridgun/           # Your test suites (`test *.rg`)
+│           └── test all.rg
 └── target/                   # Where compiled binaries appear
 ```
 
@@ -80,14 +80,14 @@ type ProjectInfo =
 project => ProjectInfo
 project =  ProjectInfo "my-super-tool" "0.1.0" "2026"
 
-source_dir => String
-source_dir =  "src/main/ridgun"
+source dir => String
+source dir =  "src/main/ridgun"
 
-test_dir => String
-test_dir =  "src/test/ridgun"
+test dir => String
+test dir =  "src/test/ridgun"
 
-target_dir => String
-target_dir =  "target"
+target dir => String
+target dir =  "target"
 ```
 
 If you mistype a field, the compiler tells you immediately. No surprises.
@@ -114,10 +114,10 @@ Walks every module in `src/main/ridgun/`, verifies types, constructors, arities,
 ```bash
 stable test
 ```
-Finds all `src/test/ridgun/test_*.rg` suites, executes them, and verifies every `assert_equals` and `assert_true`.
+Finds all `src/test/ridgun/test *.rg` suites, executes them, and verifies every `assert equals` and `assert true`.
 
 ```ridgun
--- Example of src/test/ridgun/test_math.rg
+-- Example of src/test/ridgun/test math.rg
 import test
 
 double Int => Int
@@ -125,8 +125,8 @@ double x   =  x * 2
 
 main => ()
 main =
-  assert_equals (double 21) 42
-  assert_true ((double 5) > 0)
+  assert equals (double 21) 42
+  assert true ((double 5) > 0)
 ```
 
 ### 4. `stable built` (and `stable clean`) — Ready for Production

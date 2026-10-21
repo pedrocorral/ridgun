@@ -68,8 +68,9 @@ Learn Ridgun from scratch—from your first tabular function to parallel DAGs, s
    - **Policy `RMM1` (Compiled Memory Management)**: Static last-use deallocation (`rg_cmm_drop`), zero-copy return moves (`rg_cmm_move`), and 1-cycle pointer-identity guards (`ptr(a) != ptr(c)`) for branching functions.
    - **Policy `RMM2` (Assignment & Cascaded Structure Counting)**: Incoming function arguments are untouched (`+0`/`-0`), local/container assignments add `+1`, returned locals are spared in transit, and non-returned locals cascade `-1` through child structures on scope exit.
    - **Lexical Regions (`with region 64_KB do`)**: Enforce hard byte quotas on untrusted workloads and free entire arenas in $O(1)$.
-6. **Natural-Language Mixfix Operators (`op ::`), Polymorphism (`A`..`Z`), and Symbolic Tensors (`@`)**:
-   - Define N-ary natural-language operators (`op :: clamp Int between Int and Int => Int`).
+6. **Natural-Language Spaces in `fn ::` & `op ::`, Open `expand type`, Polymorphism (`A`..`Z`), and Symbolic Tensors (`@`)**:
+   - Define multi-word functions and N-ary operators with natural spaces instead of underscores (`fn :: format err AppErr => String`, `op :: clamp Int between Int and Int => Int`).
+   - Share ADT constructor names across types (`Error`, `Var`), use bare type names as variants (`type Something = String | Int | MyStruct Float Int`), extend types via `expand type`, and merge new `fn ::` clauses automatically before `_` catch-alls.
    - Single uppercase letters (`A`..`Z`) act as zero-noise polymorphic type variables.
    - Native `Tensor[N, K]` types check symbolic dimensions at compile time and support Einstein summation (`A_ik @ B_kj`) and Hadamard broadcasting (`A_ij * B_j`).
 
@@ -78,21 +79,35 @@ Learn Ridgun from scratch—from your first tabular function to parallel DAGs, s
 ## A Taste of Ridgun
 
 ```ridgun
--- 1. Tabular pattern matching & zero-noise polymorphism (A..Z)
-head_or [A]   A => A
-head_or []    d =  d
-head_or (x:_) _ =  x
+-- 1. Tabular pattern matching, natural spaces & zero-noise polymorphism (A..Z)
+head or [A]   A => A
+head or []    d =  d
+head or (x:_) _ =  x
 
--- 2. Natural-language mixfix operator with `=` + `|` guards
+-- 2. Bare type-name variants, `expand type` & automatic `fn ::` clause merging
+type Something = String | Int | MyStruct Float Int
+
+fn :: describe something Something          => String
+      describe something (String   s)       =  "str:{s}"
+      describe something (Int      n)       =  "int:{n}"
+      describe something (MyStruct f count) =  "struct:{f}:{count}"
+      describe something _                  =  "other"
+
+expand type Something = Bool
+
+fn :: describe something Something => String
+      describe something (Bool b)  =  "bool:{b}"
+
+-- 3. Natural-language mixfix operator with `=` + `|` guards
 op :: clamp Int between Int and Int => Int
       clamp x   between lo  and hi  =
         | x < lo    = lo
         | x > hi    = hi
         | otherwise = x
 
--- 3. Multi-level decision tree with compact inline `|.` closers
-fn :: route_request Int    Int  Bool      Bool     Int        Int          => Int
-      route_request method role is_signed is_admin payload_kb rate_limited =
+-- 4. Multi-level decision tree with compact inline `|.` closers
+fn :: route request Int    Int  Bool      Bool     Int        Int          => Int
+      route request method role is_signed is_admin payload_kb rate_limited =
         | method == 0 =
           | payload_kb == 0 = 204
           | otherwise       = 200 |.
@@ -110,17 +125,17 @@ fn :: route_request Int    Int  Bool      Bool     Int        Int          => In
             | otherwise = 201 |.
         | otherwise = 405
 
--- 4. Parallel DAG block (`|| expr -> var`) without `where` + `||.` closer
-fn :: quarterly_balance Int  => Int
-      quarterly_balance base =
+-- 5. Parallel DAG block (`|| expr -> var`) without `where` + `||.` closer
+fn :: quarterly balance Int  => Int
+      quarterly balance base =
         || base * 100                 -> gross_sales
         || base * 40                  -> fixed_costs
         || gross_sales - fixed_costs  -> gross_profit ||.
         gross_profit * 80 / 100
 
--- 5. Conditional local variable (`x = | ...`) and explicit `mut` accumulator
-fn :: compute_total Bool   Int => Int
-      compute_total is_vip raw =
+-- 6. Conditional local variable (`x = | ...`) and explicit `mut` accumulator
+fn :: compute total Bool   Int => Int
+      compute total is_vip raw =
         discount =
           | is_vip and raw > 50 = 20
           | otherwise           = 0
@@ -128,9 +143,9 @@ fn :: compute_total Bool   Int => Int
         total = total + 5
         total
 
--- 6. Symbolic-dimension Tensor contraction (Einstein summation `@`)
-fn :: linear_layer Tensor[B, In] Tensor[In, Out] Tensor[B, Out] => Tensor[B, Out]
-      linear_layer x             weights         bias           =  (x_bi @ weights_io) + bias
+-- 7. Symbolic-dimension Tensor contraction (Einstein summation `@`)
+fn :: linear layer Tensor[B, In] Tensor[In, Out] Tensor[B, Out] => Tensor[B, Out]
+      linear layer x             weights         bias           =  (x_bi @ weights_io) + bias
 ```
 
 ---

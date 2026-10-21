@@ -59,8 +59,8 @@ mi-super-herramienta/
 │   │       └── app/
 │   │           └── main.rg   # Punto de entrada (`main => ()`)
 │   └── test/
-│       └── ridgun/           # Tus baterías de tests (`test_*.rg`)
-│           └── test_todo.rg
+│       └── ridgun/           # Tus baterías de tests (`test *.rg`)
+│           └── test todo.rg
 └── target/                   # Donde aparecen los binarios compilados
 ```
 
@@ -80,14 +80,14 @@ type ProjectInfo =
 project => ProjectInfo
 project =  ProjectInfo "mi-super-herramienta" "0.1.0" "2026"
 
-source_dir => String
-source_dir =  "src/main/ridgun"
+source dir => String
+source dir =  "src/main/ridgun"
 
-test_dir => String
-test_dir =  "src/test/ridgun"
+test dir => String
+test dir =  "src/test/ridgun"
 
-target_dir => String
-target_dir =  "target"
+target dir => String
+target dir =  "target"
 ```
 
 Si te equivocas al escribir un campo, el propio compilador te avisa. Sin sorpresas.
@@ -114,10 +114,10 @@ Recorre todos los módulos de `src/main/ridgun/`, verifica tipos, constructores,
 ```bash
 stable test
 ```
-Busca todas las suites `src/test/ridgun/test_*.rg`, las ejecuta y comprueba cada `assert_equals` y `assert_true`.
+Busca todas las suites `src/test/ridgun/test *.rg`, las ejecuta y comprueba cada `assert equals` y `assert true`.
 
 ```ridgun
--- Ejemplo de src/test/ridgun/test_mates.rg
+-- Ejemplo de src/test/ridgun/test mates.rg
 import test
 
 doble Int => Int
@@ -125,8 +125,8 @@ doble x   =  x * 2
 
 main => ()
 main =
-  assert_equals (doble 21) 42
-  assert_true ((doble 5) > 0)
+  assert equals (doble 21) 42
+  assert true ((doble 5) > 0)
 ```
 
 ### 4. `stable built` (y `stable clean`) — A producción

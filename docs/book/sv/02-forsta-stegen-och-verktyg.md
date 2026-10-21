@@ -59,8 +59,8 @@ mitt-superverktyg/
 │   │       └── app/
 │   │           └── main.rg   # Startpunkt (`main => ()`)
 │   └── test/
-│       └── ridgun/           # Dina testsviter (`test_*.rg`)
-│           └── test_allt.rg
+│       └── ridgun/           # Dina testsviter (`test *.rg`)
+│           └── test allt.rg
 └── target/                   # Där de kompilerade binärerna dyker upp
 ```
 
@@ -80,14 +80,14 @@ type ProjectInfo =
 project => ProjectInfo
 project =  ProjectInfo "mitt-superverktyg" "0.1.0" "2026"
 
-source_dir => String
-source_dir =  "src/main/ridgun"
+source dir => String
+source dir =  "src/main/ridgun"
 
-test_dir => String
-test_dir =  "src/test/ridgun"
+test dir => String
+test dir =  "src/test/ridgun"
 
-target_dir => String
-target_dir =  "target"
+target dir => String
+target dir =  "target"
 ```
 
 Om du stavar fel på ett fält varnar kompilatorn själv. Inga överraskningar.
@@ -114,10 +114,10 @@ Går igenom alla moduler i `src/main/ridgun/`, verifierar typer, konstruktorer, 
 ```bash
 stable test
 ```
-Letar upp alla testsviter `src/test/ridgun/test_*.rg`, kör dem och kontrollerar varje `assert_equals` och `assert_true`.
+Letar upp alla testsviter `src/test/ridgun/test *.rg`, kör dem och kontrollerar varje `assert equals` och `assert true`.
 
 ```ridgun
--- Exempel på src/test/ridgun/test_matte.rg
+-- Exempel på src/test/ridgun/test matte.rg
 import test
 
 dubbel Int => Int
@@ -125,8 +125,8 @@ dubbel x   =  x * 2
 
 main => ()
 main =
-  assert_equals (dubbel 21) 42
-  assert_true ((dubbel 5) > 0)
+  assert equals (dubbel 21) 42
+  assert true ((dubbel 5) > 0)
 ```
 
 ### 4. `stable built` (och `stable clean`) — Ut i produktion

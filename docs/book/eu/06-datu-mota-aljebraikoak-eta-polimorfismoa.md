@@ -184,4 +184,32 @@ main =
 
 Zure eragile hirutar polimorfiko propioa eta formateatzeko DSL bat fabrikatu berri dituzu Ridguneko **3 lerrotan**.
 
+---
+
+## 6.7. Eraikitzaile partekatuak, mota-aldaera zuzenak, `expand type` eta zuriune naturalak `fn ::`-n
+
+Ridgunek datu-mota aljebraikoak eta funtzioak are naturalago eta hedagarriago bihurtzen ditu:
+
+1. **Eraikitzaile-izen partekatuak `type` ezberdinen artean**: Batura-mota ezberdinek eraikitzaile-izen bera (`Error`, `Var`, `Lit`) berrerabil dezakete aritate berarekin edo ezberdinarekin; mota-egiaztatzaileak sinadurako zutabearen arabera bereizten ditu.
+2. **Mota-izen zuzeneko aldaerak errepikapenik gabe (`type Something = String | Int | MyStruct Float Int`)**: Aldaera bat oinarrizko mota bat denean (`String`, `Int`, `Float`/`Real`, `Bool`, `Char`), ez duzu `Int Int` edo `String String` errepikatu behar. Balio zuzenak (`"kaixo"`, `42`) edo eraikitzaile esplizituak (`String "kaixo"`, `Int 42`) pasa ditzakezu, eta ereduak parekatu bai literalekin (`"admin"`, `0`) bai eredu tipatuekin (`(String s)`, `(Int n)`).
+3. **Mota-hedapen irekia (`expand type`) eta `fn ::` klausulen bateratze automatikoa**: `expand type` erabiliz aldaera berriak gehitu diezazkiokezu batura-mota bati edo eremu berriak erregistro bati. Funtzio bererako `fn ::` berriro deklaratzean, klausula berriak automatikoki bateratzen dira edozein `_` komodin-klausularen **aurretik** (`expand fn` idatzi beharrik gabe).
+4. **Zuriune naturalak `" "` `_`-ren ordez `fn ::`-n, funtzio natiboetan eta fitxategi-izenetan**: `op ::`-n bezala, hitz anitzeko `fn ::` izenak, funtzio natiboen deiak (`assert equals`, `str len`, `read file`) eta `.rg` fitxategi-izenak (`test core language.rg`) zuriune naturalekin idatz daitezke:
+
+```ridgun
+type Something = String | Int | MyStruct Float Int
+
+fn :: deskribatu zerbait Something            => String
+      deskribatu zerbait "admin"              =  "admin_berezia"
+      deskribatu zerbait 0                    =  "zero"
+      deskribatu zerbait (String   s)         =  "testua:{s}"
+      deskribatu zerbait (Int      n)         =  "osoa:{n}"
+      deskribatu zerbait (MyStruct ratio cnt) =  "egitura:{ratio}:{cnt}"
+      deskribatu zerbait _                    =  "bestea"
+
+expand type Something = Bool
+
+fn :: deskribatu zerbait Something => String
+      deskribatu zerbait (Bool b)  =  "boolearra:{b}"
+```
+
 **07. kapituluan** zure prozesadorearen nukleo guztiak aldi berean lanean jarriko ditugu izerdi tanta bat ere bota gabe: **goi-mailako funtzioak (`map`, `||map`, `filter`, `||filter`, `fold`), `||` grafo paraleloak `->` geziekin eta kanal konkurrenteak**.

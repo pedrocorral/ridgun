@@ -1157,15 +1157,8 @@ fn :: prepend_case RFnCase ([RFnCase], [RToken]) => ([RFnCase], [RToken])
       prepend_case c       (cs, rest)            =  ([c] :: cs, rest)
 
 fn :: parse_fn_decl [RToken] => (RFnDef, [RToken])
-      parse_fn_decl (TokFn:TokColonColon:(TokIdent name):rest) =
-        pt_res = parse_param_types rest
-        parse_fn_decl_ret name pt_res
-      parse_fn_decl (TokFn:TokColonColon:TokType:rest) =
-        pt_res = parse_param_types rest
-        parse_fn_decl_ret "type" pt_res
-      parse_fn_decl (TokFn:TokColonColon:TokWith:rest) =
-        pt_res = parse_param_types rest
-        parse_fn_decl_ret "with" pt_res
+      parse_fn_decl (TokFn:TokColonColon:rest) =
+        parse_bare_decl rest
       parse_fn_decl (_:rest) =  (FnDef "unknown" [] "()" [], rest)
       parse_fn_decl []       =  (FnDef "unknown" [] "()" [], [])
 
@@ -1202,7 +1195,7 @@ fn :: scan_op_header [RToken] [String] [String] [Bool] => ([String], [String], [
       scan_op_header (TokEof:rest) words params tmpl = (words, params, tmpl, [TokEof] :: rest)
       scan_op_header [] words params tmpl = (words, params, tmpl, [])
       scan_op_header ((TokIdent s):rest) words params tmpl
-        | is_upper_ident s = scan_op_header rest words (params :: [s]) (tmpl :: [True])
+        | is_upper_ident s = scan_op_type_slot words params tmpl (parse_type_tok ([TokIdent s] :: rest))
         | otherwise = scan_op_header rest (words :: [s]) params (tmpl :: [False])
       scan_op_header (TokType:rest) words params tmpl =
         scan_op_header rest (words :: ["type"]) params (tmpl :: [False])
@@ -1501,10 +1494,29 @@ fn :: has_arity_prefix [RArityEntry] String => Bool
         | k == pref OR (str_starts_with k (pref + "_")) = True
         | otherwise = has_arity_prefix rest pref
 
+fn :: has_variadic_param [String] => Bool
+      has_variadic_param []       =  False
+      has_variadic_param (p:ps)
+        | str_contains p "..." = True
+        | otherwise = has_variadic_param ps
+
+fn :: fn_def_arity [String] => Int
+      fn_def_arity params
+        | has_variadic_param params = 999
+        | otherwise = str_list_count params
+
+fn :: arity_matches Int Int    => Bool
+      arity_matches 999 actual =  actual >= 1
+      arity_matches ar  actual =  ar >= 0 AND ar == actual
+
+fn :: builtin_arity_entries => [RArityEntry]
+      builtin_arity_entries =
+        [ArityEntry "assert_equals" 2, ArityEntry "assert_true" 1, ArityEntry "send_through" 2, ArityEntry "receive_from" 1, ArityEntry "try_receive_from" 1, ArityEntry "receive_from_timeout" 2, ArityEntry "new_mailbox" 0, ArityEntry "new_channel" 0, ArityEntry "new_bounded_channel" 1, ArityEntry "chan_send" 2, ArityEntry "chan_recv" 1, ArityEntry "chan_try_recv" 1, ArityEntry "str_len" 1, ArityEntry "str_char_at" 2, ArityEntry "str_slice" 3, ArityEntry "str_contains" 2, ArityEntry "str_starts_with" 2, ArityEntry "str_concat" 2, ArityEntry "int_to_str" 1, ArityEntry "str_to_int" 1, ArityEntry "char_from_code" 1, ArityEntry "trim_str" 1, ArityEntry "read_file" 1, ArityEntry "load_rg_source" 1, ArityEntry "read_bytes" 1, ArityEntry "write_bytes" 2, ArityEntry "write_file" 2, ArityEntry "shell_exec" 1, ArityEntry "list_str_len" 1, ArityEntry "list_dir" 1, ArityEntry "file_lstat" 1, ArityEntry "sha256_file" 1, ArityEntry "sha256_str" 1, ArityEntry "sys_mkdir" 2, ArityEntry "sys_chmod" 2, ArityEntry "sys_exec" 3, ArityEntry "sys_chdir" 1, ArityEntry "sys_getcwd" 0, ArityEntry "sys_getenv" 1, ArityEntry "sys_setenv" 2, ArityEntry "sys_exit" 1, ArityEntry "sys_getuid" 0, ArityEntry "sys_getgid" 0, ArityEntry "sys_username" 1, ArityEntry "sys_user_groups" 1, ArityEntry "sys_lookup_uid_gid" 1, ArityEntry "sys_setresgid" 1, ArityEntry "sys_setgroups" 1, ArityEntry "sys_setresuid" 1, ArityEntry "sys_execve" 3, ArityEntry "sys_read_pass" 1, ArityEntry "cli_args" 0, ArityEntry "cmm_live_blocks" 0, ArityEntry "cmm_cond_spared" 0, ArityEntry "cmm_cond_freed" 0, ArityEntry "cmm_same_ptr" 2, ArityEntry "seq_map" 2, ArityEntry "par_map" 2, ArityEntry "seq_filter" 2, ArityEntry "par_filter" 2]
+
 fn :: collect_fn_arities [RFnDef] => [RArityEntry]
-      collect_fn_arities []       =  [ArityEntry "send_through" 2, ArityEntry "receive_from" 1, ArityEntry "try_receive_from" 1, ArityEntry "receive_from_timeout" 2]
+      collect_fn_arities []       =  builtin_arity_entries
       collect_fn_arities ((FnDef name params _ _):fs) =
-        [ArityEntry name (str_list_count params)] :: (collect_fn_arities fs)
+        [ArityEntry name (fn_def_arity params)] :: (collect_fn_arities fs)
 
 fn :: str_list_count [String] => Int
       str_list_count []       =  0
@@ -1615,15 +1627,51 @@ fn :: is_std_builtin String            => Bool
       is_std_builtin "__record_update__" = True
       is_std_builtin _                 =  False
 
+fn :: std_builtin_arity String     => Int
+      std_builtin_arity "map"      =  2
+      std_builtin_arity "||map"    =  2
+      std_builtin_arity "filter"   =  2
+      std_builtin_arity "||filter" =  2
+      std_builtin_arity "fold"     =  3
+      std_builtin_arity _          =  -1
+
+fn :: collapse_fn_ref_args [RExpr]  [RArityEntry] => [RExpr]
+      collapse_fn_ref_args []       _             =  []
+      collapse_fn_ref_args ((EVar w1):(EVar w2):(EVar w3):(EVar w4):rest) arities
+        | (lookup_arity arities (w1 + "_" + w2 + "_" + w3 + "_" + w4)) >= 0 = [EVar (w1 + "_" + w2 + "_" + w3 + "_" + w4)] :: (collapse_fn_ref_args rest arities)
+      collapse_fn_ref_args ((EVar w1):(EVar w2):(EVar w3):rest) arities
+        | (lookup_arity arities (w1 + "_" + w2 + "_" + w3)) >= 0 = [EVar (w1 + "_" + w2 + "_" + w3)] :: (collapse_fn_ref_args rest arities)
+      collapse_fn_ref_args ((EVar w1):(EVar w2):rest) arities
+        | (lookup_arity arities (w1 + "_" + w2)) >= 0 = [EVar (w1 + "_" + w2)] :: (collapse_fn_ref_args rest arities)
+      collapse_fn_ref_args (e:rest) arities       =
+        [e] :: (collapse_fn_ref_args rest arities)
+
+fn :: maybe_collapse_args [RExpr] Int         [RArityEntry] => [RExpr]
+      maybe_collapse_args args    expected_ar arities
+        | expected_ar >= 0 AND (expr_list_count args) <= expected_ar = args
+        | otherwise = collapse_fn_ref_args args arities
+
+fn :: has_longer_arity_prefix [RArityEntry] String  [RExpr]         => Bool
+      has_longer_arity_prefix arities       fn_name ((EVar w):rest) =
+        (has_arity_prefix arities (fn_name + "_" + w)) AND (can_complete_op arities (fn_name + "_" + w) rest)
+      has_longer_arity_prefix _             _       _               =  False
+
 fn :: norm_call String  [RExpr] [RArityEntry] => RExpr
       norm_call fn_name args    arities
-        | (is_std_builtin fn_name) OR ((lookup_arity arities fn_name) >= 0) = ECall fn_name (norm_expr_list args arities)
+        | is_std_builtin fn_name = ECall fn_name (norm_expr_list (maybe_collapse_args args (std_builtin_arity fn_name) arities) arities)
+        | (lookup_arity arities fn_name) >= 0 AND (NOT (has_longer_arity_prefix arities fn_name args)) = ECall fn_name (norm_expr_list (maybe_collapse_args args (lookup_arity arities fn_name) arities) arities)
         | fn_name == "__chain__" = norm_call_chain args arities (extract_mixfix_call "" args arities [])
         | otherwise = norm_call_mixfix fn_name args arities (extract_mixfix_call "" ([EVar fn_name] :: args) arities [])
 
 fn :: norm_call_chain [RExpr]   [RArityEntry] (String, [RExpr]) => RExpr
-      norm_call_chain orig_args arities       (mangled, operands)
-        | (lookup_arity arities mangled) >= 0 AND (lookup_arity arities mangled) == (expr_list_count operands) = ECall mangled (norm_expr_list operands arities)
+      norm_call_chain orig_args arities       (mangled, operands) =
+        ar = lookup_arity arities mangled
+        c_ops = maybe_collapse_args operands ar arities
+        norm_call_chain_step orig_args arities mangled ar c_ops
+
+fn :: norm_call_chain_step [RExpr] [RArityEntry] String Int [RExpr] => RExpr
+      norm_call_chain_step orig_args arities mangled ar c_ops
+        | arity_matches ar (expr_list_count c_ops) = ECall mangled (norm_expr_list c_ops arities)
         | otherwise = norm_call_chain_fallback (norm_expr_list orig_args arities) arities
 
 fn :: norm_call_chain_fallback [RExpr] [RArityEntry] => RExpr
@@ -1631,8 +1679,14 @@ fn :: norm_call_chain_fallback [RExpr] [RArityEntry] => RExpr
         finish_postfix_stack "__chain__" normed (reduce_postfix_spine normed arities [])
 
 fn :: norm_call_mixfix String [RExpr] [RArityEntry] (String, [RExpr]) => RExpr
-      norm_call_mixfix orig_name orig_args arities (mangled, operands)
-        | (lookup_arity arities mangled) >= 0 AND (lookup_arity arities mangled) == (expr_list_count operands) = ECall mangled (norm_expr_list operands arities)
+      norm_call_mixfix orig_name orig_args arities (mangled, operands) =
+        ar = lookup_arity arities mangled
+        c_ops = maybe_collapse_args operands ar arities
+        norm_call_mixfix_step orig_name orig_args arities mangled ar c_ops
+
+fn :: norm_call_mixfix_step String [RExpr] [RArityEntry] String Int [RExpr] => RExpr
+      norm_call_mixfix_step orig_name orig_args arities mangled ar c_ops
+        | arity_matches ar (expr_list_count c_ops) = ECall mangled (norm_expr_list c_ops arities)
         | otherwise = norm_call_mixfix_fallback orig_name (norm_expr_list orig_args arities) arities
 
 fn :: norm_call_mixfix_fallback String    [RExpr] [RArityEntry] => RExpr
@@ -1655,11 +1709,17 @@ fn :: norm_expr RExpr              [RArityEntry] => RExpr
         | otherwise = EVar name
       norm_expr (ENot inner)       arities       =  ENot (norm_expr inner arities)
       norm_expr (EOut inner)       arities       =  EOut (norm_expr inner arities)
+      norm_expr (EBin OpAnd (EVar fn_name) r) arities
+        | (lookup_arity arities fn_name) < 0 AND (has_arity_prefix arities (fn_name + "_and")) = norm_call fn_name ([EVar "and"] :: (flatten_mixfix_rhs r arities)) arities
       norm_expr (EBin OpAnd (ECall fn_name args) r) arities
         | (lookup_arity arities fn_name) < 0 AND (has_arity_prefix arities fn_name) = norm_call fn_name (args :: [EVar "and"] :: (flatten_mixfix_rhs r arities)) arities
+      norm_expr (EBin OpOr (EVar fn_name) r) arities
+        | (lookup_arity arities fn_name) < 0 AND (has_arity_prefix arities (fn_name + "_or")) = norm_call fn_name ([EVar "or"] :: (flatten_mixfix_rhs r arities)) arities
+      norm_expr (EBin OpOr (ECall fn_name args) r) arities
+        | (lookup_arity arities fn_name) < 0 AND (has_arity_prefix arities fn_name) = norm_call fn_name (args :: [EVar "or"] :: (flatten_mixfix_rhs r arities)) arities
       norm_expr (EBin bop l r)     arities       =  EBin bop (norm_expr l arities) (norm_expr r arities)
       norm_expr (ECall fn_name args) arities     =  norm_call fn_name args arities
-      norm_expr (EEcho args)       arities       =  EEcho (fold_echo_args args arities)
+      norm_expr (EEcho args)       arities       =  EEcho (fold_echo_args (collapse_fn_ref_args args arities) arities)
       norm_expr (EStrInterp parts) arities       =  EStrInterp (norm_expr_list parts arities)
       norm_expr (EList elems)      arities       =  EList (norm_expr_list elems arities)
       norm_expr (ETuple elems)     arities       =  ETuple (norm_expr_list elems arities)

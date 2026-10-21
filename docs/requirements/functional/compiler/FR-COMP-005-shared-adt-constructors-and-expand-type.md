@@ -53,14 +53,20 @@ The Ridgun language and `ridgunc` compiler SHALL support constructor name reuse 
      expand type Something = Bool
      ```
    - Values of a type-name variant MAY be passed either directly as bare values (`describe "hello"`, `describe 42`, `describe True`) or via explicit type-constructor application (`describe (String "hello")`, `describe (Int 42)`), and pattern matching SHALL support both literal patterns (`describe "admin"`, `describe 0`) and typed patterns (`describe (String s)`, `describe (Int n)`, `describe (Bool b)`).
+5. **Natural-Language Spaces in `fn ::` Declarations, Built-in Calls, and Filenames**:
+   - `fn ::` declarations and clauses SHALL accept multi-word function names separated by spaces (e.g., `fn :: describe something Something => String`, `fn :: project name => String`, `fn :: sum variadic Int... => Int`) in addition to single-word/underscore names.
+   - Standard built-in functions and `test` assertions SHALL be callable with spaces (`assert equals a b`, `assert true cond`, `str len s`, `str slice s a b`, `read file path`, `write file path text`, `cmm live blocks`, etc.) while keeping underscore forms backward-compatible.
+   - `stable` and `ridgunc` SHALL support source and test filenames containing spaces (such as `src/test/ridgun/test basics.rg`, `src/test/ridgun/test core language.rg`, `src/test/ridgun/test parallel and tensors.rg`, and `src/test/ridgun/test strings.rg`).
 
 ## Rationale
 - Allowing constructor names like `Error`, `Var`, `Lit`, and `Empty` to be reused across types eliminates artificial Hungarian prefixes (`PatVar`, `EVar`, `TyVar`) and leverages Ridgun's mandatory tabular type signatures for type-directed disambiguation.
 - Allowing bare type names (`String | Int | MyStruct Real Int`) inside `type` and `expand type` avoids redundant `Int Int` / `String String` declarations and lets callers pass `"hello"` or `42` directly without boilerplate wrapper calls.
 - Supporting `expand type` together with standard `fn ::` clause merging solves the Expression Problem cleanly without introducing redundant `expand fn` keywords.
+- Supporting spaces instead of `_` in `fn ::` declarations, built-in calls, and filenames makes Ridgun code read consistently like natural language across functions, operators, and modules.
 
 ## Acceptance Criteria
 1. **AC-1 (Shared Constructors)**: Two or more `type` definitions sharing constructor names (`Error`, `Var`, `Lit`) typecheck, pattern-match, and execute without collision.
 2. **AC-2 (`expand type` for ADTs and Records)**: `expand type` adds new constructors to sum ADTs and new fields (with accessors and `with` updates) to product records.
 3. **AC-3 (Automatic `fn ::` Clause Merging)**: Subsequent `fn ::` declarations for the same function merge their clauses ahead of base catch-all `_` clauses.
 4. **AC-4 (Type-Name Variants)**: `type Something = String | Int | MyStruct Real Int` accepts bare `"hello"` / `42` as well as `String "hello"` / `Int 42`, and matches both literal patterns and `(String s)` / `(Int n)` patterns at runtime.
+5. **AC-5 (Natural-Language Spaces in `fn ::`, Built-ins, and Filenames)**: Multi-word `fn ::` definitions, space-separated built-in/test calls (`assert equals`, `str len`, `read file`), and space-separated test suite filenames (`test basics.rg`, `test core language.rg`, `test parallel and tensors.rg`, `test strings.rg`) pass `stable check` and `stable test`.

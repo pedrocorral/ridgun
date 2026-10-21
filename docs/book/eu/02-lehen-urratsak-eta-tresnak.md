@@ -59,8 +59,8 @@ nire-super-tresna/
 │   │       └── app/
 │   │           └── main.rg   # Sarrera-puntua (`main => ()`)
 │   └── test/
-│       └── ridgun/           # Zure test-bateriak (`test_*.rg`)
-│           └── test_dena.rg
+│       └── ridgun/           # Zure test-bateriak (`test *.rg`)
+│           └── test dena.rg
 └── target/                   # Konpilatutako bitarrak agertzen diren lekua
 ```
 
@@ -80,14 +80,14 @@ type ProjectInfo =
 project => ProjectInfo
 project =  ProjectInfo "nire-super-tresna" "0.1.0" "2026"
 
-source_dir => String
-source_dir =  "src/main/ridgun"
+source dir => String
+source dir =  "src/main/ridgun"
 
-test_dir => String
-test_dir =  "src/test/ridgun"
+test dir => String
+test dir =  "src/test/ridgun"
 
-target_dir => String
-target_dir =  "target"
+target dir => String
+target dir =  "target"
 ```
 
 Eremu bat idaztean huts egiten baduzu, konpiladoreak berak abisatzen dizu. Ezustekorik gabe.
@@ -114,10 +114,10 @@ stable check
 ```bash
 stable test
 ```
-`src/test/ridgun/test_*.rg` suite guztiak bilatzen ditu, exekutatzen ditu eta `assert_equals` zein `assert_true` bakoitza egiaztatzen du.
+`src/test/ridgun/test *.rg` suite guztiak bilatzen ditu, exekutatzen ditu eta `assert equals` zein `assert true` bakoitza egiaztatzen du.
 
 ```ridgun
--- src/test/ridgun/test_matematika.rg adibidea
+-- src/test/ridgun/test matematika.rg adibidea
 import test
 
 bikoitza Int => Int
@@ -125,8 +125,8 @@ bikoitza x   =  x * 2
 
 main => ()
 main =
-  assert_equals (bikoitza 21) 42
-  assert_true ((bikoitza 5) > 0)
+  assert equals (bikoitza 21) 42
+  assert true ((bikoitza 5) > 0)
 ```
 
 ### 4. `stable built` (eta `stable clean`) — Ekoizpenera

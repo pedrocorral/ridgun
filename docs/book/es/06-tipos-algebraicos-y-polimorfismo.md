@@ -184,4 +184,32 @@ main =
 
 Acabas de fabricarte tu propio operador ternario polimórfico y un DSL de formateo en **3 líneas** de Ridgun.
 
+---
+
+## 6.7. Constructores compartidos, variantes de tipo directo, `expand type` y espacios naturales en `fn ::`
+
+Ridgun lleva los tipos algebraicos y las funciones un paso más allá en expresividad y extensibilidad:
+
+1. **Constructores compartidos entre distintos `type`**: Varios tipos suma pueden reutilizar el mismo nombre de constructor (`Error`, `Var`, `Lit`) con igual o distinta aridad; el verificador de tipos los distingue por la columna de la firma.
+2. **Variantes con nombre de tipo directo (`type Something = String | Int | MyStruct Float Int`)**: Cuando una variante es un tipo primitivo (`String`, `Int`, `Float`/`Real`, `Bool`, `Char`), no necesitas repetir `Int Int` ni `String String`. Puedes pasar valores directos (`"hola"`, `42`) o constructores explícitos (`String "hola"`, `Int 42`), y hacer pattern matching tanto con literales (`"admin"`, `0`) como con patrones tipados (`(String s)`, `(Int n)`).
+3. **Extensión abierta de tipos (`expand type`) y fusión automática de cláusulas `fn ::`**: Con `expand type` puedes añadir nuevas variantes a un tipo suma o nuevos campos a un registro. Al volver a declarar `fn ::` para la misma función, las nuevas cláusulas se fusionan automáticamente **antes** de cualquier cláusula comodín `_` (sin necesidad de escribir `expand fn`).
+4. **Espacios naturales `" "` en lugar de `_` en `fn ::`, funciones nativas y nombres de archivo**: Igual que en `op ::`, los nombres de función en `fn ::`, las llamadas a funciones nativas (`assert equals`, `str len`, `read file`) y los archivos `.rg` (`test core language.rg`) pueden escribirse con espacios naturales:
+
+```ridgun
+type Something = String | Int | MyStruct Float Int
+
+fn :: describir algo Something            => String
+      describir algo "admin"              =  "admin_especial"
+      describir algo 0                    =  "cero"
+      describir algo (String   s)         =  "texto:{s}"
+      describir algo (Int      n)         =  "entero:{n}"
+      describir algo (MyStruct ratio cnt) =  "estructura:{ratio}:{cnt}"
+      describir algo _                    =  "otro"
+
+expand type Something = Bool
+
+fn :: describir algo Something => String
+      describir algo (Bool b)  =  "booleano:{b}"
+```
+
 En el **Capítulo 07** vamos a poner todos los núcleos de tu procesador a trabajar a la vez sin derramar una gota de sudor: **funciones de orden superior (`map`, `||map`, `filter`, `||filter`, `fold`), grafos paralelos `||` con `->` y canales concurrentes**.

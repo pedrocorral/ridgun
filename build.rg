@@ -2,20 +2,20 @@
 -- build.rg — Ridgun Project Build Definition for `stable`
 -- ============================================================
 
-fn :: project_name => String
-      project_name =  "ridgunc"
+fn :: project name => String
+      project name =  "ridgunc"
 
-fn :: project_version => String
-      project_version =  "0.9.3"
+fn :: project version => String
+      project version =  "0.9.3"
 
-fn :: main_entry => String
-      main_entry =  "src/main/ridgun/ridgunc/main.rg"
+fn :: main entry => String
+      main entry =  "src/main/ridgun/ridgunc/main.rg"
 
-fn :: source_dir => String
-      source_dir =  "src/main/ridgun"
+fn :: source dir => String
+      source dir =  "src/main/ridgun"
 
-fn :: test_dir => String
-      test_dir =  "src/test/ridgun"
+fn :: test dir => String
+      test dir =  "src/test/ridgun"
 
-fn :: target_dir => String
-      target_dir =  "target"
+fn :: target dir => String
+      target dir =  "target"
