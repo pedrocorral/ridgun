@@ -75,7 +75,7 @@ fn :: parse_type_str String => RType
       parse_type_str s
         | ends_with_ellipsis s = TyVariadic (parse_type_str (str_slice s 0 ((str_len s) - 3)))
         | is_int_type_name s = TyInt
-        | s == "Real" = TyReal
+        | s == "Real" OR s == "Float" = TyReal
         | s == "Char" = TyChar
         | s == "String" = TyString
         | s == "Bool" = TyBool
@@ -85,6 +85,12 @@ fn :: parse_type_str String => RType
         | str_starts_with s "[" = TyList (parse_type_str (str_slice s 1 ((str_len s) - 1)))
         | str_starts_with s "(" = parse_paren_type_inner (str_slice s 1 ((str_len s) - 1))
         | otherwise = TyVar s
+
+fn :: strip_pipe_suffix String Int Int => String
+      strip_pipe_suffix s      pos len
+        | pos >= len = s
+        | (str_char_at s pos) == 124 = str_slice s 0 pos
+        | otherwise = strip_pipe_suffix s (pos + 1) len
 
 fn :: rtype_to_str RType              => String
       rtype_to_str TyInt              =  "Int"
@@ -100,7 +106,9 @@ fn :: rtype_to_str RType              => String
       rtype_to_str (TyVariadic inner) =  (rtype_to_str inner) + "..."
       rtype_to_str (TyFun params ret) =  "(" + (rtype_list_to_str params) + " => " + (rtype_to_str ret) + ")"
       rtype_to_str (TyVar name)
-        | str_starts_with name "adt:" = str_slice name 4 (str_len name)
+        | str_starts_with name "adt:" =
+          raw = str_slice name 4 (str_len name)
+          strip_pipe_suffix raw 0 (str_len raw)
         | otherwise = name
 
 fn :: rtype_list_to_str [RType] => String
@@ -147,6 +155,14 @@ fn :: is_poly_type_var String => Bool
         | (str_len s) == 1 = True
         | otherwise = False
 
+fn :: adt_accepts_prim String RType    => Bool
+      adt_accepts_prim a      TyInt    =  str_contains a "|prim:Int"
+      adt_accepts_prim a      TyReal   =  str_contains a "|prim:Real"
+      adt_accepts_prim a      TyString =  str_contains a "|prim:String"
+      adt_accepts_prim a      TyChar   =  str_contains a "|prim:String"
+      adt_accepts_prim a      TyBool   =  str_contains a "|prim:Bool"
+      adt_accepts_prim _      _        =  False
+
 fn :: types_compatible RType              RType              => Bool
       types_compatible TyInt              TyInt              =  True
       types_compatible TyReal             TyReal             =  True
@@ -164,10 +180,16 @@ fn :: types_compatible RType              RType              => Bool
       types_compatible (TyVar a)          (TyVar b)
         | a == b = True
         | (is_poly_type_var a) OR (is_poly_type_var b) = True
-        | (str_starts_with a "adt:") AND (str_starts_with b "adt:") AND ((str_contains a b) OR (str_contains b a)) = True
+        | (str_starts_with a "adt:") AND (str_starts_with b "adt:") AND ((str_contains a b) OR (str_contains b a) OR (str_contains a ("adt:" + (rtype_to_str (TyVar b)))) OR (str_contains b ("adt:" + (rtype_to_str (TyVar a))))) = True
         | otherwise = False
-      types_compatible (TyVar a)          _                  =  is_poly_type_var a
-      types_compatible _                  (TyVar b)          =  is_poly_type_var b
+      types_compatible (TyVar a)          other
+        | is_poly_type_var a = True
+        | (str_starts_with a "adt:") AND (adt_accepts_prim a other) = True
+        | otherwise = False
+      types_compatible other              (TyVar b)
+        | is_poly_type_var b = True
+        | (str_starts_with b "adt:") AND (adt_accepts_prim b other) = True
+        | otherwise = False
       types_compatible (TyList a)         (TyList b)         =  types_compatible a b
       types_compatible (TyTuple as)       (TyTuple bs)
         | (rtype_list_len as) == (rtype_list_len bs) = types_list_compatible as bs
@@ -179,13 +201,34 @@ fn :: types_compatible RType              RType              => Bool
 
 -- ── Type Environment Lookup & Registration ──────────────────
 
+fn :: embedded_variant_tag RVariant => String
+      embedded_variant_tag (TypeVariant c (a:[]))
+        | c != a = ""
+        | is_int_type_name c = "|prim:Int"
+        | c == "Real" OR c == "Float" = "|prim:Real"
+        | c == "String" OR c == "Char" = "|prim:String"
+        | c == "Bool" = "|prim:Bool"
+        | otherwise = "|adt:" + c
+      embedded_variant_tag _        =  ""
+
+fn :: collect_embedded_tags [RVariant] => String
+      collect_embedded_tags []         =  ""
+      collect_embedded_tags (v:vs)     =  (embedded_variant_tag v) + (collect_embedded_tags vs)
+
 fn :: collect_typedef_names [RTypeDef] => [String]
       collect_typedef_names []         =  []
-      collect_typedef_names ((TypeDef name _ _):ts) = [name] :: (collect_typedef_names ts)
+      collect_typedef_names ((TypeDef name vars _):ts) =
+        [(name + (collect_embedded_tags vars))] :: (collect_typedef_names ts)
+
+fn :: lookup_declared_adt_entry [String] String => String
+      lookup_declared_adt_entry []       _      =  ""
+      lookup_declared_adt_entry (e:es)   target
+        | e == target OR (str_starts_with e (target + "|")) = e
+        | otherwise = lookup_declared_adt_entry es target
 
 fn :: qualify_declared_adt [String] RType              => RType
       qualify_declared_adt tnames   (TyVar s)
-        | str_in_list s tnames = TyVar ("adt:" + s)
+        | (lookup_declared_adt_entry tnames s) != "" = TyVar ("adt:" + (lookup_declared_adt_entry tnames s))
         | otherwise = TyVar s
       qualify_declared_adt tnames   (TyList inner)     =  TyList (qualify_declared_adt tnames inner)
       qualify_declared_adt tnames   (TyTuple elems)    =  TyTuple (qualify_declared_adt_list tnames elems)

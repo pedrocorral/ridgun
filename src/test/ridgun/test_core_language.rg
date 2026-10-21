@@ -245,6 +245,21 @@ fn :: format_app_err AppErr           => String
 type AppConfig        = host: String, port: Int
 expand type AppConfig = tls: Bool
 
+type Something = String | Int | MyStruct Float Int
+
+fn :: describe_something Something    => String
+      describe_something "admin"      =  "special_admin"
+      describe_something 0            =  "zero_int"
+      describe_something (String   s) =  "str:{s}"
+      describe_something (Int      n) =  "int:{n}"
+      describe_something (MyStruct ratio cnt) = "struct:{ratio}:{cnt}"
+      describe_something _            =  "other"
+
+expand type Something = Bool
+
+fn :: describe_something Something => String
+      describe_something (Bool b)  =  "bool:{b}"
+
 fn :: main => ()
       main =
         echo "=== Core Language, ADTs, Mixfix, Variadics & Higher-Order Ops ==="
@@ -322,5 +337,14 @@ fn :: main => ()
         assert_equals (host cfg1) "localhost"
         assert_equals (port cfg1) 8443
         assert_equals (tls cfg1) True
+        assert_equals (describe_something "admin") "special_admin"
+        assert_equals (describe_something "hej") "str:hej"
+        assert_equals (describe_something (String "explicit")) "str:explicit"
+        assert_equals (describe_something 0) "zero_int"
+        assert_equals (describe_something 42) "int:42"
+        assert_equals (describe_something (Int 99)) "int:99"
+        assert_equals (describe_something (MyStruct 3.5 7)) "struct:3.5:7"
+        assert_equals (describe_something True) "bool:True"
+        assert_equals (describe_something (Bool False)) "bool:False"
         echo "=== All core language tests passed ==="
 

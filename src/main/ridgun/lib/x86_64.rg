@@ -73,6 +73,10 @@ fn :: x86_64_instr_size RNativeInstr       => Int
       x86_64_instr_size (NMatchEmpty _)    =  13
       x86_64_instr_size (NMatchNonEmpty _) =  13
       x86_64_instr_size (NMatchTuple _ _)  =  23
+      x86_64_instr_size (NMatchAdt _ _ _ -1) = 13
+      x86_64_instr_size (NMatchAdt _ _ _ -2) = 21
+      x86_64_instr_size (NMatchAdt _ _ _ -3) = 28
+      x86_64_instr_size (NMatchAdt _ _ _ -4) = 28
       x86_64_instr_size (NMatchAdt _ _ _ _) = 43
       x86_64_instr_size (NListHead _)      =  13
       x86_64_instr_size (NListTail _)      =  13
@@ -186,6 +190,14 @@ fn :: x86_64_encode_instr RNativeInstr Int Int Int Int [RLabelEntry] [RLabelEntr
         (x86_mov_slot_rdi slot) :: (x86_call_rt 26 (cur_vaddr + 13))
       x86_64_encode_instr (NMatchTuple slot arity) cur_vaddr _ _ _ _ _ =
         (x86_mov_slot_rdi slot) :: (x86_mov_imm64_rsi arity) :: (x86_call_rt 29 (cur_vaddr + 23))
+      x86_64_encode_instr (NMatchAdt slot _ _ -1) _ _ _ _ _ _ =
+        (x86_mov_slot_rdi slot) :: [137, 248, 131, 224, 1]
+      x86_64_encode_instr (NMatchAdt slot _ _ -2) _ _ _ _ _ _ =
+        (x86_mov_slot_rdi slot) :: [72, 131, 231, 251, 49, 192, 72, 131, 255, 2, 15, 148, 192]
+      x86_64_encode_instr (NMatchAdt slot _ _ -3) _ _ _ _ _ _ =
+        (x86_mov_slot_rdi slot) :: [49, 192, 72, 133, 255, 116, 13, 64, 246, 199, 7, 117, 7, 72, 131, 63, 1, 15, 148, 192]
+      x86_64_encode_instr (NMatchAdt slot _ _ -4) _ _ _ _ _ _ =
+        (x86_mov_slot_rdi slot) :: [49, 192, 72, 133, 255, 116, 13, 64, 246, 199, 7, 117, 7, 72, 131, 63, 0, 15, 148, 192]
       x86_64_encode_instr (NMatchAdt slot off len arity) cur_vaddr _ _ rodata_vaddr _ _ =
         (x86_mov_slot_rdi slot) :: (x86_mov_imm64_rsi (rodata_vaddr + off)) :: (x86_mov_imm64_rdx len) :: (x86_mov_imm64_rcx arity) :: (x86_call_rt 31 (cur_vaddr + 43))
       x86_64_encode_instr (NListHead slot) cur_vaddr _ _ _ _ _ =

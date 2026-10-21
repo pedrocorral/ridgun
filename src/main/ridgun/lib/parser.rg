@@ -1408,10 +1408,34 @@ fn :: parse_variant_args_cont (String, [RToken]) => ([String], [RToken])
         more = parse_variant_args rest
         prepend_str ty more
 
+fn :: is_prim_type_ctor String   => Bool
+      is_prim_type_ctor "Int"    =  True
+      is_prim_type_ctor "U8"     =  True
+      is_prim_type_ctor "U16"    =  True
+      is_prim_type_ctor "U32"    =  True
+      is_prim_type_ctor "U64"    =  True
+      is_prim_type_ctor "I8"     =  True
+      is_prim_type_ctor "I16"    =  True
+      is_prim_type_ctor "I32"    =  True
+      is_prim_type_ctor "I64"    =  True
+      is_prim_type_ctor "Usize"  =  True
+      is_prim_type_ctor "Real"   =  True
+      is_prim_type_ctor "Float"  =  True
+      is_prim_type_ctor "String" =  True
+      is_prim_type_ctor "Char"   =  True
+      is_prim_type_ctor "Bool"   =  True
+      is_prim_type_ctor _        =  False
+
+fn :: norm_variant_args String [String] => [String]
+      norm_variant_args ctor   []
+        | is_prim_type_ctor ctor = [ctor]
+        | otherwise = []
+      norm_variant_args _      args     =  args
+
 fn :: parse_variants_cont String ([String], [RToken]) => ([RVariant], [RToken])
       parse_variants_cont ctor   (args, rest)         =
         more = parse_variants rest
-        prepend_variant (TypeVariant ctor args) more
+        prepend_variant (TypeVariant ctor (norm_variant_args ctor args)) more
 
 fn :: prepend_variant RVariant ([RVariant], [RToken]) => ([RVariant], [RToken])
       prepend_variant v        (vs, rest)             =  ([v] :: vs, rest)

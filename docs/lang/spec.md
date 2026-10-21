@@ -527,7 +527,21 @@ Existing Sum ADTs and Product Records can be extended with `expand type UpperNam
 
 - **Extending a Sum ADT**: appends new variant constructors to the existing type.
 - **Extending a Product Record**: appends new named fields (`field: Type`) and auto-generates their field accessor functions.
+- **Type-Name Variants Without Redundant Constructor Names**: in `type` and `expand type` sum declarations, a variant whose name is a bare built-in type (`String`, `Int`, `Real`/`Float`, `Bool`, `Char`) with no extra type arguments after it represents values of that type directly (without writing `Int Int` or `String String`). Callers can pass bare values (`describe "hej"`, `describe 42`) or explicit constructor calls (`describe (String "hej")`, `describe (Int 42)`), and equations can match both literals (`"admin"`, `0`) and typed patterns (`(String s)`, `(Int n)`).
 - **Automatic `fn ::` / `op ::` Clause Merging (without `expand fn`)**: re-declaring an existing `fn ::` or `op ::` with new pattern clauses automatically merges those clauses into the existing function definition, placing specific constructor/literal pattern clauses **before** any catch-all (`_` / variable) fallback clause:
+
+```ridgun
+type Something = String | Int | MyStruct Float Int
+expand type Something = Bool
+
+fn :: describe_something Something            => String
+      describe_something "admin"              =  "special_admin"
+      describe_something 0                    =  "zero_int"
+      describe_something (String   s)         =  "str:{s}"
+      describe_something (Int      n)         =  "int:{n}"
+      describe_something (Bool     b)         =  "bool:{b}"
+      describe_something (MyStruct ratio cnt) =  "struct:{ratio}:{cnt}"
+```
 
 ```ridgun
 type AppErr = IoError String | Timeout Int

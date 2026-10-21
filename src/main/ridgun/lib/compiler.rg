@@ -1014,6 +1014,24 @@ fn :: lower_var_expr RNativeEnv String [String] Int RNativeCode => RNativeCode
           off = env_str_off env name
           nc_emit st (NLoadStrLit off (str_len name)) sp
 
+fn :: prim_type_tag_id String   => Int
+      prim_type_tag_id "Int"    =  1
+      prim_type_tag_id "U8"     =  1
+      prim_type_tag_id "U16"    =  1
+      prim_type_tag_id "U32"    =  1
+      prim_type_tag_id "U64"    =  1
+      prim_type_tag_id "I8"     =  1
+      prim_type_tag_id "I16"    =  1
+      prim_type_tag_id "I32"    =  1
+      prim_type_tag_id "I64"    =  1
+      prim_type_tag_id "Usize"  =  1
+      prim_type_tag_id "Bool"   =  2
+      prim_type_tag_id "String" =  3
+      prim_type_tag_id "Char"   =  3
+      prim_type_tag_id "Real"   =  4
+      prim_type_tag_id "Float"  =  4
+      prim_type_tag_id _        =  0
+
 fn :: lower_call_expr RNativeEnv String [RExpr] [String] Int RNativeCode => RNativeCode
       lower_call_expr env fname [] bound_locals sp st
         | (lookup_local bound_locals fname) >= 0 =
@@ -1023,6 +1041,8 @@ fn :: lower_call_expr RNativeEnv String [RExpr] [String] Int RNativeCode => RNat
           st1 = lower_expr env a1 bound_locals sp st
           st2 = nc_emit st1 (NStoreSlot sp) (sp + 1)
           nc_emit st2 (NCallIndirect1 (env_var_slot env fname) sp) (sp + 1)
+        | (prim_type_tag_id fname) > 0 =
+          lower_expr env a1 bound_locals sp st
       lower_call_expr env fname (a1:a2:[]) bound_locals sp st
         | (lookup_local bound_locals fname) >= 0 =
           st1 = lower_expr_list_to_slots env [a1, a2] bound_locals sp 0 st
@@ -1540,6 +1560,10 @@ fn :: lower_pat_cond RNativeEnv RPattern Int Int Int RNativeCode => RNativeCode
         arity = pat_list_len ps
         st1 = nc_emit_list st [NMatchTuple slot arity, NJumpIfZero fail_lbl] sp
         lower_tuple_pat_conds env ps slot 0 fail_lbl sp st1
+      lower_pat_cond env (PatCtor c (sub_p:[])) slot fail_lbl sp st
+        | (prim_type_tag_id c) > 0 =
+          st1 = nc_emit_list st [NMatchAdt slot 0 0 (0 - (prim_type_tag_id c)), NJumpIfZero fail_lbl] sp
+          lower_pat_cond env sub_p slot fail_lbl sp st1
       lower_pat_cond env (PatCtor c args) slot fail_lbl sp st =
         arity = pat_list_len args
         off = env_str_off env c
@@ -1598,6 +1622,9 @@ fn :: lower_pat_binds RNativeEnv RPattern Int Bool Int RNativeCode => RNativeCod
         lower_pat_cons_bind env t slot False sp st1
       lower_pat_binds env (PatTuple ps) slot _ sp st =
         lower_tuple_pat_binds env ps slot 0 sp st
+      lower_pat_binds env (PatCtor c (sub_p:[])) slot move_ok sp st
+        | (prim_type_tag_id c) > 0 =
+          lower_pat_binds env sub_p slot move_ok sp st
       lower_pat_binds env (PatCtor _ args) slot _ sp st =
         lower_adt_pat_binds env args slot 0 sp st
       lower_pat_binds _ _ _ _ _ st = st

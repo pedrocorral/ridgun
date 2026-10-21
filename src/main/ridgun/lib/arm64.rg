@@ -98,6 +98,10 @@ fn :: arm64_instr_size RNativeInstr       => Int
       arm64_instr_size (NMatchEmpty _)    =  8
       arm64_instr_size (NMatchNonEmpty _) =  8
       arm64_instr_size (NMatchTuple _ _)  =  24
+      arm64_instr_size (NMatchAdt _ _ _ -1) = 8
+      arm64_instr_size (NMatchAdt _ _ _ -2) = 16
+      arm64_instr_size (NMatchAdt _ _ _ -3) = 32
+      arm64_instr_size (NMatchAdt _ _ _ -4) = 32
       arm64_instr_size (NMatchAdt _ _ _ _) = 56
       arm64_instr_size (NListHead _)      =  8
       arm64_instr_size (NListTail _)      =  8
@@ -211,6 +215,14 @@ fn :: arm64_encode_instr RNativeInstr Int Int Int Int [RLabelEntry] [RLabelEntry
         (arm64_ldr_slot 0 slot) :: (arm64_bl_rt 26 (cur_vaddr + 4))
       arm64_encode_instr (NMatchTuple slot arity) cur_vaddr _ _ _ _ _ =
         (arm64_ldr_slot 0 slot) :: (arm64_mov_imm64 1 arity) :: (arm64_bl_rt 29 (cur_vaddr + 20))
+      arm64_encode_instr (NMatchAdt slot _ _ -1) _ _ _ _ _ _ =
+        (arm64_ldr_slot 0 slot) :: (u32_le 2453667840)
+      arm64_encode_instr (NMatchAdt slot _ _ -2) _ _ _ _ _ _ =
+        (arm64_ldr_slot 0 slot) :: (u32_le 2457729024) :: (u32_le 4043311135) :: (u32_le 2594117600)
+      arm64_encode_instr (NMatchAdt slot _ _ -3) _ _ _ _ _ _ =
+        (arm64_ldr_slot 1 slot) :: (u32_le (arm64_movz 0 0 0)) :: (u32_le 3019899009) :: (u32_le 4064283711) :: (u32_le 1409286241) :: (u32_le 4181721121) :: (u32_le 4043310111) :: (u32_le 2594117600)
+      arm64_encode_instr (NMatchAdt slot _ _ -4) _ _ _ _ _ _ =
+        (arm64_ldr_slot 1 slot) :: (u32_le (arm64_movz 0 0 0)) :: (u32_le 3019899009) :: (u32_le 4064283711) :: (u32_le 1409286241) :: (u32_le 4181721121) :: (u32_le 4043309087) :: (u32_le 2594117600)
       arm64_encode_instr (NMatchAdt slot off len arity) cur_vaddr _ _ rodata_vaddr _ _ =
         (arm64_ldr_slot 0 slot) :: (arm64_mov_imm64 1 (rodata_vaddr + off)) :: (arm64_mov_imm64 2 len) :: (arm64_mov_imm64 3 arity) :: (arm64_bl_rt 31 (cur_vaddr + 52))
       arm64_encode_instr (NListHead slot) cur_vaddr _ _ _ _ _ =

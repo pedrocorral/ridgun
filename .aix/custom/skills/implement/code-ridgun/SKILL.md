@@ -125,9 +125,10 @@ Every `=` (in `fn ::`, `op ::`, local bindings `x =` / `mut x =`, and guard bran
   - Multicore parallel (work-stealing worker threads): **`||map f xs`** and **`||filter p xs`**.
 
 ### 3.5 Types, ADTs, Record Updates (`with`), and Natural-Language Mixfix (`op ::`)
-- **Sum ADTs & Shared Constructor Names (`FR-COMP-005`)**:
+- **Sum ADTs, Shared Constructor Names & Type-Name Variants (`FR-COMP-005`)**:
   - `type Shape = Circle Int | Rect Int Int` or polymorphic `type Option A = None | Some A`.
   - Multiple `type` declarations can share variant constructor names (such as `Error`, `Var`, `Lit`, `None`) with the same or different arities; the typechecker resolves them by expected column type and argument types.
+  - Bare built-in type names in sum ADTs (`type Something = String | Int | MyStruct Float Int`) include values of those types directly without redundant `Int Int` or `String String` wrappers; callers can pass bare `"hej"` / `42` or `String "hej"` / `Int 42`, and patterns match both literals (`"admin"`, `0`) and typed patterns (`(String s)`, `(Int n)`).
 - **Open Type Extensions (`expand type`) & Automatic `fn ::` Clause Merging (`FR-COMP-005`)**:
   - Append new variants to an existing Sum ADT or new fields to an existing Product Record using `expand type`:
   ```ridgun
