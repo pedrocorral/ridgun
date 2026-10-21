@@ -14,6 +14,9 @@ import lexer
 import parser
 import analyzer
 import typecheck
+import elf64
+import x86_64
+import arm64
 
 -- ── Local Variable Table Helpers ────────────────────────────
 
@@ -460,142 +463,209 @@ fn :: prep_fndef_list [RFnDef] [RCgSig] => [RFnDef]
       prep_fndef_list ((FnDef name params ret_ty cases):fs) sigs =
         [FnDef name params ret_ty (prep_case_list cases sigs)] :: (prep_fndef_list fs sigs)
 
--- ── Native Code Generator (RProgram => Standalone Native Code) ──
+-- ── Pure-Ridgun Native IR Lowering (RProgram => RNativeProg) ──
+-- @implements FR-COMP-002
+-- @implements FR-COMP-004
 
-fn :: mangle_fn_name String     => String
-      mangle_fn_name "+"        =  "rg_fn___op_add"
-      mangle_fn_name "-"        =  "rg_fn___op_sub"
-      mangle_fn_name "*"        =  "rg_fn___op_mul"
-      mangle_fn_name "/"        =  "rg_fn___op_div"
-      mangle_fn_name "%"        =  "rg_fn___op_mod"
-      mangle_fn_name "||map"    =  "rg_fn_par_map"
-      mangle_fn_name "||filter" =  "rg_fn_par_filter"
-      mangle_fn_name name       =  "rg_fn_" + name
+type RStrEntry = StrEntry String Int Int
 
-fn :: escape_char_rust Int => String
-      escape_char_rust c
-        | c == 92 = (char_from_code 92) + (char_from_code 92)
-        | c == 34 = (char_from_code 92) + (char_from_code 34)
-        | c == 10 = (char_from_code 92) + "n"
-        | c == 13 = (char_from_code 92) + "r"
-        | c == 9 = (char_from_code 92) + "t"
-        | otherwise = char_from_code c
+type RStrPool = StrPool String [RStrEntry]
 
-fn :: needs_escape String => Bool
-      needs_escape s      =
-        (str_contains s (char_from_code 92)) OR (str_contains s (char_from_code 34)) OR (str_contains s (char_from_code 10)) OR (str_contains s (char_from_code 13)) OR (str_contains s (char_from_code 9))
+type RFnEntry = FnEntry String Int Int
 
-fn :: escape_rust_range String Int   Int => String
-      escape_rust_range s      start end
-        | end <= start = ""
-        | NOT (needs_escape (str_slice s start end)) = str_slice s start end
-        | (end - start) == 1 = escape_char_rust (str_char_at s start)
-        | otherwise = (escape_rust_range s start ((start + end) / 2)) + (escape_rust_range s ((start + end) / 2) end)
+type RFieldEntry = FieldEntry String Int
 
-fn :: escape_rust_str String => String
-      escape_rust_str s      =  escape_rust_range s 0 (str_len s)
+type RNativeEnv = NativeEnv String Int [String] [RStrEntry] [RFnEntry] [RFieldEntry]
 
-fn :: find_char_from String Int Int Int       => Int
-      find_char_from s      pos len target_ch
-        | pos >= len = len
-        | (str_char_at s pos) == target_ch = pos
-        | otherwise = find_char_from s (pos + 1) len target_ch
+type RNativeCode = NativeCode [RNativeInstr] Int Int
 
-fn :: emit_interp_loop String Int Int [String] => String
-      emit_interp_loop s      pos len locals
-        | pos >= len = 'rg_str("")'
-        | otherwise = emit_interp_at s pos len locals (find_char_from s pos len 123)
+fn :: nc_instrs RNativeCode => [RNativeInstr]
+      nc_instrs (NativeCode instrs _ _) = instrs
 
-fn :: emit_interp_at String Int Int [String] Int => String
-      emit_interp_at s pos len locals open_idx
-        | open_idx >= len = 'rg_str("' + (escape_rust_str (str_slice s pos len)) + '")'
-        | otherwise = emit_interp_close s pos len locals open_idx (find_char_from s (open_idx + 1) len 125)
+fn :: nc_lbl RNativeCode => Int
+      nc_lbl (NativeCode _ lbl _) = lbl
 
-fn :: emit_interp_close String Int Int [String] Int Int => String
-      emit_interp_close s pos len locals open_idx close_idx
-        | close_idx >= len = 'rg_str("' + (escape_rust_str (str_slice s pos len)) + '")'
-        | otherwise = emit_interp_check s pos len locals open_idx close_idx (str_slice s (open_idx + 1) close_idx)
+fn :: nc_max_sp RNativeCode => Int
+      nc_max_sp (NativeCode _ _ msp) = msp
 
-fn :: emit_interp_check String Int Int [String] Int Int String => String
-      emit_interp_check s pos len locals open_idx close_idx cand
-        | (lookup_local locals cand) >= 0 = 'rg_fn_str_concat(rg_str("' + (escape_rust_str (str_slice s pos open_idx)) + '"), rg_fn_str_concat(rg_to_str(&lv_' + cand + '), ' + (emit_interp_loop s (close_idx + 1) len locals) + '))'
-        | otherwise = 'rg_fn_str_concat(rg_str("' + (escape_rust_str (str_slice s pos (open_idx + 1))) + '"), ' + (emit_interp_loop s (open_idx + 1) len locals) + ')'
+fn :: nc_set_lbl RNativeCode Int     => RNativeCode
+      nc_set_lbl (NativeCode instrs _ msp) new_lbl = NativeCode instrs new_lbl msp
 
-fn :: emit_str_lit String [String] => String
-      emit_str_lit s      _        =  'rg_str("' + (escape_rust_str s) + '")'
+fn :: nc_emit RNativeCode RNativeInstr Int     => RNativeCode
+      nc_emit (NativeCode instrs lbl msp) ins used_sp =
+        NativeCode (instrs :: [ins]) lbl (max_int msp used_sp)
 
--- ── Pattern Lowering to Native Rust Conditions & Bindings ───
+fn :: nc_emit_list RNativeCode [RNativeInstr] Int     => RNativeCode
+      nc_emit_list (NativeCode instrs lbl msp) more used_sp =
+        NativeCode (instrs :: more) lbl (max_int msp used_sp)
 
-fn :: emit_pat_cond RPattern        String => String
-      emit_pat_cond PatWild         _      =  'true'
-      emit_pat_cond (PatVar _)      _      =  'true'
-      emit_pat_cond (PatSeqBind _)  _      =  'true'
-      emit_pat_cond (PatInt n)      scrut  =  'rg_match_int(' + scrut + ', ' + (int_to_str n) + ')'
-      emit_pat_cond (PatReal r)     scrut  =  'rg_match_real(' + scrut + ', ' + r + ')'
-      emit_pat_cond (PatStr s)      scrut  =  'rg_match_str(' + scrut + ', "' + (escape_rust_str s) + '")'
-      emit_pat_cond (PatBool True)  scrut  =  'rg_match_bool(' + scrut + ', true)'
-      emit_pat_cond (PatBool False) scrut  =  'rg_match_bool(' + scrut + ', false)'
-      emit_pat_cond PatEmpty        scrut  =  'rg_is_empty(' + scrut + ')'
-      emit_pat_cond (PatCons h t)   scrut  =
-        '(rg_is_non_empty(' + scrut + ') && ' + (emit_pat_cond h ('(&rg_list_head(' + scrut + '))')) + ' && ' + (emit_pat_cond t ('(&rg_list_tail(' + scrut + '))')) + ')'
-      emit_pat_cond (PatTuple ps)   scrut  =
-        '(rg_is_tuple(' + scrut + ', ' + (int_to_str (pat_list_len ps)) + ') && ' + (emit_tuple_pat_conds ps scrut 0) + ')'
-      emit_pat_cond (PatCtor ctor args) scrut =
-        '(rg_is_adt(' + scrut + ', "' + ctor + '", ' + (int_to_str (pat_list_len args)) + ') && ' + (emit_adt_pat_conds args scrut 0) + ')'
+-- ── String Pool (.rodata) Collection & Interning ─────────────
 
-fn :: emit_tuple_pat_conds [RPattern] String Int => String
-      emit_tuple_pat_conds []         _      _   =  'true'
-      emit_tuple_pat_conds (p:ps)     scrut  idx =
-        sub_scrut = '(&rg_tuple_get(' + scrut + ', ' + (int_to_str idx) + '))'
-        (emit_pat_cond p sub_scrut) + ' && ' + (emit_tuple_pat_conds ps scrut (idx + 1))
+fn :: join_comma [String] => String
+      join_comma []       =  ""
+      join_comma (s:[])   =  s
+      join_comma (s:ss)   =  s + "," + (join_comma ss)
 
-fn :: emit_adt_pat_conds [RPattern] String Int => String
-      emit_adt_pat_conds []         _      _   =  'true'
-      emit_adt_pat_conds (p:ps)     scrut  idx =
-        sub_scrut = '(&rg_adt_field(' + scrut + ', ' + (int_to_str idx) + '))'
-        (emit_pat_cond p sub_scrut) + ' && ' + (emit_adt_pat_conds ps scrut (idx + 1))
+fn :: collect_pat_strs RPattern         [String] => [String]
+      collect_pat_strs (PatReal r)      acc      =  add_unique_str r acc
+      collect_pat_strs (PatStr s)       acc      =  add_unique_str s acc
+      collect_pat_strs (PatCons h t)    acc      =  collect_pat_strs t (collect_pat_strs h acc)
+      collect_pat_strs (PatTuple ps)    acc      =  collect_pat_list_strs ps acc
+      collect_pat_strs (PatCtor c args) acc      =  collect_pat_list_strs args (add_unique_str c acc)
+      collect_pat_strs _                acc      =  acc
 
-fn :: emit_pat_list_cond [RPattern] Int => String
-      emit_pat_list_cond []         _   =  'true'
-      emit_pat_list_cond (p:[])     idx =  emit_pat_cond p ('&_arg_' + (int_to_str idx))
-      emit_pat_list_cond (p:ps)     idx =
-        (emit_pat_cond p ('&_arg_' + (int_to_str idx))) + ' && ' + (emit_pat_list_cond ps (idx + 1))
+fn :: collect_pat_list_strs [RPattern] [String] => [String]
+      collect_pat_list_strs []         acc      =  acc
+      collect_pat_list_strs (p:ps)     acc      =  collect_pat_list_strs ps (collect_pat_strs p acc)
 
-fn :: emit_seq_arg_clones Int Int   => String
-      emit_seq_arg_clones idx arity
-        | idx >= arity = ""
-        | (idx + 1) == arity = '_arg_' + (int_to_str idx) + '.clone()'
-        | otherwise = '_arg_' + (int_to_str idx) + '.clone(), ' + (emit_seq_arg_clones (idx + 1) arity)
+fn :: collect_expr_strs RExpr              [String] => [String]
+      collect_expr_strs (EReal r)          acc      =  add_unique_str r acc
+      collect_expr_strs (EStr s)           acc      =  add_unique_str s acc
+      collect_expr_strs (EVar v)           acc      =  add_unique_str v acc
+      collect_expr_strs (ENot inner)       acc      =  collect_expr_strs inner acc
+      collect_expr_strs (EOut inner)       acc      =  collect_expr_strs inner acc
+      collect_expr_strs (EBin _ l r)       acc      =  collect_expr_strs r (collect_expr_strs l acc)
+      collect_expr_strs (ECall fname args) acc      =  collect_expr_list_strs args (add_unique_str fname acc)
+      collect_expr_strs (EEcho args)       acc      =  collect_expr_list_strs args acc
+      collect_expr_strs (EStrInterp parts) acc      =  collect_expr_list_strs parts acc
+      collect_expr_strs (EList elems)      acc      =  collect_expr_list_strs elems acc
+      collect_expr_strs (ETuple elems)     acc      =  collect_expr_list_strs elems acc
+      collect_expr_strs (ETensor elems)    acc      =  collect_expr_list_strs elems acc
+      collect_expr_strs (EEinsum es subs)  acc      =  collect_expr_list_strs es (add_unique_str (join_comma subs) acc)
+      collect_expr_strs (EHadamard _ l s1 r s2) acc =  collect_expr_strs r (collect_expr_strs l (add_unique_str (s1 + "," + s2) acc))
+      collect_expr_strs (EIndex base idxs) acc      =  collect_expr_list_strs idxs (collect_expr_strs base acc)
+      collect_expr_strs (EIndexAssign _ idxs v) acc =  collect_expr_strs v (collect_expr_list_strs idxs acc)
+      collect_expr_strs (ESeqSelect b m)   acc      =  collect_expr_strs b (add_unique_str m acc)
+      collect_expr_strs (EBlock stmts)     acc      =  collect_stmt_list_strs stmts acc
+      collect_expr_strs (EGuard guards)    acc      =  collect_guard_list_strs guards acc
+      collect_expr_strs (EWhere body binds) acc     =  collect_where_list_strs binds (collect_expr_strs body acc)
+      collect_expr_strs (EParPipe branches) acc     =  collect_expr_list_strs branches acc
+      collect_expr_strs (EWithCtx c v b)   acc      =  collect_expr_strs b (collect_expr_strs v (add_unique_str c acc))
+      collect_expr_strs (EWithRegion _ b)  acc      =  collect_expr_strs b acc
+      collect_expr_strs (EAtomicUpdate v e) acc     =  collect_expr_strs e (add_unique_str v acc)
+      collect_expr_strs (ELoadContext c e) acc      =  collect_expr_strs e (add_unique_str c acc)
+      collect_expr_strs (ELoadShared v e)  acc      =  collect_expr_strs e (add_unique_str v acc)
+      collect_expr_strs _                  acc      =  acc
 
-fn :: emit_pat_binds RPattern         String => String
-      emit_pat_binds (PatVar v)       scrut  =  "    let mut lv_" + v + ": RVal = (" + scrut + ").clone();\n"
-      emit_pat_binds (PatSeqBind v)   scrut  =  "    let mut lv_" + v + ": RVal = (" + scrut + ").clone();\n"
-      emit_pat_binds (PatCons h t)    scrut  =
-        (emit_pat_binds h ('(&rg_list_head(' + scrut + '))')) + (emit_pat_binds t ('(&rg_list_tail(' + scrut + '))'))
-      emit_pat_binds (PatTuple ps)    scrut  =  emit_tuple_pat_binds ps scrut 0
-      emit_pat_binds (PatCtor _ args) scrut  =  emit_adt_pat_binds args scrut 0
-      emit_pat_binds _                _      =  ""
+fn :: collect_expr_list_strs [RExpr] [String] => [String]
+      collect_expr_list_strs []      acc      =  acc
+      collect_expr_list_strs (e:es)  acc      =  collect_expr_list_strs es (collect_expr_strs e acc)
 
-fn :: emit_tuple_pat_binds [RPattern] String Int => String
-      emit_tuple_pat_binds []         _      _   =  ""
-      emit_tuple_pat_binds (p:ps)     scrut  idx =
-        sub_scrut = '(&rg_tuple_get(' + scrut + ', ' + (int_to_str idx) + '))'
-        (emit_pat_binds p sub_scrut) + (emit_tuple_pat_binds ps scrut (idx + 1))
+fn :: collect_stmt_list_strs [RStmt]            [String] => [String]
+      collect_stmt_list_strs []                 acc      =  acc
+      collect_stmt_list_strs ((StmtLet _ e):ss) acc      =  collect_stmt_list_strs ss (collect_expr_strs e acc)
+      collect_stmt_list_strs ((StmtMut _ e):ss) acc      =  collect_stmt_list_strs ss (collect_expr_strs e acc)
+      collect_stmt_list_strs ((StmtExpr e):ss)  acc      =  collect_stmt_list_strs ss (collect_expr_strs e acc)
+      collect_stmt_list_strs ((StmtAtomic v e):ss) acc   =  collect_stmt_list_strs ss (collect_expr_strs e (add_unique_str v acc))
+      collect_stmt_list_strs ((StmtIndexAssign _ idxs e):ss) acc =
+        collect_stmt_list_strs ss (collect_expr_strs e (collect_expr_list_strs idxs acc))
 
-fn :: emit_adt_pat_binds [RPattern] String Int => String
-      emit_adt_pat_binds []         _      _   =  ""
-      emit_adt_pat_binds (p:ps)     scrut  idx =
-        sub_scrut = '(&rg_adt_field(' + scrut + ', ' + (int_to_str idx) + '))'
-        (emit_pat_binds p sub_scrut) + (emit_adt_pat_binds ps scrut (idx + 1))
+fn :: collect_where_list_strs [RWhereBind] [String] => [String]
+      collect_where_list_strs []           acc      =  acc
+      collect_where_list_strs ((WhereBind e _ _):wbs) acc =
+        collect_where_list_strs wbs (collect_expr_strs e acc)
 
-fn :: emit_pat_list_binds [RPattern]      Int Int   Bool      => String
-      emit_pat_list_binds []              _   _     _         =  ""
-      emit_pat_list_binds ((PatSeqBind v):[]) _ arity _       =
-        "    let mut lv_" + v + ": RVal = rg_pack_seq(vec![" + (emit_seq_arg_clones 0 arity) + "]);\n"
-      emit_pat_list_binds ((PatVar v):ps) idx arity True      =
-        "    let mut lv_" + v + ": RVal = rg_cmm_move(&mut _arg_" + (int_to_str idx) + ");\n" + (emit_pat_list_binds ps (idx + 1) arity True)
-      emit_pat_list_binds (p:ps)          idx arity move_args =
-        (emit_pat_binds p ('&_arg_' + (int_to_str idx))) + (emit_pat_list_binds ps (idx + 1) arity move_args)
+fn :: collect_guard_list_strs [RGuard] [String] => [String]
+      collect_guard_list_strs []       acc      =  acc
+      collect_guard_list_strs ((GuardBranch c b):gs) acc =
+        collect_guard_list_strs gs (collect_expr_strs b (collect_expr_strs c acc))
+
+fn :: collect_case_list_strs [RFnCase] [String] => [String]
+      collect_case_list_strs []        acc      =  acc
+      collect_case_list_strs ((FnCase pats guards body):cs) acc =
+        a1 = collect_pat_list_strs pats acc
+        a2 = collect_guard_list_strs guards a1
+        collect_case_list_strs cs (collect_expr_strs body a2)
+
+fn :: collect_fndef_list_strs [RFnDef] [String] => [String]
+      collect_fndef_list_strs []       acc      =  acc
+      collect_fndef_list_strs ((FnDef name _ _ cases):fs) acc =
+        collect_fndef_list_strs fs (collect_case_list_strs cases (add_unique_str name acc))
+
+fn :: build_str_pool_loop [String] Int     String [RStrEntry] => RStrPool
+      build_str_pool_loop []       _       rodata entries     =  StrPool rodata entries
+      build_str_pool_loop (s:ss)   cur_off rodata entries     =
+        slen = str_len s
+        build_str_pool_loop ss (cur_off + slen) (rodata + s) (entries :: [StrEntry s cur_off slen])
+
+fn :: build_str_pool [RFnDef] [String]   => RStrPool
+      build_str_pool fns      extra_strs =
+        base_strs = ["", "+", "-", "*", "/", "%"] :: extra_strs
+        all_strs = collect_fndef_list_strs fns base_strs
+        build_str_pool_loop all_strs 0 "" []
+
+fn :: pool_rodata RStrPool      => String
+      pool_rodata (StrPool s _) =  s
+
+fn :: pool_entries RStrPool        => [RStrEntry]
+      pool_entries (StrPool _ tbl) =  tbl
+
+fn :: lookup_str_off [RStrEntry] String => Int
+      lookup_str_off []          _      =  0
+      lookup_str_off ((StrEntry k off _):rest) target
+        | k == target = off
+        | otherwise = lookup_str_off rest target
+
+-- ── Function & Record Field Tables ───────────────────────────
+
+fn :: has_field_entry [RFieldEntry] String => Bool
+      has_field_entry []            _      =  False
+      has_field_entry ((FieldEntry k _):rest) target
+        | k == target = True
+        | otherwise = has_field_entry rest target
+
+fn :: collect_fields_from_list [RField] Int [RFieldEntry] => [RFieldEntry]
+      collect_fields_from_list []       _   acc           =  acc
+      collect_fields_from_list ((TypeField fname _):fs) idx acc
+        | has_field_entry acc fname = collect_fields_from_list fs (idx + 1) acc
+        | otherwise = collect_fields_from_list fs (idx + 1) (acc :: [FieldEntry fname idx])
+
+fn :: collect_typedef_fields [RTypeDef] [RFieldEntry] => [RFieldEntry]
+      collect_typedef_fields []         acc           =  acc
+      collect_typedef_fields ((TypeDef _ _ fields):ts) acc =
+        collect_typedef_fields ts (collect_fields_from_list fields 0 acc)
+
+fn :: lookup_field_idx [RFieldEntry] String => Int
+      lookup_field_idx []            _      =  0
+      lookup_field_idx ((FieldEntry k idx):rest) target
+        | k == target = idx
+        | otherwise = lookup_field_idx rest target
+
+fn :: collect_field_names [RFieldEntry] => [String]
+      collect_field_names []            =  []
+      collect_field_names ((FieldEntry k _):rest) = [k] :: (collect_field_names rest)
+
+fn :: build_field_cg_sigs [RFieldEntry] [String] => [RCgSig]
+      build_field_cg_sigs []            _        =  []
+      build_field_cg_sigs ((FieldEntry fname _):rest) fn_names
+        | str_in_list fname fn_names = build_field_cg_sigs rest fn_names
+        | otherwise = [CgSig fname 1 False] :: (build_field_cg_sigs rest fn_names)
+
+fn :: build_fn_table_fndefs [RFnDef] Int      [RFnEntry] => [RFnEntry]
+      build_fn_table_fndefs []       _        acc        =  acc
+      build_fn_table_fndefs ((FnDef name params _ cases):fs) next_fid acc =
+        arity = infer_fndef_arity params cases
+        build_fn_table_fndefs fs (next_fid + 1) (acc :: [FnEntry name next_fid arity])
+
+fn :: build_fn_table_fields [RFieldEntry] [String] Int [RFnEntry] => [RFnEntry]
+      build_fn_table_fields [] _ _ acc = acc
+      build_fn_table_fields ((FieldEntry fname _):rest) fn_names next_fid acc
+        | str_in_list fname fn_names = build_fn_table_fields rest fn_names next_fid acc
+        | otherwise = build_fn_table_fields rest fn_names (next_fid + 1) (acc :: [FnEntry fname next_fid 1])
+
+fn :: lookup_fn_id [RFnEntry] String => Int
+      lookup_fn_id []         _      =  0
+      lookup_fn_id ((FnEntry k fid _):rest) target
+        | k == target = fid
+        | otherwise = lookup_fn_id rest target
+
+fn :: lookup_fn_arity [RFnEntry] String => Int
+      lookup_fn_arity []         _      =  -1
+      lookup_fn_arity ((FnEntry k _ arity):rest) target
+        | k == target = arity
+        | otherwise = lookup_fn_arity rest target
+
+-- ── Local Variable Collection & RMM2 Liveness Helpers ────────
 
 fn :: collect_pat_vars RPattern         [String] => [String]
       collect_pat_vars (PatVar v)       acc      =  add_unique_str v acc
@@ -609,8 +679,69 @@ fn :: collect_pat_list_vars [RPattern] [String] => [String]
       collect_pat_list_vars []         acc      =  acc
       collect_pat_list_vars (p:ps)     acc      =  collect_pat_list_vars ps (collect_pat_vars p acc)
 
--- ── Ridgun Memory Management (RMM2) Local Variable Liveness Pass ──
--- @implements FR-COMP-002
+fn :: add_bound_var String [String] => [String]
+      add_bound_var "_"    acc      =  acc
+      add_bound_var v      acc      =  add_unique_str v acc
+
+fn :: collect_expr_bound_vars RExpr              [String] => [String]
+      collect_expr_bound_vars (ENot inner)       acc      =  collect_expr_bound_vars inner acc
+      collect_expr_bound_vars (EOut inner)       acc      =  collect_expr_bound_vars inner acc
+      collect_expr_bound_vars (EBin _ l r)       acc      =  collect_expr_bound_vars r (collect_expr_bound_vars l acc)
+      collect_expr_bound_vars (ECall _ args)     acc      =  collect_expr_list_bound_vars args acc
+      collect_expr_bound_vars (EEcho args)       acc      =  collect_expr_list_bound_vars args acc
+      collect_expr_bound_vars (EStrInterp parts) acc      =  collect_expr_list_bound_vars parts acc
+      collect_expr_bound_vars (EList elems)      acc      =  collect_expr_list_bound_vars elems acc
+      collect_expr_bound_vars (ETuple elems)     acc      =  collect_expr_list_bound_vars elems acc
+      collect_expr_bound_vars (ETensor elems)    acc      =  collect_expr_list_bound_vars elems acc
+      collect_expr_bound_vars (EEinsum es _)     acc      =  collect_expr_list_bound_vars es acc
+      collect_expr_bound_vars (EHadamard _ l _ r _) acc   =  collect_expr_bound_vars r (collect_expr_bound_vars l acc)
+      collect_expr_bound_vars (EIndex base idxs) acc      =  collect_expr_list_bound_vars idxs (collect_expr_bound_vars base acc)
+      collect_expr_bound_vars (EIndexAssign t idxs v) acc =  collect_expr_bound_vars v (collect_expr_list_bound_vars idxs (add_bound_var t acc))
+      collect_expr_bound_vars (ESeqSelect b _)   acc      =  collect_expr_bound_vars b acc
+      collect_expr_bound_vars (EBlock stmts)     acc      =  collect_stmt_list_bound_vars stmts acc
+      collect_expr_bound_vars (EGuard guards)    acc      =  collect_guard_list_bound_vars guards acc
+      collect_expr_bound_vars (EWhere body binds) acc     =  collect_where_list_bound_vars binds (collect_expr_bound_vars body acc)
+      collect_expr_bound_vars (EParPipe branches) acc     =  collect_expr_list_bound_vars branches acc
+      collect_expr_bound_vars (EWithCtx _ v b)   acc      =  collect_expr_bound_vars b (collect_expr_bound_vars v acc)
+      collect_expr_bound_vars (EWithRegion _ b)  acc      =  collect_expr_bound_vars b acc
+      collect_expr_bound_vars (EAtomicUpdate _ e) acc     =  collect_expr_bound_vars e acc
+      collect_expr_bound_vars (ELoadContext _ e) acc      =  collect_expr_bound_vars e acc
+      collect_expr_bound_vars (ELoadShared _ e)  acc      =  collect_expr_bound_vars e acc
+      collect_expr_bound_vars _                  acc      =  acc
+
+fn :: collect_expr_list_bound_vars [RExpr] [String] => [String]
+      collect_expr_list_bound_vars []      acc      =  acc
+      collect_expr_list_bound_vars (e:es)  acc      =  collect_expr_list_bound_vars es (collect_expr_bound_vars e acc)
+
+fn :: collect_stmt_list_bound_vars [RStmt]            [String] => [String]
+      collect_stmt_list_bound_vars []                 acc      =  acc
+      collect_stmt_list_bound_vars ((StmtLet v e):ss) acc      =
+        collect_stmt_list_bound_vars ss (add_bound_var v (collect_expr_bound_vars e acc))
+      collect_stmt_list_bound_vars ((StmtMut v e):ss) acc      =
+        collect_stmt_list_bound_vars ss (add_bound_var v (collect_expr_bound_vars e acc))
+      collect_stmt_list_bound_vars ((StmtExpr e):ss)  acc      =
+        collect_stmt_list_bound_vars ss (collect_expr_bound_vars e acc)
+      collect_stmt_list_bound_vars ((StmtAtomic _ e):ss) acc   =
+        collect_stmt_list_bound_vars ss (collect_expr_bound_vars e acc)
+      collect_stmt_list_bound_vars ((StmtIndexAssign t idxs e):ss) acc =
+        collect_stmt_list_bound_vars ss (collect_expr_bound_vars e (collect_expr_list_bound_vars idxs (add_bound_var t acc)))
+
+fn :: collect_where_list_bound_vars [RWhereBind] [String] => [String]
+      collect_where_list_bound_vars []           acc      =  acc
+      collect_where_list_bound_vars ((WhereBind e v _):wbs) acc =
+        collect_where_list_bound_vars wbs (add_bound_var v (collect_expr_bound_vars e acc))
+
+fn :: collect_guard_list_bound_vars [RGuard] [String] => [String]
+      collect_guard_list_bound_vars []       acc      =  acc
+      collect_guard_list_bound_vars ((GuardBranch c b):gs) acc =
+        collect_guard_list_bound_vars gs (collect_expr_bound_vars b (collect_expr_bound_vars c acc))
+
+fn :: collect_cases_all_locals [RFnCase] [String] => [String]
+      collect_cases_all_locals []        acc      =  acc
+      collect_cases_all_locals ((FnCase pats guards body):cs) acc =
+        a1 = collect_pat_list_vars pats acc
+        a2 = collect_guard_list_bound_vars guards a1
+        collect_cases_all_locals cs (collect_expr_bound_vars body a2)
 
 fn :: cmm_expr_vars RExpr              [String] => [String]
       cmm_expr_vars (EVar name)        acc      =  add_unique_str name acc
@@ -686,12 +817,54 @@ fn :: cmm_remove_str String [String] => [String]
         | x == target = cmm_remove_str target xs
         | otherwise = [x] :: (cmm_remove_str target xs)
 
-fn :: emit_cmm_uncond_drops [String] String => String
-      emit_cmm_uncond_drops []       _      =  ""
-      emit_cmm_uncond_drops (x:xs)   indent =
-        indent + "rg_cmm_drop(&mut lv_" + x + ");\n" + (emit_cmm_uncond_drops xs indent)
+-- ── Environment Accessors & Builtin ID Mapping ───────────────
 
--- ── Expression & Statement Lowering to Native Rust ──────────
+fn :: env_fn_name RNativeEnv => String
+      env_fn_name (NativeEnv fn_name _ _ _ _ _) = fn_name
+
+fn :: env_arity RNativeEnv => Int
+      env_arity (NativeEnv _ arity _ _ _ _) = arity
+
+fn :: env_str_off RNativeEnv String => Int
+      env_str_off (NativeEnv _ _ _ str_tbl _ _) s = lookup_str_off str_tbl s
+
+fn :: env_fn_id RNativeEnv String => Int
+      env_fn_id (NativeEnv _ _ _ _ fn_tbl _) fname = lookup_fn_id fn_tbl fname
+
+fn :: env_fn_arity RNativeEnv String => Int
+      env_fn_arity (NativeEnv _ _ _ _ fn_tbl _) fname = lookup_fn_arity fn_tbl fname
+
+fn :: env_field_idx RNativeEnv String => Int
+      env_field_idx (NativeEnv _ _ _ _ _ field_tbl) fname = lookup_field_idx field_tbl fname
+
+fn :: env_var_slot RNativeEnv String => Int
+      env_var_slot (NativeEnv _ arity all_locals _ _ _) name =
+        idx = lookup_local all_locals name
+        env_var_slot_idx arity idx
+
+fn :: env_var_slot_idx Int   Int => Int
+      env_var_slot_idx arity idx
+        | idx >= 0 = arity + idx
+        | otherwise = 0
+
+fn :: binop_id RBinOp     => Int
+      binop_id OpAdd      =  0
+      binop_id OpSub      =  1
+      binop_id OpMul      =  2
+      binop_id OpDiv      =  3
+      binop_id OpMod      =  4
+      binop_id OpEq       =  5
+      binop_id OpNeq      =  6
+      binop_id OpGt       =  7
+      binop_id OpLt       =  8
+      binop_id OpGtEq     =  9
+      binop_id OpLtEq     =  10
+      binop_id OpAnd      =  11
+      binop_id OpOr       =  12
+      binop_id OpXor      =  13
+      binop_id OpConcat   =  14
+      binop_id OpFlatJoin =  15
+      binop_id OpMatMul   =  16
 
 fn :: binop_op_tag RBinOp => String
       binop_op_tag OpAdd  =  "+"
@@ -701,228 +874,447 @@ fn :: binop_op_tag RBinOp => String
       binop_op_tag OpMod  =  "%"
       binop_op_tag _      =  "+"
 
-fn :: emit_binop_rust RBinOp     String String => String
-      emit_binop_rust OpAdd      lc     rc     =  'rg_add(' + lc + ', ' + rc + ')'
-      emit_binop_rust OpSub      lc     rc     =  'rg_sub(' + lc + ', ' + rc + ')'
-      emit_binop_rust OpMul      lc     rc     =  'rg_mul(' + lc + ', ' + rc + ')'
-      emit_binop_rust OpDiv      lc     rc     =  'rg_div(' + lc + ', ' + rc + ')'
-      emit_binop_rust OpMod      lc     rc     =  'rg_mod(' + lc + ', ' + rc + ')'
-      emit_binop_rust OpEq       lc     rc     =  'RVal::Bool((' + lc + ') == (' + rc + '))'
-      emit_binop_rust OpNeq      lc     rc     =  'RVal::Bool((' + lc + ') != (' + rc + '))'
-      emit_binop_rust OpGt       lc     rc     =  'rg_cmp_gt(&(' + lc + '), &(' + rc + '))'
-      emit_binop_rust OpLt       lc     rc     =  'rg_cmp_lt(&(' + lc + '), &(' + rc + '))'
-      emit_binop_rust OpGtEq     lc     rc     =  'rg_cmp_gte(&(' + lc + '), &(' + rc + '))'
-      emit_binop_rust OpLtEq     lc     rc     =  'rg_cmp_lte(&(' + lc + '), &(' + rc + '))'
-      emit_binop_rust OpAnd      lc     rc     =  'RVal::Bool(rg_as_bool(&(' + lc + ')) && rg_as_bool(&(' + rc + ')))'
-      emit_binop_rust OpOr       lc     rc     =  'RVal::Bool(rg_as_bool(&(' + lc + ')) || rg_as_bool(&(' + rc + ')))'
-      emit_binop_rust OpXor      lc     rc     =  'RVal::Bool(rg_as_bool(&(' + lc + ')) ^ rg_as_bool(&(' + rc + ')))'
-      emit_binop_rust OpConcat   lc     rc     =  'rg_list_concat(' + lc + ', ' + rc + ')'
-      emit_binop_rust OpFlatJoin lc     rc     =  'rg_seq_flat_join(' + lc + ', ' + rc + ')'
-      emit_binop_rust OpMatMul   lc     rc     =  'rg_einsum(&[' + lc + ', ' + rc + '], &["ij", "jk"])'
+fn :: builtin_zero_arg_id String            => Int
+      builtin_zero_arg_id "cli_args"        =  0
+      builtin_zero_arg_id "new_mailbox"     =  1
+      builtin_zero_arg_id "mailbox"         =  1
+      builtin_zero_arg_id "new_channel"     =  1
+      builtin_zero_arg_id "channel"         =  1
+      builtin_zero_arg_id "sys_getcwd"      =  2
+      builtin_zero_arg_id "sys_getuid"      =  3
+      builtin_zero_arg_id "sys_getgid"      =  4
+      builtin_zero_arg_id "cmm_live_blocks" =  5
+      builtin_zero_arg_id "cmm_cond_spared" =  6
+      builtin_zero_arg_id "cmm_cond_freed"  =  7
+      builtin_zero_arg_id _                 =  -1
 
-fn :: emit_str_csv [String] => String
-      emit_str_csv []       =  ""
-      emit_str_csv (s:[])   =  '"' + (escape_rust_str s) + '"'
-      emit_str_csv (s:ss)   =  '"' + (escape_rust_str s) + '", ' + (emit_str_csv ss)
+fn :: builtin_call_id String             => Int
+      builtin_call_id "cli_args"         =  0
+      builtin_call_id "new_mailbox"      =  1
+      builtin_call_id "mailbox"          =  1
+      builtin_call_id "new_channel"      =  1
+      builtin_call_id "channel"          =  1
+      builtin_call_id "sys_getcwd"       =  2
+      builtin_call_id "sys_getuid"       =  3
+      builtin_call_id "sys_getgid"       =  4
+      builtin_call_id "cmm_live_blocks"  =  5
+      builtin_call_id "cmm_cond_spared"  =  6
+      builtin_call_id "cmm_cond_freed"   =  7
+      builtin_call_id "str_len"          =  10
+      builtin_call_id "char_from_code"   =  11
+      builtin_call_id "int_to_str"       =  12
+      builtin_call_id "str_to_int"       =  13
+      builtin_call_id "read_file"        =  14
+      builtin_call_id "load_rg_source"   =  15
+      builtin_call_id "read_bytes"       =  16
+      builtin_call_id "shell_exec"       =  17
+      builtin_call_id "list_dir"         =  18
+      builtin_call_id "file_lstat"       =  19
+      builtin_call_id "sha256_file"      =  20
+      builtin_call_id "sha256_str"       =  21
+      builtin_call_id "sys_chdir"        =  22
+      builtin_call_id "sys_getenv"       =  23
+      builtin_call_id "sys_exit"         =  24
+      builtin_call_id "sys_username"     =  25
+      builtin_call_id "sys_lookup_uid_gid" = 26
+      builtin_call_id "sys_user_groups"  =  27
+      builtin_call_id "sys_setresgid"    =  28
+      builtin_call_id "sys_setgroups"    =  29
+      builtin_call_id "sys_setresuid"    =  30
+      builtin_call_id "sys_read_pass"    =  31
+      builtin_call_id "receive_from"     =  32
+      builtin_call_id "chan_recv"        =  32
+      builtin_call_id "try_receive_from" =  33
+      builtin_call_id "chan_try_recv"    =  33
+      builtin_call_id "join"             =  34
+      builtin_call_id "new_bounded_channel" = 35
+      builtin_call_id "str_char_at"      =  40
+      builtin_call_id "str_concat"       =  41
+      builtin_call_id "str_starts_with"  =  42
+      builtin_call_id "str_contains"     =  43
+      builtin_call_id "write_bytes"      =  44
+      builtin_call_id "write_file"       =  45
+      builtin_call_id "sys_mkdir"        =  46
+      builtin_call_id "sys_chmod"        =  47
+      builtin_call_id "sys_setenv"       =  48
+      builtin_call_id "cmm_same_ptr"     =  49
+      builtin_call_id "send_through"     =  50
+      builtin_call_id "chan_send"        =  50
+      builtin_call_id "receive_from_timeout" = 51
+      builtin_call_id "spawn"            =  52
+      builtin_call_id "map"              =  53
+      builtin_call_id "seq_map"          =  53
+      builtin_call_id "||map"            =  54
+      builtin_call_id "par_map"          =  54
+      builtin_call_id "filter"           =  55
+      builtin_call_id "seq_filter"       =  55
+      builtin_call_id "||filter"         =  56
+      builtin_call_id "par_filter"       =  56
+      builtin_call_id "str_slice"        =  60
+      builtin_call_id "fold"             =  61
+      builtin_call_id "sys_exec"         =  62
+      builtin_call_id "sys_execve"       =  63
+      builtin_call_id _                  =  -1
 
-fn :: emit_int_rval_csv [Int]  => String
-      emit_int_rval_csv []     =  ""
-      emit_int_rval_csv (n:[]) =  'RVal::Int(' + (int_to_str n) + ')'
-      emit_int_rval_csv (n:ns) =  'RVal::Int(' + (int_to_str n) + '), ' + (emit_int_rval_csv ns)
+-- ── Expression & Statement Lowering to Native IR ─────────────
 
-fn :: format_real_lit String => String
-      format_real_lit r
-        | str_contains r "." = r + "f64"
-        | otherwise = r + ".0f64"
+fn :: lower_cmm_drops RNativeEnv [String] Int     RNativeCode => RNativeCode
+      lower_cmm_drops _          []       _       st          =  st
+      lower_cmm_drops env        (x:xs)   used_sp st          =
+        slot = env_var_slot env x
+        st1 = nc_emit st (NCmmDropSlot slot) used_sp
+        lower_cmm_drops env xs used_sp st1
 
-fn :: emit_record_updates String [RExpr] [String] => String
-      emit_record_updates cur    ((EStr fname):val_e:rest) locals =
-        emit_record_updates ('rg_set_' + fname + '(' + cur + ', ' + (emit_native_expr val_e locals) + ')') rest locals
-      emit_record_updates cur    _       _        =  cur
+fn :: lower_unused_let_drop RNativeEnv String [String] Int RNativeCode => RNativeCode
+      lower_unused_let_drop env v live_after used_sp st
+        | str_in_list v live_after = st
+        | otherwise = nc_emit st (NCmmDropSlot (env_var_slot env v)) used_sp
 
-fn :: emit_native_expr RExpr              [String] => String
-      emit_native_expr (EInt n)           _        =  'RVal::Int(' + (int_to_str n) + ')'
-      emit_native_expr (EReal r)          _        =  'RVal::Real(' + (format_real_lit r) + ')'
-      emit_native_expr (EStr s)           locals   =  emit_str_lit s locals
-      emit_native_expr (EStrInterp parts) locals   =  'rg_str_interp(&[' + (emit_native_expr_csv parts locals) + '])'
-      emit_native_expr (EBool True)       _        =  'RVal::Bool(true)'
-      emit_native_expr (EBool False)      _        =  'RVal::Bool(false)'
-      emit_native_expr EUnit              _        =  'RVal::Unit'
-      emit_native_expr (EVar name)        locals   =  emit_native_var name locals
-      emit_native_expr (ENot inner)       locals   =  'RVal::Bool(!rg_as_bool(&(' + (emit_native_expr inner locals) + ')))'
-      emit_native_expr (EOut inner)       locals   =  'rg_out(' + (emit_native_expr inner locals) + ')'
-      emit_native_expr (EBin bop l r)     locals   =
-        emit_binop_rust bop (emit_native_expr l locals) (emit_native_expr r locals)
-      emit_native_expr (ECall "__record_update__" (base_e:rest_args)) locals =
-        emit_record_updates (emit_native_expr base_e locals) rest_args locals
-      emit_native_expr (ECall "__unpack2__" ((EVar fn_target):single_arg:[])) locals =
-        '{ let _u = ' + (emit_native_expr single_arg locals) + '; ' + (mangle_fn_name fn_target) + '(rg_tuple_get(&_u, 0), rg_tuple_get(&_u, 1)) }'
-      emit_native_expr (ECall fname [])   locals
-        | (lookup_local locals fname) >= 0 = 'lv_' + fname + '.clone()'
-        | otherwise = (mangle_fn_name fname) + '()'
-      emit_native_expr (ECall fname (a1:[])) locals
-        | (lookup_local locals fname) >= 0 = 'rg_call1(&lv_' + fname + ', ' + (emit_native_expr a1 locals) + ')'
-      emit_native_expr (ECall fname (a1:a2:[])) locals
-        | (lookup_local locals fname) >= 0 = 'rg_call2(&lv_' + fname + ', ' + (emit_native_expr a1 locals) + ', ' + (emit_native_expr a2 locals) + ')'
-      emit_native_expr (ECall fname args) locals
-        | is_upper_ident fname = 'rg_adt("' + fname + '", vec![' + (emit_native_expr_csv args locals) + '])'
-        | otherwise = (mangle_fn_name fname) + '(' + (emit_native_expr_csv args locals) + ')'
-      emit_native_expr (EEcho args)       locals   =  'rg_echo(&[' + (emit_native_expr_csv args locals) + '])'
-      emit_native_expr (EList elems)      locals   =  'rg_list(vec![' + (emit_native_expr_csv elems locals) + '])'
-      emit_native_expr (ETuple elems)     locals   =  'rg_tuple(vec![' + (emit_native_expr_csv elems locals) + '])'
-      emit_native_expr (ETensor elems)    locals   =  'rg_tensor(vec![' + (emit_native_expr_csv elems locals) + '])'
-      emit_native_expr (EEinsum es subs)  locals   =
-        'rg_einsum(&[' + (emit_native_expr_csv es locals) + '], &[' + (emit_str_csv subs) + '])'
-      emit_native_expr (EHadamard bop l s1 r s2) locals =
-        'rg_hadamard("' + (binop_op_tag bop) + '", &(' + (emit_native_expr l locals) + '), "' + s1 + '", &(' + (emit_native_expr r locals) + '), "' + s2 + '")'
-      emit_native_expr (EIndex base idxs) locals   =
-        'rg_index(&(' + (emit_native_expr base locals) + '), &[' + (emit_native_expr_csv idxs locals) + '])'
-      emit_native_expr (EIndexAssign target idxs val_e) locals =
-        'rg_index_set(lv_' + target + '.clone(), &[' + (emit_native_expr_csv idxs locals) + '], ' + (emit_native_expr val_e locals) + ')'
-      emit_native_expr (ESeqSelect base mask) locals =
-        'rg_seq_select(&(' + (emit_native_expr base locals) + '), "' + (escape_rust_str mask) + '")'
-      emit_native_expr (EBlock stmts)     locals   =  '{' + "\n" + (emit_native_stmts stmts locals) + "\n" + '}'
-      emit_native_expr (EGuard guards)    locals   =  '{' + "\n" + (emit_expr_guards guards locals) + "\n" + '}'
-      emit_native_expr (EWhere body binds) locals  =  '{' + "\n" + (emit_native_where binds body locals) + "\n" + '}'
-      emit_native_expr (EParPipe branches) locals  =  'rg_tuple(vec![' + (emit_native_expr_csv branches locals) + '])'
-      emit_native_expr (EWithCtx ctx_name val_e body) locals =
-        'rg_with_ctx("' + ctx_name + '", ' + (emit_native_expr val_e locals) + ', || ' + (emit_native_expr body locals) + ')'
-      emit_native_expr (EWithRegion quota body) locals =
-        'rg_with_region_limit(' + (int_to_str quota) + 'usize, || ' + (emit_native_expr body locals) + ')'
-      emit_native_expr (EAtomicUpdate var_name val_e) locals =
-        'rg_store_shared("' + var_name + '", ' + (emit_native_expr val_e locals) + ')'
-      emit_native_expr (ELoadContext ctx_name def_e) locals =
-        'rg_load_ctx("' + ctx_name + '", || ' + (emit_native_expr def_e locals) + ')'
-      emit_native_expr (ELoadShared var_name def_e) locals =
-        'rg_load_shared("' + var_name + '", || ' + (emit_native_expr def_e locals) + ')'
+fn :: lower_let_var_store RNativeEnv String [String] Int RNativeCode => RNativeCode
+      lower_let_var_store env v bound_locals used_sp st
+        | (lookup_local bound_locals v) >= 0 = nc_emit st (NRebindSlot (env_var_slot env v)) used_sp
+        | otherwise = nc_emit st (NStoreSlot (env_var_slot env v)) used_sp
 
-fn :: is_zero_arg_builtin_var String            => Bool
-      is_zero_arg_builtin_var "cli_args"        =  True
-      is_zero_arg_builtin_var "new_mailbox"     =  True
-      is_zero_arg_builtin_var "mailbox"         =  True
-      is_zero_arg_builtin_var "new_channel"     =  True
-      is_zero_arg_builtin_var "channel"         =  True
-      is_zero_arg_builtin_var "sys_getcwd"      =  True
-      is_zero_arg_builtin_var "sys_getuid"      =  True
-      is_zero_arg_builtin_var "sys_getgid"      =  True
-      is_zero_arg_builtin_var "cmm_live_blocks" =  True
-      is_zero_arg_builtin_var "cmm_cond_spared" =  True
-      is_zero_arg_builtin_var "cmm_cond_freed"  =  True
-      is_zero_arg_builtin_var _                 =  False
+fn :: lower_expr_list_to_slots RNativeEnv [RExpr] [String] Int Int RNativeCode => RNativeCode
+      lower_expr_list_to_slots _ [] _ _ _ st = st
+      lower_expr_list_to_slots env (e:es) bound_locals sp idx st =
+        cur_slot = sp + idx
+        st1 = lower_expr env e bound_locals cur_slot st
+        st2 = nc_emit st1 (NStoreSlot cur_slot) (cur_slot + 1)
+        lower_expr_list_to_slots env es bound_locals sp (idx + 1) st2
 
-fn :: emit_native_var String [String] => String
-      emit_native_var name   locals
-        | (lookup_local locals name) >= 0 = 'lv_' + name + '.clone()'
-        | is_upper_ident name = 'rg_adt0("' + name + '")'
-        | is_zero_arg_builtin_var name = (mangle_fn_name name) + '()'
-        | otherwise = 'rg_str("' + (escape_rust_str name) + '")'
+fn :: lower_int_list_to_slots [Int]  Int Int RNativeCode => RNativeCode
+      lower_int_list_to_slots []     _   _   st          =  st
+      lower_int_list_to_slots (n:ns) sp  idx st          =
+        cur_slot = sp + idx
+        st1 = nc_emit_list st [NLoadImmInt n, NStoreSlot cur_slot] (cur_slot + 1)
+        lower_int_list_to_slots ns sp (idx + 1) st1
 
-fn :: emit_native_expr_csv [RExpr] [String] => String
-      emit_native_expr_csv []      _        =  ""
-      emit_native_expr_csv (e:[])  locals   =  emit_native_expr e locals
-      emit_native_expr_csv (e:es)  locals   =
-        (emit_native_expr e locals) + ', ' + (emit_native_expr_csv es locals)
+fn :: lower_record_updates RNativeEnv [RExpr] [String] Int RNativeCode => RNativeCode
+      lower_record_updates env ((EStr fname):val_e:rest) bound_locals sp st =
+        st1 = nc_emit st (NStoreSlot sp) (sp + 1)
+        st2 = lower_expr env val_e bound_locals (sp + 1) st1
+        fidx = env_field_idx env fname
+        st3 = nc_emit st2 (NAdtSet sp fidx) (sp + 1)
+        lower_record_updates env rest bound_locals sp st3
+      lower_record_updates _ _ _ _ st = st
 
-fn :: emit_final_block_expr RExpr    [String] [String]  => String
-      emit_final_block_expr (EVar v) locals   _
-        | (lookup_local locals v) >= 0 = "    rg_cmm_move(&mut lv_" + v + ")"
-      emit_final_block_expr e        locals   []        =
-        "    " + (emit_native_expr e locals)
-      emit_final_block_expr e        locals   dead_vars =
-        "    let _cmm_ret: RVal = " + (emit_native_expr e locals) + ";\n" + (emit_cmm_uncond_drops dead_vars "    ") + "    _cmm_ret"
+fn :: lower_var_expr RNativeEnv String [String] Int RNativeCode => RNativeCode
+      lower_var_expr env name bound_locals sp st
+        | (lookup_local bound_locals name) >= 0 =
+          nc_emit st (NCloneSlot (env_var_slot env name)) sp
+        | is_upper_ident name =
+          off = env_str_off env name
+          nc_emit st (NLoadAdt0 off (str_len name)) sp
+        | (builtin_zero_arg_id name) >= 0 =
+          nc_emit st (NCallBuiltin (builtin_zero_arg_id name) sp 0) (sp + 1)
+        | (env_fn_arity env name) == 0 =
+          nc_emit st (NCallFn (env_fn_id env name) sp 0) (sp + 1)
+        | otherwise =
+          off = env_str_off env name
+          nc_emit st (NLoadStrLit off (str_len name)) sp
 
-fn :: emit_let_binding_stmt String RExpr [String] [String] [RStmt] => String
-      emit_let_binding_stmt v e locals scope_vars rest =
+fn :: lower_call_expr RNativeEnv String [RExpr] [String] Int RNativeCode => RNativeCode
+      lower_call_expr env fname [] bound_locals sp st
+        | (lookup_local bound_locals fname) >= 0 =
+          nc_emit st (NCloneSlot (env_var_slot env fname)) sp
+      lower_call_expr env fname (a1:[]) bound_locals sp st
+        | (lookup_local bound_locals fname) >= 0 =
+          st1 = lower_expr env a1 bound_locals sp st
+          st2 = nc_emit st1 (NStoreSlot sp) (sp + 1)
+          nc_emit st2 (NCallIndirect1 (env_var_slot env fname) sp) (sp + 1)
+      lower_call_expr env fname (a1:a2:[]) bound_locals sp st
+        | (lookup_local bound_locals fname) >= 0 =
+          st1 = lower_expr_list_to_slots env [a1, a2] bound_locals sp 0 st
+          nc_emit st1 (NCallIndirect2 (env_var_slot env fname) sp) (sp + 2)
+      lower_call_expr env fname args bound_locals sp st
+        | is_upper_ident fname =
+          count = rexpr_list_len args
+          off = env_str_off env fname
+          slen = str_len fname
+          lower_adt_ctor_call env args bound_locals off slen count sp st
+        | (builtin_call_id fname) >= 0 =
+          count = rexpr_list_len args
+          st1 = lower_expr_list_to_slots env args bound_locals sp 0 st
+          nc_emit st1 (NCallBuiltin (builtin_call_id fname) sp count) (sp + count + 1)
+        | otherwise =
+          count = rexpr_list_len args
+          st1 = lower_expr_list_to_slots env args bound_locals sp 0 st
+          nc_emit st1 (NCallFn (env_fn_id env fname) sp count) (sp + count + 1)
+
+fn :: lower_adt_ctor_call RNativeEnv [RExpr] [String] Int Int Int Int RNativeCode => RNativeCode
+      lower_adt_ctor_call _ [] _ off slen 0 sp st =
+        nc_emit st (NLoadAdt0 off slen) sp
+      lower_adt_ctor_call env args bound_locals off slen count sp st =
+        st1 = lower_expr_list_to_slots env args bound_locals sp 0 st
+        nc_emit st1 (NMakeAdt off slen sp count) (sp + count + 1)
+
+fn :: lower_expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
+      lower_expr _ (EInt n) _ sp st =
+        nc_emit st (NLoadImmInt n) sp
+      lower_expr env (EReal r) _ sp st =
+        off = env_str_off env r
+        nc_emit st (NLoadRealLit off (str_len r)) sp
+      lower_expr env (EStr s) _ sp st =
+        off = env_str_off env s
+        nc_emit st (NLoadStrLit off (str_len s)) sp
+      lower_expr env (EStrInterp parts) bound_locals sp st =
+        count = rexpr_list_len parts
+        st1 = lower_expr_list_to_slots env parts bound_locals sp 0 st
+        nc_emit st1 (NStrInterp sp count) (sp + count + 1)
+      lower_expr _ (EBool True) _ sp st =
+        nc_emit st (NLoadImmRaw 6) sp
+      lower_expr _ (EBool False) _ sp st =
+        nc_emit st (NLoadImmRaw 2) sp
+      lower_expr _ EUnit _ sp st =
+        nc_emit st (NLoadImmRaw 0) sp
+      lower_expr env (EVar name) bound_locals sp st =
+        lower_var_expr env name bound_locals sp st
+      lower_expr env (ENot inner) bound_locals sp st =
+        st1 = lower_expr env inner bound_locals sp st
+        nc_emit st1 NNot sp
+      lower_expr env (EOut inner) bound_locals sp st =
+        st1 = lower_expr env inner bound_locals sp st
+        nc_emit st1 NOut sp
+      lower_expr env (EBin bop l r) bound_locals sp st =
+        st1 = lower_expr env l bound_locals sp st
+        st2 = nc_emit st1 (NStoreSlot sp) (sp + 1)
+        st3 = lower_expr env r bound_locals (sp + 1) st2
+        nc_emit st3 (NBinOp (binop_id bop) sp) (sp + 1)
+      lower_expr env (ECall "__record_update__" (base_e:rest_args)) bound_locals sp st =
+        st1 = lower_expr env base_e bound_locals sp st
+        lower_record_updates env rest_args bound_locals sp st1
+      lower_expr env (ECall "__unpack2__" ((EVar fn_target):single_arg:[])) bound_locals sp st =
+        st1 = lower_expr env single_arg bound_locals sp st
+        fid = env_fn_id env fn_target
+        ins_list = [NStoreSlot sp, NTupleGet sp 0, NStoreSlot (sp + 1), NTupleGet sp 1, NStoreSlot (sp + 2), NClearLocals sp (sp + 1), NCallFn fid (sp + 1) 2]
+        nc_emit_list st1 ins_list (sp + 3)
+      lower_expr env (ECall fname args) bound_locals sp st =
+        lower_call_expr env fname args bound_locals sp st
+      lower_expr env (EEcho args) bound_locals sp st =
+        count = rexpr_list_len args
+        st1 = lower_expr_list_to_slots env args bound_locals sp 0 st
+        nc_emit st1 (NEcho sp count) (sp + count + 1)
+      lower_expr env (EList elems) bound_locals sp st =
+        count = rexpr_list_len elems
+        st1 = lower_expr_list_to_slots env elems bound_locals sp 0 st
+        nc_emit st1 (NMakeList sp count) (sp + count + 1)
+      lower_expr env (ETuple elems) bound_locals sp st =
+        count = rexpr_list_len elems
+        st1 = lower_expr_list_to_slots env elems bound_locals sp 0 st
+        nc_emit st1 (NMakeTuple sp count) (sp + count + 1)
+      lower_expr env (ETensor elems) bound_locals sp st =
+        count = rexpr_list_len elems
+        st1 = lower_expr_list_to_slots env elems bound_locals sp 0 st
+        nc_emit st1 (NMakeTensor sp count) (sp + count + 1)
+      lower_expr env (EEinsum es subs) bound_locals sp st =
+        count = rexpr_list_len es
+        spec = join_comma subs
+        off = env_str_off env spec
+        st1 = lower_expr_list_to_slots env es bound_locals sp 0 st
+        nc_emit st1 (NEinsum sp count off (str_len spec)) (sp + count + 1)
+      lower_expr env (EHadamard bop l s1 r s2) bound_locals sp st =
+        subs = s1 + "," + s2
+        off = env_str_off env subs
+        st1 = lower_expr env l bound_locals sp st
+        st2 = nc_emit st1 (NStoreSlot sp) (sp + 1)
+        st3 = lower_expr env r bound_locals (sp + 1) st2
+        nc_emit st3 (NHadamard (binop_id bop) sp off (str_len subs)) (sp + 1)
+      lower_expr env (EIndex base idxs) bound_locals sp st =
+        count = rexpr_list_len idxs
+        st1 = lower_expr env base bound_locals sp st
+        st2 = nc_emit st1 (NStoreSlot sp) (sp + 1)
+        st3 = lower_expr_list_to_slots env idxs bound_locals (sp + 1) 0 st2
+        nc_emit st3 (NIndex sp (sp + 1) count) (sp + count + 2)
+      lower_expr env (EIndexAssign target idxs val_e) bound_locals sp st =
+        count = rexpr_list_len idxs
+        tslot = env_var_slot env target
+        st1 = nc_emit_list st [NCloneSlot tslot, NStoreSlot sp] (sp + 1)
+        st2 = lower_expr_list_to_slots env idxs bound_locals (sp + 1) 0 st1
+        st3 = lower_expr env val_e bound_locals (sp + 1 + count) st2
+        nc_emit st3 (NIndexSet sp (sp + 1) count) (sp + count + 2)
+      lower_expr env (ESeqSelect base mask) bound_locals sp st =
+        off = env_str_off env mask
+        st1 = lower_expr env base bound_locals sp st
+        nc_emit st1 (NSeqSelect off (str_len mask)) sp
+      lower_expr env (EBlock stmts) bound_locals sp st =
+        lower_stmts_cmm env stmts bound_locals [] sp st
+      lower_expr env (EGuard guards) bound_locals sp st =
+        end_lbl = nc_lbl st
+        st1 = nc_set_lbl st (end_lbl + 1)
+        lower_expr_guards env guards bound_locals end_lbl sp st1
+      lower_expr env (EWhere body binds) bound_locals sp st =
+        lower_where_cmm env binds body bound_locals [] sp st
+      lower_expr env (EParPipe branches) bound_locals sp st =
+        count = rexpr_list_len branches
+        st1 = lower_expr_list_to_slots env branches bound_locals sp 0 st
+        nc_emit st1 (NMakeTuple sp count) (sp + count + 1)
+      lower_expr env (EWithCtx ctx_name val_e body) bound_locals sp st =
+        off = env_str_off env ctx_name
+        klen = str_len ctx_name
+        st1 = lower_expr env val_e bound_locals sp st
+        st2 = nc_emit st1 (NPushCtx off klen) sp
+        st3 = lower_expr env body bound_locals sp st2
+        nc_emit st3 (NPopCtx off klen) sp
+      lower_expr env (EWithRegion quota body) bound_locals sp st =
+        st1 = nc_emit st NEnterRegion sp
+        st2 = lower_expr env body bound_locals sp st1
+        nc_emit st2 (NExitRegion quota) sp
+      lower_expr env (EAtomicUpdate var_name val_e) bound_locals sp st =
+        off = env_str_off env var_name
+        klen = str_len var_name
+        st1 = lower_expr env val_e bound_locals sp st
+        nc_emit st1 (NStoreShared off klen) sp
+      lower_expr env (ELoadContext ctx_name def_e) bound_locals sp st =
+        off = env_str_off env ctx_name
+        klen = str_len ctx_name
+        else_lbl = nc_lbl st
+        end_lbl = else_lbl + 1
+        st1 = nc_set_lbl st (else_lbl + 2)
+        st2 = nc_emit_list st1 [NHasCtx off klen, NJumpIfZero else_lbl, NGetCtx off klen, NJump end_lbl, NLabel else_lbl] sp
+        st3 = lower_expr env def_e bound_locals sp st2
+        nc_emit st3 (NLabel end_lbl) sp
+      lower_expr env (ELoadShared var_name def_e) bound_locals sp st =
+        off = env_str_off env var_name
+        klen = str_len var_name
+        else_lbl = nc_lbl st
+        end_lbl = else_lbl + 1
+        st1 = nc_set_lbl st (else_lbl + 2)
+        st2 = nc_emit_list st1 [NHasShared off klen, NJumpIfZero else_lbl, NGetShared off klen, NJump end_lbl, NLabel else_lbl] sp
+        st3 = lower_expr env def_e bound_locals sp st2
+        nc_emit_list st3 [NInitShared off klen, NLabel end_lbl] sp
+
+fn :: lower_expr_guards RNativeEnv [RGuard] [String] Int Int RNativeCode => RNativeCode
+      lower_expr_guards _ [] _ end_lbl sp st =
+        nc_emit_list st [NLoadImmRaw 0, NLabel end_lbl] sp
+      lower_expr_guards env ((GuardBranch cond body):gs) bound_locals end_lbl sp st =
+        next_lbl = nc_lbl st
+        st1 = nc_set_lbl st (next_lbl + 1)
+        st2 = lower_expr env cond bound_locals sp st1
+        st3 = nc_emit_list st2 [NAsBool, NJumpIfZero next_lbl] sp
+        st4 = lower_expr env body bound_locals sp st3
+        st5 = nc_emit_list st4 [NJump end_lbl, NLabel next_lbl] sp
+        lower_expr_guards env gs bound_locals end_lbl sp st5
+
+fn :: lower_final_block_expr RNativeEnv RExpr [String] [String] Int RNativeCode => RNativeCode
+      lower_final_block_expr env (EVar v) bound_locals _ sp st
+        | (lookup_local bound_locals v) >= 0 =
+          nc_emit st (NMoveSlot (env_var_slot env v)) sp
+      lower_final_block_expr env e bound_locals [] sp st =
+        lower_expr env e bound_locals sp st
+      lower_final_block_expr env e bound_locals dead_vars sp st =
+        st1 = lower_expr env e bound_locals sp st
+        st2 = nc_emit st1 (NStoreSlot sp) (sp + 1)
+        st3 = lower_cmm_drops env dead_vars (sp + 1) st2
+        nc_emit st3 (NMoveSlot sp) (sp + 1)
+
+fn :: lower_let_binding_stmt RNativeEnv String RExpr [String] [String] [RStmt] Int RNativeCode => RNativeCode
+      lower_let_binding_stmt env v e bound_locals scope_vars rest sp st =
         used_in_e = cmm_filter_in_list (cmm_expr_vars e []) scope_vars
         live_after = cmm_stmts_vars rest []
         live_with_v = add_unique_str v live_after
         dead_inputs = cmm_filter_not_in_list (cmm_remove_str v used_in_e) live_with_v
-        drop_inputs_code = emit_cmm_uncond_drops dead_inputs "    "
-        drop_v_code = emit_unused_let_drop v live_after "    "
-        bind_code = emit_let_var_decl v e locals
-        bind_code + drop_inputs_code + drop_v_code + (emit_native_stmts_cmm rest (add_unique_str v locals) (add_unique_str v scope_vars))
+        st1 = lower_expr env e bound_locals sp st
+        st2 = lower_let_var_store env v bound_locals sp st1
+        st3 = lower_cmm_drops env dead_inputs sp st2
+        st4 = lower_unused_let_drop env v live_after sp st3
+        lower_stmts_cmm env rest (add_unique_str v bound_locals) (add_unique_str v scope_vars) sp st4
 
-fn :: emit_unused_let_drop String [String]   String => String
-      emit_unused_let_drop v      live_after indent
-        | str_in_list v live_after = ""
-        | otherwise = indent + "rg_cmm_drop(&mut lv_" + v + ");\n"
-
-fn :: emit_let_var_decl String RExpr [String] => String
-      emit_let_var_decl v      e     locals
-        | (lookup_local locals v) >= 0 =
-          "    let _cmm_reb_" + v + ": RVal = " + (emit_native_expr e locals) + ";\n    rg_cmm_drop(&mut lv_" + v + ");\n    lv_" + v + " = _cmm_reb_" + v + ";\n"
-        | otherwise =
-          "    let mut lv_" + v + ": RVal = " + (emit_native_expr e locals) + ";\n"
-
-fn :: emit_expr_guards [RGuard] [String] => String
-      emit_expr_guards []       _        =  "    RVal::Unit"
-      emit_expr_guards ((GuardBranch cond body):gs) locals =
-        "    if rg_as_bool(&(" + (emit_native_expr cond locals) + ")) {\n      " + (emit_native_expr body locals) + "\n    } else {\n" + (emit_expr_guards gs locals) + "\n    }"
-
-fn :: emit_native_stmts [RStmt] [String] => String
-      emit_native_stmts stmts   locals   =  emit_native_stmts_cmm stmts locals []
-
-fn :: emit_native_stmts_cmm [RStmt]            [String] [String]   => String
-      emit_native_stmts_cmm []                 _        _          =  'RVal::Unit'
-      emit_native_stmts_cmm ((StmtExpr e):[])  locals   scope_vars =
+fn :: lower_stmts_cmm RNativeEnv [RStmt] [String] [String] Int RNativeCode => RNativeCode
+      lower_stmts_cmm _ [] _ _ sp st =
+        nc_emit st (NLoadImmRaw 0) sp
+      lower_stmts_cmm env ((StmtExpr e):[]) bound_locals scope_vars sp st =
         used = cmm_filter_in_list (cmm_expr_vars e []) scope_vars
-        emit_final_block_expr e locals used
-      emit_native_stmts_cmm ((StmtAtomic v e):[]) locals scope_vars =
+        lower_final_block_expr env e bound_locals used sp st
+      lower_stmts_cmm env ((StmtAtomic v e):[]) bound_locals scope_vars sp st =
         used = cmm_filter_in_list (cmm_expr_vars e []) scope_vars
-        '    let _ = rg_store_shared("' + v + '", ' + (emit_native_expr e locals) + ');' + "\n" + (emit_cmm_uncond_drops used "    ") + '    RVal::Unit'
-      emit_native_stmts_cmm ((StmtIndexAssign t idxs e):[]) locals _ =
-        "    lv_" + t + " = rg_index_set(rg_cmm_move(&mut lv_" + t + "), &[" + (emit_native_expr_csv idxs locals) + "], " + (emit_native_expr e locals) + ");\n    RVal::Unit"
-      emit_native_stmts_cmm ((StmtLet v e):[]) locals   scope_vars
+        off = env_str_off env v
+        st1 = lower_expr env e bound_locals sp st
+        st2 = nc_emit st1 (NStoreShared off (str_len v)) sp
+        st3 = lower_cmm_drops env used sp st2
+        nc_emit st3 (NLoadImmRaw 0) sp
+      lower_stmts_cmm env ((StmtIndexAssign t idxs e):[]) bound_locals _ sp st =
+        count = rexpr_list_len idxs
+        tslot = env_var_slot env t
+        st1 = lower_expr_list_to_slots env idxs bound_locals sp 0 st
+        st2 = lower_expr env e bound_locals (sp + count) st1
+        nc_emit_list st2 [NIndexSet tslot sp count, NStoreSlot tslot, NLoadImmRaw 0] (sp + count + 1)
+      lower_stmts_cmm env ((StmtLet v e):[]) bound_locals scope_vars sp st
         | v == "_" =
           used = cmm_filter_in_list (cmm_expr_vars e []) scope_vars
-          "    let _ = " + (emit_native_expr e locals) + ";\n" + (emit_cmm_uncond_drops used "    ") + "    RVal::Unit"
+          st1 = lower_expr env e bound_locals sp st
+          st2 = nc_emit st1 NDropVal sp
+          st3 = lower_cmm_drops env used sp st2
+          nc_emit st3 (NLoadImmRaw 0) sp
         | otherwise =
           used = cmm_remove_str v (cmm_filter_in_list (cmm_expr_vars e []) scope_vars)
-          (emit_let_var_decl v e locals) + (emit_cmm_uncond_drops used "    ") + "    rg_cmm_move(&mut lv_" + v + ")"
-      emit_native_stmts_cmm ((StmtMut v e):[]) locals   scope_vars =
-        emit_native_stmts_cmm [StmtLet v e] locals scope_vars
-      emit_native_stmts_cmm ((StmtLet v e):rest) locals scope_vars
+          st1 = lower_expr env e bound_locals sp st
+          st2 = lower_let_var_store env v bound_locals sp st1
+          st3 = lower_cmm_drops env used sp st2
+          nc_emit st3 (NMoveSlot (env_var_slot env v)) sp
+      lower_stmts_cmm env ((StmtMut v e):[]) bound_locals scope_vars sp st =
+        lower_stmts_cmm env [StmtLet v e] bound_locals scope_vars sp st
+      lower_stmts_cmm env ((StmtLet v e):rest) bound_locals scope_vars sp st
         | v == "_" =
           used_in_e = cmm_filter_in_list (cmm_expr_vars e []) scope_vars
           live_after = cmm_stmts_vars rest []
           dead_now = cmm_filter_not_in_list used_in_e live_after
-          "    let _ = " + (emit_native_expr e locals) + ";\n" + (emit_cmm_uncond_drops dead_now "    ") + (emit_native_stmts_cmm rest locals scope_vars)
+          st1 = lower_expr env e bound_locals sp st
+          st2 = nc_emit st1 NDropVal sp
+          st3 = lower_cmm_drops env dead_now sp st2
+      lower_stmts_cmm env rest bound_locals scope_vars sp st3
         | otherwise =
-          emit_let_binding_stmt v e locals scope_vars rest
-      emit_native_stmts_cmm ((StmtMut v e):rest) locals scope_vars =
-        emit_let_binding_stmt v e locals scope_vars rest
-      emit_native_stmts_cmm ((StmtAtomic v e):rest) locals scope_vars =
+          lower_let_binding_stmt env v e bound_locals scope_vars rest sp st
+      lower_stmts_cmm env ((StmtMut v e):rest) bound_locals scope_vars sp st =
+        lower_let_binding_stmt env v e bound_locals scope_vars rest sp st
+      lower_stmts_cmm env ((StmtAtomic v e):rest) bound_locals scope_vars sp st =
         used_in_e = cmm_filter_in_list (cmm_expr_vars e []) scope_vars
         live_after = cmm_stmts_vars rest []
         dead_now = cmm_filter_not_in_list used_in_e live_after
-        '    let _ = rg_store_shared("' + v + '", ' + (emit_native_expr e locals) + ');' + "\n" + (emit_cmm_uncond_drops dead_now "    ") + (emit_native_stmts_cmm rest locals scope_vars)
-      emit_native_stmts_cmm ((StmtIndexAssign t idxs e):rest) locals scope_vars =
-        "    lv_" + t + " = rg_index_set(rg_cmm_move(&mut lv_" + t + "), &[" + (emit_native_expr_csv idxs locals) + "], " + (emit_native_expr e locals) + ");\n" + (emit_native_stmts_cmm rest locals scope_vars)
-      emit_native_stmts_cmm ((StmtExpr e):rest) locals  scope_vars =
+        off = env_str_off env v
+        st1 = lower_expr env e bound_locals sp st
+        st2 = nc_emit st1 (NStoreShared off (str_len v)) sp
+        st3 = lower_cmm_drops env dead_now sp st2
+        lower_stmts_cmm env rest bound_locals scope_vars sp st3
+      lower_stmts_cmm env ((StmtIndexAssign t idxs e):rest) bound_locals scope_vars sp st =
+        count = rexpr_list_len idxs
+        tslot = env_var_slot env t
+        st1 = lower_expr_list_to_slots env idxs bound_locals sp 0 st
+        st2 = lower_expr env e bound_locals (sp + count) st1
+        st3 = nc_emit_list st2 [NIndexSet tslot sp count, NStoreSlot tslot] (sp + count + 1)
+        lower_stmts_cmm env rest bound_locals scope_vars sp st3
+      lower_stmts_cmm env ((StmtExpr e):rest) bound_locals scope_vars sp st =
         used_in_e = cmm_filter_in_list (cmm_expr_vars e []) scope_vars
         live_after = cmm_stmts_vars rest []
         dead_now = cmm_filter_not_in_list used_in_e live_after
-        "    let _ = " + (emit_native_expr e locals) + ";\n" + (emit_cmm_uncond_drops dead_now "    ") + (emit_native_stmts_cmm rest locals scope_vars)
+        st1 = lower_expr env e bound_locals sp st
+        st2 = nc_emit st1 NDropVal sp
+        st3 = lower_cmm_drops env dead_now sp st2
+        lower_stmts_cmm env rest bound_locals scope_vars sp st3
 
-fn :: emit_native_where [RWhereBind] RExpr [String] => String
-      emit_native_where binds        body  locals   =  emit_native_where_cmm binds body locals []
-
-fn :: emit_native_where_cmm [RWhereBind] RExpr [String] [String]   => String
-      emit_native_where_cmm []           body  locals   scope_vars =
+fn :: lower_where_cmm RNativeEnv [RWhereBind] RExpr [String] [String] Int RNativeCode => RNativeCode
+      lower_where_cmm env [] body bound_locals scope_vars sp st =
         used = cmm_filter_in_list (cmm_expr_vars body []) scope_vars
-        emit_final_block_expr body locals used
-      emit_native_where_cmm ((WhereBind e v []):wbs) body locals scope_vars =
+        lower_final_block_expr env body bound_locals used sp st
+      lower_where_cmm env ((WhereBind e v []):wbs) body bound_locals scope_vars sp st =
         used_in_e = cmm_filter_in_list (cmm_expr_vars e []) scope_vars
         live_after = cmm_where_vars wbs body []
         live_with_v = add_unique_str v live_after
         dead_inputs = cmm_filter_not_in_list (cmm_remove_str v used_in_e) live_with_v
-        drop_inputs_code = emit_cmm_uncond_drops dead_inputs "    "
-        drop_v_code = emit_unused_let_drop v live_after "    "
-        "    let mut lv_" + v + ": RVal = " + (emit_native_expr e locals) + ";\n" + drop_inputs_code + drop_v_code + (emit_native_where_cmm wbs body (add_unique_str v locals) (add_unique_str v scope_vars))
-      emit_native_where_cmm ((WhereBind e v idxs):wbs) body locals scope_vars =
-        "    lv_" + v + " = rg_index_set(rg_cmm_move(&mut lv_" + v + "), &[" + (emit_int_rval_csv idxs) + "], " + (emit_native_expr e locals) + ");\n" + (emit_native_where_cmm wbs body locals scope_vars)
+        st1 = lower_expr env e bound_locals sp st
+        st2 = lower_let_var_store env v bound_locals sp st1
+        st3 = lower_cmm_drops env dead_inputs sp st2
+        st4 = lower_unused_let_drop env v live_after sp st3
+        lower_where_cmm env wbs body (add_unique_str v bound_locals) (add_unique_str v scope_vars) sp st4
+      lower_where_cmm env ((WhereBind e v idxs):wbs) body bound_locals scope_vars sp st =
+        count = int_list_len idxs
+        tslot = env_var_slot env v
+        st1 = lower_int_list_to_slots idxs sp 0 st
+        st2 = lower_expr env e bound_locals (sp + count) st1
+        st3 = nc_emit_list st2 [NIndexSet tslot sp count, NStoreSlot tslot] (sp + count + 1)
+        lower_where_cmm env wbs body bound_locals scope_vars sp st3
 
--- ── Function, Record Field Accessor, TCO & Tree-Shaking ─────
+-- ── Tail-Call Optimization (TCO) & Tail Return Lowering ─────
 
 fn :: expr_has_self_tail_call String RExpr           => Bool
       expr_has_self_tail_call target (ECall fname _) =  fname == target
@@ -942,186 +1334,387 @@ fn :: guards_have_self_tail_call String [RGuard] => Bool
         | expr_has_self_tail_call target body = True
         | otherwise = guards_have_self_tail_call target gs
 
-fn :: cases_have_self_tail_call String [RFnCase] => Bool
-      cases_have_self_tail_call _      []        =  False
-      cases_have_self_tail_call target ((FnCase _ [] body):cs)
-        | expr_has_self_tail_call target body = True
-        | otherwise = cases_have_self_tail_call target cs
-      cases_have_self_tail_call target ((FnCase _ guards _):cs)
-        | guards_have_self_tail_call target guards = True
-        | otherwise = cases_have_self_tail_call target cs
-
 fn :: can_move_param_var String [String] [String]   [String]   => Bool
       can_move_param_var v      locals   scope_vars later_vars =
         ((lookup_local locals v) >= 0) AND (NOT (str_in_list v scope_vars)) AND (NOT (str_in_list v later_vars))
 
-fn :: emit_tco_arg_expr RExpr              [RExpr] [String] [String]   => String
-      emit_tco_arg_expr (EVar v)           es      locals   scope_vars
-        | can_move_param_var v locals scope_vars (cmm_expr_list_vars es []) =
-          'rg_cmm_move(&mut lv_' + v + ')'
-      emit_tco_arg_expr (EBin OpConcat (EVar v) rhs) es locals scope_vars
-        | can_move_param_var v locals scope_vars (cmm_expr_vars rhs (cmm_expr_list_vars es [])) =
-          'rg_list_concat(rg_cmm_move(&mut lv_' + v + '), ' + (emit_native_expr rhs locals) + ')'
-      emit_tco_arg_expr (ETuple elems)     es      locals   scope_vars =
-        'rg_tuple(vec![' + (emit_tco_arg_csv elems es locals scope_vars) + '])'
-      emit_tco_arg_expr (ECall fname args) es      locals   scope_vars
-        | (lookup_local locals fname) < 0 AND (NOT (is_upper_ident fname)) AND fname != "__record_update__" AND fname != "__unpack2__" =
-          (mangle_fn_name fname) + '(' + (emit_tco_arg_csv args es locals scope_vars) + ')'
-      emit_tco_arg_expr e                  _       locals   _          =
-        emit_native_expr e locals
+fn :: lower_tco_arg_expr RNativeEnv RExpr [RExpr] [String] [String] Int RNativeCode => RNativeCode
+      lower_tco_arg_expr env (EVar v) es bound_locals scope_vars sp st
+        | can_move_param_var v bound_locals scope_vars (cmm_expr_list_vars es []) =
+          nc_emit st (NMoveSlot (env_var_slot env v)) sp
+      lower_tco_arg_expr env (EBin OpConcat (EVar v) rhs) es bound_locals scope_vars sp st
+        | can_move_param_var v bound_locals scope_vars (cmm_expr_vars rhs (cmm_expr_list_vars es [])) =
+          vslot = env_var_slot env v
+          st1 = nc_emit_list st [NMoveSlot vslot, NStoreSlot sp] (sp + 1)
+          st2 = lower_expr env rhs bound_locals (sp + 1) st1
+          nc_emit st2 (NBinOp 14 sp) (sp + 1)
+      lower_tco_arg_expr env (ETuple elems) es bound_locals scope_vars sp st =
+        count = rexpr_list_len elems
+        st1 = lower_tco_arg_list_to_slots env elems es bound_locals scope_vars sp 0 st
+        nc_emit st1 (NMakeTuple sp count) (sp + count + 1)
+      lower_tco_arg_expr env (ECall fname args) es bound_locals scope_vars sp st
+        | (lookup_local bound_locals fname) < 0 AND (NOT (is_upper_ident fname)) AND (builtin_call_id fname) < 0 AND fname != "__record_update__" AND fname != "__unpack2__" =
+          count = rexpr_list_len args
+          st1 = lower_tco_arg_list_to_slots env args es bound_locals scope_vars sp 0 st
+          nc_emit st1 (NCallFn (env_fn_id env fname) sp count) (sp + count + 1)
+      lower_tco_arg_expr env e _ bound_locals _ sp st =
+        lower_expr env e bound_locals sp st
 
-fn :: emit_tco_arg_csv [RExpr] [RExpr] [String] [String]   => String
-      emit_tco_arg_csv []      _       _        _          =  ""
-      emit_tco_arg_csv (e:[])  after   locals   scope_vars =  emit_tco_arg_expr e after locals scope_vars
-      emit_tco_arg_csv (e:es)  after   locals   scope_vars =
-        (emit_tco_arg_expr e (es :: after) locals scope_vars) + ', ' + (emit_tco_arg_csv es after locals scope_vars)
+fn :: lower_tco_arg_list_to_slots RNativeEnv [RExpr] [RExpr] [String] [String] Int Int RNativeCode => RNativeCode
+      lower_tco_arg_list_to_slots _ [] _ _ _ _ _ st = st
+      lower_tco_arg_list_to_slots env (e:es) after bound_locals scope_vars sp idx st =
+        cur_slot = sp + idx
+        st1 = lower_tco_arg_expr env e (es :: after) bound_locals scope_vars cur_slot st
+        st2 = nc_emit st1 (NStoreSlot cur_slot) (cur_slot + 1)
+        lower_tco_arg_list_to_slots env es after bound_locals scope_vars sp (idx + 1) st2
 
-fn :: emit_tco_tmp_binds [RExpr] Int [String] [String]   => String
-      emit_tco_tmp_binds []      _   _        _          =  ""
-      emit_tco_tmp_binds (e:es)  idx locals   scope_vars =
-        'let _tco_' + (int_to_str idx) + ': RVal = ' + (emit_tco_arg_expr e es locals scope_vars) + '; ' + (emit_tco_tmp_binds es (idx + 1) locals scope_vars)
+fn :: lower_tail_return RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
+      lower_tail_return env expr bound_locals sp st =
+        lower_tail_return_cmm env expr bound_locals [] sp st
 
-fn :: emit_tco_arg_assigns Int Int   => String
-      emit_tco_arg_assigns idx arity
-        | idx >= arity = ""
-        | otherwise = '_arg_' + (int_to_str idx) + ' = _tco_' + (int_to_str idx) + '; ' + (emit_tco_arg_assigns (idx + 1) arity)
-
-fn :: emit_tail_return String Int   RExpr [String] => String
-      emit_tail_return target arity expr  locals   =
-        emit_tail_return_cmm target arity expr locals []
-
-fn :: emit_tail_return_cmm String Int RExpr [String] [String] => String
-      emit_tail_return_cmm target arity (ECall fname args) locals scope_vars
-        | fname == target AND (expr_list_count args) == arity AND (lookup_local locals fname) < 0 = '{ ' + (emit_tco_tmp_binds args 0 locals scope_vars) + (emit_cmm_uncond_drops scope_vars "") + (emit_tco_arg_assigns 0 arity) + 'continue; }'
-      emit_tail_return_cmm target arity (EBlock stmts) locals scope_vars =
-        "{\n" + (emit_tail_stmts_cmm target arity stmts locals scope_vars) + "\n}"
-      emit_tail_return_cmm target arity (EGuard guards) locals scope_vars
-        | guards_have_self_tail_call target guards =
-          "{\n" + (emit_tail_guards_cmm target arity guards locals scope_vars) + "\n}"
-      emit_tail_return_cmm target arity (EWhere body binds) locals scope_vars =
-        "{\n" + (emit_tail_where_cmm target arity binds body locals scope_vars) + "\n}"
-      emit_tail_return_cmm _ _ (EVar v) locals _
-        | (lookup_local locals v) >= 0 = 'return rg_cmm_move(&mut lv_' + v + ');'
-      emit_tail_return_cmm _ _ expr locals scope_vars =
+fn :: lower_tail_return_cmm RNativeEnv RExpr [String] [String] Int RNativeCode => RNativeCode
+      lower_tail_return_cmm env (ECall fname args) bound_locals scope_vars sp st
+        | fname == (env_fn_name env) AND (rexpr_list_len args) == (env_arity env) AND (lookup_local bound_locals fname) < 0 =
+          arity = env_arity env
+          st1 = lower_tco_arg_list_to_slots env args [] bound_locals scope_vars sp 0 st
+          st2 = lower_cmm_drops env scope_vars (sp + arity + 1) st1
+          nc_emit st2 (NTailCall sp arity) (sp + arity + 1)
+      lower_tail_return_cmm env (EBlock stmts) bound_locals scope_vars sp st =
+        lower_tail_stmts_cmm env stmts bound_locals scope_vars sp st
+      lower_tail_return_cmm env (EGuard guards) bound_locals scope_vars sp st
+        | guards_have_self_tail_call (env_fn_name env) guards =
+          lower_tail_guards_cmm env guards bound_locals scope_vars sp st
+      lower_tail_return_cmm env (EWhere body binds) bound_locals scope_vars sp st =
+        lower_tail_where_cmm env binds body bound_locals scope_vars sp st
+      lower_tail_return_cmm env (EVar v) bound_locals _ sp st
+        | (lookup_local bound_locals v) >= 0 =
+          nc_emit_list st [NMoveSlot (env_var_slot env v), NReturn] sp
+      lower_tail_return_cmm env expr bound_locals scope_vars sp st =
         used = cmm_filter_in_list (cmm_expr_vars expr []) scope_vars
-        emit_tail_return_expr expr locals scope_vars used
+        lower_tail_return_expr env expr bound_locals scope_vars used sp st
 
-fn :: emit_tail_guards_cmm String Int [RGuard] [String] [String] => String
-      emit_tail_guards_cmm _ _ [] _ scope_vars =
-        (emit_cmm_uncond_drops scope_vars "    ") + "    return RVal::Unit;"
-      emit_tail_guards_cmm target arity ((GuardBranch cond body):gs) locals scope_vars =
-        '    if rg_as_bool(&(' + (emit_native_expr cond locals) + ')) {' + "\n      " + (emit_tail_return_cmm target arity body locals scope_vars) + "\n    }\n" + (emit_tail_guards_cmm target arity gs locals scope_vars)
+fn :: lower_tail_return_expr RNativeEnv RExpr [String] [String] [String] Int RNativeCode => RNativeCode
+      lower_tail_return_expr env expr bound_locals scope_vars [] sp st =
+        st1 = lower_tco_arg_expr env expr [] bound_locals scope_vars sp st
+        nc_emit st1 NReturn sp
+      lower_tail_return_expr env expr bound_locals scope_vars used sp st =
+        st1 = lower_tco_arg_expr env expr [] bound_locals scope_vars sp st
+        st2 = nc_emit st1 (NStoreSlot sp) (sp + 1)
+        st3 = lower_cmm_drops env used (sp + 1) st2
+        nc_emit_list st3 [NMoveSlot sp, NReturn] (sp + 1)
 
-fn :: emit_tail_return_expr RExpr [String] [String]   [String] => String
-      emit_tail_return_expr expr  locals   scope_vars []       =
-        'return ' + (emit_tco_arg_expr expr [] locals scope_vars) + ';'
-      emit_tail_return_expr expr  locals   scope_vars used     =
-        '{ let _cmm_ret: RVal = ' + (emit_tco_arg_expr expr [] locals scope_vars) + '; ' + (emit_cmm_uncond_drops used "") + 'return _cmm_ret; }'
+fn :: lower_tail_guards_cmm RNativeEnv [RGuard] [String] [String] Int RNativeCode => RNativeCode
+      lower_tail_guards_cmm env [] _ scope_vars sp st =
+        st1 = lower_cmm_drops env scope_vars sp st
+        nc_emit_list st1 [NLoadImmRaw 0, NReturn] sp
+      lower_tail_guards_cmm env ((GuardBranch cond body):gs) bound_locals scope_vars sp st =
+        next_lbl = nc_lbl st
+        st1 = nc_set_lbl st (next_lbl + 1)
+        st2 = lower_expr env cond bound_locals sp st1
+        st3 = nc_emit_list st2 [NAsBool, NJumpIfZero next_lbl] sp
+        st4 = lower_tail_return_cmm env body bound_locals scope_vars sp st3
+        st5 = nc_emit st4 (NLabel next_lbl) sp
+        lower_tail_guards_cmm env gs bound_locals scope_vars sp st5
 
-fn :: emit_tail_let_stmt String Int String RExpr [String] [String] [RStmt] => String
-      emit_tail_let_stmt target arity v e locals scope_vars rest =
+fn :: lower_tail_let_stmt RNativeEnv String RExpr [String] [String] [RStmt] Int RNativeCode => RNativeCode
+      lower_tail_let_stmt env v e bound_locals scope_vars rest sp st =
         used_in_e = cmm_filter_in_list (cmm_expr_vars e []) scope_vars
         live_after = cmm_stmts_vars rest []
         live_with_v = add_unique_str v live_after
         dead_inputs = cmm_filter_not_in_list (cmm_remove_str v used_in_e) live_with_v
-        drop_inputs_code = emit_cmm_uncond_drops dead_inputs "    "
-        drop_v_code = emit_unused_let_drop v live_after "    "
-        bind_code = emit_let_var_decl v e locals
-        bind_code + drop_inputs_code + drop_v_code + (emit_tail_stmts_cmm target arity rest (add_unique_str v locals) (add_unique_str v scope_vars))
+        st1 = lower_expr env e bound_locals sp st
+        st2 = lower_let_var_store env v bound_locals sp st1
+        st3 = lower_cmm_drops env dead_inputs sp st2
+        st4 = lower_unused_let_drop env v live_after sp st3
+        lower_tail_stmts_cmm env rest (add_unique_str v bound_locals) (add_unique_str v scope_vars) sp st4
 
-fn :: emit_tail_stmts_cmm String Int [RStmt] [String] [String] => String
-      emit_tail_stmts_cmm _ _ [] _ _ = '    return RVal::Unit;'
-      emit_tail_stmts_cmm target arity ((StmtExpr e):[]) locals scope_vars =
-        '    ' + (emit_tail_return_cmm target arity e locals scope_vars)
-      emit_tail_stmts_cmm target arity ((StmtLet v e):rest) locals scope_vars
+fn :: lower_tail_stmts_cmm RNativeEnv [RStmt] [String] [String] Int RNativeCode => RNativeCode
+      lower_tail_stmts_cmm _ [] _ _ sp st =
+        nc_emit_list st [NLoadImmRaw 0, NReturn] sp
+      lower_tail_stmts_cmm env ((StmtExpr e):[]) bound_locals scope_vars sp st =
+        lower_tail_return_cmm env e bound_locals scope_vars sp st
+      lower_tail_stmts_cmm env ((StmtLet v e):rest) bound_locals scope_vars sp st
         | v == "_" =
           used_in_e = cmm_filter_in_list (cmm_expr_vars e []) scope_vars
           live_after = cmm_stmts_vars rest []
           dead_now = cmm_filter_not_in_list used_in_e live_after
-          "    let _ = " + (emit_native_expr e locals) + ";\n" + (emit_cmm_uncond_drops dead_now "    ") + (emit_tail_stmts_cmm target arity rest locals scope_vars)
+          st1 = lower_expr env e bound_locals sp st
+          st2 = nc_emit st1 NDropVal sp
+          st3 = lower_cmm_drops env dead_now sp st2
+      lower_tail_stmts_cmm env rest bound_locals scope_vars sp st3
         | otherwise =
-          emit_tail_let_stmt target arity v e locals scope_vars rest
-      emit_tail_stmts_cmm target arity ((StmtMut v e):rest) locals scope_vars =
-        emit_tail_let_stmt target arity v e locals scope_vars rest
-      emit_tail_stmts_cmm target arity ((StmtAtomic v e):rest) locals scope_vars =
+          lower_tail_let_stmt env v e bound_locals scope_vars rest sp st
+      lower_tail_stmts_cmm env ((StmtMut v e):rest) bound_locals scope_vars sp st =
+        lower_tail_let_stmt env v e bound_locals scope_vars rest sp st
+      lower_tail_stmts_cmm env ((StmtAtomic v e):rest) bound_locals scope_vars sp st =
         used_in_e = cmm_filter_in_list (cmm_expr_vars e []) scope_vars
         live_after = cmm_stmts_vars rest []
         dead_now = cmm_filter_not_in_list used_in_e live_after
-        '    let _ = rg_store_shared("' + v + '", ' + (emit_native_expr e locals) + ');' + "\n" + (emit_cmm_uncond_drops dead_now "    ") + (emit_tail_stmts_cmm target arity rest locals scope_vars)
-      emit_tail_stmts_cmm target arity ((StmtIndexAssign t idxs e):rest) locals scope_vars =
-        "    lv_" + t + " = rg_index_set(rg_cmm_move(&mut lv_" + t + "), &[" + (emit_native_expr_csv idxs locals) + "], " + (emit_native_expr e locals) + ");\n" + (emit_tail_stmts_cmm target arity rest locals scope_vars)
-      emit_tail_stmts_cmm target arity ((StmtExpr e):rest) locals scope_vars =
+        off = env_str_off env v
+        st1 = lower_expr env e bound_locals sp st
+        st2 = nc_emit st1 (NStoreShared off (str_len v)) sp
+        st3 = lower_cmm_drops env dead_now sp st2
+        lower_tail_stmts_cmm env rest bound_locals scope_vars sp st3
+      lower_tail_stmts_cmm env ((StmtIndexAssign t idxs e):rest) bound_locals scope_vars sp st =
+        count = rexpr_list_len idxs
+        tslot = env_var_slot env t
+        st1 = lower_expr_list_to_slots env idxs bound_locals sp 0 st
+        st2 = lower_expr env e bound_locals (sp + count) st1
+        st3 = nc_emit_list st2 [NIndexSet tslot sp count, NStoreSlot tslot] (sp + count + 1)
+        lower_tail_stmts_cmm env rest bound_locals scope_vars sp st3
+      lower_tail_stmts_cmm env ((StmtExpr e):rest) bound_locals scope_vars sp st =
         used_in_e = cmm_filter_in_list (cmm_expr_vars e []) scope_vars
         live_after = cmm_stmts_vars rest []
         dead_now = cmm_filter_not_in_list used_in_e live_after
-        "    let _ = " + (emit_native_expr e locals) + ";\n" + (emit_cmm_uncond_drops dead_now "    ") + (emit_tail_stmts_cmm target arity rest locals scope_vars)
+        st1 = lower_expr env e bound_locals sp st
+        st2 = nc_emit st1 NDropVal sp
+        st3 = lower_cmm_drops env dead_now sp st2
+        lower_tail_stmts_cmm env rest bound_locals scope_vars sp st3
 
-fn :: emit_tail_where_cmm String Int [RWhereBind] RExpr [String] [String] => String
-      emit_tail_where_cmm target arity [] body locals scope_vars =
-        '    ' + (emit_tail_return_cmm target arity body locals scope_vars)
-      emit_tail_where_cmm target arity ((WhereBind e v []):wbs) body locals scope_vars =
+fn :: lower_tail_where_cmm RNativeEnv [RWhereBind] RExpr [String] [String] Int RNativeCode => RNativeCode
+      lower_tail_where_cmm env [] body bound_locals scope_vars sp st =
+        lower_tail_return_cmm env body bound_locals scope_vars sp st
+      lower_tail_where_cmm env ((WhereBind e v []):wbs) body bound_locals scope_vars sp st =
         used_in_e = cmm_filter_in_list (cmm_expr_vars e []) scope_vars
         live_after = cmm_where_vars wbs body []
         live_with_v = add_unique_str v live_after
         dead_inputs = cmm_filter_not_in_list (cmm_remove_str v used_in_e) live_with_v
-        drop_inputs_code = emit_cmm_uncond_drops dead_inputs "    "
-        drop_v_code = emit_unused_let_drop v live_after "    "
-        "    let mut lv_" + v + ": RVal = " + (emit_native_expr e locals) + ";\n" + drop_inputs_code + drop_v_code + (emit_tail_where_cmm target arity wbs body (add_unique_str v locals) (add_unique_str v scope_vars))
-      emit_tail_where_cmm target arity ((WhereBind e v idxs):wbs) body locals scope_vars =
-        "    lv_" + v + " = rg_index_set(rg_cmm_move(&mut lv_" + v + "), &[" + (emit_int_rval_csv idxs) + "], " + (emit_native_expr e locals) + ");\n" + (emit_tail_where_cmm target arity wbs body locals scope_vars)
+        st1 = lower_expr env e bound_locals sp st
+        st2 = lower_let_var_store env v bound_locals sp st1
+        st3 = lower_cmm_drops env dead_inputs sp st2
+        st4 = lower_unused_let_drop env v live_after sp st3
+        lower_tail_where_cmm env wbs body (add_unique_str v bound_locals) (add_unique_str v scope_vars) sp st4
+      lower_tail_where_cmm env ((WhereBind e v idxs):wbs) body bound_locals scope_vars sp st =
+        count = int_list_len idxs
+        tslot = env_var_slot env v
+        st1 = lower_int_list_to_slots idxs sp 0 st
+        st2 = lower_expr env e bound_locals (sp + count) st1
+        st3 = nc_emit_list st2 [NIndexSet tslot sp count, NStoreSlot tslot] (sp + count + 1)
+        lower_tail_where_cmm env wbs body bound_locals scope_vars sp st3
 
-fn :: emit_native_guards String Int   [RGuard] [String] => String
-      emit_native_guards _      _     []       _        =  ""
-      emit_native_guards target arity ((GuardBranch cond body):gs) locals =
-        '    if rg_as_bool(&(' + (emit_native_expr cond locals) + ')) {' + "\n      " + (emit_tail_return target arity body locals) + "\n    " + '}' + "\n" + (emit_native_guards target arity gs locals)
+-- ── Pattern Matching & Binding Lowering ──────────────────────
+
+fn :: pat_needs_check RPattern       => Bool
+      pat_needs_check PatWild        =  False
+      pat_needs_check (PatVar _)     =  False
+      pat_needs_check (PatSeqBind _) =  False
+      pat_needs_check _              =  True
+
+fn :: pat_has_vars RPattern         => Bool
+      pat_has_vars (PatVar _)       =  True
+      pat_has_vars (PatSeqBind _)   =  True
+      pat_has_vars (PatCons h t)    =  (pat_has_vars h) OR (pat_has_vars t)
+      pat_has_vars (PatTuple ps)    =  pat_list_has_vars ps
+      pat_has_vars (PatCtor _ args) =  pat_list_has_vars args
+      pat_has_vars _                =  False
+
+fn :: pat_list_has_vars [RPattern] => Bool
+      pat_list_has_vars []         =  False
+      pat_list_has_vars (p:ps)
+        | pat_has_vars p = True
+        | otherwise = pat_list_has_vars ps
+
+fn :: lower_pat_cond RNativeEnv RPattern Int Int Int RNativeCode => RNativeCode
+      lower_pat_cond _ PatWild _ _ _ st = st
+      lower_pat_cond _ (PatVar _) _ _ _ st = st
+      lower_pat_cond _ (PatSeqBind _) _ _ _ st = st
+      lower_pat_cond _ (PatInt n) slot fail_lbl sp st =
+        nc_emit_list st [NMatchInt slot n, NJumpIfZero fail_lbl] sp
+      lower_pat_cond env (PatReal r) slot fail_lbl sp st =
+        off = env_str_off env r
+        nc_emit_list st [NMatchReal slot off (str_len r), NJumpIfZero fail_lbl] sp
+      lower_pat_cond env (PatStr s) slot fail_lbl sp st =
+        off = env_str_off env s
+        nc_emit_list st [NMatchStr slot off (str_len s), NJumpIfZero fail_lbl] sp
+      lower_pat_cond _ (PatBool True) slot fail_lbl sp st =
+        nc_emit_list st [NMatchBool slot 1, NJumpIfZero fail_lbl] sp
+      lower_pat_cond _ (PatBool False) slot fail_lbl sp st =
+        nc_emit_list st [NMatchBool slot 0, NJumpIfZero fail_lbl] sp
+      lower_pat_cond _ PatEmpty slot fail_lbl sp st =
+        nc_emit_list st [NMatchEmpty slot, NJumpIfZero fail_lbl] sp
+      lower_pat_cond env (PatCons h t) slot fail_lbl sp st =
+        st1 = nc_emit_list st [NMatchNonEmpty slot, NJumpIfZero fail_lbl] sp
+        st2 = lower_pat_cons_sub env h slot True fail_lbl sp st1
+        lower_pat_cons_sub env t slot False fail_lbl sp st2
+      lower_pat_cond env (PatTuple ps) slot fail_lbl sp st =
+        arity = pat_list_len ps
+        st1 = nc_emit_list st [NMatchTuple slot arity, NJumpIfZero fail_lbl] sp
+        lower_tuple_pat_conds env ps slot 0 fail_lbl sp st1
+      lower_pat_cond env (PatCtor c args) slot fail_lbl sp st =
+        arity = pat_list_len args
+        off = env_str_off env c
+        st1 = nc_emit_list st [NMatchAdt slot off (str_len c) arity, NJumpIfZero fail_lbl] sp
+        lower_adt_pat_conds env args slot 0 fail_lbl sp st1
+
+fn :: lower_pat_cons_sub RNativeEnv RPattern Int Bool Int Int RNativeCode => RNativeCode
+      lower_pat_cons_sub env sub_p slot is_head fail_lbl sp st
+        | NOT (pat_needs_check sub_p) = st
+        | is_head =
+          st1 = nc_emit_list st [NListHead slot, NStoreSlot sp] (sp + 1)
+          st2 = lower_pat_cond env sub_p sp fail_lbl (sp + 1) st1
+          nc_emit st2 (NClearLocals sp (sp + 1)) (sp + 1)
+        | otherwise =
+          st1 = nc_emit_list st [NListTail slot, NStoreSlot sp] (sp + 1)
+          st2 = lower_pat_cond env sub_p sp fail_lbl (sp + 1) st1
+          nc_emit st2 (NClearLocals sp (sp + 1)) (sp + 1)
+
+fn :: lower_tuple_pat_conds RNativeEnv [RPattern] Int Int Int Int RNativeCode => RNativeCode
+      lower_tuple_pat_conds _ [] _ _ _ _ st = st
+      lower_tuple_pat_conds env (p:ps) slot idx fail_lbl sp st
+        | NOT (pat_needs_check p) = lower_tuple_pat_conds env ps slot (idx + 1) fail_lbl sp st
+        | otherwise =
+          st1 = nc_emit_list st [NTupleGet slot idx, NStoreSlot sp] (sp + 1)
+          st2 = lower_pat_cond env p sp fail_lbl (sp + 1) st1
+          st3 = nc_emit st2 (NClearLocals sp (sp + 1)) (sp + 1)
+          lower_tuple_pat_conds env ps slot (idx + 1) fail_lbl sp st3
+
+fn :: lower_adt_pat_conds RNativeEnv [RPattern] Int Int Int Int RNativeCode => RNativeCode
+      lower_adt_pat_conds _ [] _ _ _ _ st = st
+      lower_adt_pat_conds env (p:ps) slot idx fail_lbl sp st
+        | NOT (pat_needs_check p) = lower_adt_pat_conds env ps slot (idx + 1) fail_lbl sp st
+        | otherwise =
+          st1 = nc_emit_list st [NAdtField slot idx, NStoreSlot sp] (sp + 1)
+          st2 = lower_pat_cond env p sp fail_lbl (sp + 1) st1
+          st3 = nc_emit st2 (NClearLocals sp (sp + 1)) (sp + 1)
+          lower_adt_pat_conds env ps slot (idx + 1) fail_lbl sp st3
+
+fn :: lower_pat_list_cond RNativeEnv [RPattern] Int Int Int RNativeCode => RNativeCode
+      lower_pat_list_cond _ [] _ _ _ st = st
+      lower_pat_list_cond env (p:ps) idx fail_lbl sp st =
+        st1 = lower_pat_cond env p idx fail_lbl sp st
+        lower_pat_list_cond env ps (idx + 1) fail_lbl sp st1
+
+fn :: lower_pat_binds RNativeEnv RPattern Int Bool Int RNativeCode => RNativeCode
+      lower_pat_binds env (PatVar v) slot True sp st =
+        nc_emit_list st [NMoveSlot slot, NStoreSlot (env_var_slot env v)] sp
+      lower_pat_binds env (PatVar v) slot False sp st =
+        nc_emit_list st [NCloneSlot slot, NStoreSlot (env_var_slot env v)] sp
+      lower_pat_binds env (PatSeqBind v) slot True sp st =
+        nc_emit_list st [NMoveSlot slot, NStoreSlot (env_var_slot env v)] sp
+      lower_pat_binds env (PatSeqBind v) slot False sp st =
+        nc_emit_list st [NCloneSlot slot, NStoreSlot (env_var_slot env v)] sp
+      lower_pat_binds env (PatCons h t) slot _ sp st =
+        st1 = lower_pat_cons_bind env h slot True sp st
+        lower_pat_cons_bind env t slot False sp st1
+      lower_pat_binds env (PatTuple ps) slot _ sp st =
+        lower_tuple_pat_binds env ps slot 0 sp st
+      lower_pat_binds env (PatCtor _ args) slot _ sp st =
+        lower_adt_pat_binds env args slot 0 sp st
+      lower_pat_binds _ _ _ _ _ st = st
+
+fn :: lower_pat_cons_bind RNativeEnv RPattern Int Bool Int RNativeCode => RNativeCode
+      lower_pat_cons_bind env sub_p slot is_head sp st
+        | NOT (pat_has_vars sub_p) = st
+        | is_head =
+          st1 = nc_emit_list st [NListHead slot, NStoreSlot sp] (sp + 1)
+          st2 = lower_pat_binds env sub_p sp True (sp + 1) st1
+          nc_emit st2 (NClearLocals sp (sp + 1)) (sp + 1)
+        | otherwise =
+          st1 = nc_emit_list st [NListTail slot, NStoreSlot sp] (sp + 1)
+          st2 = lower_pat_binds env sub_p sp True (sp + 1) st1
+          nc_emit st2 (NClearLocals sp (sp + 1)) (sp + 1)
+
+fn :: lower_tuple_pat_binds RNativeEnv [RPattern] Int Int Int RNativeCode => RNativeCode
+      lower_tuple_pat_binds _ [] _ _ _ st = st
+      lower_tuple_pat_binds env (p:ps) slot idx sp st
+        | NOT (pat_has_vars p) = lower_tuple_pat_binds env ps slot (idx + 1) sp st
+        | otherwise =
+          st1 = nc_emit_list st [NTupleGet slot idx, NStoreSlot sp] (sp + 1)
+          st2 = lower_pat_binds env p sp True (sp + 1) st1
+          st3 = nc_emit st2 (NClearLocals sp (sp + 1)) (sp + 1)
+          lower_tuple_pat_binds env ps slot (idx + 1) sp st3
+
+fn :: lower_adt_pat_binds RNativeEnv [RPattern] Int Int Int RNativeCode => RNativeCode
+      lower_adt_pat_binds _ [] _ _ _ st = st
+      lower_adt_pat_binds env (p:ps) slot idx sp st
+        | NOT (pat_has_vars p) = lower_adt_pat_binds env ps slot (idx + 1) sp st
+        | otherwise =
+          st1 = nc_emit_list st [NAdtField slot idx, NStoreSlot sp] (sp + 1)
+          st2 = lower_pat_binds env p sp True (sp + 1) st1
+          st3 = nc_emit st2 (NClearLocals sp (sp + 1)) (sp + 1)
+          lower_adt_pat_binds env ps slot (idx + 1) sp st3
+
+fn :: lower_pat_list_binds RNativeEnv [RPattern] Int Int Bool Int RNativeCode => RNativeCode
+      lower_pat_list_binds _ [] _ _ _ _ st = st
+      lower_pat_list_binds env ((PatSeqBind v):[]) _ arity _ sp st =
+        nc_emit_list st [NPackSeq arity, NStoreSlot (env_var_slot env v)] sp
+      lower_pat_list_binds env ((PatVar v):ps) idx arity True sp st =
+        st1 = nc_emit_list st [NMoveSlot idx, NStoreSlot (env_var_slot env v)] sp
+        lower_pat_list_binds env ps (idx + 1) arity True sp st1
+      lower_pat_list_binds env (p:ps) idx arity move_args sp st =
+        st1 = lower_pat_binds env p idx False sp st
+        lower_pat_list_binds env ps (idx + 1) arity move_args sp st1
 
 fn :: guards_have_otherwise [RGuard] => Bool
       guards_have_otherwise []       =  False
       guards_have_otherwise ((GuardBranch (EBool True) _):_) = True
       guards_have_otherwise (_:gs)   =  guards_have_otherwise gs
 
-fn :: emit_native_case String RFnCase Int   Bool    => String
-      emit_native_case target (FnCase pats [] body) arity _ =
-        cond = emit_pat_list_cond pats 0
-        binds = emit_pat_list_binds pats 0 arity True
-        locals = collect_pat_list_vars pats []
-        '  if ' + cond + ' {' + "\n" + binds + "    " + (emit_tail_return target arity body locals) + "\n  " + '}' + "\n"
-      emit_native_case target (FnCase pats guards _) arity is_last =
-        cond = emit_pat_list_cond pats 0
-        binds = emit_pat_list_binds pats 0 arity (is_last OR (guards_have_otherwise guards))
-        locals = collect_pat_list_vars pats []
-        '  if ' + cond + ' {' + "\n" + binds + (emit_native_guards target arity guards locals) + '  }' + "\n"
+fn :: lower_case_guards RNativeEnv [RGuard] [String] Int RNativeCode => RNativeCode
+      lower_case_guards _ [] _ _ st = st
+      lower_case_guards env ((GuardBranch cond body):gs) bound_locals sp st =
+        next_lbl = nc_lbl st
+        st1 = nc_set_lbl st (next_lbl + 1)
+        st2 = lower_expr env cond bound_locals sp st1
+        st3 = nc_emit_list st2 [NAsBool, NJumpIfZero next_lbl] sp
+        st4 = lower_tail_return env body bound_locals sp st3
+        st5 = nc_emit st4 (NLabel next_lbl) sp
+        lower_case_guards env gs bound_locals sp st5
 
-fn :: emit_native_cases String [RFnCase] Int   => String
-      emit_native_cases _      []        _     =  ""
-      emit_native_cases target (c:[])    arity =  emit_native_case target c arity True
-      emit_native_cases target (c:cs)    arity =  (emit_native_case target c arity False) + (emit_native_cases target cs arity)
+fn :: lower_single_case RNativeEnv RFnCase Bool Int RNativeCode => RNativeCode
+      lower_single_case env (FnCase pats [] body) _ sp st =
+        arity = env_arity env
+        fail_lbl = nc_lbl st
+        st1 = nc_set_lbl st (fail_lbl + 1)
+        st2 = lower_pat_list_cond env pats 0 fail_lbl sp st1
+        st3 = lower_pat_list_binds env pats 0 arity True sp st2
+        bound_locals = collect_pat_list_vars pats []
+        st4 = lower_tail_return env body bound_locals sp st3
+        nc_emit_list st4 [NLabel fail_lbl, NClearLocals arity (nc_max_sp st4)] sp
+      lower_single_case env (FnCase pats guards _) is_last sp st =
+        arity = env_arity env
+        fail_lbl = nc_lbl st
+        st1 = nc_set_lbl st (fail_lbl + 1)
+        st2 = lower_pat_list_cond env pats 0 fail_lbl sp st1
+        move_args = is_last OR (guards_have_otherwise guards)
+        st3 = lower_pat_list_binds env pats 0 arity move_args sp st2
+        bound_locals = collect_pat_list_vars pats []
+        st4 = lower_case_guards env guards bound_locals sp st3
+        nc_emit_list st4 [NLabel fail_lbl, NClearLocals arity (nc_max_sp st4)] sp
 
-fn :: emit_param_sig Bool Int Int   => String
-      emit_param_sig _    idx arity
-        | idx >= arity = ""
-        | (idx + 1) == arity = 'mut _arg_' + (int_to_str idx) + ': RVal'
-        | otherwise = 'mut _arg_' + (int_to_str idx) + ': RVal, ' + (emit_param_sig True (idx + 1) arity)
+fn :: lower_cases_list RNativeEnv [RFnCase] Int RNativeCode => RNativeCode
+      lower_cases_list _          []        _   st          =  st
+      lower_cases_list env        (c:[])    sp  st          =  lower_single_case env c True sp st
+      lower_cases_list env        (c:cs)    sp  st          =
+        st1 = lower_single_case env c False sp st
+        lower_cases_list env cs sp st1
 
-fn :: emit_native_fndef RFnDef => String
-      emit_native_fndef (FnDef name params _ cases) =
+fn :: lower_fndef RFnDef [RStrEntry] [RFnEntry] [RFieldEntry] => RNativeFn
+      lower_fndef (FnDef name params _ cases) str_tbl fn_tbl field_tbl =
+        fid = lookup_fn_id fn_tbl name
         arity = infer_fndef_arity params cases
-        is_tco = cases_have_self_tail_call name cases
-        sig = emit_param_sig is_tco 0 arity
-        body_code = emit_native_cases name cases arity
-        emit_native_fndef_wrap name sig is_tco body_code
+        all_locals = collect_cases_all_locals cases []
+        base_sp = arity + (list_str_len all_locals)
+        env = NativeEnv name arity all_locals str_tbl fn_tbl field_tbl
+        init_st = NativeCode [] 1 (max_int (base_sp + 1) 2)
+        st1 = lower_cases_list env cases base_sp init_st
+        st2 = nc_emit_list st1 [NLoadImmRaw 0, NReturn] (base_sp + 1)
+        NativeFn fid name arity (nc_max_sp st2) (nc_instrs st2)
 
-fn :: emit_native_fndef_wrap String String Bool  String    => String
-      emit_native_fndef_wrap name   sig    True  body_code =
-        'fn ' + (mangle_fn_name name) + '(' + sig + ') -> RVal {' + "\n  loop {\n" + body_code + "    return RVal::Unit;\n  }\n" + '}' + "\n\n"
-      emit_native_fndef_wrap name   sig    False body_code =
-        'fn ' + (mangle_fn_name name) + '(' + sig + ') -> RVal {' + "\n" + body_code + "  RVal::Unit\n" + '}' + "\n\n"
+fn :: lower_fndef_list [RFnDef] [RStrEntry] [RFnEntry] [RFieldEntry] => [RNativeFn]
+      lower_fndef_list [] _ _ _ = []
+      lower_fndef_list (f:fs) str_tbl fn_tbl field_tbl =
+        [lower_fndef f str_tbl fn_tbl field_tbl] :: (lower_fndef_list fs str_tbl fn_tbl field_tbl)
 
-fn :: emit_native_fndef_list [RFnDef] => String
-      emit_native_fndef_list []       =  ""
-      emit_native_fndef_list (f:fs)   =  (emit_native_fndef f) + (emit_native_fndef_list fs)
+fn :: lower_field_getter_fns [RFieldEntry] [String] [RFnEntry] => [RNativeFn]
+      lower_field_getter_fns []            _        _          =  []
+      lower_field_getter_fns ((FieldEntry fname idx):rest) fn_names fn_tbl
+        | str_in_list fname fn_names = lower_field_getter_fns rest fn_names fn_tbl
+        | otherwise =
+          fid = lookup_fn_id fn_tbl fname
+          [NativeFn fid fname 1 2 [NAdtField 0 idx, NReturn]] :: (lower_field_getter_fns rest fn_names fn_tbl)
 
--- ── Call-Graph Tree-Shaking (Dead-Code Elimination) ──────────
+-- ── Call-Graph Tree-Shaking & Dispatch Function Synthesis ────
 
 fn :: collect_refs_expr RExpr              [String] => [String]
       collect_refs_expr (EVar name)        acc      =  add_unique_str name acc
@@ -1196,51 +1789,9 @@ fn :: filter_reachable_fndefs [RFnDef] [String]  => [RFnDef]
         | str_in_list name reachable = [FnDef name params ret cases] :: (filter_reachable_fndefs fs reachable)
         | otherwise = filter_reachable_fndefs fs reachable
 
-fn :: emit_record_accessors [RField] Int [String] => (String, [String])
-      emit_record_accessors []       _   emitted  =  ("", emitted)
-      emit_record_accessors ((TypeField fname _):fs) idx emitted
-        | (lookup_local emitted fname) >= 0 = emit_record_accessors fs (idx + 1) emitted
-        | otherwise = prepend_code_str ('fn rg_fn_' + fname + '(_arg_0: RVal) -> RVal { rg_adt_field(&_arg_0, ' + (int_to_str idx) + ') }' + "\n" + 'fn rg_set_' + fname + '(_arg_0: RVal, _val: RVal) -> RVal { rg_adt_set(_arg_0, ' + (int_to_str idx) + ', _val) }' + "\n") (emit_record_accessors fs (idx + 1) (emitted :: [fname]))
-
-fn :: prepend_code_str String (String, [String]) => (String, [String])
-      prepend_code_str s      (rest_s, emitted)  =  (s + rest_s, emitted)
-
-fn :: emit_typedef_accessors [RTypeDef] [String] => String
-      emit_typedef_accessors []         _        =  ""
-      emit_typedef_accessors ((TypeDef _ _ []):ts) emitted = emit_typedef_accessors ts emitted
-      emit_typedef_accessors ((TypeDef _ _ fields):ts) emitted =
-        r1 = emit_record_accessors fields 0 emitted
-        emit_typedef_accessors_cont ts r1
-
-fn :: emit_typedef_accessors_cont [RTypeDef] (String, [String]) => String
-      emit_typedef_accessors_cont ts         (code1, emitted1)  =
-        code1 + (emit_typedef_accessors ts emitted1)
-
 fn :: collect_fn_names [RFnDef] => [String]
       collect_fn_names []       =  []
       collect_fn_names ((FnDef name _ _ _):fs) = [name] :: (collect_fn_names fs)
-
-fn :: emit_spawn_arms [RFnDef] => String
-      emit_spawn_arms []       =  ""
-      emit_spawn_arms ((FnDef name params _ cases):fs)
-        | (infer_fndef_arity params cases) == 1 = '        "' + (escape_rust_str name) + '" => ' + (mangle_fn_name name) + '(arg),' + "\n" + (emit_spawn_arms fs)
-        | otherwise = emit_spawn_arms fs
-
-fn :: emit_call2_arms [RFnDef] => String
-      emit_call2_arms []       =  ""
-      emit_call2_arms ((FnDef name params _ cases):fs)
-        | (infer_fndef_arity params cases) == 2 = '        "' + (escape_rust_str name) + '" => ' + (mangle_fn_name name) + '(a, b),' + "\n" + (emit_call2_arms fs)
-        | otherwise = emit_call2_arms fs
-
-fn :: emit_binop_overload_arms [RFnDef] => String
-      emit_binop_overload_arms []       =  ""
-      emit_binop_overload_arms ((FnDef name params _ cases):fs)
-        | (name == "+" OR name == "-" OR name == "*" OR name == "/" OR name == "%") AND (infer_fndef_arity params cases) == 2 = '        "' + name + '" => ' + (mangle_fn_name name) + '(a, b),' + "\n" + (emit_binop_overload_arms fs)
-        | otherwise = emit_binop_overload_arms fs
-
-fn :: emit_dispatch_tables [RFnDef] => String
-      emit_dispatch_tables fns      =
-        'fn rg_dispatch_spawn(fn_name: &str, arg: RVal) -> RVal {' + "\n" + '    match fn_name {' + "\n" + (emit_spawn_arms fns) + '        _ => RVal::Unit,' + "\n" + '    }' + "\n" + '}' + "\n\n" + 'fn rg_dispatch_call2(fn_name: &str, a: RVal, b: RVal) -> RVal {' + "\n" + '    match fn_name {' + "\n" + (emit_call2_arms fns) + '        _ => RVal::Unit,' + "\n" + '    }' + "\n" + '}' + "\n\n" + 'fn rg_dispatch_binop(op: &str, a: RVal, b: RVal) -> RVal {' + "\n" + '    match op {' + "\n" + (emit_binop_overload_arms fns) + '        _ => RVal::Unit,' + "\n" + '    }' + "\n" + '}' + "\n\n"
 
 fn :: find_entry_fn_name [RFnDef] String   => String
       find_entry_fn_name []       fallback =  fallback
@@ -1250,1341 +1801,73 @@ fn :: find_entry_fn_name [RFnDef] String   => String
         | (infer_fndef_arity params cases) == 0 = find_entry_fn_name fs name
         | otherwise = find_entry_fn_name fs fallback
 
-fn :: emit_runtime_preamble => String
-      emit_runtime_preamble = '#![allow(unused_variables, dead_code, non_snake_case, unused_parens, unused_mut)]
-use std::cell::{Cell, RefCell};
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::sync::{Mutex, OnceLock};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::ops::Deref;
-use std::path::{Path, PathBuf};
-
-static RG_CMM_LIVE_BLOCKS: AtomicUsize = AtomicUsize::new(0);
-static RG_CMM_COND_SPARED: AtomicUsize = AtomicUsize::new(0);
-static RG_CMM_COND_FREED: AtomicUsize = AtomicUsize::new(0);
-
-struct CmmHeader<T> {
-    links: AtomicUsize,
-    tracked: bool,
-    data: T,
-}
-
-pub struct CmmBox<T>(*mut CmmHeader<T>);
-
-unsafe impl<T: Send + Sync> Send for CmmBox<T> {}
-unsafe impl<T: Send + Sync> Sync for CmmBox<T> {}
-
-impl<T> CmmBox<T> {
-    #[inline]
-    pub fn new(data: T) -> Self {
-        RG_CMM_LIVE_BLOCKS.fetch_add(1, Ordering::Relaxed);
-        let ptr = Box::into_raw(Box::new(CmmHeader {
-            links: AtomicUsize::new(1),
-            tracked: true,
-            data,
-        }));
-        CmmBox(ptr)
-    }
-
-    #[inline]
-    pub fn new_untracked(data: T) -> Self {
-        let ptr = Box::into_raw(Box::new(CmmHeader {
-            links: AtomicUsize::new(1),
-            tracked: false,
-            data,
-        }));
-        CmmBox(ptr)
-    }
-
-    #[inline]
-    pub fn raw_ptr(&self) -> usize {
-        self.0 as usize
-    }
-
-    #[inline]
-    pub fn links(&self) -> usize {
-        unsafe { (*self.0).links.load(Ordering::Relaxed) }
-    }
-
-    #[inline]
-    pub fn is_tracked(&self) -> bool {
-        unsafe { (*self.0).tracked }
-    }
-
-    #[inline]
-    pub fn clone(this: &Self) -> Self {
-        Clone::clone(this)
-    }
-
-    #[inline]
-    pub fn try_unwrap(this: Self) -> Result<T, Self> {
-        unsafe {
-            if (*this.0).links.load(Ordering::Relaxed) == 1 {
-                let ptr = this.0;
-                std::mem::forget(this);
-                let boxed = Box::from_raw(ptr);
-                if boxed.tracked {
-                    RG_CMM_LIVE_BLOCKS.fetch_sub(1, Ordering::Relaxed);
-                }
-                Ok(boxed.data)
-            } else {
-                Err(this)
-            }
-        }
-    }
-}
-
-impl<T> Clone for CmmBox<T> {
-    #[inline]
-    fn clone(&self) -> Self {
-        unsafe {
-            (*self.0).links.fetch_add(1, Ordering::Relaxed);
-        }
-        CmmBox(self.0)
-    }
-}
-
-impl<T> Deref for CmmBox<T> {
-    type Target = T;
-    #[inline]
-    fn deref(&self) -> &T {
-        unsafe { &(*self.0).data }
-    }
-}
-
-impl<T> Drop for CmmBox<T> {
-    #[inline]
-    fn drop(&mut self) {
-        if !self.0.is_null() {
-            unsafe {
-                if (*self.0).links.fetch_sub(1, Ordering::Release) == 1 {
-                    std::sync::atomic::fence(Ordering::Acquire);
-                    let boxed = Box::from_raw(self.0);
-                    if boxed.tracked {
-                        RG_CMM_LIVE_BLOCKS.fetch_sub(1, Ordering::Relaxed);
-                    }
-                }
-            }
-        }
-    }
-}
-
-impl<T: PartialEq> PartialEq for CmmBox<T> {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0 || (**self) == (**other)
-    }
-}
-
-impl<T: std::fmt::Debug> std::fmt::Debug for CmmBox<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        (**self).fmt(f)
-    }
-}
-
-impl<T: std::fmt::Display> std::fmt::Display for CmmBox<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        (**self).fmt(f)
-    }
-}
-
-type Rc<T> = CmmBox<T>;
-
-#[derive(Clone, Debug)]
-enum RVal {
-    Int(i64),
-    Real(f64),
-    Str(Rc<String>),
-    Bool(bool),
-    Unit,
-    List(Rc<Vec<RVal>>, usize),
-    Tuple(Rc<Vec<RVal>>),
-    Adt(Rc<String>, Rc<Vec<RVal>>),
-    Tensor(Rc<Vec<usize>>, Rc<Vec<f64>>),
-}
-
-#[inline]
-fn rg_cmm_ptr(v: &RVal) -> usize {
-    match v {
-        RVal::Str(rc) => rc.raw_ptr(),
-        RVal::List(rc, _) => rc.raw_ptr(),
-        RVal::Tuple(rc) => rc.raw_ptr(),
-        RVal::Adt(_, rc) => rc.raw_ptr(),
-        RVal::Tensor(_, rc) => rc.raw_ptr(),
-        _ => 0,
-    }
-}
-
-#[inline]
-fn rg_cmm_links(v: &RVal) -> usize {
-    match v {
-        RVal::Str(rc) if rc.is_tracked() => rc.links(),
-        RVal::List(rc, _) if rc.is_tracked() => rc.links(),
-        RVal::Tuple(rc) if rc.is_tracked() => rc.links(),
-        RVal::Adt(_, rc) if rc.is_tracked() => rc.links(),
-        RVal::Tensor(_, rc) if rc.is_tracked() => rc.links(),
-        _ => 0,
-    }
-}
-
-#[inline]
-fn rg_cmm_move(v: &mut RVal) -> RVal {
-    std::mem::replace(v, RVal::Unit)
-}
-
-#[inline]
-fn rg_cmm_drop(v: &mut RVal) {
-    let lk = rg_cmm_links(v);
-    if lk > 1 {
-        RG_CMM_COND_SPARED.fetch_add(1, Ordering::Relaxed);
-    } else if lk == 1 {
-        RG_CMM_COND_FREED.fetch_add(1, Ordering::Relaxed);
-    }
-    let _ = std::mem::replace(v, RVal::Unit);
-}
-
-#[inline] fn rg_fn_cmm_live_blocks() -> RVal { RVal::Int(RG_CMM_LIVE_BLOCKS.load(Ordering::Relaxed) as i64) }
-#[inline] fn rg_fn_cmm_cond_spared() -> RVal { RVal::Int(RG_CMM_COND_SPARED.load(Ordering::Relaxed) as i64) }
-#[inline] fn rg_fn_cmm_cond_freed() -> RVal { RVal::Int(RG_CMM_COND_FREED.load(Ordering::Relaxed) as i64) }
-#[inline] fn rg_fn_cmm_same_ptr(a: RVal, b: RVal) -> RVal {
-    let pa = rg_cmm_ptr(&a);
-    RVal::Bool(pa != 0 && pa == rg_cmm_ptr(&b))
-}
-
-impl PartialEq for RVal {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (RVal::Int(a), RVal::Int(b)) => a == b,
-            (RVal::Real(a), RVal::Real(b)) => (a - b).abs() < 1e-12,
-            (RVal::Str(a), RVal::Str(b)) => a == b,
-            (RVal::Bool(a), RVal::Bool(b)) => a == b,
-            (RVal::Unit, RVal::Unit) => true,
-            (RVal::List(a, sa), RVal::List(b, sb)) => a[(*sa).min(a.len())..] == b[(*sb).min(b.len())..],
-            (RVal::Tuple(a), RVal::Tuple(b)) => a == b,
-            (RVal::Adt(ca, fa), RVal::Adt(cb, fb)) => ca == cb && fa == fb,
-            (RVal::Tensor(sa, da), RVal::Tensor(sb, db)) => sa == sb && da == db,
-            _ => false,
-        }
-    }
-}
-
-impl std::fmt::Display for RVal {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            RVal::Int(n) => write!(f, "{}", n),
-            RVal::Real(r) => if r.fract() == 0.0 { write!(f, "{:.1}", r) } else { write!(f, "{}", r) },
-            RVal::Str(s) => write!(f, "{}", s),
-            RVal::Bool(b) => write!(f, "{}", if *b { "True" } else { "False" }),
-            RVal::Unit => write!(f, "()"),
-            RVal::List(rc, st) => {
-                let items = &rc[(*st).min(rc.len())..];
-                let strs: Vec<String> = items.iter().map(|v| format!("{}", v)).collect();
-                write!(f, "[{}]", strs.join(", "))
-            }
-            RVal::Tuple(items) => {
-                let strs: Vec<String> = items.iter().map(|v| format!("{}", v)).collect();
-                write!(f, "({})", strs.join(", "))
-            }
-            RVal::Adt(c, fields) => {
-                if fields.is_empty() { write!(f, "{}", c) } else {
-                    let strs: Vec<String> = fields.iter().map(|v| format!("{}", v)).collect();
-                    write!(f, "({} {})", c, strs.join(" "))
-                }
-            }
-            RVal::Tensor(shape, data) => write!(f, "Tensor(shape={:?}, data={:?})", shape, data),
-        }
-    }
-}
-
-thread_local! {
-    static RG_CTX: RefCell<HashMap<String, Vec<RVal>>> = RefCell::new(HashMap::new());
-    static RG_REGION_ACTIVE: Cell<bool> = const { Cell::new(false) };
-    static RG_REGION_USED: Cell<usize> = const { Cell::new(0) };
-}
-
-static RG_SHARED: OnceLock<Mutex<HashMap<String, RVal>>> = OnceLock::new();
-static RG_CHANNELS: OnceLock<Mutex<Vec<VecDeque<RVal>>>> = OnceLock::new();
-static RG_THREADS: OnceLock<Mutex<Vec<Option<RVal>>>> = OnceLock::new();
-
-fn rg_estimate_bytes(v: &RVal) -> usize {
-    match v {
-        RVal::Int(_) | RVal::Real(_) | RVal::Bool(_) | RVal::Unit => 8,
-        RVal::Str(s) => 16 + s.len(),
-        RVal::List(rc, st) => 16 + rc[(*st).min(rc.len())..].iter().map(rg_estimate_bytes).sum::<usize>(),
-        RVal::Tuple(rc) => 16 + rc.iter().map(rg_estimate_bytes).sum::<usize>(),
-        RVal::Adt(_, f) => 16 + f.iter().map(rg_estimate_bytes).sum::<usize>(),
-        RVal::Tensor(sh, d) => 24 + sh.len() * 8 + d.len() * 8,
-    }
-}
-
-#[inline]
-fn rg_charge_region(v: &RVal) {
-    if RG_REGION_ACTIVE.with(|a| a.get()) {
-        let cost = ((rg_estimate_bytes(v) + 7) & !7);
-        RG_REGION_USED.with(|u| u.set(u.get().saturating_add(cost)));
-    }
-}
-
-fn rg_with_region_limit<F: FnOnce() -> RVal>(quota: usize, f: F) -> RVal {
-    let prev_active = RG_REGION_ACTIVE.with(|a| a.replace(true));
-    let prev_used = RG_REGION_USED.with(|u| u.replace(0));
-    let val = f();
-    let used = RG_REGION_USED.with(|u| u.replace(prev_used));
-    RG_REGION_ACTIVE.with(|a| a.set(prev_active));
-    if used > quota {
-        rg_adt("Err", vec![rg_adt0("OutOfMemory")])
-    } else {
-        rg_adt("Ok", vec![val])
-    }
-}
-
-fn rg_with_ctx<F: FnOnce() -> RVal>(name: &str, val: RVal, f: F) -> RVal {
-    RG_CTX.with(|c| { c.borrow_mut().entry(name.to_string()).or_default().push(val); });
-    let res = f();
-    RG_CTX.with(|c| { if let Some(v) = c.borrow_mut().get_mut(name) { v.pop(); } });
-    res
-}
-
-fn rg_load_ctx<F: FnOnce() -> RVal>(name: &str, def_fn: F) -> RVal {
-    let found = RG_CTX.with(|c| c.borrow().get(name).and_then(|v| v.last().cloned()));
-    match found { Some(v) => v, None => def_fn() }
-}
-
-fn rg_load_shared<F: FnOnce() -> RVal>(name: &str, def_fn: F) -> RVal {
-    let mut g = RG_SHARED.get_or_init(|| Mutex::new(HashMap::new())).lock().unwrap();
-    if let Some(v) = g.get(name) { return v.clone(); }
-    let init = def_fn();
-    g.insert(name.to_string(), init.clone());
-    init
-}
-
-fn rg_store_shared(name: &str, val: RVal) -> RVal {
-    let mut g = RG_SHARED.get_or_init(|| Mutex::new(HashMap::new())).lock().unwrap();
-    g.insert(name.to_string(), val);
-    RVal::Unit
-}
-
-#[inline] fn rg_str(s: &str) -> RVal { RVal::Str(Rc::new(s.to_string())) }
-#[inline] fn rg_to_str(v: &RVal) -> RVal { match v { RVal::Str(_) => v.clone(), o => RVal::Str(Rc::new(format!("{}", o))) } }
-#[inline] fn rg_str_interp(parts: &[RVal]) -> RVal { let s: String = parts.iter().map(|v| format!("{}", v)).collect(); RVal::Str(Rc::new(s)) }
-#[inline] fn rg_list(v: Vec<RVal>) -> RVal { let r = RVal::List(Rc::new(v), 0); rg_charge_region(&r); r }
-#[inline] fn rg_tuple(v: Vec<RVal>) -> RVal { let r = RVal::Tuple(Rc::new(v)); rg_charge_region(&r); r }
-#[inline] fn rg_adt0(c: &str) -> RVal { RVal::Adt(Rc::new_untracked(c.to_string()), Rc::new_untracked(Vec::new())) }
-#[inline] fn rg_adt(c: &str, f: Vec<RVal>) -> RVal { let r = RVal::Adt(Rc::new_untracked(c.to_string()), Rc::new(f)); rg_charge_region(&r); r }
-#[inline] fn rg_as_int(v: &RVal) -> i64 { match v { RVal::Int(n) => *n, RVal::Real(r) => *r as i64, _ => 0 } }
-#[inline] fn rg_as_real(v: &RVal) -> f64 { match v { RVal::Real(r) => *r, RVal::Int(n) => *n as f64, _ => 0.0 } }
-#[inline] fn rg_as_bool(v: &RVal) -> bool { match v { RVal::Bool(b) => *b, _ => false } }
-#[inline] fn rg_match_int(v: &RVal, t: i64) -> bool { matches!(v, RVal::Int(n) if *n == t) }
-#[inline] fn rg_match_real(v: &RVal, t: f64) -> bool { matches!(v, RVal::Real(r) if (*r - t).abs() < 1e-12) }
-#[inline] fn rg_match_str(v: &RVal, t: &str) -> bool { matches!(v, RVal::Str(s) if s.as_str() == t) }
-#[inline] fn rg_match_bool(v: &RVal, t: bool) -> bool { matches!(v, RVal::Bool(b) if *b == t) }
-#[inline] fn rg_is_empty(v: &RVal) -> bool { match v { RVal::List(rc, st) => *st >= rc.len(), _ => true } }
-#[inline] fn rg_is_non_empty(v: &RVal) -> bool { match v { RVal::List(rc, st) => *st < rc.len(), _ => false } }
-#[inline] fn rg_list_head(v: &RVal) -> RVal { match v { RVal::List(rc, st) => rc.get(*st).cloned().unwrap_or(RVal::Unit), _ => RVal::Unit } }
-#[inline] fn rg_list_tail(v: &RVal) -> RVal { match v { RVal::List(rc, st) => if *st + 1 >= rc.len() { RVal::List(Rc::new(Vec::new()), 0) } else { RVal::List(Rc::clone(rc), *st + 1) }, _ => RVal::List(Rc::new(Vec::new()), 0) } }
-#[inline] fn rg_is_tuple(v: &RVal, len: usize) -> bool { match v { RVal::Tuple(items) => items.len() == len, RVal::List(rc, st) => rc.len().saturating_sub(*st) == len, _ => false } }
-#[inline] fn rg_tuple_get(v: &RVal, idx: usize) -> RVal { match v { RVal::Tuple(items) => items.get(idx).cloned().unwrap_or(RVal::Unit), RVal::List(rc, st) => rc.get(*st + idx).cloned().unwrap_or(RVal::Unit), _ => RVal::Unit } }
-#[inline] fn rg_is_adt(v: &RVal, exp: &str, arity: usize) -> bool { match v { RVal::Adt(c, f) => c.as_str() == exp && f.len() == arity, _ => false } }
-#[inline] fn rg_adt_field(v: &RVal, idx: usize) -> RVal { match v { RVal::Adt(_, f) => f.get(idx).cloned().unwrap_or(RVal::Unit), _ => RVal::Unit } }
-#[inline] fn rg_adt_set(v: RVal, idx: usize, val: RVal) -> RVal { match v { RVal::Adt(c, rc) => { let mut f = match Rc::try_unwrap(rc) { Ok(vec) => vec, Err(r) => (*r).clone() }; if idx < f.len() { f[idx] = val; } RVal::Adt(c, Rc::new(f)) } o => o } }
-
-#[inline]
-fn rg_add(a: RVal, b: RVal) -> RVal {
-    match (&a, &b) {
-        (RVal::Str(sa), RVal::Str(sb)) => RVal::Str(Rc::new(format!("{}{}", sa, sb))),
-        (RVal::Real(_), _) | (_, RVal::Real(_)) => RVal::Real(rg_as_real(&a) + rg_as_real(&b)),
-        (RVal::Adt(..), RVal::Adt(..)) => rg_dispatch_binop("+", a, b),
-        _ => RVal::Int(rg_as_int(&a) + rg_as_int(&b)),
-    }
-}
-
-#[inline]
-fn rg_sub(a: RVal, b: RVal) -> RVal {
-    match (&a, &b) {
-        (RVal::Real(_), _) | (_, RVal::Real(_)) => RVal::Real(rg_as_real(&a) - rg_as_real(&b)),
-        (RVal::Adt(..), RVal::Adt(..)) => rg_dispatch_binop("-", a, b),
-        _ => RVal::Int(rg_as_int(&a) - rg_as_int(&b)),
-    }
-}
-
-#[inline]
-fn rg_mul(a: RVal, b: RVal) -> RVal {
-    match (&a, &b) {
-        (RVal::Real(_), _) | (_, RVal::Real(_)) => RVal::Real(rg_as_real(&a) * rg_as_real(&b)),
-        (RVal::Adt(..), RVal::Adt(..)) => rg_dispatch_binop("*", a, b),
-        _ => RVal::Int(rg_as_int(&a) * rg_as_int(&b)),
-    }
-}
-
-#[inline]
-fn rg_div(a: RVal, b: RVal) -> RVal {
-    match (&a, &b) {
-        (RVal::Real(_), _) | (_, RVal::Real(_)) => RVal::Real(rg_as_real(&a) / rg_as_real(&b)),
-        (RVal::Adt(..), RVal::Adt(..)) => rg_dispatch_binop("/", a, b),
-        _ => RVal::Int(rg_as_int(&a) / rg_as_int(&b)),
-    }
-}
-
-#[inline]
-fn rg_mod(a: RVal, b: RVal) -> RVal {
-    match (&a, &b) {
-        (RVal::Adt(..), RVal::Adt(..)) => rg_dispatch_binop("%", a, b),
-        _ => RVal::Int(rg_as_int(&a) % rg_as_int(&b)),
-    }
-}
-
-#[inline] fn rg_cmp_gt(a: &RVal, b: &RVal) -> RVal { match (a, b) { (RVal::Real(_), _) | (_, RVal::Real(_)) => RVal::Bool(rg_as_real(a) > rg_as_real(b)), _ => RVal::Bool(rg_as_int(a) > rg_as_int(b)) } }
-#[inline] fn rg_cmp_lt(a: &RVal, b: &RVal) -> RVal { match (a, b) { (RVal::Real(_), _) | (_, RVal::Real(_)) => RVal::Bool(rg_as_real(a) < rg_as_real(b)), _ => RVal::Bool(rg_as_int(a) < rg_as_int(b)) } }
-#[inline] fn rg_cmp_gte(a: &RVal, b: &RVal) -> RVal { match (a, b) { (RVal::Real(_), _) | (_, RVal::Real(_)) => RVal::Bool(rg_as_real(a) >= rg_as_real(b)), _ => RVal::Bool(rg_as_int(a) >= rg_as_int(b)) } }
-#[inline] fn rg_cmp_lte(a: &RVal, b: &RVal) -> RVal { match (a, b) { (RVal::Real(_), _) | (_, RVal::Real(_)) => RVal::Bool(rg_as_real(a) <= rg_as_real(b)), _ => RVal::Bool(rg_as_int(a) <= rg_as_int(b)) } }
-
-fn rg_list_concat(a: RVal, b: RVal) -> RVal {
-    if let RVal::List(ref rc_b, st_b) = b {
-        if st_b > 0 {
-            if let RVal::List(ref rc_a, st_a) = a {
-                let k = rc_a.len().saturating_sub(st_a);
-                if k > 0 && st_b >= k && rc_b[st_b - k..st_b] == rc_a[st_a..] {
-                    return RVal::List(Rc::clone(rc_b), st_b - k);
-                }
-            }
-        }
-    }
-    let len_a = match &a {
-        RVal::List(rc, st) => rc.len().saturating_sub(*st),
-        _ => 1,
-    };
-    let len_b = match &b {
-        RVal::List(rc, st) => rc.len().saturating_sub(*st),
-        _ => 1,
-    };
-    if len_a == 0 {
-        return match b {
-            RVal::List(..) => b,
-            other => rg_list(vec![other]),
-        };
-    }
-    if len_b == 0 {
-        return match a {
-            RVal::List(..) => a,
-            other => rg_list(vec![other]),
-        };
-    }
-    if let RVal::List(ref rc_b, st_b) = b {
-        if rc_b.links() == 1 && st_b >= len_a {
-            if let RVal::List(rc_b_owned, st_b_val) = b {
-                if let Ok(mut vec_b) = Rc::try_unwrap(rc_b_owned) {
-                    let new_st = st_b_val - len_a;
-                    match a {
-                        RVal::List(rc_a, st_a) => {
-                            let s_a = st_a.min(rc_a.len());
-                            for (i, item) in rc_a[s_a..].iter().enumerate() {
-                                vec_b[new_st + i] = item.clone();
-                            }
-                        }
-                        other => { vec_b[new_st] = other; }
-                    }
-                    let r = RVal::List(Rc::new(vec_b), new_st);
-                    rg_charge_region(&r);
-                    return r;
-                }
-            }
-            unreachable!()
-        }
-    }
-    if let RVal::List(ref rc_a, st_a) = a {
-        if rc_a.links() == 1 && len_a >= len_b && st_a <= len_a.max(16) {
-            if let RVal::List(rc_a_owned, st_a_val) = a {
-                if let Ok(mut vec_a) = Rc::try_unwrap(rc_a_owned) {
-                    match b {
-                        RVal::List(rc_b, st_b) => vec_a.extend_from_slice(&rc_b[st_b.min(rc_b.len())..]),
-                        other => vec_a.push(other),
-                    }
-                    let r = RVal::List(Rc::new(vec_a), st_a_val);
-                    rg_charge_region(&r);
-                    return r;
-                }
-            }
-            unreachable!()
-        }
-    }
-    if let RVal::List(ref rc_b, _) = b {
-        if rc_b.links() == 1 && len_b > len_a {
-            let pad = (len_a + len_b).max(16);
-            let mut out = Vec::with_capacity(pad + len_a + len_b);
-            out.resize(pad, RVal::Unit);
-            match a {
-                RVal::List(rc_a, st_a) => out.extend_from_slice(&rc_a[st_a.min(rc_a.len())..]),
-                other => out.push(other),
-            }
-            if let RVal::List(rc_b_owned, st_b_val) = b {
-                match Rc::try_unwrap(rc_b_owned) {
-                    Ok(mut vec_b) => { out.extend(vec_b.drain(st_b_val.min(vec_b.len())..)); }
-                    Err(r) => out.extend_from_slice(&r[st_b_val.min(r.len())..]),
-                }
-            }
-            let r = RVal::List(Rc::new(out), pad);
-            rg_charge_region(&r);
-            return r;
-        }
-    }
-    let mut out = match a {
-        RVal::List(rc, 0) => match Rc::try_unwrap(rc) { Ok(v) => v, Err(r) => (*r).clone() },
-        RVal::List(rc, st) => rc[st.min(rc.len())..].to_vec(),
-        other => vec![other],
-    };
-    match b {
-        RVal::List(rc, st) => out.extend_from_slice(&rc[st.min(rc.len())..]),
-        other => out.push(other),
-    }
-    let r = RVal::List(Rc::new(out), 0);
-    rg_charge_region(&r);
-    r
-}
-
-fn rg_seq_flat_join(a: RVal, b: RVal) -> RVal {
-    let mut items = Vec::new();
-    for v in [a, b] {
-        match v {
-            RVal::Tuple(rc) => items.extend_from_slice(&rc),
-            RVal::List(rc, st) => items.extend_from_slice(&rc[st.min(rc.len())..]),
-            single => items.push(single),
-        }
-    }
-    rg_tuple(items)
-}
-
-fn rg_pack_seq(args: Vec<RVal>) -> RVal {
-    if args.len() == 1 {
-        if matches!(&args[0], RVal::List(..) | RVal::Tuple(..)) {
-            return args.into_iter().next().unwrap();
-        }
-    }
-    rg_list(args)
-}
-
-fn rg_seq_select(seq: &RVal, mask: &str) -> RVal {
-    let items: Vec<RVal> = match seq {
-        RVal::Tuple(rc) => (**rc).clone(),
-        RVal::List(rc, st) => rc[(*st).min(rc.len())..].to_vec(),
-        other => vec![other.clone()],
-    };
-    let selected: Vec<RVal> = if mask.contains("+") || mask.contains("_") {
-        mask.as_bytes().iter().enumerate().filter(|(_, &b)| b == 43u8).filter_map(|(i, _)| items.get(i).cloned()).collect()
-    } else {
-        mask.split_whitespace().filter_map(|t| t.parse::<usize>().ok()).filter_map(|i| items.get(i).cloned()).collect()
-    };
-    if selected.len() == 1 {
-        selected.into_iter().next().unwrap()
-    } else {
-        RVal::Tuple(Rc::new(selected))
-    }
-}
-
-fn rg_flatten_tensor(elems: &[RVal], shape: &mut Vec<usize>, flat: &mut Vec<f64>, rec: bool) {
-    if rec { shape.push(elems.len()); }
-    for (i, el) in elems.iter().enumerate() {
-        match el {
-            RVal::List(rc, st) => rg_flatten_tensor(&rc[(*st).min(rc.len())..], shape, flat, rec && i == 0),
-            RVal::Tuple(rc) => rg_flatten_tensor(rc, shape, flat, rec && i == 0),
-            sc => flat.push(rg_as_real(sc)),
-        }
-    }
-}
-
-fn rg_tensor(elems: Vec<RVal>) -> RVal {
-    if elems.len() == 1 {
-        if let RVal::List(rc, st) = &elems[0] {
-            let mut sh = Vec::new();
-            let mut fl = Vec::new();
-            rg_flatten_tensor(&rc[(*st).min(rc.len())..], &mut sh, &mut fl, true);
-            let r = RVal::Tensor(Rc::new(sh), Rc::new(fl));
-            rg_charge_region(&r);
-            return r;
-        }
-    }
-    let mut sh = Vec::new();
-    let mut fl = Vec::new();
-    rg_flatten_tensor(&elems, &mut sh, &mut fl, true);
-    let r = RVal::Tensor(Rc::new(sh), Rc::new(fl));
-    rg_charge_region(&r);
-    r
-}
-
-fn rg_strides(shape: &[usize]) -> Vec<usize> {
-    let mut st = vec![1usize; shape.len()];
-    for i in (0..shape.len().saturating_sub(1)).rev() { st[i] = st[i + 1] * shape[i + 1]; }
-    st
-}
-
-fn rg_index(base: &RVal, idxs: &[RVal]) -> RVal {
-    let u_idxs: Vec<usize> = idxs.iter().map(|v| rg_as_int(v).max(0) as usize).collect();
-    match base {
-        RVal::Tensor(shape, data) => {
-            let strides = rg_strides(shape);
-            let offset: usize = u_idxs.iter().zip(strides.iter()).map(|(&i, &s)| i * s).sum();
-            if u_idxs.len() >= shape.len() {
-                let val = data.get(offset).copied().unwrap_or(0.0);
-                if val.fract() == 0.0 { RVal::Int(val as i64) } else { RVal::Real(val) }
-            } else {
-                let sub_shape = shape[u_idxs.len()..].to_vec();
-                let slen: usize = sub_shape.iter().product();
-                RVal::Tensor(Rc::new(sub_shape), Rc::new(data[offset..(offset + slen).min(data.len())].to_vec()))
-            }
-        }
-        RVal::List(rc, st) => rc.get(*st + u_idxs.first().copied().unwrap_or(0)).cloned().unwrap_or(RVal::Unit),
-        RVal::Tuple(rc) => rc.get(u_idxs.first().copied().unwrap_or(0)).cloned().unwrap_or(RVal::Unit),
-        _ => RVal::Unit,
-    }
-}
-
-fn rg_index_set(base: RVal, idxs: &[RVal], new_val: RVal) -> RVal {
-    let u_idxs: Vec<usize> = idxs.iter().map(|v| rg_as_int(v).max(0) as usize).collect();
-    if let RVal::Tensor(shape, data) = base {
-        let strides = rg_strides(&shape);
-        let offset: usize = u_idxs.iter().zip(strides.iter()).map(|(&i, &s)| i * s).sum();
-        let mut new_data = (*data).clone();
-        if offset < new_data.len() { new_data[offset] = rg_as_real(&new_val); }
-        return RVal::Tensor(shape, Rc::new(new_data));
-    }
-    base
-}
-
-fn rg_einsum(tensors: &[RVal], subs: &[&str]) -> RVal {
-    let mut idx_order: Vec<char> = Vec::new();
-    let mut idx_counts: HashMap<char, usize> = HashMap::new();
-    let mut idx_dims: HashMap<char, usize> = HashMap::new();
-    for (t, sub) in tensors.iter().zip(subs.iter()) {
-        if let RVal::Tensor(sh, _) = t {
-            for (ch, &dim) in sub.chars().zip(sh.iter()) {
-                if !idx_order.contains(&ch) { idx_order.push(ch); }
-                *idx_counts.entry(ch).or_insert(0) += 1;
-                idx_dims.insert(ch, dim);
-            }
-        }
-    }
-    let free: Vec<char> = idx_order.iter().copied().filter(|c| idx_counts.get(c).copied().unwrap_or(0) == 1).collect();
-    let out_shape: Vec<usize> = if free.is_empty() { vec![1] } else { free.iter().map(|c| idx_dims[c]).collect() };
-    let out_strides = rg_strides(&out_shape);
-    let out_len: usize = out_shape.iter().product();
-    let mut out_data = vec![0.0f64; out_len];
-    let all_dims: Vec<usize> = idx_order.iter().map(|c| idx_dims[c]).collect();
-    let total_iters: usize = all_dims.iter().product::<usize>().max(1);
-    let all_strides = rg_strides(&all_dims);
-    let t_strides: Vec<Vec<usize>> = tensors.iter().map(|t| match t { RVal::Tensor(sh, _) => rg_strides(sh), _ => Vec::new() }).collect();
-    for flat_iter in 0..total_iters {
-        let mut cmap: HashMap<char, usize> = HashMap::new();
-        for (p, &ch) in idx_order.iter().enumerate() {
-            cmap.insert(ch, (flat_iter / all_strides[p]) % all_dims[p]);
-        }
-        let mut prod = 1.0f64;
-        for (ti, (t, sub)) in tensors.iter().zip(subs.iter()).enumerate() {
-            if let RVal::Tensor(_, d) = t {
-                let st = &t_strides[ti];
-                let off: usize = sub.chars().enumerate().map(|( dm, ch)| cmap[&ch] * st[dm]).sum();
-                prod *= d.get(off).copied().unwrap_or(0.0);
-            }
-        }
-        let out_off: usize = if free.is_empty() { 0 } else { free.iter().enumerate().map(|(dm, ch)| cmap[ch] * out_strides[dm]).sum() };
-        if out_off < out_data.len() { out_data[out_off] += prod; }
-    }
-    RVal::Tensor(Rc::new(out_shape), Rc::new(out_data))
-}
-
-fn rg_hadamard(op: &str, left: &RVal, s1: &str, right: &RVal, s2: &str) -> RVal {
-    if let (RVal::Tensor(sh1, d1), RVal::Tensor(sh2, d2)) = (left, right) {
-        let st1 = rg_strides(sh1);
-        let st2 = rg_strides(sh2);
-        let s1_ch: Vec<char> = s1.chars().collect();
-        let mut out = vec![0.0f64; d1.len()];
-        for fi in 0..d1.len() {
-            let mut cmap: HashMap<char, usize> = HashMap::new();
-            for (dm, &ch) in s1_ch.iter().enumerate() { cmap.insert(ch, (fi / st1[dm]) % sh1[dm]); }
-            let roff: usize = s2.chars().enumerate().map(|(dm, ch)| cmap.get(&ch).copied().unwrap_or(0) * st2[dm]).sum();
-            let lv = d1[fi];
-            let rv = d2.get(roff).copied().unwrap_or(0.0);
-            out[fi] = match op { "+" => lv + rv, "-" => lv - rv, "*" => lv * rv, "/" => lv / rv, _ => lv };
-        }
-        return RVal::Tensor(Rc::clone(sh1), Rc::new(out));
-    }
-    RVal::Unit
-}
-
-fn rg_fn_channel() -> RVal {
-    let mut chs = RG_CHANNELS.get_or_init(|| Mutex::new(Vec::new())).lock().unwrap();
-    let id = chs.len();
-    chs.push(VecDeque::new());
-    RVal::Int(id as i64)
-}
-
-fn rg_fn_new_channel() -> RVal { rg_fn_channel() }
-
-fn rg_fn_send_through(val: RVal, ch: RVal) -> RVal {
-    let cid = rg_as_int(&ch).max(0) as usize;
-    let mut chs = RG_CHANNELS.get_or_init(|| Mutex::new(Vec::new())).lock().unwrap();
-    while chs.len() <= cid { chs.push(VecDeque::new()); }
-    chs[cid].push_back(val);
-    rg_adt("Ok", vec![RVal::Unit])
-}
-
-fn rg_fn_receive_from(ch: RVal) -> RVal {
-    let cid = rg_as_int(&ch).max(0) as usize;
-    let mut chs = RG_CHANNELS.get_or_init(|| Mutex::new(Vec::new())).lock().unwrap();
-    chs.get_mut(cid).and_then(|q| q.pop_front()).unwrap_or(RVal::Unit)
-}
-
-fn rg_fn_try_receive_from(ch: RVal) -> RVal {
-    let cid = rg_as_int(&ch).max(0) as usize;
-    let mut chs = RG_CHANNELS.get_or_init(|| Mutex::new(Vec::new())).lock().unwrap();
-    match chs.get_mut(cid).and_then(|q| q.pop_front()) {
-        Some(v) => rg_adt("Ok", vec![v]),
-        None => rg_adt("Err", vec![rg_adt0("Empty")]),
-    }
-}
-
-fn rg_fn_receive_from_timeout(ch: RVal, _ticks: RVal) -> RVal {
-    let cid = rg_as_int(&ch).max(0) as usize;
-    let mut chs = RG_CHANNELS.get_or_init(|| Mutex::new(Vec::new())).lock().unwrap();
-    match chs.get_mut(cid).and_then(|q| q.pop_front()) {
-        Some(v) => rg_adt("Ok", vec![v]),
-        None => rg_adt("Err", vec![rg_adt0("Timeout")]),
-    }
-}
-
-fn rg_fn_spawn(fn_name: RVal, arg: RVal) -> RVal {
-    let name_str = match &fn_name { RVal::Str(s) => s.as_str().to_string(), _ => String::new() };
-    let res = rg_dispatch_spawn(&name_str, arg);
-    let mut ths = RG_THREADS.get_or_init(|| Mutex::new(Vec::new())).lock().unwrap();
-    let tid = ths.len();
-    ths.push(Some(res));
-    RVal::Int(tid as i64)
-}
-
-fn rg_fn_join(tid: RVal) -> RVal {
-    let id = rg_as_int(&tid).max(0) as usize;
-    let mut ths = RG_THREADS.get_or_init(|| Mutex::new(Vec::new())).lock().unwrap();
-    ths.get_mut(id).and_then(|o| o.take()).unwrap_or(RVal::Unit)
-}
-
-fn rg_echo(args: &[RVal]) -> RVal {
-    let parts: Vec<String> = args.iter().map(|v| format!("{}", v)).collect();
-    println!("{}", parts.join(" "));
-    RVal::Unit
-}
-
-fn rg_out(v: RVal) -> RVal { println!("{}", v); RVal::Unit }
-
-#[inline]
-fn rg_fn_str_len(s: RVal) -> RVal {
-    match s {
-        RVal::Str(st) => RVal::Int(st.len() as i64),
-        _ => RVal::Int(0),
-    }
-}
-
-#[inline]
-fn rg_fn_str_char_at(s: RVal, i: RVal) -> RVal {
-    let idx = rg_as_int(&i);
-    if idx < 0 { return RVal::Int(-1); }
-    match s {
-        RVal::Str(st) => RVal::Int(st.as_bytes().get(idx as usize).map(|&b| b as i64).unwrap_or(-1)),
-        _ => RVal::Int(-1),
-    }
-}
-
-#[inline]
-fn rg_fn_str_slice(s: RVal, a: RVal, b: RVal) -> RVal {
-    let start = rg_as_int(&a).max(0) as usize;
-    let end = rg_as_int(&b).max(0) as usize;
-    match s {
-        RVal::Str(st) => {
-            let len = st.len();
-            let sc = start.min(len);
-            let ec = end.min(len).max(sc);
-            if st.is_char_boundary(sc) && st.is_char_boundary(ec) {
-                return RVal::Str(Rc::new(st[sc..ec].to_string()));
-            }
-            if !st.is_char_boundary(sc) {
-                return rg_str("");
-            }
-            let mut adj_ec = ec;
-            while adj_ec < len && !st.is_char_boundary(adj_ec) {
-                adj_ec += 1;
-            }
-            RVal::Str(Rc::new(st[sc..adj_ec].to_string()))
-        }
-        _ => rg_str(""),
-    }
-}
-
-fn rg_fn_char_from_code(c: RVal) -> RVal {
-    let ch = std::char::from_u32(rg_as_int(&c).max(0) as u32).unwrap_or(char::from(0u8));
-    RVal::Str(Rc::new(ch.to_string()))
-}
-
-fn rg_fn_str_concat(a: RVal, b: RVal) -> RVal { RVal::Str(Rc::new(format!("{}{}", a, b))) }
-fn rg_fn_int_to_str(n: RVal) -> RVal { RVal::Str(Rc::new(rg_as_int(&n).to_string())) }
-
-fn rg_fn_str_to_int(s: RVal) -> RVal {
-    let raw = match &s { RVal::Str(st) => st.trim(), _ => "0" };
-    let cl = raw.replace("_", "");
-    let v = if let Some(h) = cl.strip_prefix("0x").or_else(|| cl.strip_prefix("0X")) { i64::from_str_radix(h, 16).unwrap_or(0) } else { cl.parse::<i64>().unwrap_or(0) };
-    RVal::Int(v)
-}
-
-fn rg_fn_str_starts_with(s: RVal, p: RVal) -> RVal {
-    match (s, p) { (RVal::Str(a), RVal::Str(b)) => RVal::Bool(a.starts_with(b.as_str())), _ => RVal::Bool(false) }
-}
-
-fn rg_fn_str_contains(s: RVal, n: RVal) -> RVal {
-    match (s, n) { (RVal::Str(a), RVal::Str(b)) => RVal::Bool(a.contains(b.as_str())), _ => RVal::Bool(false) }
-}
-
-fn rg_resolve_imports(src: &str, fpath: &Path, vis: &mut HashSet<PathBuf>) -> String {
-    let pdir = fpath.parent().unwrap_or(Path::new("."));
-    let mut imps = String::new();
-    let mut body = String::new();
-    for line in src.lines() {
-        let tr = line.trim();
-        if let Some(rest) = tr.strip_prefix("import ") {
-            let m = rest.trim();
-            let cands = [
-                pdir.join(format!("{}.rg", m)),
-                pdir.join("../lib").join(format!("{}.rg", m)),
-                Path::new("src/main/ridgun/lib").join(format!("{}.rg", m)),
-                Path::new("src/main/ridgun").join(format!("{}.rg", m)),
-            ];
-            if let Some(cand) = cands.iter().find(|p| p.exists()) {
-                let cn = cand.canonicalize().unwrap_or_else(|_| cand.clone());
-                if vis.insert(cn.clone()) {
-                    if let Ok(sub) = std::fs::read_to_string(&cn) {
-                        imps.push_str(&rg_resolve_imports(&sub, &cn, vis));
-                        imps.push_str("\n");
-                    }
-                }
-            }
-            body.push_str("-- "); body.push_str(line); body.push_str("\n");
-        } else {
-            body.push_str(line); body.push_str("\n");
-        }
-    }
-    format!("{}{}", imps, body)
-}
-
-fn rg_call1(f: &RVal, a: RVal) -> RVal {
-    let fname = match f { RVal::Str(s) => s.as_str(), _ => "" };
-    rg_dispatch_spawn(fname, a)
-}
-
-fn rg_call2(f: &RVal, a: RVal, b: RVal) -> RVal {
-    let fname = match f { RVal::Str(s) => s.as_str(), _ => "" };
-    rg_dispatch_call2(fname, a, b)
-}
-
-fn rg_fn_map(f: RVal, xs: RVal) -> RVal {
-    let fname = match &f { RVal::Str(s) => s.as_str(), _ => "" };
-    match xs {
-        RVal::List(rc, st) => {
-            let slice = &rc[st.min(rc.len())..];
-            let out: Vec<RVal> = slice.iter().map(|v| rg_dispatch_spawn(fname, v.clone())).collect();
-            rg_list(out)
-        }
-        _ => rg_list(Vec::new()),
-    }
-}
-
-fn rg_fn_par_map(f: RVal, xs: RVal) -> RVal {
-    let fname = match &f { RVal::Str(s) => s.as_str().to_string(), _ => String::new() };
-    match xs {
-        RVal::List(rc, st) => {
-            let slice = &rc[st.min(rc.len())..];
-            if slice.len() < 2 {
-                let out: Vec<RVal> = slice.iter().map(|v| rg_dispatch_spawn(&fname, v.clone())).collect();
-                return rg_list(out);
-            }
-            let n_workers = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).min(slice.len()).max(1);
-            let chunk_sz = (slice.len() + n_workers - 1) / n_workers;
-            let mut out = Vec::with_capacity(slice.len());
-            std::thread::scope(|s| {
-                let mut handles = Vec::new();
-                for chunk in slice.chunks(chunk_sz) {
-                    let fn_c = fname.clone();
-                    let items: Vec<RVal> = chunk.to_vec();
-                    if let Ok(h) = std::thread::Builder::new().stack_size(67108864).spawn_scoped(s, move || {
-                        items.into_iter().map(|v| rg_dispatch_spawn(&fn_c, v)).collect::<Vec<RVal>>()
-                    }) {
-                        handles.push(h);
-                    }
-                }
-                for h in handles {
-                    if let Ok(part) = h.join() { out.extend(part); }
-                }
-            });
-            rg_list(out)
-        }
-        _ => rg_list(Vec::new()),
-    }
-}
-
-fn rg_fn_filter(f: RVal, xs: RVal) -> RVal {
-    let fname = match &f { RVal::Str(s) => s.as_str(), _ => "" };
-    match xs {
-        RVal::List(rc, st) => {
-            let slice = &rc[st.min(rc.len())..];
-            let out: Vec<RVal> = slice.iter().filter(|v| rg_as_bool(&rg_dispatch_spawn(fname, (*v).clone()))).cloned().collect();
-            rg_list(out)
-        }
-        _ => rg_list(Vec::new()),
-    }
-}
-
-fn rg_fn_par_filter(f: RVal, xs: RVal) -> RVal {
-    let fname = match &f { RVal::Str(s) => s.as_str().to_string(), _ => String::new() };
-    match xs {
-        RVal::List(rc, st) => {
-            let slice = &rc[st.min(rc.len())..];
-            if slice.len() < 2 {
-                let out: Vec<RVal> = slice.iter().filter(|v| rg_as_bool(&rg_dispatch_spawn(&fname, (*v).clone()))).cloned().collect();
-                return rg_list(out);
-            }
-            let n_workers = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).min(slice.len()).max(1);
-            let chunk_sz = (slice.len() + n_workers - 1) / n_workers;
-            let mut out = Vec::new();
-            std::thread::scope(|s| {
-                let mut handles = Vec::new();
-                for chunk in slice.chunks(chunk_sz) {
-                    let fn_c = fname.clone();
-                    let items: Vec<RVal> = chunk.to_vec();
-                    if let Ok(h) = std::thread::Builder::new().stack_size(67108864).spawn_scoped(s, move || {
-                        items.into_iter().filter(|v| rg_as_bool(&rg_dispatch_spawn(&fn_c, v.clone()))).collect::<Vec<RVal>>()
-                    }) {
-                        handles.push(h);
-                    }
-                }
-                for h in handles {
-                    if let Ok(part) = h.join() { out.extend(part); }
-                }
-            });
-            rg_list(out)
-        }
-        _ => rg_list(Vec::new()),
-    }
-}
-
-fn rg_fn_fold(f: RVal, init: RVal, xs: RVal) -> RVal {
-    let fname = match &f { RVal::Str(s) => s.as_str(), _ => "" };
-    let mut acc = init;
-    if let RVal::List(rc, st) = xs {
-        for v in &rc[st.min(rc.len())..] {
-            acc = rg_dispatch_call2(fname, acc, v.clone());
-        }
-    }
-    acc
-}
-
-fn rg_read_raw_string(path_str: &str) -> String {
-    let bytes = if path_str == "-" || path_str == "/dev/stdin" {
-        use std::io::Read;
-        let mut buf = Vec::new();
-        let _ = std::io::stdin().read_to_end(&mut buf);
-        buf
-    } else {
-        std::fs::read(path_str).unwrap_or_default()
-    };
-    match String::from_utf8(bytes) {
-        Ok(s) => s,
-        Err(e) => e.into_bytes().into_iter().map(|b| b as char).collect(),
-    }
-}
-
-fn rg_fn_read_file(p: RVal) -> RVal {
-    let path_str = match &p { RVal::Str(s) => s.as_str(), _ => "" };
-    RVal::Str(Rc::new(rg_read_raw_string(path_str)))
-}
-
-fn rg_fn_load_rg_source(p: RVal) -> RVal {
-    let path_str = match &p { RVal::Str(s) => s.as_str(), _ => "" };
-    let raw = std::fs::read_to_string(path_str).unwrap_or_default();
-    let fp = Path::new(path_str);
-    let mut vis = HashSet::new();
-    if let Ok(c) = fp.canonicalize() { vis.insert(c); }
-    RVal::Str(Rc::new(rg_resolve_imports(&raw, fp, &mut vis)))
-}
-
-fn rg_fn_read_bytes(p: RVal) -> RVal {
-    let path_str = match &p { RVal::Str(s) => s.as_str(), _ => "" };
-    let bytes = if path_str == "-" || path_str == "/dev/stdin" {
-        use std::io::Read;
-        let mut buf = Vec::new();
-        let _ = std::io::stdin().read_to_end(&mut buf);
-        buf
-    } else {
-        std::fs::read(path_str).unwrap_or_default()
-    };
-    let out: Vec<RVal> = bytes.into_iter().map(|b| RVal::Int(b as i64)).collect();
-    rg_list(out)
-}
-
-fn rg_fn_write_bytes(p: RVal, bs: RVal) -> RVal {
-    let path_str = match &p { RVal::Str(s) => s.as_str(), _ => "" };
-    if let RVal::List(rc, st) = bs {
-        let raw: Vec<u8> = rc[st.min(rc.len())..].iter().map(|v| (rg_as_int(v) & 0xFF) as u8).collect();
-        if path_str == "-" || path_str == "/dev/stdout" {
-            use std::io::Write;
-            let _ = std::io::stdout().write_all(&raw);
-        } else {
-            let _ = std::fs::write(path_str, &raw);
-        }
-    }
-    RVal::Unit
-}
-
-fn rg_fn_write_file(p: RVal, c: RVal) -> RVal {
-    if let (RVal::Str(ps), RVal::Str(cs)) = (p, c) { let _ = std::fs::write(ps.as_str(), cs.as_str()); }
-    RVal::Unit
-}
-
-fn rg_fn_shell_exec(cmd: RVal) -> RVal {
-    let cs = match &cmd { RVal::Str(s) => s.as_str(), _ => "" };
-    let st = std::process::Command::new("sh").arg("-c").arg(cs).status().map(|s| s.code().unwrap_or(1) as i64).unwrap_or(-1);
-    RVal::Int(st)
-}
-
-fn rg_fn_cli_args() -> RVal {
-    let v: Vec<RVal> = std::env::args().map(|s| RVal::Str(Rc::new(s))).collect();
-    RVal::List(Rc::new(v), 0)
-}
-
-fn rg_fn_list_dir(p: RVal) -> RVal {
-    let path_str = match &p { RVal::Str(s) => s.as_str(), _ => "." };
-    let mut names: Vec<String> = Vec::new();
-    if let Ok(rd) = std::fs::read_dir(path_str) {
-        for entry in rd.flatten() {
-            if let Some(n) = entry.file_name().to_str() {
-                names.push(n.to_string());
-            }
-        }
-    }
-    names.sort();
-    rg_list(names.into_iter().map(|s| RVal::Str(Rc::new(s))).collect())
-}
-
-fn rg_lookup_id_name(file_path: &str, id: u32) -> String {
-    let id_str = id.to_string();
-    if let Ok(content) = std::fs::read_to_string(file_path) {
-        for line in content.lines() {
-            let parts: Vec<&str> = line.split(":").collect();
-            if parts.len() >= 3 && parts[2] == id_str {
-                return parts[0].to_string();
-            }
-        }
-    }
-    id_str
-}
-
-fn rg_fn_file_lstat(p: RVal) -> RVal {
-    use std::os::unix::fs::{MetadataExt, FileTypeExt};
-    let path_str = match &p { RVal::Str(s) => s.as_str(), _ => "" };
-    match std::fs::symlink_metadata(path_str) {
-        Ok(meta) => {
-            let ft = meta.file_type();
-            let kind = if ft.is_dir() { "dir" }
-                else if ft.is_symlink() { "link" }
-                else if ft.is_fifo() { "fifo" }
-                else if ft.is_socket() { "sock" }
-                else if ft.is_block_device() { "block" }
-                else if ft.is_char_device() { "char" }
-                else { "file" };
-            let mode = (meta.mode() & 0o7777) as i64;
-            let nlink = meta.nlink() as i64;
-            let size = meta.len() as i64;
-            let owner = rg_lookup_id_name("/etc/passwd", meta.uid());
-            let group = rg_lookup_id_name("/etc/group", meta.gid());
-            let mtime = meta.mtime();
-            let link_target = if ft.is_symlink() {
-                std::fs::read_link(path_str).ok().and_then(|pb| pb.to_str().map(|s| s.to_string())).unwrap_or_default()
-            } else {
-                String::new()
-            };
-            rg_tuple(vec![
-                RVal::Bool(true),
-                rg_str(kind),
-                RVal::Int(mode),
-                RVal::Int(nlink),
-                RVal::Int(size),
-                rg_str(&owner),
-                rg_str(&group),
-                RVal::Int(mtime),
-                rg_str(&link_target),
-            ])
-        }
-        Err(_) => rg_tuple(vec![
-            RVal::Bool(false),
-            rg_str(""),
-            RVal::Int(0),
-            RVal::Int(0),
-            RVal::Int(0),
-            rg_str(""),
-            rg_str(""),
-            RVal::Int(0),
-            rg_str(""),
-        ]),
-    }
-}
-
-fn rg_sha256_bytes(data: &[u8]) -> String {
-    const K: [u32; 64] = [
-        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
-        0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
-        0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-        0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
-        0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
-        0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-        0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
-    ];
-    let mut h: [u32; 8] = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
-    let bit_len = (data.len() as u64).wrapping_mul(8);
-    let mut msg = data.to_vec();
-    msg.push(0x80);
-    while (msg.len() % 64) != 56 { msg.push(0); }
-    msg.extend_from_slice(&bit_len.to_be_bytes());
-    for chunk in msg.chunks_exact(64) {
-        let mut w = [0u32; 64];
-        for i in 0..16 {
-            w[i] = u32::from_be_bytes([chunk[i*4], chunk[i*4+1], chunk[i*4+2], chunk[i*4+3]]);
-        }
-        for i in 16..64 {
-            let s0 = w[i-15].rotate_right(7) ^ w[i-15].rotate_right(18) ^ (w[i-15] >> 3);
-            let s1 = w[i-2].rotate_right(17) ^ w[i-2].rotate_right(19) ^ (w[i-2] >> 10);
-            w[i] = w[i-16].wrapping_add(s0).wrapping_add(w[i-7]).wrapping_add(s1);
-        }
-        let (mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut hh) = (h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7]);
-        for i in 0..64 {
-            let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
-            let ch = (e & f) ^ ((!e) & g);
-            let temp1 = hh.wrapping_add(s1).wrapping_add(ch).wrapping_add(K[i]).wrapping_add(w[i]);
-            let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
-            let maj = (a & b) ^ (a & c) ^ (b & c);
-            let temp2 = s0.wrapping_add(maj);
-            hh = g; g = f; f = e; e = d.wrapping_add(temp1); d = c; c = b; b = a; a = temp1.wrapping_add(temp2);
-        }
-        h[0] = h[0].wrapping_add(a); h[1] = h[1].wrapping_add(b); h[2] = h[2].wrapping_add(c); h[3] = h[3].wrapping_add(d);
-        h[4] = h[4].wrapping_add(e); h[5] = h[5].wrapping_add(f); h[6] = h[6].wrapping_add(g); h[7] = h[7].wrapping_add(hh);
-    }
-    format!("{:08x}{:08x}{:08x}{:08x}{:08x}{:08x}{:08x}{:08x}", h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7])
-}
-
-fn rg_fn_sha256_file(p: RVal) -> RVal {
-    let path_str = match &p { RVal::Str(s) => s.as_str(), _ => "" };
-    let bytes = std::fs::read(path_str).unwrap_or_default();
-    rg_str(&rg_sha256_bytes(&bytes))
-}
-
-fn rg_fn_sha256_str(s: RVal) -> RVal {
-    let st = match &s { RVal::Str(v) => v.as_bytes(), _ => &[] };
-    rg_str(&rg_sha256_bytes(st))
-}
-
-fn rg_fn_sys_mkdir(p: RVal, mode: RVal) -> RVal {
-    use std::os::unix::fs::PermissionsExt;
-    let path_str = match &p { RVal::Str(s) => s.as_str(), _ => "" };
-    let m = (rg_as_int(&mode) & 0o7777) as u32;
-    if std::fs::create_dir_all(path_str).is_ok() {
-        let _ = std::fs::set_permissions(path_str, std::fs::Permissions::from_mode(m));
-        RVal::Int(0)
-    } else {
-        RVal::Int(-1)
-    }
-}
-
-fn rg_fn_sys_chmod(p: RVal, mode: RVal) -> RVal {
-    use std::os::unix::fs::PermissionsExt;
-    let path_str = match &p { RVal::Str(s) => s.as_str(), _ => "" };
-    let m = (rg_as_int(&mode) & 0o7777) as u32;
-    if std::fs::set_permissions(path_str, std::fs::Permissions::from_mode(m)).is_ok() {
-        RVal::Int(0)
-    } else {
-        RVal::Int(-1)
-    }
-}
-
-fn rg_extract_str_vec(v: &RVal) -> Vec<String> {
-    match v {
-        RVal::List(rc, st) => rc[(*st).min(rc.len())..].iter().map(|x| format!("{}", x)).collect(),
-        _ => Vec::new(),
-    }
-}
-
-fn rg_fn_sys_exec(prog: RVal, args: RVal, env_list: RVal) -> RVal {
-    let prog_str = match &prog { RVal::Str(s) => s.as_str(), _ => "" };
-    let arg_vec = rg_extract_str_vec(&args);
-    let env_vec = rg_extract_str_vec(&env_list);
-    let mut cmd = std::process::Command::new(prog_str);
-    cmd.args(&arg_vec);
-    for kv in env_vec {
-        if let Some((k, v)) = kv.split_once("=") {
-            cmd.env(k, v);
-        }
-    }
-    let st = cmd.status().map(|s| s.code().unwrap_or(1) as i64).unwrap_or(-1);
-    RVal::Int(st)
-}
-
-fn rg_fn_sys_chdir(p: RVal) -> RVal {
-    let path_str = match &p { RVal::Str(s) => s.as_str(), _ => "." };
-    if std::env::set_current_dir(path_str).is_ok() { RVal::Int(0) } else { RVal::Int(-1) }
-}
-
-fn rg_fn_sys_getcwd() -> RVal {
-    let cwd = std::env::current_dir().ok().and_then(|p| p.to_str().map(|s| s.to_string())).unwrap_or_default();
-    rg_str(&cwd)
-}
-
-fn rg_fn_sys_getenv(k: RVal) -> RVal {
-    let key = match &k { RVal::Str(s) => s.as_str(), _ => "" };
-    let val = std::env::var(key).unwrap_or_default();
-    rg_str(&val)
-}
-
-fn rg_fn_sys_setenv(k: RVal, v: RVal) -> RVal {
-    if let (RVal::Str(ks), RVal::Str(vs)) = (k, v) {
-        std::env::set_var(ks.as_str(), vs.as_str());
-        RVal::Int(0)
-    } else {
-        RVal::Int(-1)
-    }
-}
-
-fn rg_fn_sys_exit(code: RVal) -> RVal {
-    std::process::exit(rg_as_int(&code) as i32);
-}
-
-extern "C" {
-    fn getuid() -> u32;
-    fn getgid() -> u32;
-    fn setresgid(rgid: u32, egid: u32, sgid: u32) -> i32;
-    fn setresuid(ruid: u32, euid: u32, suid: u32) -> i32;
-    fn setgroups(size: usize, list: *const u32) -> i32;
-}
-
-fn rg_fn_sys_getuid() -> RVal { RVal::Int(unsafe { getuid() } as i64) }
-fn rg_fn_sys_getgid() -> RVal { RVal::Int(unsafe { getgid() } as i64) }
-
-fn rg_fn_sys_username(uid: RVal) -> RVal {
-    let u = rg_as_int(&uid).max(0) as u32;
-    rg_str(&rg_lookup_id_name("/etc/passwd", u))
-}
-
-fn rg_fn_sys_lookup_uid_gid(user: RVal) -> RVal {
-    let uname = match &user { RVal::Str(s) => s.as_str(), _ => "" };
-    if let Ok(content) = std::fs::read_to_string("/etc/passwd") {
-        for line in content.lines() {
-            let parts: Vec<&str> = line.split(":").collect();
-            if parts.len() >= 4 && parts[0] == uname {
-                let u = parts[2].parse::<i64>().unwrap_or(-1);
-                let g = parts[3].parse::<i64>().unwrap_or(-1);
-                return rg_tuple(vec![RVal::Int(u), RVal::Int(g)]);
-            }
-        }
-    }
-    rg_tuple(vec![RVal::Int(-1), RVal::Int(-1)])
-}
-
-fn rg_fn_sys_user_groups(user: RVal) -> RVal {
-    let uname = match &user { RVal::Str(s) => s.as_str(), _ => "" };
-    let mut groups: Vec<String> = Vec::new();
-    let mut pri_gid: Option<u32> = None;
-    if let Ok(content) = std::fs::read_to_string("/etc/passwd") {
-        for line in content.lines() {
-            let parts: Vec<&str> = line.split(":").collect();
-            if parts.len() >= 4 && parts[0] == uname {
-                pri_gid = parts[3].parse::<u32>().ok();
-                break;
-            }
-        }
-    }
-    if let Ok(content) = std::fs::read_to_string("/etc/group") {
-        for line in content.lines() {
-            let parts: Vec<&str> = line.split(":").collect();
-            if parts.len() >= 4 {
-                let gname = parts[0];
-                let gid_ok = pri_gid.map(|g| parts[2] == g.to_string()).unwrap_or(false);
-                let mem_ok = parts[3].split(",").any(|m| m == uname);
-                if (gid_ok || mem_ok) && !groups.contains(&gname.to_string()) {
-                    groups.push(gname.to_string());
-                }
-            }
-        }
-    }
-    rg_list(groups.into_iter().map(|s| RVal::Str(Rc::new(s))).collect())
-}
-
-fn rg_fn_sys_setresgid(gid: RVal) -> RVal {
-    let g = rg_as_int(&gid) as u32;
-    RVal::Int(unsafe { setresgid(g, g, g) } as i64)
-}
-
-fn rg_fn_sys_setgroups(gids: RVal) -> RVal {
-    let gs: Vec<u32> = match &gids {
-        RVal::List(rc, st) => rc[(*st).min(rc.len())..].iter().map(|v| rg_as_int(v) as u32).collect(),
-        _ => Vec::new(),
-    };
-    RVal::Int(unsafe { setgroups(gs.len(), gs.as_ptr()) } as i64)
-}
-
-fn rg_fn_sys_setresuid(uid: RVal) -> RVal {
-    let u = rg_as_int(&uid) as u32;
-    RVal::Int(unsafe { setresuid(u, u, u) } as i64)
-}
-
-fn rg_fn_sys_execve(prog: RVal, args: RVal, env_list: RVal) -> RVal {
-    use std::os::unix::process::CommandExt;
-    let prog_str = match &prog { RVal::Str(s) => s.as_str(), _ => "" };
-    let arg_vec = rg_extract_str_vec(&args);
-    let env_vec = rg_extract_str_vec(&env_list);
-    let mut cmd = std::process::Command::new(prog_str);
-    cmd.args(&arg_vec);
-    cmd.env_clear();
-    for kv in env_vec {
-        if let Some((k, v)) = kv.split_once("=") {
-            cmd.env(k, v);
-        }
-    }
-    let _err = cmd.exec();
-    RVal::Int(-1)
-}
-
-fn rg_fn_sys_read_pass(prompt: RVal) -> RVal {
-    use std::io::{BufRead, Write};
-    let pr = match &prompt { RVal::Str(s) => s.as_str(), _ => "" };
-    if let Ok(mut tty) = std::fs::OpenOptions::new().read(true).write(true).open("/dev/tty") {
-        let _ = tty.write_all(pr.as_bytes());
-        let _ = tty.flush();
-        let mut reader = std::io::BufReader::new(tty);
-        let mut line = String::new();
-        let _ = reader.read_line(&mut line);
-        return rg_str(line.trim_end());
-    }
-    let mut line = String::new();
-    let _ = std::io::stdin().read_line(&mut line);
-    rg_str(line.trim_end())
-}
-'
-
-fn :: emit_native_program RProgram => String
-      emit_native_program (Program raw_fns tys) =
-        sigs = build_cg_sigs raw_fns
+fn :: build_spawn_dispatch_instrs [RFnEntry] [RStrEntry] Int [RNativeInstr] => [RNativeInstr]
+      build_spawn_dispatch_instrs [] _ _ acc =
+        acc :: [NLoadImmRaw 0, NReturn]
+      build_spawn_dispatch_instrs ((FnEntry name fid arity):rest) str_tbl lbl acc
+        | arity == 1 =
+          off = lookup_str_off str_tbl name
+          arm = [NMatchStr 0 off (str_len name), NJumpIfZero lbl, NMoveSlot 1, NStoreSlot 2, NCallFn fid 2 1, NReturn, NLabel lbl]
+      build_spawn_dispatch_instrs rest str_tbl (lbl + 1) (acc :: arm)
+        | otherwise =
+          build_spawn_dispatch_instrs rest str_tbl lbl acc
+
+fn :: build_call2_dispatch_instrs [RFnEntry] [RStrEntry] Int [RNativeInstr] => [RNativeInstr]
+      build_call2_dispatch_instrs [] _ _ acc =
+        acc :: [NLoadImmRaw 0, NReturn]
+      build_call2_dispatch_instrs ((FnEntry name fid arity):rest) str_tbl lbl acc
+        | arity == 2 =
+          off = lookup_str_off str_tbl name
+          arm = [NMatchStr 0 off (str_len name), NJumpIfZero lbl, NMoveSlot 1, NStoreSlot 3, NMoveSlot 2, NStoreSlot 4, NCallFn fid 3 2, NReturn, NLabel lbl]
+      build_call2_dispatch_instrs rest str_tbl (lbl + 1) (acc :: arm)
+        | otherwise =
+          build_call2_dispatch_instrs rest str_tbl lbl acc
+
+fn :: is_overloadable_binop_name String => Bool
+      is_overloadable_binop_name "+"    =  True
+      is_overloadable_binop_name "-"    =  True
+      is_overloadable_binop_name "*"    =  True
+      is_overloadable_binop_name "/"    =  True
+      is_overloadable_binop_name "%"    =  True
+      is_overloadable_binop_name _      =  False
+
+fn :: build_binop_dispatch_instrs [RFnEntry] [RStrEntry] Int [RNativeInstr] => [RNativeInstr]
+      build_binop_dispatch_instrs [] _ _ acc =
+        acc :: [NLoadImmRaw 0, NReturn]
+      build_binop_dispatch_instrs ((FnEntry name fid arity):rest) str_tbl lbl acc
+        | arity == 2 AND (is_overloadable_binop_name name) =
+          off = lookup_str_off str_tbl name
+          arm = [NMatchStr 0 off (str_len name), NJumpIfZero lbl, NMoveSlot 1, NStoreSlot 3, NMoveSlot 2, NStoreSlot 4, NCallFn fid 3 2, NReturn, NLabel lbl]
+      build_binop_dispatch_instrs rest str_tbl (lbl + 1) (acc :: arm)
+        | otherwise =
+          build_binop_dispatch_instrs rest str_tbl lbl acc
+
+fn :: lower_program_to_native RProgram => RNativeProg
+      lower_program_to_native (Program raw_fns tys) =
+        field_tbl = collect_typedef_fields tys []
+        raw_fn_names = collect_fn_names raw_fns
+        sigs = (build_cg_sigs raw_fns) :: (build_field_cg_sigs field_tbl raw_fn_names)
         all_fns = prep_fndef_list raw_fns sigs
-        entry = find_entry_fn_name all_fns "main"
-        reachable = expand_reachable_worklist [entry] all_fns []
+        entry_name = find_entry_fn_name all_fns "main"
+        reachable = expand_reachable_worklist [entry_name] all_fns []
         fns = filter_reachable_fndefs all_fns reachable
-        preamble = emit_runtime_preamble
-        acc_defs = emit_typedef_accessors tys (collect_fn_names fns)
-        fn_defs = emit_native_fndef_list fns
-        dispatches = emit_dispatch_tables fns
-        preamble + acc_defs + fn_defs + dispatches + 'fn main() {' + "\n" + '  let child = std::thread::Builder::new().stack_size(268435456).spawn(|| {' + "\n" + '    let _ = ' + (mangle_fn_name entry) + '();' + "\n" + '  }).unwrap();' + "\n" + '  let _ = child.join();' + "\n" + '}' + "\n"
+        fn_names = collect_fn_names fns
+        str_pool = build_str_pool fns (collect_field_names field_tbl)
+        rodata_str = pool_rodata str_pool
+        str_tbl = pool_entries str_pool
+        fn_tbl1 = build_fn_table_fndefs fns 5 []
+        fn_tbl = build_fn_table_fields field_tbl fn_names (5 + (list_str_len fn_names)) fn_tbl1
+        entry_fid = lookup_fn_id fn_tbl entry_name
+        main_wrapper = NativeFn 1 "__rg_entry_main" 0 2 [NCallFn entry_fid 0 0, NReturn]
+        spawn_disp = NativeFn 2 "__rg_dispatch_spawn" 2 4 (build_spawn_dispatch_instrs fn_tbl str_tbl 1 [])
+        call2_disp = NativeFn 3 "__rg_dispatch_call2" 3 6 (build_call2_dispatch_instrs fn_tbl str_tbl 1 [])
+        binop_disp = NativeFn 4 "__rg_dispatch_binop" 3 6 (build_binop_dispatch_instrs fn_tbl str_tbl 1 [])
+        user_native_fns = lower_fndef_list fns str_tbl fn_tbl field_tbl
+        field_native_fns = lower_field_getter_fns field_tbl fn_names fn_tbl
+        all_native_fns = [main_wrapper, spawn_disp, call2_disp, binop_disp] :: user_native_fns :: field_native_fns
+        NativeProg 1 2 3 4 all_native_fns rodata_str
 
--- ── Bytecode (.rgc) & Native Executable Emission ────────────
+-- ── Bytecode (.rgc) & Direct Native ELF64 Executable Emission ─
 
 fn :: join_summaries [String] => String
       join_summaries []       =  ""
@@ -2614,42 +1897,33 @@ fn :: emit_rgc_after_check RProgram String  String      [RTypeError] => Int
         _ = echo (format_type_errors errs)
         0 - (type_err_count errs)
 
-fn :: build_native_executable String     String     => Int
-      build_native_executable input_path output_bin =
+fn :: emit_elf_for_target RNativeProg String        => [Int]
+      emit_elf_for_target nprog       "arm64"       =  emit_arm64_elf nprog
+      emit_elf_for_target nprog       "arm64-linux" =  emit_arm64_elf nprog
+      emit_elf_for_target nprog       "aarch64"     =  emit_arm64_elf nprog
+      emit_elf_for_target nprog       _             =  emit_x86_64_elf nprog
+
+fn :: build_native_target_executable String     String     String      => Int
+      build_native_target_executable input_path output_bin target_arch =
         raw_src = load_rg_source input_path
         toks = tokenize_src raw_src
         prog = parse_tokens toks
         errs = typecheck_program prog
-        build_native_after_check prog output_bin errs
+        build_native_target_after_check prog output_bin target_arch errs
 
-fn :: build_native_after_check RProgram String     [RTypeError] => Int
-      build_native_after_check prog     output_bin []           =
-        native_rs = emit_native_program prog
-        tmp_rs = output_bin + "_gen.rs"
-        tmp_bin = output_bin + "_tmp"
-        _ = write_file tmp_rs native_rs
-        cmd = "rustc --edition 2021 --crate-name ridgun_bin -C opt-level=2 -C panic=abort -C strip=symbols -A warnings " + tmp_rs + " -o " + tmp_bin + " && mv -f " + tmp_bin + " " + output_bin + "; _st=$?; rm -f " + tmp_rs + " " + tmp_bin + "; exit $_st"
-        shell_exec cmd
-      build_native_after_check _        _          errs         =
+fn :: build_native_target_after_check RProgram String String [RTypeError] => Int
+      build_native_target_after_check prog output_bin target_arch [] =
+        nprog = lower_program_to_native prog
+        elf_bytes = emit_elf_for_target nprog target_arch
+        write_elf64_executable output_bin elf_bytes
+      build_native_target_after_check _ _ _ errs =
         _ = echo (format_type_errors errs)
         1
+
+fn :: build_native_executable String     String     => Int
+      build_native_executable input_path output_bin =
+        build_native_target_executable input_path output_bin "x86_64-linux"
 
 fn :: build_native_fast_executable String     String     => Int
       build_native_fast_executable input_path output_bin =
-        raw_src = load_rg_source input_path
-        toks = tokenize_src raw_src
-        prog = parse_tokens toks
-        errs = typecheck_program prog
-        build_native_fast_after_check prog output_bin errs
-
-fn :: build_native_fast_after_check RProgram String     [RTypeError] => Int
-      build_native_fast_after_check prog     output_bin []           =
-        native_rs = emit_native_program prog
-        tmp_rs = output_bin + "_gen.rs"
-        tmp_bin = output_bin + "_tmp"
-        _ = write_file tmp_rs native_rs
-        cmd = "rustc --edition 2021 --crate-name ridgun_bin -C opt-level=1 -C panic=abort -A warnings " + tmp_rs + " -o " + tmp_bin + " && mv -f " + tmp_bin + " " + output_bin + "; _st=$?; rm -f " + tmp_rs + " " + tmp_bin + "; exit $_st"
-        shell_exec cmd
-      build_native_fast_after_check _        _          errs         =
-        _ = echo (format_type_errors errs)
-        1
+        build_native_target_executable input_path output_bin "x86_64-linux"

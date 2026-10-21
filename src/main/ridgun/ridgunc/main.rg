@@ -2,7 +2,9 @@
 -- src/main/ridgun/ridgunc/main.rg
 -- Self-Hosted Ridgun Compiler CLI Driver (ridgunc v0.9.3)
 -- Shared Library (`src/main/ridgun/lib/`): ast.rg, lexer.rg,
--- parser.rg, analyzer.rg, typecheck.rg, compiler.rg, vm.rg
+-- parser.rg, analyzer.rg, typecheck.rg, compiler.rg, vm.rg,
+-- elf64.rg, x86_64.rg, arm64.rg
+-- @implements FR-COMP-004
 -- ============================================================
 import ast
 import lexer
@@ -62,6 +64,11 @@ fn :: run_cli_build String     String     => ()
         status = build_native_executable input_path output_bin
         report_build_status input_path output_bin status
 
+fn :: run_cli_build_target String     String     String      => ()
+      run_cli_build_target input_path output_bin target_arch =
+        status = build_native_target_executable input_path output_bin target_arch
+        report_build_status input_path output_bin status
+
 fn :: report_build_status String     String     Int  => ()
       report_build_status input_path output_bin 0    =
         echo "[ridgunc build] Native ELF executable created: {input_path} -> {output_bin}"
@@ -70,7 +77,7 @@ fn :: report_build_status String     String     Int  => ()
 
 fn :: run_cli_run String     => ()
       run_cli_run input_path =
-        _ = shell_exec "mkdir -p target"
+        _ = sys_mkdir "target" 493
         status = build_native_fast_executable input_path "target/.ridgunc_run_bin"
         exec_built_run status
 
@@ -108,12 +115,12 @@ fn :: run_cli_help => ()
         echo "Usage: ridgunc <command> [options] <file.rg>"
         echo ""
         echo "Commands:"
-        echo "  run     <file.rg>              Compile and execute a Ridgun source file"
-        echo "  check   <file.rg>              Typecheck and analyze static strategies"
-        echo "  compile <file.rg> [-o out.rgc] Emit .rgc bytecode artifact"
-        echo "  build   <file.rg> [-o binary]  Build standalone native ELF executable"
-        echo "  version | -v | --version       Show compiler version"
-        echo "  help    | -h | --help          Show this help message"
+        echo "  run     <file.rg>                              Compile and execute a Ridgun source file"
+        echo "  check   <file.rg>                              Typecheck and analyze static strategies"
+        echo "  compile <file.rg> [-o out.rgc]                 Emit .rgc bytecode artifact"
+        echo "  build   <file.rg> [-o binary] [--target arch]  Build standalone native ELF64 executable"
+        echo "  version | -v | --version                       Show compiler version"
+        echo "  help    | -h | --help                          Show this help message"
 
 fn :: dispatch_cli [String]        => ()
       dispatch_cli []              =  run_self_hosted_pipeline_demo
@@ -127,6 +134,11 @@ fn :: dispatch_cli [String]        => ()
       dispatch_cli ("check":input_path:_) = run_cli_check input_path
       dispatch_cli ("compile":input_path:"-o":output_rgc:_) = run_cli_compile input_path output_rgc
       dispatch_cli ("compile":input_path:_) = run_cli_compile input_path "{input_path}c"
+      dispatch_cli ("build":"--target":target_arch:input_path:"-o":output_bin:_) = run_cli_build_target input_path output_bin target_arch
+      dispatch_cli ("build":"--target":target_arch:input_path:_) = run_cli_build_target input_path "a.out" target_arch
+      dispatch_cli ("build":input_path:"-o":output_bin:"--target":target_arch:_) = run_cli_build_target input_path output_bin target_arch
+      dispatch_cli ("build":input_path:"--target":target_arch:"-o":output_bin:_) = run_cli_build_target input_path output_bin target_arch
+      dispatch_cli ("build":input_path:"--target":target_arch:_) = run_cli_build_target input_path "a.out" target_arch
       dispatch_cli ("build":input_path:"-o":output_bin:_) = run_cli_build input_path output_bin
       dispatch_cli ("build":input_path:_) = run_cli_build input_path "a.out"
       dispatch_cli _               =  run_self_hosted_pipeline_demo

@@ -1,9 +1,9 @@
 ---
 id: TASK-0004
 title: Build full self-hosted Ridgun compiler and VM pipeline in src/main/ridgun/ (lexer, parser, typecheck, analyzer, compiler, vm)
-status: going-on
+status: completed
 created: 2026-10-16
-completed:
+completed: 2026-10-21
 requirements: []
 tests: []
 security: []

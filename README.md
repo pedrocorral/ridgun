@@ -2,7 +2,7 @@
 
 **A tabular, pure-by-default functional & systems programming language built for massive parallelism, symbolic tensor algebra, and deterministic zero-GC memory management.**
 
-Ridgun combines the declarative clarity of tabular functional programming with native systems performance. Its self-hosted compiler (**`ridgunc`**) and project manager/formatter (**`stable`**) are written 100% in Ridgun itself (`src/main/ridgun/`) and produce standalone native Linux ELF executables (~350 KB) with zero Garbage Collector pauses.
+Ridgun combines the declarative clarity of tabular functional programming with native systems performance. Its self-hosted compiler (**`ridgunc`**) and project manager/formatter (**`stable`**) are written **100% in pure Ridgun** (`src/main/ridgun/`, zero Rust/C code or external compiler dependencies) and emit standalone, statically linked Linux ELF64 executables (`x86_64` and `ARM64` / Raspberry Pi) directly to disk with zero Garbage Collector pauses.
 
 ---
 
@@ -39,10 +39,11 @@ Learn Ridgun from scratch—from your first tabular function to parallel DAGs, s
 # Build all project targets into target/
 ./target/stable built
 
-# Compile or run a single .rg file directly with ridgunc
+# Compile or run a single .rg file directly with ridgunc (x86_64 or ARM64 Raspberry Pi)
 ./target/ridgunc check my_program.rg
 ./target/ridgunc run my_program.rg
 ./target/ridgunc build my_program.rg -o my_program
+./target/ridgunc build --target arm64-linux my_program.rg -o my_program_arm64
 ```
 
 ---
@@ -151,12 +152,17 @@ Ridgun Source (.rg) + build.rg
               │
               ▼
   ┌────────────────────────┐
-  │       compiler.rg      │  Call-Graph Tree-Shaking, TCO (`loop`), `RMM1` & `RMM2` Memory Codegen
+  │       compiler.rg      │  Call-Graph Tree-Shaking, TCO (`loop`), `RMM1` & `RMM2` Lowering
   └─────┬────────────┬─────┘
         │            │
         ▼            ▼
-  Native ELF    Bytecode (`.rgc`)
- (~350 KB AOT)   (`vm.rg` Stack VM)
+  ┌───────────┐    Bytecode (`.rgc`)
+  │ x86_64.rg │   (`vm.rg` Stack VM)
+  │ arm64.rg  │
+  │ elf64.rg  │
+  └─────┬─────┘
+        ▼
+  Native ELF64 (`x86_64` / `ARM64`)
 ```
 
 ---
@@ -176,7 +182,10 @@ ridgun/
 │   │   │   ├── parser.rg      # Recursive-descent parser & mixfix normalizer
 │   │   │   ├── typecheck.rg   # Typechecker, A..Z unification & tensor shape checker
 │   │   │   ├── analyzer.rg    # Static parallel DAG & strategy analyzer
-│   │   │   ├── compiler.rg    # RMM1/RMM2 analyzer, AOT native emitter & .rgc compiler
+│   │   │   ├── compiler.rg    # RMM1/RMM2 analyzer, native IR lowerer & .rgc compiler
+│   │   │   ├── elf64.rg       # Direct Linux ELF64 executable binary emitter
+│   │   │   ├── x86_64.rg      # Pure-Ridgun 2-pass x86_64 machine-code assembler & kernel
+│   │   │   ├── arm64.rg       # Pure-Ridgun 2-pass ARM64 (AArch64 / Raspberry Pi) assembler
 │   │   │   ├── formatter.rg   # Canonical tabular code formatter (`stable format`)
 │   │   │   └── vm.rg          # Meta-circular stack virtual machine
 │   │   ├── ridgunc/main.rg    # Self-hosted `ridgunc` CLI entry point
@@ -187,7 +196,7 @@ ridgun/
 │   ├── lang/spec.md           # Formal language specification
 │   ├── etc/cmm_architecture.md# RMM1 & RMM2 memory management architecture
 │   └── requirements/          # Functional requirements (FR-COMP-*, FR-TOOL-*, FR-VM-*)
-└── target/                    # Compiled self-hosted binaries (`ridgunc`, `stable`)
+└── target/                    # Compiled self-hosted ELF64 binaries (`ridgunc`, `stable`)
 ```
 
 ---
@@ -198,9 +207,10 @@ ridgun/
 |---|---|
 | [**Language Specification (`docs/lang/spec.md`)**](docs/lang/spec.md) | Complete syntax, type system, unified `=` blocks, `|` / `|.` decision trees, `||` DAGs, `mut`, ADTs, tensors, and canonical formatting rules |
 | [**RMM Memory Architecture (`docs/etc/cmm_architecture.md`)**](docs/etc/cmm_architecture.md) | Detailed design of `RMM1` (Linear & Conditional CMM) and `RMM2` (Assignment & Cascaded Structure Counting) |
+| [**FR-COMP-004 (`docs/requirements/functional/compiler/`)**](docs/requirements/functional/compiler/FR-COMP-004-native-elf64-codegen-x86-64-and-arm64.md) | Requirement specification for 100% pure-Ridgun native ELF64 machine-code generation (`x86_64` and `ARM64` Raspberry Pi) without Rust or `rustc` |
 | [**FR-COMP-003 (`docs/requirements/functional/compiler/`)**](docs/requirements/functional/compiler/FR-COMP-003-unified-equals-grammar-guards-parallel-pipes-and-mut.md) | Requirement specification for unified `=` grammar, `|.` / `||.` closers, `mut`, and lowercase logical operators |
 | [**FR-COMP-002 (`docs/requirements/functional/compiler/`)**](docs/requirements/functional/compiler/FR-COMP-002-compiled-memory-management-cmm.md) | Requirement specification for `RMM1` and `RMM2` deterministic memory management |
-| [**Roadmap & Active Tasks (`docs/road-map/INDEX.md`)**](docs/road-map/INDEX.md) | Current session state, completed milestones, and backlog (including native `x86_64` & `ARM64` Raspberry Pi ELF64 backend in [`TASK-0006`](docs/road-map/pending/backlog/TASK-0006-implement-native-x86-64-and-arm64-elf64-compiler-backend.md)) |
+| [**Roadmap & Active Tasks (`docs/road-map/INDEX.md`)**](docs/road-map/INDEX.md) | Current session state, completed milestones, and backlog |
 
 ---
 
