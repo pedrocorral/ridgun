@@ -1964,7 +1964,7 @@ fn :: emit_rgc_payload RProgram String  => String
         fn_count = count_fn_defs prog
         ty_count = count_type_defs prog
         summaries = join_summaries (analyze_rprogram prog)
-        "RGC1\n-- SELF_HOSTED_COMPILER: ridgunc v0.9.7\n-- FUNCTIONS: {fn_count}\n-- TYPES: {ty_count}\n{summaries}{raw_src}"
+        "RGC1\n-- SELF_HOSTED_COMPILER: ridgunc v0.9.8\n-- FUNCTIONS: {fn_count}\n-- TYPES: {ty_count}\n{summaries}{raw_src}"
 
 fn :: emit_rgc_file String     String      => Int
       emit_rgc_file input_path output_path =
@@ -1988,7 +1988,7 @@ fn :: emit_rglib_payload RProgram String  => String
         fn_count = count_fn_defs prog
         ty_count = count_type_defs prog
         summaries = join_summaries (analyze_rprogram prog)
-        "-- RGLIB1\n-- SELF_HOSTED_COMPILER: ridgunc v0.9.7\n-- FUNCTIONS: {fn_count}\n-- TYPES: {ty_count}\n{summaries}{raw_src}"
+        "-- RGLIB1\n-- SELF_HOSTED_COMPILER: ridgunc v0.9.8\n-- FUNCTIONS: {fn_count}\n-- TYPES: {ty_count}\n{summaries}{raw_src}"
 
 fn :: emit_rglib_file String     String      => Int
       emit_rglib_file input_path output_path =

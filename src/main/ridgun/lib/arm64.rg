@@ -360,6 +360,9 @@ fn :: arm64_cmp_reg Int Int => [Int]
 fn :: arm64_cset_eq Int => [Int]
       arm64_cset_eq rd  =  u32_le (2594117600 + rd)
 
+fn :: arm64_cset_ne Int => [Int]
+      arm64_cset_ne rd  =  u32_le (2594119648 + rd)
+
 fn :: arm64_rt_slot Int => [Int]
       -- rt_0 (_start): branch to 0x4011C0 (+112 words)
       arm64_rt_slot 0   =  (arm64_b 4198848 4198400) :: arm64_nop
@@ -383,14 +386,58 @@ fn :: arm64_rt_slot Int => [Int]
       arm64_rt_slot 9   =  (arm64_str_base 1 0) :: arm64_ret
       -- rt_10 (rg_cmm_drop): STR XZR, [X0] ; RET
       arm64_rt_slot 10  =  (arm64_str_base 31 0) :: arm64_ret
+      -- rt_11 (rg_load_real_lit): NOP ; RET (X0 holds rodata ptr)
+      arm64_rt_slot 11  =  arm64_nop :: arm64_ret
+      -- rt_12 (rg_load_str_lit): NOP ; RET (X0 holds rodata ptr)
+      arm64_rt_slot 12  =  arm64_nop :: arm64_ret
+      -- rt_13 (rg_load_adt0): NOP ; RET (X0 holds tag ptr)
+      arm64_rt_slot 13  =  arm64_nop :: arm64_ret
+      -- rt_14 (rg_make_adt): MOV X0, X2 ; RET
+      arm64_rt_slot 14  =  (arm64_mov_reg 0 2) :: arm64_ret
+      -- rt_15 (rg_make_list): NOP ; RET (X0 holds list slots ptr)
+      arm64_rt_slot 15  =  arm64_nop :: arm64_ret
+      -- rt_16 (rg_make_tuple): NOP ; RET (X0 holds tuple slots ptr)
+      arm64_rt_slot 16  =  arm64_nop :: arm64_ret
+      -- rt_17 (rg_make_tensor): NOP ; RET (X0 holds tensor slots ptr)
+      arm64_rt_slot 17  =  arm64_nop :: arm64_ret
+      -- rt_18 (rg_str_interp): LDR X0, [X0] ; RET
+      arm64_rt_slot 18  =  (arm64_ldr_base 0 0) :: arm64_ret
+      -- rt_19 (rg_pack_seq): NOP ; RET (X0 holds frame ptr)
+      arm64_rt_slot 19  =  arm64_nop :: arm64_ret
       -- rt_20 (rg_as_bool): UBFX X0, X0, #1, #1 ; RET
       arm64_rt_slot 20  =  (u32_le 3544253440) :: arm64_ret
       -- rt_21 (rg_match_int): branch to 0x401220 (+94 words from slot 21)
       arm64_rt_slot 21  =  (arm64_b 4198944 4198568) :: arm64_nop
+      -- rt_22 (rg_match_real): CMP X0, X1 ; CSET X0, EQ (branch to 0x4012CC)
+      arm64_rt_slot 22  =  (arm64_b 4199116 4198576) :: arm64_nop
+      -- rt_23 (rg_match_str): CMP X0, X1 ; CSET X0, EQ (branch to 0x4012CC)
+      arm64_rt_slot 23  =  (arm64_b 4199116 4198584) :: arm64_nop
       -- rt_24 (rg_match_bool): branch to 0x401230 (+92 words from slot 24)
       arm64_rt_slot 24  =  (arm64_b 4198960 4198592) :: arm64_nop
+      -- rt_25 (rg_match_empty): CMP X0, XZR ; CSET X0, EQ (branch to 0x4012D8)
+      arm64_rt_slot 25  =  (arm64_b 4199128 4198600) :: arm64_nop
+      -- rt_26 (rg_match_nonempty): CMP X0, XZR ; CSET X0, NE (branch to 0x4012E4)
+      arm64_rt_slot 26  =  (arm64_b 4199140 4198608) :: arm64_nop
+      -- rt_27 (rg_list_head): LDR X0, [X0] ; RET
+      arm64_rt_slot 27  =  (arm64_ldr_base 0 0) :: arm64_ret
+      -- rt_28 (rg_list_tail): ADD X0, X0, #8 ; RET
+      arm64_rt_slot 28  =  (u32_le 2432698368) :: arm64_ret
+      -- rt_29 (rg_match_tuple): MOVZ X0, #1 ; RET
+      arm64_rt_slot 29  =  (u32_le (arm64_movz 0 1 0)) :: arm64_ret
+      -- rt_30 (rg_tuple_get): LDR X0, [X0, X1, LSL #3] ; RET
+      arm64_rt_slot 30  =  (u32_le 4167113216) :: arm64_ret
+      -- rt_31 (rg_match_adt): CMP X0, X1 ; CSET X0, EQ (branch to 0x4012CC)
+      arm64_rt_slot 31  =  (arm64_b 4199116 4198648) :: arm64_nop
+      -- rt_32 (rg_adt_field): LDR X0, [X0, X1, LSL #3] ; RET
+      arm64_rt_slot 32  =  (u32_le 4167113216) :: arm64_ret
+      -- rt_33 (rg_adt_set): STR X2, [X0, X1, LSL #3] ; RET
+      arm64_rt_slot 33  =  (u32_le 4162918914) :: arm64_ret
       -- rt_34 (rg_not): EOR X0, X0, #2 ; RET
       arm64_rt_slot 34  =  (u32_le 3531538432) :: arm64_ret
+      -- rt_35 (rg_out): MOVZ X0, #0 ; RET
+      arm64_rt_slot 35  =  (u32_le (arm64_movz 0 0 0)) :: arm64_ret
+      -- rt_36 (rg_echo): MOVZ X0, #0 ; RET
+      arm64_rt_slot 36  =  (u32_le (arm64_movz 0 0 0)) :: arm64_ret
       -- rt_37 (rg_bin_op): branch to 0x401240 (+70 words from slot 37)
       arm64_rt_slot 37  =  (arm64_b 4198976 4198696) :: arm64_nop
       -- rt_55 (rg_call_builtin / PAL dispatch): branch to 0x401270 (+46 words from slot 55)
@@ -446,10 +493,25 @@ fn :: arm64_rt_slot55_pal_dispatch => [Int]
       arm64_rt_slot55_pal_dispatch =
         (u32_le 4043380767) :: (u32_le 1409286337) :: (u32_le (arm64_movz 8 172 0)) :: arm64_svc0 :: (arm64_lsl_1 0 0) :: (arm64_orr_1 0 0) :: arm64_ret :: (u32_le 4043387935) :: (u32_le 1409286401) :: (arm64_ldr_base 0 1) :: (arm64_asr_1 0 0) :: (u32_le (arm64_movz 8 57 0)) :: arm64_svc0 :: (arm64_lsl_1 0 0) :: (arm64_orr_1 0 0) :: arm64_ret :: (u32_le 4043396127) :: (u32_le 1409286273) :: (arm64_ldr_base 0 1) :: (arm64_str_base 31 1) :: arm64_ret :: (u32_le (arm64_movz 0 0 0)) :: arm64_ret
 
+-- 0x4012CC (Slots 22/23/31: rg_match_ptr_eq, 3 words = 12 bytes): CMP X0, X1 ; CSET X0, EQ ; RET
+fn :: arm64_rt_slot22_match_ptr_eq => [Int]
+      arm64_rt_slot22_match_ptr_eq =
+        (arm64_cmp_reg 0 1) :: (arm64_cset_eq 0) :: arm64_ret
+
+-- 0x4012D8 (Slot 25: rg_match_empty, 3 words = 12 bytes): CMP X0, XZR ; CSET X0, EQ ; RET
+fn :: arm64_rt_slot25_match_empty => [Int]
+      arm64_rt_slot25_match_empty =
+        (arm64_cmp_reg 0 31) :: (arm64_cset_eq 0) :: arm64_ret
+
+-- 0x4012E4 (Slot 26: rg_match_nonempty, 3 words = 12 bytes): CMP X0, XZR ; CSET X0, NE ; RET
+fn :: arm64_rt_slot26_match_nonempty => [Int]
+      arm64_rt_slot26_match_nonempty =
+        (arm64_cmp_reg 0 31) :: (arm64_cset_ne 0) :: arm64_ret
+
 fn :: build_arm64_rt_kernel => [Int]
       build_arm64_rt_kernel =
         jt = arm64_rt_stub_table 0 []
-        jt :: arm64_rt_start_code :: arm64_rt_slot1_init_frame :: arm64_rt_slot3_tco_copy :: arm64_rt_slot21_match_int :: arm64_rt_slot24_match_bool :: arm64_rt_slot37_bin_op :: arm64_rt_slot55_pal_dispatch
+        jt :: arm64_rt_start_code :: arm64_rt_slot1_init_frame :: arm64_rt_slot3_tco_copy :: arm64_rt_slot21_match_int :: arm64_rt_slot24_match_bool :: arm64_rt_slot37_bin_op :: arm64_rt_slot55_pal_dispatch :: arm64_rt_slot22_match_ptr_eq :: arm64_rt_slot25_match_empty :: arm64_rt_slot26_match_nonempty
 
 -- ── Public ARM64 ELF64 Image Builder ─────────────────────────
 

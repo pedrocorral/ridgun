@@ -8,11 +8,25 @@ import test
 fn :: lstat kind (Bool, String, Int, Int, Int, String, String, Int, String) => String
       lstat kind (_, k, _, _, _, _, _, _, _) = k
 
+fn :: classify token String  => String
+      classify token ""      =  "empty"
+      classify token "alpha" =  "first"
+      classify token "beta"  =  "second"
+      classify token s       =  "other:{s}"
+
 fn :: main => ()
       main =
         echo "=== String Equality ==="
         assert equals "hello" "hello"
         assert equals "world" "world"
+        assert equals ("rid" + "gun") "ridgun"
+        name = "phase2"
+        slot_c = 37
+        assert equals "runtime:{name}:{slot_c}" "runtime:phase2:37"
+        assert equals (classify token "") "empty"
+        assert equals (classify token "alpha") "first"
+        assert equals (classify token "beta") "second"
+        assert equals (classify token "gamma") "other:gamma"
         echo "=== Escape Sequences ==="
         assert equals "tab\there" "tab\there"
         assert equals "line1\nline2" "line1\nline2"
