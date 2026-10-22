@@ -8,6 +8,7 @@
 -- @implements FR-COMP-005
 -- @implements FR-COMP-006
 -- @implements FR-COMP-007
+-- @implements FR-COMP-008
 -- ============================================================
 import ast
 import lexer
@@ -121,7 +122,7 @@ fn :: finish_tensor_type (String, [RToken]) => (String, [RToken])
 fn :: parse_type_tok [RToken]           => (String, [RToken])
       parse_type_tok (TokLBracket:rest) =
         p = parse_type_tok rest
-        check_variadic_suffix (parse_type_list_close p)
+        check_variadic_suffix (parse_type_list_rest p False)
       parse_type_tok (TokLParen:rest)   =
         check_variadic_suffix (parse_type_paren rest)
       parse_type_tok ((TokIdent s):TokLParen:rest)
@@ -132,9 +133,29 @@ fn :: parse_type_tok [RToken]           => (String, [RToken])
       parse_type_tok (_:rest)           =  ("Int", rest)
       parse_type_tok []                 =  ("()", [])
 
-fn :: parse_type_list_close (String, [RToken]) => (String, [RToken])
-      parse_type_list_close (inner, (TokRBracket:rest)) = ("[" + inner + "]", rest)
-      parse_type_list_close (inner, rest)      =  ("[" + inner + "]", rest)
+fn :: parse_type_list_rest (String, [RToken]) Bool     => (String, [RToken])
+      parse_type_list_rest (acc, (TokComma:rest)) _    =
+        p2 = parse_type_tok rest
+        merge_type_list acc p2
+      parse_type_list_rest (acc, ((TokIdent s):rest)) is_tup
+        | is_upper_ident s = merge_type_list acc (parse_type_tok ([TokIdent s] :: rest))
+        | otherwise = finish_type_list acc ([TokIdent s] :: rest) is_tup
+      parse_type_list_rest (acc, (TokLBracket:rest)) _ =
+        p2 = parse_type_tok ([TokLBracket] :: rest)
+        merge_type_list acc p2
+      parse_type_list_rest (acc, (TokLParen:rest)) _   =
+        p2 = parse_type_tok ([TokLParen] :: rest)
+        merge_type_list acc p2
+      parse_type_list_rest (acc, (TokRBracket:rest)) is_tup = finish_type_list acc rest is_tup
+      parse_type_list_rest (acc, rest)               is_tup = finish_type_list acc rest is_tup
+
+fn :: merge_type_list String (String, [RToken]) => (String, [RToken])
+      merge_type_list acc    (next_ty, rest)    =
+        parse_type_list_rest (acc + ", " + next_ty, rest) True
+
+fn :: finish_type_list String [RToken] Bool  => (String, [RToken])
+      finish_type_list acc    rest     True  =  ("[(" + acc + ")]", rest)
+      finish_type_list acc    rest     False =  ("[" + acc + "]", rest)
 
 fn :: parse_type_paren [RToken]         => (String, [RToken])
       parse_type_paren (TokRParen:rest) =  ("()", rest)
@@ -152,8 +173,13 @@ fn :: parse_type_tuple_rest (String, [RToken]) => (String, [RToken])
       parse_type_tuple_rest (acc, (TokArrow:rest)) =
         p_ret = parse_type_tok rest
         merge_type_fn acc p_ret
-      parse_type_tuple_rest (acc, ((TokIdent s):rest)) =
-        p2 = parse_type_tok ([TokIdent s] :: rest)
+      parse_type_tuple_rest (acc, ((TokIdent s):rest))
+        | is_upper_ident s = merge_type_tuple acc (parse_type_tok ([TokIdent s] :: rest))
+      parse_type_tuple_rest (acc, (TokLBracket:rest)) =
+        p2 = parse_type_tok ([TokLBracket] :: rest)
+        merge_type_tuple acc p2
+      parse_type_tuple_rest (acc, (TokLParen:rest)) =
+        p2 = parse_type_tok ([TokLParen] :: rest)
         merge_type_tuple acc p2
       parse_type_tuple_rest (acc, (TokRParen:rest)) = ("(" + acc + ")", rest)
       parse_type_tuple_rest (acc, rest)        =  ("(" + acc + ")", rest)
@@ -169,16 +195,30 @@ fn :: merge_type_tuple String (String, [RToken]) => (String, [RToken])
 fn :: parse_return_types [RToken] => (String, [RToken])
       parse_return_types ts       =
         p1 = parse_type_tok ts
-        parse_return_types_more p1
+        parse_return_types_more p1 False
 
-fn :: parse_return_types_more (String, [RToken]) => (String, [RToken])
-      parse_return_types_more (first_ty, ((TokIdent s):rest))
-        | is_upper_ident s = combine_return_types first_ty (parse_type_tok ([TokIdent s] :: rest))
-        | otherwise = (first_ty, [TokIdent s] :: rest)
-      parse_return_types_more res                =  res
+fn :: parse_return_types_more (String, [RToken]) Bool     => (String, [RToken])
+      parse_return_types_more (acc, (TokComma:rest)) _    =
+        p2 = parse_type_tok rest
+        merge_return_types acc p2
+      parse_return_types_more (acc, ((TokIdent s):rest)) is_tup
+        | is_upper_ident s = merge_return_types acc (parse_type_tok ([TokIdent s] :: rest))
+        | otherwise = finish_return_types acc ([TokIdent s] :: rest) is_tup
+      parse_return_types_more (acc, (TokLBracket:rest)) _ =
+        p2 = parse_type_tok ([TokLBracket] :: rest)
+        merge_return_types acc p2
+      parse_return_types_more (acc, (TokLParen:rest)) _   =
+        p2 = parse_type_tok ([TokLParen] :: rest)
+        merge_return_types acc p2
+      parse_return_types_more (acc, rest)               is_tup = finish_return_types acc rest is_tup
 
-fn :: combine_return_types String (String, [RToken]) => (String, [RToken])
-      combine_return_types t1     (t2, rest)         =  ("(" + t1 + ", " + t2 + ")", rest)
+fn :: merge_return_types String (String, [RToken]) => (String, [RToken])
+      merge_return_types acc    (next_ty, rest)    =
+        parse_return_types_more (acc + ", " + next_ty, rest) True
+
+fn :: finish_return_types String [RToken] Bool  => (String, [RToken])
+      finish_return_types acc    rest     True  =  ("(" + acc + ")", rest)
+      finish_return_types acc    rest     False =  (acc, rest)
 
 fn :: parse_param_types [RToken]           => ([String], [RToken])
       parse_param_types (TokFatArrow:rest) =  ([], [TokFatArrow] :: rest)

@@ -144,16 +144,17 @@ Y para trabajar con el sistema operativo:
 
 | Primitiva | Firma | Qué hace |
 |---|---|---|
-| `cli_args` | `=> [String]` | Argumentos de línea de comandos (`argv`). |
-| `read_file` / `write_file` | `String => String` / `String String => ()` | Lectura y escritura íntegra de archivos en disco. |
-| `read_bytes` / `write_bytes` | `String => [Int]` / `String [Int] => ()` | Lectura y escritura binaria exacta byte a byte (`0..255`). |
-| `list_dir` / `file_lstat` | `String => [String]` / `String => ...` | Listado de directorios e inspección de metadatos POSIX (`lstat`). |
-| `sha256_file` / `sha256_str` | `String => String` | Hash criptográfico SHA-256 nativo. |
-| `sys_exec` / `shell_exec` | `... => Int` | Ejecución de procesos del sistema operativo. |
-| `sys_getcwd` / `sys_chdir` | `=> String` / `String => Int` | Consultar o cambiar el directorio de trabajo. |
-| `sys_getenv` / `sys_setenv` | `String => String` / `String String => Int` | Variables de entorno del proceso. |
-| `sys_getuid` / `sys_getgid` | `=> Int` | UID y GID reales del proceso (`doas`, herramientas de seguridad). |
-| `sys_exit` | `Int => ()` | Terminar el proceso con código de salida. |
+| `cli args` | `=> [String]` | Argumentos de línea de comandos (`argv`). |
+| `read file` / `write file` | `String => String` / `String String => ()` | Lectura y escritura íntegra de archivos en disco. |
+| `read bytes` / `write bytes` | `String => [Int]` / `String [Int] => ()` | Lectura y escritura binaria exacta byte a byte (`0..255`). |
+| `list dir` / `file lstat` | `String => [String]` / `String => ...` | Listado de directorios e inspección de metadatos POSIX (`lstat`). |
+| `sha256 file` / `sha256 str` | `String => String` | Hash criptográfico SHA-256 nativo. |
+| `sys exec` / `shell exec` | `... => Int` | Ejecución de procesos del sistema operativo. |
+| `sys getcwd` / `sys chdir` | `=> String` / `String => Int` | Consultar o cambiar el directorio de trabajo. |
+| `sys getenv` / `sys setenv` | `String => String` / `String String => Int` | Variables de entorno del proceso. |
+| `sys getuid` / `sys getgid` | `=> Int` | UID y GID reales del proceso (`doas`, herramientas de seguridad). |
+| `sys open mode` / `sys close` / `sys poll` | `String String => Int` / `Int => Int` / `Int Int Int => Int` | Descriptores PAL multiplataforma y `poll` acotado por `with timeout`. |
+| `sys exit` | `Int => ()` | Terminar el proceso con código de salida. |
 
 ---
 
@@ -166,50 +167,50 @@ Vamos a unir todo lo aprendido desde el Capítulo 01 hasta aquí en un programa 
 type Metricas = archivo: String, lineas: Int, bytes: Int
 
 -- 2. Contamos saltos de línea (código ASCII 10) con recursión de cola TCO (Capítulo 04)
-fn :: contar_saltos String Int Int Int => Int
-      contar_saltos texto  pos fin acum =
-        | pos >= fin                   = acum
-        | (str_char_at texto pos) == 10 = contar_saltos texto (pos + 1) fin (acum + 1)
-        | otherwise                    = contar_saltos texto (pos + 1) fin acum
+fn :: contar saltos String Int Int Int => Int
+      contar saltos texto  pos fin acum =
+        | pos >= fin                    = acum
+        | (str char at texto pos) == 10 = contar saltos texto (pos + 1) fin (acum + 1)
+        | otherwise                     = contar saltos texto (pos + 1) fin acum
 
-fn :: numero_de_lineas String => Int
-      numero_de_lineas texto  =  contar_saltos texto 0 (str_len texto) 0
+fn :: numero de lineas String => Int
+      numero de lineas texto  =  contar saltos texto 0 (str len texto) 0
 
 -- 3. Analizamos un archivo y devolvemos su estructura Metricas
-fn :: analizar_archivo String => Metricas
-      analizar_archivo ruta   =
-        contenido = read_file ruta
-        || numero_de_lineas contenido -> n_lineas
-        || str_len contenido          -> n_bytes ||.
+fn :: analizar archivo String => Metricas
+      analizar archivo ruta   =
+        contenido = read file ruta
+        || numero de lineas contenido -> n_lineas
+        || str len contenido          -> n_bytes ||.
         Metricas ruta n_lineas n_bytes
 
 -- 4. Formateamos cada fila y sumamos totales con `fold` y `||` (Capítulo 07)
-fn :: formatear_metrica Metricas => String
-      formatear_metrica m        =  "{lineas m}\t{bytes m}\t{archivo m}"
+fn :: formatear metrica Metricas => String
+      formatear metrica m        =  "{lineas m}\t{bytes m}\t{archivo m}"
 
-fn :: sumar_lineas Int Metricas => Int
-      sumar_lineas acc m        =  acc + (lineas m)
+fn :: sumar lineas Int Metricas => Int
+      sumar lineas acc m        =  acc + (lineas m)
 
-fn :: sumar_bytes Int Metricas => Int
-      sumar_bytes acc m        =  acc + (bytes m)
+fn :: sumar bytes Int Metricas => Int
+      sumar bytes acc m        =  acc + (bytes m)
 
-fn :: generar_informe [String] => String
-      generar_informe rutas    =
-        metricas = ||map analizar_archivo rutas
-        || map formatear_metrica metricas -> filas
-        || fold sumar_lineas 0 metricas   -> total_l
-        || fold sumar_bytes 0 metricas    -> total_b ||.
+fn :: generar informe [String] => String
+      generar informe rutas    =
+        metricas = ||map analizar archivo rutas
+        || map formatear metrica metricas -> filas
+        || fold sumar lineas 0 metricas   -> total_l
+        || fold sumar bytes 0 metricas    -> total_b ||.
         "{filas}\nTotal: {total_l} líneas, {total_b} bytes"
 
 fn :: main => ()
       main =
-        echo (generar_informe ["README.md", "AGENTS.md"])
+        echo (generar informe ["README.md", "AGENTS.md"])
 ```
 
 Párate un segundo a mirar esas ~40 líneas de código:
 - No hay ni un solo `null`, ni una excepción descontrolada, ni un `Mutex`.
-- `contar_saltos` se compila a un `loop` nativo con 0 bytes de pila gracias al TCO automático.
-- `||map analizar_archivo rutas` procesa los archivos en paralelo en todos los núcleos de tu CPU, y el bloque `||` calcula simultáneamente las filas formateadas, el total de líneas y el total de bytes.
+- `contar saltos` se compila a un `loop` nativo con 0 bytes de pila gracias al TCO automático.
+- `||map analizar archivo rutas` procesa los archivos en paralelo en todos los núcleos de tu CPU, y el bloque `||` calcula simultáneamente las filas formateadas, el total de líneas y el total de bytes.
 - La memoria temporal se libera determinísticamente mediante **`RMM1`/`RMM2`**.
 - Y cuando ejecutas `ridgunc build rg_wc.rg -o rg-wc`, obtienes un binario nativo autónomo de ~350 KB listo para copiar a `/usr/local/bin`.
 

@@ -244,16 +244,35 @@ op :: Int Int invariant -> Int Int
 
 ### Type Signatures
 
-Type signatures appear in declarations after `fn ::` or `op ::`:
+Type signatures appear in declarations after `fn ::` or `op ::` (or without a prefix):
 
 ```
-fn :: <name> <type1> <type2> ... => <return_type>
-op :: <words and types mixed> => <return_type>
+fn :: <name> <type1> <type2> ... => <return_type1> <return_type2> ...
+op :: <words and types mixed> => <return_type1> <return_type2> ...
 ```
 
-- Parameters are positional; types appear where parameters are expected
-- Multiple return values are comma-separated: `=> res, res`
-- The `=>` arrow separates input types from the return type
+- Parameters are positional; types appear where parameters are expected.
+- **Unified Tuple and Sequence Type Syntax (`FR-COMP-008`)**:
+  - In Ridgun, an argument list `T1 T2 ... Tn` and a tuple `(T1, T2, ..., Tn)` represent the same underlying compound type: an ordered, fixed-size sequence of typed values (`seq`).
+  - Therefore, space-separated types and comma-separated tuple types are **100% interchangeable** across return types, list brackets, and parenthesized tuples:
+    - **Return types after `=>` / `->`**:
+      ```ridgun
+      fn :: parse header String => Int Int [String String] String
+      -- 100% equivalent to:
+      fn :: parse header String => (Int, Int, [(String, String)], String)
+      ```
+    - **Lists of tuples (`[T1 T2 ... Tn]`)**:
+      ```ridgun
+      [String String]        -- equivalent to [(String, String)]
+      [Int String Bool]      -- equivalent to [(Int, String, Bool)]
+      ```
+    - **Parenthesized tuples (`(T1 T2 ... Tn)`)**:
+      ```ridgun
+      fn :: fst (A B) => A
+            fst (a, _) =  a
+      ```
+  - **Why this has zero syntactic ambiguity**: Unlike Haskell/ML (where juxtaposition `Maybe Int` denotes type application), parameterized types in Ridgun use explicit parentheses (`Tensor(Float, 3, 3)`) and lists use brackets (`[T]`). Moreover, every type token starts with an uppercase letter (`A`..`Z`, `Int`, `String`), `[`, or `(`, while function and operator words are lowercase. Thus, `T1 T2` never conflicts with type constructors or operator keywords.
+- The `=>` (or `->`) arrow separates input types from the return type.
 
 ### Built-in Types
 

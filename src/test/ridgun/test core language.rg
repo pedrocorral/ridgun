@@ -295,6 +295,21 @@ fn :: rmm2 rebind self trace => (Int, Int)
         len_xs = list len xs
         (len_xs, live_mid)
 
+-- 4) FR-COMP-008: Unified Space-Separated Tuple & Sequence Type Signatures:
+fn :: parse header packet String => Int Int [String String] String
+      parse header packet tag    =  (200, 2, [("Host", "ridgun.org"), ("X-Tag", tag)], "OK")
+
+fn :: lookup header [String String] String => String
+      lookup header []              _      =  "missing"
+      lookup header ((k, v):rest)   key
+        | k == key = v
+        | otherwise = lookup header rest key
+
+fn :: unpack nested tuple (Int [String String] String) => String
+      unpack nested tuple (code, hdrs, msg)            =
+        host_val = lookup header hdrs "Host"
+        "{code}:{host_val}:{msg}"
+
 fn :: main => ()
       main =
         echo "=== Core Language, ADTs, Mixfix, Variadics & Higher-Order Ops ==="
@@ -391,4 +406,9 @@ fn :: main => ()
         assert equals (fold pair sum 10 20) 31
         assert equals (tco list accum 5 []) [1, 2, 3, 4, 5]
         assert equals (rmm2 rebind self trace) (3, 1)
+        echo "=== FR-COMP-008: Unified Space-Separated Tuple & Sequence Type Signatures ==="
+        pkt = parse header packet "v0.9.9"
+        assert equals pkt (200, 2, [("Host", "ridgun.org"), ("X-Tag", "v0.9.9")], "OK")
+        assert equals (lookup header [("Host", "ridgun.org"), ("Mode", "native")] "Mode") "native"
+        assert equals (unpack nested tuple (201, [("Host", "ridgun.org")], "CREATED")) "201:ridgun.org:CREATED"
         echo "=== All core language tests passed ==="

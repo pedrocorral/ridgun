@@ -2,13 +2,13 @@
 name: implement-stable-project
 description: Configure, scaffold, build, and extend Ridgun projects with `stable` (`build.rg`), including executable and reusable library compilation (`.rglib` and ELF64 `.so`), custom `fn :: task` commands, `plugins/*.rg` framework extensions, dependency management, and canonical formatting; use whenever working with `stable`, `build.rg`, libraries, or plugins.
 ---
-# implement-stable-project (`v0.9.5`)
+# implement-stable-project (`v0.9.9`)
 
 Reading budget: `harness/skills/implement-stable-project/references/build_cheatsheet.rg`, `harness/skills/implement-stable-project/references/plugin_cheatsheet.rg`, and the project's `build.rg`.
 
 ---
 
-## 1. Overview of `stable` (`v0.9.5`)
+## 1. Overview of `stable` (`v0.9.9`)
 `stable` (`src/main/ridgun/stable/main.rg`) is Ridgun's 100% self-hosted project manager, build orchestrator, test runner, dependency manager, canonical tabular formatter, and extensible plugin host.
 - **No external config formats**: `stable` uses `build.rg` (pure Ridgun functions) instead of TOML, YAML, or JSON.
 - **Multicore parallel execution**: `stable check`, `stable test`, and `stable format` process files concurrently via Ridgun's `||map`.
@@ -78,9 +78,9 @@ A Ridgun library module (`src/main/ridgun/lib/<name>.rg` or standalone `<name>.r
   ```
 - **With `ridgunc` directly**:
   ```bash
-  ridgunc build --lib geom_lib.rg -o target/geom_lib.rglib
-  ridgunc build --so  geom_lib.rg -o target/libgeom_lib.so
-  ridgunc build --so --target arm64-linux geom_lib.rg -o target/libgeom_lib_arm64.so
+  ridgunc build --lib mathkit.rg -o target/mathkit.rglib
+  ridgunc build --so  mathkit.rg -o target/libmathkit.so
+  ridgunc build --so --target arm64-linux mathkit.rg -o target/libmathkit.arm64.so
   ```
 
 ### 4.3 Importing a `.rglib` Bundle in Another Project
@@ -111,7 +111,7 @@ fn :: task db migrate => String
 To build reusable extensions (e.g., for a web framework, database toolkit, or deployment pipeline):
 1. Place a `.rg` file in `plugins/<plugin_name>.rg` or `.stable/plugins/<plugin_name>.rg` (or list it in `fn :: plugins => [String]` in `build.rg`).
 2. **Task-style plugin**: Define `fn :: task <words...> => String` inside the plugin `.rg` file. `stable` automatically merges all plugin tasks into `stable tasks` and dispatches `stable <words...>`.
-3. **Executable-style plugin**: Define `fn :: main => ()` inside `plugins/<plugin_name>.rg`. Running `stable <plugin_name> [args...]` executes the plugin directly via `ridgunc run` with `cli_args`.
+3. **Executable-style plugin**: Define `fn :: main => ()` inside `plugins/<plugin name>.rg`. Running `stable <plugin name> [args...]` executes the plugin directly via `ridgunc run` with `cli args`.
 4. **Open ADT Command Extension (`expand type StableCommand`)**: Inside `stable/main.rg` or custom `stable` distributions, `StableCommand` is extended openly via:
    ```ridgun
    expand type StableCommand = CmdCustomTask String String [String] | CmdPluginExec String [String]

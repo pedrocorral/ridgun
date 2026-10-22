@@ -1,6 +1,6 @@
 -- ============================================================
 -- harness/skills/implement-code-ridgun/references/cheatsheet.rg
--- Canonical Ridgun v0.9.5 Reference Cheatsheet for AI Agents
+-- Canonical Ridgun v0.9.9 Reference Cheatsheet for AI Agents
 -- ============================================================
 
 -- 1. Sum ADTs, Shared Constructors, Bare Type Variants, `expand type` & Product Records (`FR-COMP-005`)
@@ -27,7 +27,7 @@ fn :: describe something Something          => String
       describe something (Int      n)       =  "int:{n}"
       describe something (MyStruct f count) =  "struct:{f}:{count}"
 
--- 2. Tabular Pattern Matching, Natural Spaces in `fn ::` & Polymorphic Generics (A..Z)
+-- 2. Tabular Pattern Matching, Natural Spaces in `fn ::`, Unified Tuple/Sequence Types (`FR-COMP-008`) & Generics (A..Z)
 fn :: head or [A]   A => A
       head or []    d =  d
       head or (x:_) _ =  x
@@ -36,8 +36,17 @@ fn :: list len [A]    => Int
       list len []     =  0
       list len (_:xs) =  1 + (list len xs)
 
-fn :: fst (A, B) => A
+fn :: fst (A B) => A
       fst (a, _) =  a
+
+fn :: parse header packet String => Int Int [String String] String
+      parse header packet tag    =  (200, 2, [("Host", "ridgun.org"), ("X-Tag", tag)], "OK")
+
+fn :: lookup header [String String] String => String
+      lookup header []              _      =  "missing"
+      lookup header ((k, v):rest)   key
+        | k == key  = v
+        | otherwise = lookup header rest key
 
 fn :: area Shape      => Int
       area (Circle r) =  3 * r * r
@@ -114,7 +123,7 @@ fn :: is even Int => Bool
 fn :: add pair Int Int => Int
       add pair a   b   =  a + b
 
-fn :: process items [Int] => (Int, [Int])
+fn :: process items [Int] => Int [Int]
       process items xs    =
         seq_doubled = map double val xs
         par_doubled = ||map double val xs

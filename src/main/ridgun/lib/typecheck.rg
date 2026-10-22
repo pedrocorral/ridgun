@@ -12,6 +12,7 @@
 -- @implements FR-COMP-001
 -- @implements FR-COMP-005
 -- @implements FR-COMP-007
+-- @implements FR-COMP-008
 -- @implements FR-VM-001
 -- @implements FR-VM-002
 -- ============================================================
@@ -31,15 +32,17 @@ fn :: trim_leading_spaces String Int Int => String
 fn :: trim_str String => String
       trim_str s      =  trim_leading_spaces s 0 (str_len s)
 
-fn :: split_by_comma_loop String Int Int Int [String] => [String]
-      split_by_comma_loop s start pos len acc
+fn :: split_by_comma_loop String Int Int Int Int [String] => [String]
+      split_by_comma_loop s start pos len depth acc
         | pos >= len = acc :: [trim_str (str_slice s start len)]
-        | (str_char_at s pos) == 44 = split_by_comma_loop s (pos + 1) (pos + 1) len (acc :: [trim_str (str_slice s start pos)])
-        | otherwise = split_by_comma_loop s start (pos + 1) len acc
+        | (str_char_at s pos) == 40 OR (str_char_at s pos) == 91 = split_by_comma_loop s start (pos + 1) len (depth + 1) acc
+        | (str_char_at s pos) == 41 OR (str_char_at s pos) == 93 = split_by_comma_loop s start (pos + 1) len (depth - 1) acc
+        | depth == 0 AND (str_char_at s pos) == 44 = split_by_comma_loop s (pos + 1) (pos + 1) len 0 (acc :: [trim_str (str_slice s start pos)])
+        | otherwise = split_by_comma_loop s start (pos + 1) len depth acc
 
 fn :: split_comma_strs String => [String]
       split_comma_strs ""     =  []
-      split_comma_strs s      =  split_by_comma_loop s 0 0 (str_len s) []
+      split_comma_strs s      =  split_by_comma_loop s 0 0 (str_len s) 0 []
 
 fn :: ends_with_ellipsis String => Bool
       ends_with_ellipsis s      =

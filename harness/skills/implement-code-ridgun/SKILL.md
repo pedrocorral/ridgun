@@ -1,14 +1,14 @@
 ---
 name: implement-code-ridgun
-description: Implement, refactor or review Ridgun (.rg) code and build.rg definitions using the exact Ridgun v0.9.5 grammar, type system, RMM1/RMM2 deterministic memory rules, parallel || DAGs, with timeout quotas, PAL primitives, and pure-Ridgun stable/ridgunc ELF64 toolchain; use for any Ridgun (.rg) change.
+description: Implement, refactor or review Ridgun (.rg) code and build.rg definitions using the exact Ridgun v0.9.9 grammar, type system, RMM1/RMM2 deterministic memory rules, parallel || DAGs, with timeout quotas, PAL primitives, and pure-Ridgun stable/ridgunc ELF64 toolchain; use for any Ridgun (.rg) change.
 ---
-# implement-code-ridgun (`v0.9.5`)
+# implement-code-ridgun (`v0.9.9`)
 
 Reading budget: `harness/skills/implement-code-ridgun/references/cheatsheet.rg` (or `docs/lang/spec.md` when a construct is unfamiliar), `build.rg`, and the target `.rg` files under `src/main/ridgun/` or `src/test/ridgun/`.
 
 ---
 
-## 1. Project & Architecture Overview (`v0.9.5`)
+## 1. Project & Architecture Overview (`v0.9.9`)
 - **100% Pure Ridgun (Zero Rust / Zero `rustc`)**: Both `ridgunc` (`src/main/ridgun/ridgunc/main.rg`) and `stable` (`src/main/ridgun/stable/main.rg`) are written 100% in Ridgun and emit standalone, statically linked Linux ELF64 executables directly to disk via `elf64.rg`, `x86_64.rg` (`EM_X86_64 = 62`), and `arm64.rg` (`EM_AARCH64 = 183` for Raspberry Pi).
 - **Project Layout**:
   - `build.rg`: Pure-Ridgun project manifest (`fn :: project name => String`, `project version`, `main entry`, `source dir`, `test dir`, `target dir`).
@@ -39,8 +39,9 @@ Reading budget: `harness/skills/implement-code-ridgun/references/cheatsheet.rg` 
 
 ## 3. Core Syntax & Grammar Rules
 
-### 3.1 Signatures, Natural Spaces in `fn ::`, Clauses & Zero-Noise Generics (`A`..`Z`)
+### 3.1 Signatures, Space-Separated Tuple Types (`FR-COMP-008`), Natural Spaces in `fn ::`, Clauses & Zero-Noise Generics (`A`..`Z`)
 - `fn ::` and `op ::` prefixes are optional (`add Int Int => Int` or `fn :: add Int Int => Int`).
+- **Unified Space-Separated Tuple and Sequence Types (`FR-COMP-008`)**: Because argument lists and tuples are both typed sequences (`seq`), space-separated types and comma-separated tuple types are 100% interchangeable in return types (`=> Int Int [String String] String` $\equiv$ `=> (Int, Int, [(String, String)], String)`), list brackets (`[String String]` $\equiv$ `[(String, String)]`), and parenthesized tuple types (`(A B)` $\equiv$ `(A, B)`).
 - **Natural-Language Spaces in `fn ::` and Built-in Calls (`FR-COMP-005`)**: Both `fn ::` and `op ::` support multi-word names separated by spaces (`fn :: format app err AppErr => String`, `fn :: project name => String`), and built-in/test functions can be called with spaces (`assert equals a b`, `str len s`, `read file p`, `cmm live blocks`) while keeping `_` backward-compatible.
 - **Tabular Column Alignment (`=>`, `=`, `->`)**: Each clause aligns its words and arguments under the corresponding tokens in the signature and aligns `=` under `=>`. Run `stable format` to format automatically.
 - **Parametric Polymorphism (`A`..`Z`)**: Single uppercase letters (`A`..`Z`) are polymorphic type variables unified across arguments and substituted into the return type:
@@ -49,7 +50,7 @@ Reading budget: `harness/skills/implement-code-ridgun/references/cheatsheet.rg` 
         list len []     =  0
         list len (_:xs) =  1 + (list len xs)
 
-  fn :: fst (A, B) => A
+  fn :: fst (A B) => A
         fst (a, _) =  a
 
   fn :: head or [A]   A => A
@@ -70,8 +71,8 @@ Every `=` (in `fn ::`, `op ::`, local bindings `x =` / `mut x =`, and guard bran
    - Used in function/operator clauses, conditional local variables (`discount = | is_vip = 20 | otherwise = 0`), and nested 3–4+ level decision trees.
    - When a nested `|` sub-tree finishes and execution returns to an outer branch or statement below it, close the inner block with **`|.`** (preferably inline at the end of its last branch: `| otherwise = val |.`).
    ```ridgun
-   fn :: route_request Int    Int  Bool      Bool     Int        Int          => Int
-         route_request method role is_signed is_admin payload_kb rate_limited =
+   fn :: route request Int    Int  Bool      Bool     Int        Int          => Int
+         route request method role is_signed is_admin payload_kb rate_limited =
            | method == 0 =
              | payload_kb == 0 = 204
              | otherwise       = 200 |.
@@ -89,16 +90,16 @@ Every `=` (in `fn ::`, `op ::`, local bindings `x =` / `mut x =`, and guard bran
    - Can appear below an inline header expression or at the start/middle of a block (closed with `||.` when sequential lines follow):
    ```ridgun
    -- Header expression fed by parallel || DAG lines below:
-   fn :: parallel_dag_calc Int  => Int
-         parallel_dag_calc base =  net_a + net_b
+   fn :: parallel dag calc Int  => Int
+         parallel dag calc base =  net_a + net_b
            || base * 3          -> raw_a
            || base * 5          -> raw_b
            || raw_a - 2         -> net_a
            || raw_b + 1         -> net_b
 
    -- Parallel || DAG block at the top of a function, closed with ||. before final expression:
-   fn :: parallel_dag_bottom Int  => Int
-         parallel_dag_bottom base =
+   fn :: parallel dag bottom Int  => Int
+         parallel dag bottom base =
            || base + 10           -> left
            || base * 2            -> right ||.
            left + right
@@ -110,8 +111,8 @@ Every `=` (in `fn ::`, `op ::`, local bindings `x =` / `mut x =`, and guard bran
 - `x = expr` is **immutable**. Rebinding `x = ...` in the same scope without `mut` fails typechecking (`ErrImmutableReassign`).
 - Declare mutable variables with `mut x = expr` and update them with `x = new_expr`:
   ```ridgun
-  fn :: mut_accum Int => Int
-        mut_accum n   =
+  fn :: mut accum Int => Int
+        mut accum n   =
           mut acc = n
           acc = acc + 10
           acc = acc * 2
@@ -163,7 +164,7 @@ Every `=` (in `fn ::`, `op ::`, local bindings `x =` / `mut x =`, and guard bran
           | x > hi    = hi
           | otherwise = x
 
-  op :: swap A with B => (B, A)
+  op :: swap A with B => B A
         swap a with b =  (b, a)
   ```
   *(Note: `type`, `with`, `and`, `or`, `xor`, `not` are contextual and allowed as words inside `op ::` declarations!)*
@@ -198,56 +199,56 @@ Ridgun achieves deterministic memory management with **zero Garbage Collector pa
 ---
 
 ## 6. Complete Built-in Runtime Functions
-| Category | Built-in Function | Signature | Description |
+| Category | Built-in Function (Natural Spaces) | Signature | Description |
 |---|---|---|---|
 | **Output & CLI** | `echo a b ...` / `expr out` | variadic `=> ()` / `T => ()` | Print values with newline |
-| | `cli_args` | `=> [String]` | Command-line arguments |
-| **Strings & Chars** | `str_len s` | `String => Int` | Byte length of string ($O(1)$) |
-| | `str_char_at s idx` | `String Int => Int` | Byte/ASCII code at `idx` ($O(1)$, `-1` if out of bounds) |
-| | `str_slice s start end` | `String Int Int => String` | Substring `[start..end)` |
-| | `char_from_code c` | `Int => String` | 1-byte string from code `c` |
-| | `int_to_str n` / `str_to_int s` | `Int => String` / `String => Int` | Integer ↔ String conversion |
-| | `str_starts_with s p` | `String String => Bool` | Prefix check |
-| | `str_contains s sub` | `String String => Bool` | Substring check |
-| | `str_index_of s sub` | `String String => Int` | First index of `sub` (`-1` if not found) |
-| | `str_trim s` | `String => String` | Trim ASCII whitespace |
-| | `str_replace s old new` | `String String String => String` | Replace all occurrences |
-| | `str_split s delim` | `String String => [String]` | Split string into list |
-| | `str_to_upper s` / `str_to_lower s` | `String => String` | ASCII case conversion |
+| | `cli args` | `=> [String]` | Command-line arguments |
+| **Strings & Chars** | `str len s` | `String => Int` | Byte length of string ($O(1)$) |
+| | `str char at s idx` | `String Int => Int` | Byte/ASCII code at `idx` ($O(1)$, `-1` if out of bounds) |
+| | `str slice s start end` | `String Int Int => String` | Substring `[start..end)` |
+| | `char from code c` | `Int => String` | 1-byte string from code `c` |
+| | `int to str n` / `str to int s` | `Int => String` / `String => Int` | Integer ↔ String conversion |
+| | `str starts with s p` | `String String => Bool` | Prefix check |
+| | `str contains s sub` | `String String => Bool` | Substring check |
+| | `str index of s sub` | `String String => Int` | First index of `sub` (`-1` if not found) |
+| | `str trim s` | `String => String` | Trim ASCII whitespace |
+| | `str replace s old new` | `String String String => String` | Replace all occurrences |
+| | `str split s delim` | `String String => [String]` | Split string into list |
+| | `str to upper s` / `str to lower s` | `String => String` | ASCII case conversion |
 | **Collections** | `map f xs` / `\|\|map f xs` | `(A => B) [A] => [B]` | Sequential / Multicore parallel map |
 | | `filter p xs` / `\|\|filter p xs` | `(A => Bool) [A] => [A]` | Sequential / Multicore parallel filter |
 | | `fold f init xs` | `(B A => B) B [A] => B` | Left fold |
-| **File & Byte I/O** | `read_file path` | `String => String` | Read UTF-8 file verbatim |
-| | `write_file path text` | `String String => ()` | Write string to file |
-| | `append_file path text` | `String String => ()` | Append string to file |
-| | `read_bytes path` | `String => [Int]` | Read raw file bytes (`0..255`) |
-| | `write_bytes path bytes` | `String [Int] => ()` | Write raw bytes (`0..255`) to file |
-| | `sha256_hex text` | `String => String` | Lowercase 64-char SHA-256 hex digest |
-| **Filesystem & OS** | `file_exists p` / `is_dir p` / `is_file p` / `is_symlink p` | `String => Bool` | Path metadata predicates |
-| | `file_size p` / `file_mtime p` / `file_mode p` | `String => Int` | Size in bytes, mtime, POSIX mode |
-| | `list_dir path` | `String => [String]` | Sorted directory entry names |
-| | `sys_chmod path mode` | `String Int => Bool` | Change file permissions (e.g. `493` = `0755`) |
-| | `sys_mkdir p` / `sys_rmdir p` / `sys_unlink p` | `String => Bool` | Create/remove directory or file |
-| | `sys_rename old new` / `sys_symlink tgt lnk` | `String String => Bool` | Atomic rename / symlink |
-| | `sys_readlink p` / `sys_getcwd` / `sys_getenv k` | `String => String` / `=> String` | Read symlink, cwd, or env var |
-| | `sys_chdir p` | `String => Bool` | Change working directory |
-| | `sys_exit code` | `Int => ()` | Exit process immediately |
-| | `sys_os` / `sys_arch` | `=> SysOs` / `=> SysArch` | Target OS (`Linux \| MacOS \| Windows`) & CPU arch (`X86_64 \| Arm64`) |
-| | `sys_getpid` / `sys_time_ms` | `=> Int` | Process ID / monotonic time in ms |
-| | `sys_deadline_ms` / `sys_remaining_ms` | `=> Int` | Active `with timeout` deadline / remaining budget in ms (`0` / `-1` if none) |
-| | `sys_sleep_ms ms` | `Int => ()` | Sleep for `ms` milliseconds |
-| | `sys_open_mode path mode` | `String String => Int` | Portable open (`"r"`, `"w"`, `"a"`, `"rw"`, `"w+"`, `"a+"` -> `fd >= 0` or `-errno`) |
-| | `sys_open path flags mode` | `String Int Int => Int` | PAL descriptor open (`flags`: `0`/`1`/`2`/`64`/`512`/`1024`/`2048` -> `fd >= 0` or `-errno`) |
-| | `sys_close fd` | `Int => Int` | Close descriptor (`0` or `-errno`) |
-| | `sys_read_fd fd max_bytes` | `Int Int => String` | Unbuffered descriptor read (`""` on EOF/error) |
-| | `sys_write_fd fd data` | `Int String => Int` | Unbuffered descriptor write (bytes written or `-errno`) |
-| | `sys_poll fd events timeout_ms` | `Int Int Int => Int` | Poll descriptor readiness (`1`=`POLLIN`, `4`=`POLLOUT`; clamped to `with timeout`) |
-| | `sys_terminate pid force` | `Int Bool => Int` | Portable process termination (`False` graceful, `True` forced) |
-| | `sys_kill pid sig` | `Int Int => Int` | Send normalized signal (`0`/`2`/`9`/`15`) to process `pid` |
-| | `sys_call nr a1 a2 a3 a4 a5 a6` | `Int Int Int Int Int Int Int => Int` | Escape hatch for raw 6-arg target-OS ABI syscall |
-| | `shell_exec cmd` | `String => Int` | Execute shell command and return exit code |
-| **RMM Diagnostics** | `cmm_same_ptr a b` | `[A] [A] => Bool` | `True` if `a` and `b` share the exact same heap pointer |
-| | `cmm_live_blocks` / `cmm_cond_freed` / `cmm_cond_spared` | `=> Int` | Live heap blocks, conditional frees, and spared return blocks |
+| **File & Byte I/O** | `read file path` | `String => String` | Read UTF-8 file verbatim |
+| | `write file path text` | `String String => ()` | Write string to file |
+| | `append file path text` | `String String => ()` | Append string to file |
+| | `read bytes path` | `String => [Int]` | Read raw file bytes (`0..255`) |
+| | `write bytes path bytes` | `String [Int] => ()` | Write raw bytes (`0..255`) to file |
+| | `sha256 hex text` | `String => String` | Lowercase 64-char SHA-256 hex digest |
+| **Filesystem & OS** | `file exists p` / `is dir p` / `is file p` / `is symlink p` | `String => Bool` | Path metadata predicates |
+| | `file size p` / `file mtime p` / `file mode p` | `String => Int` | Size in bytes, mtime, POSIX mode |
+| | `list dir path` | `String => [String]` | Sorted directory entry names |
+| | `sys chmod path mode` | `String Int => Bool` | Change file permissions (e.g. `493` = `0755`) |
+| | `sys mkdir p` / `sys rmdir p` / `sys unlink p` | `String => Bool` | Create/remove directory or file |
+| | `sys rename old new` / `sys symlink tgt lnk` | `String String => Bool` | Atomic rename / symlink |
+| | `sys readlink p` / `sys getcwd` / `sys getenv k` | `String => String` / `=> String` | Read symlink, cwd, or env var |
+| | `sys chdir p` | `String => Bool` | Change working directory |
+| | `sys exit code` | `Int => ()` | Exit process immediately |
+| | `sys os` / `sys arch` | `=> SysOs` / `=> SysArch` | Target OS (`Linux \| MacOS \| Windows`) & CPU arch (`X86_64 \| Arm64`) |
+| | `sys getpid` / `sys time ms` | `=> Int` | Process ID / monotonic time in ms |
+| | `sys deadline ms` / `sys remaining ms` | `=> Int` | Active `with timeout` deadline / remaining budget in ms (`0` / `-1` if none) |
+| | `sys sleep ms ms` | `Int => ()` | Sleep for `ms` milliseconds |
+| | `sys open mode path mode` | `String String => Int` | Portable open (`"r"`, `"w"`, `"a"`, `"rw"`, `"w+"`, `"a+"` -> `fd >= 0` or `-errno`) |
+| | `sys open path flags mode` | `String Int Int => Int` | PAL descriptor open (`flags`: `0`/`1`/`2`/`64`/`512`/`1024`/`2048` -> `fd >= 0` or `-errno`) |
+| | `sys close fd` | `Int => Int` | Close descriptor (`0` or `-errno`) |
+| | `sys read fd fd max_bytes` | `Int Int => String` | Unbuffered descriptor read (`""` on EOF/error) |
+| | `sys write fd fd data` | `Int String => Int` | Unbuffered descriptor write (bytes written or `-errno`) |
+| | `sys poll fd events timeout_ms` | `Int Int Int => Int` | Poll descriptor readiness (`1`=`POLLIN`, `4`=`POLLOUT`; clamped to `with timeout`) |
+| | `sys terminate pid force` | `Int Bool => Int` | Portable process termination (`False` graceful, `True` forced) |
+| | `sys kill pid sig` | `Int Int => Int` | Send normalized signal (`0`/`2`/`9`/`15`) to process `pid` |
+| | `sys call nr a1 a2 a3 a4 a5 a6` | `Int Int Int Int Int Int Int => Int` | Escape hatch for raw 6-arg target-OS ABI syscall |
+| | `shell exec cmd` | `String => Int` | Execute shell command and return exit code |
+| **RMM Diagnostics** | `cmm same ptr a b` | `[A] [A] => Bool` | `True` if `a` and `b` share the exact same heap pointer |
+| | `cmm live blocks` / `cmm cond freed` / `cmm cond spared` | `=> Int` | Live heap blocks, conditional frees, and spared return blocks |
 
 ---
 

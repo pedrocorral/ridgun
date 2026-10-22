@@ -1,6 +1,6 @@
 -- ============================================================
 -- src/main/ridgun/stable/main.rg
--- `stable` v0.9.8 — The Interactive Build Tool for Ridgun (100% Ridgun)
+-- `stable` v0.9.9 — The Interactive Build Tool for Ridgun (100% Ridgun)
 -- Written in Ridgun's natural-language mixfix operator style (`op :: ...`).
 -- Inspired by Scala's sbt: parses `build.rg` using the Ridgun
 -- compiler AST, supports `src/main/ridgun/lib/` + parallel
@@ -192,7 +192,7 @@ op :: extract function body from [RFnDef] named String default String => String
 
 op :: load build config from String     => StableConfig
       load build config from build_path
-        | NOT (file build_path exists) = ProjectConfig "ridgunc" "0.9.8" "src/main/ridgun/ridgunc/main.rg" "src/main/ridgun" "src/test/ridgun" "target"
+        | NOT (file build_path exists) = ProjectConfig "ridgunc" "0.9.9" "src/main/ridgun/ridgunc/main.rg" "src/main/ridgun" "src/test/ridgun" "target"
         | otherwise = parse build config source (read_file build_path)
 
 op :: parse build config source String => StableConfig
@@ -204,7 +204,7 @@ op :: parse build config source String => StableConfig
 op :: extract config from program RProgram        => StableConfig
       extract config from program (Program fns _) =
         name_str = extract function body from fns named "project_name" default "ridgunc"
-        ver = extract function body from fns named "project_version" default "0.9.8"
+        ver = extract function body from fns named "project_version" default "0.9.9"
         main_ep = extract function body from fns named "main_entry" default "src/main/ridgun/ridgunc/main.rg"
         sdir = extract function body from fns named "source_dir" default "src/main/ridgun"
         tdir = extract function body from fns named "test_dir" default "src/test/ridgun"
@@ -1036,7 +1036,7 @@ op :: dispatch command StableCommand on StableConfig => (Bool, StableConfig, Int
       dispatch command CmdExit on cfg = (False, cfg, 0)
       dispatch command CmdHelp on cfg = (True, cfg, run task help)
       dispatch command CmdVersion on cfg =
-        _ = echo "stable 0.9.8 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
+        _ = echo "stable 0.9.9 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
         (True, cfg, 0)
       dispatch command CmdInfo on cfg = (True, cfg, run task info on cfg)
       dispatch command CmdReload on _ =
@@ -1102,7 +1102,7 @@ op :: repl continue with (Bool, StableConfig, Int) => ()
 
 op :: start interactive shell for StableConfig => ()
       start interactive shell for (ProjectConfig name_str ver main_ep sdir tdir out_dir) =
-        _ = log info "Welcome to stable 0.9.8 (Ridgun Build Tool — 100% Ridgun)"
+        _ = log info "Welcome to stable 0.9.9 (Ridgun Build Tool — 100% Ridgun)"
         _ = log info "Loading project definition from build.rg ..."
         _ = log info "Set current project to '{name_str}' v{ver} (main: {main_ep})"
         _ = log info "Commands: 'built' (or 'build'), 'run', 'test', 'check', 'compile', 'clean', 'info', 'exit'"

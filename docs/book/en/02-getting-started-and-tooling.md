@@ -72,25 +72,39 @@ Why did we refuse to use YAML or TOML to configure a Ridgun project?
 Because in YAML you misalign two spaces of indentation and don't find out until deployment fails. By contrast, since **`build.rg` is a Ridgun file**, it has static types, gets verified by `stable check`, and formats itself with `stable format`:
 
 ```ridgun
-type ProjectInfo =
-  name: String
-  version: String
-  edition: String
+fn :: project name => String
+      project name =  "my-super-tool"
 
-project => ProjectInfo
-project =  ProjectInfo "my-super-tool" "0.1.0" "2026"
+fn :: project version => String
+      project version =  "0.1.0"
 
-source dir => String
-source dir =  "src/main/ridgun"
+-- "exe" (executable), "lib" (.rglib + .so library), or "both"
+fn :: project kind => String
+      project kind =  "both"
 
-test dir => String
-test dir =  "src/test/ridgun"
+fn :: main entry => String
+      main entry =  "src/main/ridgun/app/main.rg"
 
-target dir => String
-target dir =  "target"
+fn :: source dir => String
+      source dir =  "src/main/ridgun"
+
+fn :: test dir => String
+      test dir =  "src/test/ridgun"
+
+fn :: target dir => String
+      target dir =  "target"
+
+fn :: dependencies => [String]
+      dependencies =  []
+
+fn :: plugins => [String]
+      plugins =  []
+
+fn :: task check all => String
+      task check all =  "./bin/stable check && ./bin/stable test"
 ```
 
-If you mistype a field, the compiler tells you immediately. No surprises.
+If you mistype a field or return type, the compiler tells you immediately. Notice how all setting functions use **natural spaces** (`project name`, `project kind`, `source dir`, `task check all`) instead of underscores.
 
 ---
 
@@ -137,14 +151,43 @@ Compiles all native targets into `target/`. And if you ever want to wipe `target
 
 ---
 
-## 2.5. How Do I Import One File from Another? (`import`)
+## 2.5. Building and Using Reusable Libraries (`.rglib` & ELF64 `.so`) and `stable` Plugins
 
-Without horrific relative paths like `../../../lib/stuff.rg`. If you have a file at `src/main/ridgun/lib/strings.rg`, in any other file you simply write at the top:
+A library module does not need `main => ()`: it exports `type`, `expand type`, `fn ::`, and `op ::` declarations for other projects to import.
+
+### 1. Creating a Library Project with `stable`
+```bash
+stable new --lib geometry
+cd geometry
+stable built lib
+```
+When compiling in library mode (`project kind = "lib"` or `stable built lib`), the compiler disables `main`-rooted dead-code elimination so **all** exported functions and types are preserved, producing two artifacts in `target/`:
+- **`target/geometry.rglib`**: a self-contained Ridgun library bundle ready to be imported from any project via `import geometry` or `import "target/geometry.rglib"`.
+- **`target/libgeometry.so`**: a native Linux ELF64 shared object (`ET_DYN`, for `x86_64` or `arm64-linux`).
 
 ```ridgun
-import strings
+-- src/main/ridgun/lib/geometry.rg (No main function required!)
+type Point = x: Int, y: Int
+
+fn :: shift point Point Int Int => Point
+      shift point p     dx  dy  =  Point ((x p) + dx) ((y p) + dy)
+
+fn :: point coords Point => Int Int
+      point coords p     =  (x p, y p)
 ```
 
-And you're done: all functions and types from `strings.rg` are available as if they were in your own file. What if module `A` does `import strings`, module `B` also does `import strings`, and your `main.rg` imports both `A` and `B`? Don't worry: Ridgun's loader remembers which canonical files it has already read and **includes each file only once**.
+### 2. How Do I Import a Module or Library? (`import`)
 
-Now that you have the toolbox under control, let's move on to **Chapter 03** to master functions, types, blocks, and string tricks.
+Without horrific relative paths like `../../../lib/stuff.rg`. If you have a module at `src/main/ridgun/lib/geometry.rg` or a `geometry.rglib` package (in `target/`, `lib/`, or `.stable/deps/` after `stable deps`), write at the top of any file:
+
+```ridgun
+import geometry
+```
+
+All functions, operators, and types from `geometry` become available immediately, and Ridgun's canonical loader guarantees each library is included **only once** even across diamond imports.
+
+### 3. Extending `stable` with Custom Tasks (`fn :: task`) and Plugins (`plugins/*.rg`)
+- **In `build.rg`**: declare any `fn :: task <words...> => String` (e.g., `fn :: task serve web => String`) and run it via `stable serve web`.
+- **In `plugins/*.rg` or `.stable/plugins/*.rg`**: drop `.rg` plugin modules that contribute `fn :: task ...` commands or their own `fn :: main => ()` entrypoint, or extend `expand type StableCommand`. Inspect active extensions anytime with `stable tasks` and `stable plugins`.
+
+Now that you have the toolbox and libraries under control, let's move on to **Chapter 03** to master functions, types, blocks, and string tricks.

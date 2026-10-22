@@ -31,13 +31,13 @@ En Ridgun no cuentas índices; **desmontas la lista por la cabeza**:
 Mira qué gusto da sumar una lista o contar cuántos elementos tiene:
 
 ```ridgun
-sumar_lista [Int]  => Int
-sumar_lista []     =  0
-sumar_lista (x:xs) =  x + (sumar_lista xs)
+fn :: sumar lista [Int]  => Int
+      sumar lista []     =  0
+      sumar lista (x:xs) =  x + (sumar lista xs)
 
-contar_elementos [A]    => Int
-contar_elementos []     =  0
-contar_elementos (_:xs) =  1 + (contar_elementos xs)
+fn :: contar elementos [A]    => Int
+      contar elementos []     =  0
+      contar elementos (_:xs) =  1 + (contar elementos xs)
 ```
 
 Y un detalle técnico que te alegrará el día: en Ridgun, sacar la cola `xs` en `(x:xs)` **no copia el resto de la lista en memoria**. Internamente es una vista sobre el mismo vector que solo avanza el puntero de inicio en `1` ($O(1)$ instantáneo).
@@ -46,11 +46,11 @@ Y un detalle técnico que te alegrará el día: en Ridgun, sacar la cola `xs` en
 El patrón `:` da muchísimo juego cuando estás parseando comandos o protocolos:
 
 ```ridgun
-interpretar_comando [String]                => String
-interpretar_comando []                      =  "No has escrito nada"
-interpretar_comando ("ayuda":_)             =  "Mostrando la ayuda..."
-interpretar_comando ("copiar":origen:dest:[]) = "Copiando de {origen} a {dest}"
-interpretar_comando (cmd:_)                 =  "Comando desconocido: {cmd}"
+fn :: interpretar comando [String]                  => String
+      interpretar comando []                        =  "No has escrito nada"
+      interpretar comando ("ayuda":_)               =  "Mostrando la ayuda..."
+      interpretar comando ("copiar":origen:dest:[]) =  "Copiando de {origen} a {dest}"
+      interpretar comando (cmd:_)                   =  "Comando desconocido: {cmd}"
 ```
 
 Mira la tercera fila: `("copiar":origen:dest:[])` comprueba de un solo plumazo que la lista tenga **exactamente 3 elementos**, que el primero sea `"copiar"`, y te deja el segundo y el tercero servidos en bandeja en `origen` y `dest`. Intenta escribir eso en C o Java y verás cuántas líneas de `args.length == 3 && args[0].equals("copiar")` te salen.
@@ -59,11 +59,11 @@ Mira la tercera fila: `("copiar":origen:dest:[])` comprueba de un solo plumazo q
 Cuando estás en el lado derecho del `=` (en una expresión) y quieres pegar dos listas, usas **`::`**:
 
 ```ridgun
-pegar_listas [Int] [Int] => [Int]
-pegar_listas a     b     =  a :: b
+fn :: pegar listas [Int] [Int] => [Int]
+      pegar listas a     b     =  a :: b
 
-anadir_detras [Int] Int => [Int]
-anadir_detras xs    x   =  xs :: [x]
+fn :: anadir detras [Int] Int => [Int]
+      anadir detras xs    x   =  xs :: [x]
 ```
 
 *(Regla mnemotécnica rápida: un solo `:` en los patrones desmonta la lista; dos `::` en las expresiones pegan dos listas).*
@@ -74,55 +74,66 @@ anadir_detras xs    x   =  xs :: [x]
 
 ## 5.2. Funciones variádicas (`T...`): "¡Pásame todos los que quieras!"
 
-A veces quieres que quien llame a tu función pueda escribir `maximo_de 4 19 2 88 7` cómodamente, sin obligarle a envolver los números entre corchetes `[4, 19, 2, 88, 7]`.
+A veces quieres que quien llame a tu función pueda escribir `sumar varios 4 19 2 88 7` cómodamente, sin obligarle a envolver los números entre corchetes `[4, 19, 2, 88, 7]`.
 
 Pon tres puntos **`...`** detrás del último tipo de tu firma, y dentro de tu función lo recibirás automáticamente empaquetado como una lista:
 
 ```ridgun
-sumar_varios Int... => Int
-sumar_varios nums   =  sumar_lista nums
+fn :: sumar varios Int... => Int
+      sumar varios nums   =  sumar lista nums
 
-main => ()
-main =
-  echo (sumar_varios 10 20 30)       -- Imprime 60
-  echo (sumar_varios 1 2 3 4 5 6 7)  -- Imprime 28
+fn :: main => ()
+      main =
+        echo (sumar varios 10 20 30)       -- Imprime 60
+        echo (sumar varios 1 2 3 4 5 6 7)  -- Imprime 28
 ```
 
 ---
 
-## 5.3. Tuplas: Cuando una función quiere devolver más de una cosa
+## 5.3. Tuplas y la Unificación de Firmas con Espacios (`Int Int [String String] String`)
 
-En muchos lenguajes devolver dos cosas desde una función es un dolor: o creas una clase auxiliar tonta `ResultadoConPosicion`, o pasas punteros de salida por referencia.
+En muchos lenguajes devolver dos o más cosas desde una función es un dolor: o creas una clase auxiliar tonta `ResultadoConPosicion`, o llenas la firma de paréntesis y comas redundantes.
 
-En Ridgun devuelves una **tupla** `(A, B)`:
-
-```ridgun
-dividir_y_resto Int Int => (Int, Int)
-dividir_y_resto a   b   =  (a / b, a % b)
-```
-
-Incluso puedes ahorrarte los paréntesis en la línea de la firma si te resulta más limpio:
-`dividir_y_resto Int Int => Int Int`.
-
-### Cómo abrir una tupla
-Igual que la creas con `(a, b)`, la abres en los argumentos de cualquier función con `(cociente, resto)`:
+En Ridgun, **una lista de argumentos `Int String Int` y una tupla `(Int, String, Int)` son conceptualmente lo mismo: una secuencia tipada (`seq`)**. Por eso, en las firmas de tipos puedes separar los elementos de una tupla simplemente con **espacios**, tanto después de `=>`, como dentro de listas `[...]` y dentro de paréntesis `(...)`:
 
 ```ridgun
-explicar_division (Int, Int)        => String
-explicar_division (cociente, resto) =  "Cabe a {cociente} y sobran {resto}"
+-- Dos enteros de retorno separados por espacio:
+fn :: dividir y resto Int Int => Int Int
+      dividir y resto a   b   =  (a / b, a % b)
+
+-- Firma compleja sin ruido de comas ni paréntesis exteriores:
+fn :: parsear cabecera String => Int Int [String String] String
+      parsear cabecera tag    =  (200, 2, [("Host", "ridgun.org"), ("X-Tag", tag)], "OK")
+
+-- Lista de tuplas [String String] como parámetro de entrada:
+fn :: buscar cabecera [String String] String => String
+      buscar cabecera []              _      =  "no encontrada"
+      buscar cabecera ((k, v):resto)  clave
+        | k == clave = v
+        | otherwise  = buscar cabecera resto clave
 ```
+
+Fíjate en la elegancia de `=> Int Int [String String] String`:
+- Después de `=>`, `Int Int [String String] String` significa exactamente lo mismo que `(Int, Int, [(String, String)], String)`.
+- Dentro de corchetes, `[String String]` significa una lista de pares de textos `[(String, String)]`.
+- Dentro de paréntesis (cuando pasas una tupla como un único parámetro de entrada), `(Int String)` significa exactamente lo mismo que `(Int, String)`:
+  ```ridgun
+  fn :: explicar division (Int Int)         => String
+        explicar division (cociente, resto) =  "Cabe a {cociente} y sobran {resto}"
+  ```
+- **¿Por qué esto no crea ninguna ambigüedad en Ridgun?** Porque a diferencia de Haskell (donde `Maybe Int` aplica un constructor de tipos por yuxtaposición), en Ridgun los tipos parametrizados usan paréntesis explícitos como `Tensor(Float, 3, 3)` y las listas usan `[T]`. Así, dos tipos separados por espacio (`T1 T2`) significan siempre y sin excepción una secuencia/tupla de tipos, manteniendo compatibilidad al 100% con la sintaxis con comas.
 
 ### El detalle estrella: Desempaquetado automático entre funciones
-Supón que tienes `dividir_y_resto` (que devuelve una tupla de 2 enteros) y otra función `sumar_par Int Int => Int` (que espera 2 enteros sueltos). En Ridgun no tienes que abrir la tupla a mano en una variable intermedia; puedes enchufar una función dentro de la otra directamente:
+Supón que tienes `dividir y resto` (que devuelve `Int Int`) y otra función `sumar par Int Int => Int` (que espera 2 enteros). En Ridgun puedes enchufar una función dentro de la otra directamente:
 
 ```ridgun
-sumar_par Int Int => Int
-sumar_par x   y   =  x + y
+fn :: sumar par Int Int => Int
+      sumar par x   y   =  x + y
 
-main => ()
-main =
-  -- dividir_y_resto 17 5 devuelve (3, 2), y sumar_par recibe 3 y 2 directamente:
-  echo (sumar_par (dividir_y_resto 17 5))  -- Imprime 5
+fn :: main => ()
+      main =
+        -- dividir y resto 17 5 devuelve (3, 2), y sumar par recibe 3 y 2 directamente:
+        echo (sumar par (dividir y resto 17 5))  -- Imprime 5
 ```
 
 ---
@@ -142,16 +153,16 @@ Le aplicas a `s` una **máscara de signos `+` (quédatelo) y `-` (tíralo)**:
 Míralo funcionando:
 
 ```ridgun
-el_del_medio Int Int Int => Int
-el_del_medio (s)         =  s["-+-"]
+fn :: el del medio Int Int Int => Int
+      el del medio (s)         =  s["-+-"]
 
-descartar_dos_primeros Int... => [Int]
-descartar_dos_primeros (s)    =  s["-- +"]
+fn :: descartar dos primeros Int... => [Int]
+      descartar dos primeros (s)    =  s["-- +"]
 
-main => ()
-main =
-  echo (el_del_medio 100 42 999)              -- Imprime 42
-  echo (descartar_dos_primeros 1 2 10 20 30)  -- Imprime [10, 20, 30]
+fn :: main => ()
+      main =
+        echo (el del medio 100 42 999)              -- Imprime 42
+        echo (descartar dos primeros 1 2 10 20 30)  -- Imprime [10, 20, 30]
 ```
 
 Además, si usas el operador coma `,` fuera de paréntesis (`lista1 , lista2`), Ridgun aplana ambas colecciones en una única secuencia continua.

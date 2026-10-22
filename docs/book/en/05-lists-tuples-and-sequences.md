@@ -79,50 +79,61 @@ Sometimes you want callers of your function to write `max_of 4 19 2 88 7` comfor
 Put three dots **`...`** after the last type in your signature, and inside your function you will automatically receive those arguments packaged as a list:
 
 ```ridgun
-sum_many Int... => Int
-sum_many nums   =  sum_list nums
+fn :: sum many Int... => Int
+      sum many nums   =  sum list nums
 
-main => ()
-main =
-  echo (sum_many 10 20 30)       -- Prints 60
-  echo (sum_many 1 2 3 4 5 6 7)  -- Prints 28
+fn :: main => ()
+      main =
+        echo (sum many 10 20 30)       -- Prints 60
+        echo (sum many 1 2 3 4 5 6 7)  -- Prints 28
 ```
 
 ---
 
-## 5.3. Tuples: When a Function Wants to Return More Than One Thing
+## 5.3. Tuples and Unified Space-Separated Type Signatures (`Int Int [String String] String`)
 
-In many languages, returning two values from a function is a headache: either you create a throwaway helper class `ResultWithPosition`, or you pass out-pointers by reference.
+In many languages, returning two or more values from a function is a headache: either you create a throwaway helper class `ResultWithPosition`, or you clutter the signature with redundant commas and parentheses.
 
-In Ridgun you return a **tuple** `(A, B)`:
-
-```ridgun
-div_rem Int Int => (Int, Int)
-div_rem a   b   =  (a / b, a % b)
-```
-
-You can even omit the parentheses on the signature line if you find it cleaner:
-`div_rem Int Int => Int Int`.
-
-### How to Unpack a Tuple
-Just as you build it with `(a, b)`, you unpack it in the parameters of any function with `(quotient, remainder)`:
+In Ridgun, **an argument list `Int String Int` and a tuple `(Int, String, Int)` are conceptually the same thing: a typed sequence (`seq`)**. Because of this, in type signatures you can separate tuple elements simply with **spaces**—after `=>`, inside list brackets `[...]`, and inside parentheses `(...)`:
 
 ```ridgun
-explain_division (Int, Int)            => String
-explain_division (quotient, remainder) =  "Fits {quotient} times with {remainder} left over"
+-- Two return integers separated by a space:
+fn :: div rem Int Int => Int Int
+      div rem a   b   =  (a / b, a % b)
+
+-- Complex return signature without comma or outer-parenthesis clutter:
+fn :: parse header String => Int Int [String String] String
+      parse header tag    =  (200, 2, [("Host", "ridgun.org"), ("X-Tag", tag)], "OK")
+
+-- List of tuples [String String] as an input parameter:
+fn :: lookup header [String String] String => String
+      lookup header []              _      =  "missing"
+      lookup header ((k, v):rest)   key
+        | k == key  = v
+        | otherwise = lookup header rest key
 ```
+
+Notice how clean `=> Int Int [String String] String` is:
+- After `=>`, `Int Int [String String] String` is 100% equivalent to `(Int, Int, [(String, String)], String)`.
+- Inside brackets, `[String String]` denotes a list of string pairs `[(String, String)]`.
+- Inside parentheses (when passing a tuple as a single grouped parameter), `(Int Int)` is 100% equivalent to `(Int, Int)`:
+  ```ridgun
+  fn :: explain division (Int Int)             => String
+        explain division (quotient, remainder) =  "Fits {quotient} times with {remainder} left over"
+  ```
+- **Why does this have zero syntactic ambiguity in Ridgun?** Unlike Haskell (where `Maybe Int` applies a type constructor by juxtaposition), parameterized types in Ridgun use explicit parentheses like `Tensor(Float, 3, 3)` and lists use `[T]`. Therefore, two space-separated types (`T1 T2`) always unambiguously denote a tuple/sequence of types while remaining 100% compatible with comma syntax.
 
 ### The Star Feature: Automatic Tuple Unpacking Between Functions
-Suppose you have `div_rem` (which returns a tuple of 2 integers) and another function `add_pair Int Int => Int` (which expects 2 separate integers). In Ridgun you don't have to unpack the tuple by hand into an intermediate variable; you can plug one function straight into the other:
+Suppose you have `div rem` (which returns `Int Int`) and another function `add pair Int Int => Int` (which expects 2 separate integers). In Ridgun you can plug one function straight into the other:
 
 ```ridgun
-add_pair Int Int => Int
-add_pair x   y   =  x + y
+fn :: add pair Int Int => Int
+      add pair x   y   =  x + y
 
-main => ()
-main =
-  -- div_rem 17 5 returns (3, 2), and add_pair receives 3 and 2 directly:
-  echo (add_pair (div_rem 17 5))  -- Prints 5
+fn :: main => ()
+      main =
+        -- div rem 17 5 returns (3, 2), and add pair receives 3 and 2 directly:
+        echo (add pair (div rem 17 5))  -- Prints 5
 ```
 
 ---
@@ -142,16 +153,16 @@ You apply a **mask of `+` (keep it) and `-` (drop it) signs** to `s`:
 See it in action:
 
 ```ridgun
-middle_of_three Int Int Int => Int
-middle_of_three (s)         =  s["-+-"]
+fn :: middle of three Int Int Int => Int
+      middle of three (s)         =  s["-+-"]
 
-drop_first_two Int... => [Int]
-drop_first_two (s)    =  s["-- +"]
+fn :: drop first two Int... => [Int]
+      drop first two (s)    =  s["-- +"]
 
-main => ()
-main =
-  echo (middle_of_three 100 42 999)     -- Prints 42
-  echo (drop_first_two 1 2 10 20 30)    -- Prints [10, 20, 30]
+fn :: main => ()
+      main =
+        echo (middle of three 100 42 999)     -- Prints 42
+        echo (drop first two 1 2 10 20 30)    -- Prints [10, 20, 30]
 ```
 
 On top of that, if you use the comma operator `,` outside parentheses (`list1 , list2`), Ridgun flattens both collections into a single continuous sequence.

@@ -45,35 +45,35 @@ main =
 Le pasas una función que devuelva `Bool` (un *predicado*) y una lista:
 
 ```ridgun
-es_positivo Int => Bool
-es_positivo n   =  n > 0
+fn :: es positivo Int => Bool
+      es positivo n   =  n > 0
 
-main => ()
-main =
-  limpios = filter es_positivo [-5, 10, 0, -2, 42]
-  limpios_par = ||filter es_positivo [-5, 10, 0, -2, 42]
-  echo limpios      -- Imprime [10, 42]
-  echo limpios_par  -- Imprime [10, 42]
+fn :: main => ()
+      main =
+        limpios = filter es positivo [-5, 10, 0, -2, 42]
+        limpios_par = ||filter es positivo [-5, 10, 0, -2, 42]
+        echo limpios      -- Imprime [10, 42]
+        echo limpios_par  -- Imprime [10, 42]
 ```
 
 ### 3. `fold`: Reducir toda una lista a un solo resultado
 Le pasas una función combinadora de dos argumentos `(Acumulado Elemento => Acumulado)`, el valor inicial y la lista:
 
 ```ridgun
-acumular_producto Int Int => Int
-acumular_producto acc x   =  acc * x
+fn :: acumular producto Int Int => Int
+      acumular producto acc x   =  acc * x
 
-main => ()
-main =
-  echo (fold acumular_producto 1 [2, 3, 4, 5])  -- 1 * 2 * 3 * 4 * 5 = 120
+fn :: main => ()
+      main =
+        echo (fold acumular producto 1 [2, 3, 4, 5])  -- 1 * 2 * 3 * 4 * 5 = 120
 ```
 
 ### ¿Cómo escribo yo mi propia función que reciba otra función?
 Muy fácil: en la firma de tipos pones la firma de la función invitada entre paréntesis `(Entrada => Salida)`:
 
 ```ridgun
-ejecutar_dos_veces (A => A) A => A
-ejecutar_dos_veces f        x =  f (f x)
+fn :: ejecutar dos veces (A => A) A => A
+      ejecutar dos veces f        x =  f (f x)
 ```
 
 ---
@@ -90,19 +90,19 @@ En un lenguaje imperativo normal, cuando escribes tres líneas seguidas:
 Eso es obligar al ordenador a trabajar con orejeras. En Ridgun, cuando usas barras paralelas **`||`** con flechas **`->`** (sin necesidad de escribir ninguna palabra clave como `where`), no estás dando órdenes secuenciales: estás dibujando un **Grafo Acíclico Dirigido (DAG)** que dice qué cálculo alimenta a qué variable:
 
 ```ridgun
-fib Int => Int
-fib 0   =  0
-fib 1   =  1
-fib n   =  (fib (n - 1)) + (fib (n - 2))
+fn :: fib Int => Int
+      fib 0   =  0
+      fib 1   =  1
+      fib n   =  (fib (n - 1)) + (fib (n - 2))
 
-fact Int => Int
-fact 0   =  1
-fact n   =  n * (fact (n - 1))
+fn :: fact Int => Int
+      fact 0   =  1
+      fact n   =  n * (fact (n - 1))
 
-super_calculo => Int
-super_calculo =  rama_izquierda + rama_derecha
-  || fib 10 -> rama_izquierda
-  || fact 6 -> rama_derecha
+fn :: super calculo => Int
+      super calculo =  rama_izquierda + rama_derecha
+        || fib 10 -> rama_izquierda
+        || fact 6 -> rama_derecha
 ```
 
 Léelo en voz alta:
@@ -116,12 +116,12 @@ Léelo en voz alta:
 Incluso puedes montar un pipeline de varias plantas dentro del mismo bloque `||` —ya sea al pie de la expresión o justo después del `=`— y el compilador deducirá solito qué plantas pueden ir a la vez y cuáles tienen que esperar:
 
 ```ridgun
-balance_trimestral Int => Int
-balance_trimestral base =
-  || base * 100                  -> ventas_brutas
-  || base * 40                   -> costes_fijos
-  || ventas_brutas - costes_fijos -> beneficio_bruto ||.
-  beneficio_bruto * 80 / 100
+fn :: balance trimestral Int  => Int
+      balance trimestral base =
+        || base * 100                  -> ventas_brutas
+        || base * 40                   -> costes_fijos
+        || ventas_brutas - costes_fijos -> beneficio_bruto ||.
+        beneficio_bruto * 80 / 100
 ```
 
 Fíjate en el detalle **`||.`** al final de la última línea `||`: igual que `|.` cierra un árbol de guardas anidado, **`||.`** cierra el bloque paralelo `||` cuando debajo siguen sentencias secuenciales normales. Aquí `ventas_brutas` y `costes_fijos` arrancan en paralelo; cuando ambos están listos se calcula `beneficio_bruto`, y finalmente se devuelve `beneficio_bruto * 80 / 100`. Todo sin un solo `async`, `Future`, `Promise` ni `Mutex`.
@@ -135,10 +135,10 @@ Fíjate en el detalle **`||.`** al final de la última línea `||`: igual que `|
 Usas `||` directamente:
 
 ```ridgun
-par_paralelo Int => (Int, Int)
-par_paralelo n   =
-  || fib n
-  || fact n
+fn :: par paralelo Int => Int Int
+      par paralelo n   =
+        || fib n
+        || fact n
 ```
 
 Directo, visual y devuelve la tupla `(fib n, fact n)`.
@@ -147,43 +147,43 @@ Directo, visual y devuelve la tupla `(fib n, fact n)`.
 
 ## 7.4. Cuando quieres el volante manual: `spawn`, `join` y Canales CSP
 
-El paralelismo automático de `where` y `pmap` cubre el 90% de los casos. Pero a veces estás programando un sistema de actores, una cola de trabajos o un pipeline productor-consumidor y quieres controlar tú mismo las tareas y los mensajes.
+El paralelismo automático de `||` y `||map` cubre el 90% de los casos. Pero a veces estás programando un sistema de actores, una cola de trabajos o un pipeline productor-consumidor y quieres controlar tú mismo las tareas y los mensajes.
 
 Para eso tienes dos herramientas limpias:
 
 ### 1. Lanzar tareas con `spawn` y recoger el resultado con `join`
 ```ridgun
-procesar_lote Int => Int
-procesar_lote id  =  id * 100
+fn :: procesar lote Int => Int
+      procesar lote id  =  id * 100
 
-main => ()
-main =
-  tarea1 = spawn procesar_lote 1
-  tarea2 = spawn procesar_lote 2
-  -- Mientras tanto podrías hacer otras cosas aquí...
-  res1 = join tarea1
-  res2 = join tarea2
-  echo "Terminaron con:" res1 "y" res2
+fn :: main => ()
+      main =
+        tarea1 = spawn procesar lote 1
+        tarea2 = spawn procesar lote 2
+        -- Mientras tanto podrías hacer otras cosas aquí...
+        res1 = join tarea1
+        res2 = join tarea2
+        echo "Terminaron con:" res1 "y" res2
 ```
 
-### 2. Pasar mensajes por canales acotados (`new_bounded_channel`)
+### 2. Pasar mensajes por canales acotados (`new bounded channel`)
 Igual que en Go o Erlang, en lugar de compartir memoria entre hilos, envías valores inmutables a través de un tubo seguro:
 
-- `new_bounded_channel capacidad`: crea un canal con espacio para `capacidad` mensajes.
-- `chan_send valor canal` (o `send_through valor canal`): mete un mensaje en el tubo.
-- `chan_recv canal` (o `receive_from canal`): saca el siguiente mensaje del tubo.
-- `chan_try_recv canal`: mira si hay mensaje sin quedarse esperando; devuelve `Some valor` o `None`.
-- `receive_from_timeout canal ticks`: espera un límite de tiempo y devuelve `Ok valor` o `Err Timeout`.
+- `new bounded channel capacidad`: crea un canal con espacio para `capacidad` mensajes.
+- `chan send valor canal` (o `send through valor canal`): mete un mensaje en el tubo.
+- `chan recv canal` (o `receive from canal`): saca el siguiente mensaje del tubo.
+- `chan try recv canal`: mira si hay mensaje sin quedarse esperando; devuelve `Some valor` o `None`.
+- `receive from timeout canal ticks`: espera un límite de tiempo y devuelve `Ok valor` o `Err Timeout`.
 
 ```ridgun
-main => ()
-main =
-  tubo = new_bounded_channel 4
-  _ = chan_send "Tarea A completada" tubo
-  _ = chan_send "Tarea B completada" tubo
-  primero = chan_recv tubo
-  segundo = chan_recv tubo
-  echo primero "|" segundo
+fn :: main => ()
+      main =
+        tubo = new bounded channel 4
+        _ = chan send "Tarea A completada" tubo
+        _ = chan send "Tarea B completada" tubo
+        primero = chan recv tubo
+        segundo = chan recv tubo
+        echo primero "|" segundo
 ```
 
 Y ahora, abróchate el cinturón para el **Capítulo 08**, el gran final: **tensores con dimensiones verificadas en compilación, variables de ámbito (`context`/`shared`), regiones de memoria deterministas, acceso directo a hardware MMIO y programación de sistemas UNIX/POSIX**.

@@ -23,10 +23,14 @@ ridgunc check experimento.rg
 # 2. "¡Ejecútalo ya!" (Compila y corre de un tirón)
 ridgunc run experimento.rg
 
-# 3. "Hazme un binario nativo ELF listo para llevar"
-ridgunc build experimento.rg -o mi_programa
+# 3. "Hazme un binario nativo ELF64 listo para llevar"
+ridgunc build experimento.rg -o mi-programa
 
-# 4. "Sácame el artefacto intermedio de bytecode (.rgc)"
+# 4. "Compílame una librería reutilizable (.rglib y .so ELF64 sin necesitar main)"
+ridgunc build --lib utilidades.rg -o target/utilidades.rglib
+ridgunc build --so  utilidades.rg -o target/libutilidades.so
+
+# 5. "Sácame el artefacto intermedio de bytecode (.rgc)"
 ridgunc compile experimento.rg -o experimento.rgc
 ```
 
@@ -72,25 +76,39 @@ mi-super-herramienta/
 Porque en YAML te equivocas en dos espacios de indentación y no te enteras hasta que falla el despliegue. En cambio, como **`build.rg` es un archivo Ridgun**, tiene tipos estáticos, pasa por `stable check` y se alinea solo con `stable format`:
 
 ```ridgun
-type ProjectInfo =
-  name: String
-  version: String
-  edition: String
+fn :: project name => String
+      project name =  "mi-super-herramienta"
 
-project => ProjectInfo
-project =  ProjectInfo "mi-super-herramienta" "0.1.0" "2026"
+fn :: project version => String
+      project version =  "0.1.0"
 
-source dir => String
-source dir =  "src/main/ridgun"
+-- "exe" (ejecutable), "lib" (librería .rglib + .so) o "both" (ambos)
+fn :: project kind => String
+      project kind =  "both"
 
-test dir => String
-test dir =  "src/test/ridgun"
+fn :: main entry => String
+      main entry =  "src/main/ridgun/app/main.rg"
 
-target dir => String
-target dir =  "target"
+fn :: source dir => String
+      source dir =  "src/main/ridgun"
+
+fn :: test dir => String
+      test dir =  "src/test/ridgun"
+
+fn :: target dir => String
+      target dir =  "target"
+
+fn :: dependencies => [String]
+      dependencies =  []
+
+fn :: plugins => [String]
+      plugins =  []
+
+fn :: task verificar todo => String
+      task verificar todo =  "./bin/stable check && ./bin/stable test"
 ```
 
-Si te equivocas al escribir un campo, el propio compilador te avisa. Sin sorpresas.
+Si te equivocas al escribir un campo o un tipo, el propio compilador te avisa. Y fíjate en que todas las funciones de configuración usan **espacios naturales** (`project name`, `project kind`, `source dir`, `task verificar todo`) en lugar de guiones bajos.
 
 ---
 
@@ -137,14 +155,44 @@ Compila todos los objetivos nativos en `target/`. Y si algún día quieres borra
 
 ---
 
-## 2.5. ¿Cómo importo un archivo desde otro? (`import`)
+## 2.5. Crear y usar Librerías Reutilizables (`.rglib` y `.so` ELF64) y Plugins de `stable`
 
-Sin rutas relativas infernales tipo `../../../lib/cosas.rg`. Si tienes un archivo `src/main/ridgun/lib/cadenas.rg`, en cualquier otro archivo escribes arriba del todo:
+Una librería no tiene función `main => ()`: ofrece tipos (`type`, `expand type`), funciones (`fn ::`) y operadores (`op ::`) para que otros proyectos los importen.
+
+### 1. Crear un proyecto de librería con `stable`
+```bash
+stable new --lib geometria
+cd geometria
+stable built lib
+```
+Al compilar en modo librería (`project kind = "lib"` o `stable built lib`), el compilador desactiva la poda desde `main` para conservar **todas** las funciones y tipos exportados, y genera dos artefactos en `target/`:
+- **`target/geometria.rglib`**: paquete autocontenido de librería Ridgun (con todas sus fuentes y dependencias internas resueltas), listo para importar desde cualquier otro proyecto con `import geometria` o `import "target/geometria.rglib"`.
+- **`target/libgeometria.so`**: biblioteca dinámica nativa ELF64 (`ET_DYN`, para `x86_64` o `arm64-linux`).
 
 ```ridgun
-import cadenas
+-- src/main/ridgun/lib/geometria.rg (¡Sin función main!)
+type Punto = x: Int, y: Int
+
+fn :: desplazar punto Punto Int Int => Punto
+      desplazar punto p     dx  dy  =  Punto ((x p) + dx) ((y p) + dy)
+
+fn :: coordenadas punto Punto => Int Int
+      coordenadas punto p     =  (x p, y p)
 ```
 
-Y listo: todas las funciones y tipos de `cadenas.rg` están disponibles como si estuvieran en tu propio archivo. ¿Y qué pasa si el módulo `A` hace `import cadenas`, el módulo `B` también hace `import cadenas`, y tu `main.rg` importa `A` y `B`? Tranquilo: el cargador de Ridgun recuerda qué archivos canónicos ha leído ya y **solo lo incluye una vez**.
+### 2. ¿Cómo importo un módulo o librería desde otro archivo? (`import`)
 
-Ahora que tienes la caja de herramientas controlada, pasemos al **Capítulo 03** para dominar las funciones, los tipos, los bloques y los trucos con cadenas de texto.
+Sin rutas relativas infernales tipo `../../../lib/cosas.rg`. Si tienes un módulo `src/main/ridgun/lib/geometria.rg` o un paquete `geometria.rglib` (en `target/`, `lib/` o `.stable/deps/` tras ejecutar `stable deps`), en cualquier otro archivo escribes arriba del todo:
+
+```ridgun
+import geometria
+```
+
+Y listo: todas las funciones, operadores y tipos de `geometria` están disponibles como si estuvieran en tu propio archivo. Si varios módulos hacen `import geometria`, el cargador de Ridgun recuerda qué archivos canónicos ha leído ya y **solo lo incluye una vez**.
+
+### 3. Extender `stable` con tareas (`fn :: task`) y plugins (`plugins/*.rg`)
+¿Quieres añadir comandos propios para tu framework web, tus migraciones de base de datos o tu flujo de despliegue?
+- **En `build.rg`**: declara cualquier función `fn :: task <palabras...> => String` (por ejemplo, `fn :: task levantar servidor => String`) y ejecútala con `stable levantar servidor`.
+- **En `plugins/*.rg` o `.stable/plugins/*.rg`**: coloca módulos `.rg` que definan tareas `fn :: task ...` o su propio `fn :: main => ()`, o extiende el tipo abierto `expand type StableCommand` de `stable`. Ejecuta `stable tasks` y `stable plugins` para inspeccionarlos en cualquier momento.
+
+Ahora que tienes la caja de herramientas y las librerías controladas, pasemos al **Capítulo 03** para dominar las funciones con espacios naturales, las firmas de tipos y los bloques.
