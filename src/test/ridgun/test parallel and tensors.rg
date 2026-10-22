@@ -67,9 +67,31 @@ fn :: scoped arena calc => Int String
         atomic visit_count = visit_count + 5
         (reg_val + visit_count, ctx_val)
 
+fn :: triple val Int => Int
+      triple val x   =  x * 3
+
+fn :: gt ten Int => Bool
+      gt ten x   =  x > 10
+
+fn :: sum pair Int Int => Int
+      sum pair acc x   =  acc + x
+
+fn :: apply hof (Int => Int) (Int Int => Int) [Int] => [Int] Int
+      apply hof f            g                xs    =
+        mapped = ||map f xs
+        filtered = ||filter gt ten mapped
+        total = fold g 0 filtered
+        (filtered, total)
+
+fn :: channel roundtrip String => String
+      channel roundtrip msg    =
+        ch = new channel
+        _ = send through msg ch
+        receive from ch
+
 fn :: main => ()
       main =
-        echo "=== Parallel || DAG, Tensors, Einsum, Masks, Region, Context & Shared (Slots 38..52) ==="
+        echo "=== Parallel || DAG, Tensors, Einsum, Masks, Region, Context & Shared (Slots 38..55) ==="
         assert equals (parallel dag calc) 775
         assert equals (tensor slice calc) 53
         ta = Tensor [[1, 2], [3, 4]]
@@ -79,4 +101,6 @@ fn :: main => ()
         assert equals (read active tag) "default-tag"
         assert equals (scoped arena calc) (65, "phase3-region")
         assert equals (read active tag) "default-tag"
+        assert equals (apply hof triple val sum pair [2, 4, 6, 8]) ([12, 18, 24], 54)
+        assert equals (channel roundtrip "phase4-channel-ok") "phase4-channel-ok"
         echo "=== All parallel & tensor tests passed ==="

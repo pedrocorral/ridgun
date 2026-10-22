@@ -1,6 +1,6 @@
 -- ============================================================
 -- src/main/ridgun/stable/main.rg
--- `stable` v0.9.10 — The Interactive Build Tool for Ridgun (100% Ridgun)
+-- `stable` v0.9.11 — The Interactive Build Tool for Ridgun (100% Ridgun)
 -- Written in Ridgun's natural-language mixfix operator style (`op :: ...`).
 -- Inspired by Scala's sbt: parses `build.rg` using the Ridgun
 -- compiler AST, supports `src/main/ridgun/lib/` + parallel
@@ -192,7 +192,7 @@ op :: extract function body from [RFnDef] named String default String => String
 
 op :: load build config from String     => StableConfig
       load build config from build_path
-        | NOT (file build_path exists) = ProjectConfig "ridgunc" "0.9.10" "src/main/ridgun/ridgunc/main.rg" "src/main/ridgun" "src/test/ridgun" "target"
+        | NOT (file build_path exists) = ProjectConfig "ridgunc" "0.9.11" "src/main/ridgun/ridgunc/main.rg" "src/main/ridgun" "src/test/ridgun" "target"
         | otherwise = parse build config source (read_file build_path)
 
 op :: parse build config source String => StableConfig
@@ -204,7 +204,7 @@ op :: parse build config source String => StableConfig
 op :: extract config from program RProgram        => StableConfig
       extract config from program (Program fns _) =
         name_str = extract function body from fns named "project_name" default "ridgunc"
-        ver = extract function body from fns named "project_version" default "0.9.10"
+        ver = extract function body from fns named "project_version" default "0.9.11"
         main_ep = extract function body from fns named "main_entry" default "src/main/ridgun/ridgunc/main.rg"
         sdir = extract function body from fns named "source_dir" default "src/main/ridgun"
         tdir = extract function body from fns named "test_dir" default "src/test/ridgun"
@@ -355,7 +355,7 @@ op :: build library artifacts from String into String named String version Strin
         out_so = out_dir + "/lib" + lib_name + ".so"
         _ = log info "Building Ridgun library '{lib_name}' from {entry_path} (v{ver}) ..."
         st1 = emit_rglib_file entry_path out_rglib
-        st2 = build_native_shared_library entry_path out_so
+        st2 = build native so library entry_path out_so
         report library build of out_rglib so out_so status1 st1 status2 st2
 
 op :: report library build of String    so String status1 Int status2 Int => Int
@@ -378,7 +378,7 @@ op :: run task build lib on StableConfig args [String]  => Int
 op :: build target from String     into String  version String => Int
       build target from entry_path into out_bin version ver    =
         _ = log info "Building native executable '{out_bin}' from {entry_path} (v{ver}) ..."
-        st_code = build_native_executable entry_path out_bin
+        st_code = build native executable entry_path out_bin
         report build of out_bin status st_code
 
 op :: pair entries [String] with dir String version String => [(String, String, String)]
@@ -470,7 +470,7 @@ fn :: run_single_test_suite String => (Int, Int)
         _ = log info "Compiling & running test suite: {tpath}"
         bname = base filename of tpath at 0 len (str_len tpath) slash (0 - 1)
         bin_path = "target/.stable_test_" + bname + "_bin"
-        st_code = build_native_fast_executable tpath bin_path
+        st_code = build native fast executable tpath bin_path
         run built test binary st_code suite tpath binary bin_path
 
 op :: run built test binary Int suite String binary String   => (Int, Int)
@@ -942,7 +942,7 @@ op :: run executable plugin String args [String]   => Int
         _ = shell_exec "mkdir -p target"
         bname = base filename of ppath at 0 len (str_len ppath) slash (0 - 1)
         bin_path = "target/.stable_plugin_" + bname + "_bin"
-        st = build_native_fast_executable ppath bin_path
+        st = build native fast executable ppath bin_path
         exec plugin binary st path bin_path args extra_args
 
 op :: exec plugin binary Int path String   args [String]   => Int
@@ -1036,7 +1036,7 @@ op :: dispatch command StableCommand on StableConfig => (Bool, StableConfig, Int
       dispatch command CmdExit on cfg = (False, cfg, 0)
       dispatch command CmdHelp on cfg = (True, cfg, run task help)
       dispatch command CmdVersion on cfg =
-        _ = echo "stable 0.9.10 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
+        _ = echo "stable 0.9.11 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
         (True, cfg, 0)
       dispatch command CmdInfo on cfg = (True, cfg, run task info on cfg)
       dispatch command CmdReload on _ =
@@ -1102,7 +1102,7 @@ op :: repl continue with (Bool, StableConfig, Int) => ()
 
 op :: start interactive shell for StableConfig => ()
       start interactive shell for (ProjectConfig name_str ver main_ep sdir tdir out_dir) =
-        _ = log info "Welcome to stable 0.9.10 (Ridgun Build Tool — 100% Ridgun)"
+        _ = log info "Welcome to stable 0.9.11 (Ridgun Build Tool — 100% Ridgun)"
         _ = log info "Loading project definition from build.rg ..."
         _ = log info "Set current project to '{name_str}' v{ver} (main: {main_ep})"
         _ = log info "Commands: 'built' (or 'build'), 'run', 'test', 'check', 'compile', 'clean', 'info', 'exit'"

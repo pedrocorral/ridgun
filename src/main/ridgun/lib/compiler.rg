@@ -2007,60 +2007,60 @@ fn :: emit_rglib_after_check RProgram String  String      [RTypeError] => Int
         _ = echo (format_type_errors errs)
         1
 
-fn :: emit_elf_for_target RNativeProg String        => [Int]
-      emit_elf_for_target nprog       "arm64"       =  emit_arm64_elf nprog
-      emit_elf_for_target nprog       "arm64-linux" =  emit_arm64_elf nprog
-      emit_elf_for_target nprog       "aarch64"     =  emit_arm64_elf nprog
-      emit_elf_for_target nprog       _             =  emit_x86_64_elf nprog
+fn :: emit elf for target RNativeProg String        => [Int]
+      emit elf for target nprog       "arm64"       =  emit arm64 elf nprog
+      emit elf for target nprog       "arm64-linux" =  emit arm64 elf nprog
+      emit elf for target nprog       "aarch64"     =  emit arm64 elf nprog
+      emit elf for target nprog       _             =  emit x86_64 elf nprog
 
-fn :: emit_shared_elf_for_target RNativeProg String        => [Int]
-      emit_shared_elf_for_target nprog       "arm64"       =  emit_arm64_shared_elf nprog
-      emit_shared_elf_for_target nprog       "arm64-linux" =  emit_arm64_shared_elf nprog
-      emit_shared_elf_for_target nprog       "aarch64"     =  emit_arm64_shared_elf nprog
-      emit_shared_elf_for_target nprog       _             =  emit_x86_64_shared_elf nprog
+fn :: emit so elf for target RNativeProg String        => [Int]
+      emit so elf for target nprog       "arm64"       =  emit arm64 so elf nprog
+      emit so elf for target nprog       "arm64-linux" =  emit arm64 so elf nprog
+      emit so elf for target nprog       "aarch64"     =  emit arm64 so elf nprog
+      emit so elf for target nprog       _             =  emit x86_64 so elf nprog
 
-fn :: build_native_target_executable String     String     String      => Int
-      build_native_target_executable input_path output_bin target_arch =
+fn :: build native target executable String     String     String      => Int
+      build native target executable input_path output_bin target_arch =
         raw_src = load_rg_with_libs input_path
         toks = tokenize_src raw_src
         prog = parse_tokens toks
         errs = typecheck_program prog
-        build_native_target_after_check prog output_bin target_arch errs
+        build native target after check prog output_bin target_arch errs
 
-fn :: build_native_target_after_check RProgram String String [RTypeError] => Int
-      build_native_target_after_check prog output_bin target_arch [] =
+fn :: build native target after check RProgram String String [RTypeError] => Int
+      build native target after check prog output_bin target_arch [] =
         nprog = lower_program_to_native prog
-        elf_bytes = emit_elf_for_target nprog target_arch
-        write_elf64_executable output_bin elf_bytes
-      build_native_target_after_check _ _ _ errs =
+        elf_bytes = emit elf for target nprog target_arch
+        write elf64 executable output_bin elf_bytes
+      build native target after check _ _ _ errs =
         _ = echo (format_type_errors errs)
         1
 
-fn :: build_native_target_shared_library String     String    String      => Int
-      build_native_target_shared_library input_path output_so target_arch =
+fn :: build native target so library String     String    String      => Int
+      build native target so library input_path output_so target_arch =
         raw_src = load_rg_with_libs input_path
         toks = tokenize_src raw_src
         prog = parse_tokens toks
         errs = typecheck_program prog
-        build_native_shared_after_check prog output_so target_arch errs
+        build native so after check prog output_so target_arch errs
 
-fn :: build_native_shared_after_check RProgram String String [RTypeError] => Int
-      build_native_shared_after_check prog output_so target_arch [] =
+fn :: build native so after check RProgram String String [RTypeError] => Int
+      build native so after check prog output_so target_arch [] =
         nprog = lower_library_to_native prog
-        elf_bytes = emit_shared_elf_for_target nprog target_arch
-        write_elf64_executable output_so elf_bytes
-      build_native_shared_after_check _ _ _ errs =
+        elf_bytes = emit so elf for target nprog target_arch
+        write elf64 executable output_so elf_bytes
+      build native so after check _ _ _ errs =
         _ = echo (format_type_errors errs)
         1
 
-fn :: build_native_shared_library String     String    => Int
-      build_native_shared_library input_path output_so =
-        build_native_target_shared_library input_path output_so "x86_64-linux"
+fn :: build native so library String     String    => Int
+      build native so library input_path output_so =
+        build native target so library input_path output_so "x86_64-linux"
 
-fn :: build_native_executable String     String     => Int
-      build_native_executable input_path output_bin =
-        build_native_target_executable input_path output_bin "x86_64-linux"
+fn :: build native executable String     String     => Int
+      build native executable input_path output_bin =
+        build native target executable input_path output_bin "x86_64-linux"
 
-fn :: build_native_fast_executable String     String     => Int
-      build_native_fast_executable input_path output_bin =
-        build_native_target_executable input_path output_bin "x86_64-linux"
+fn :: build native fast executable String     String     => Int
+      build native fast executable input_path output_bin =
+        build native target executable input_path output_bin "x86_64-linux"

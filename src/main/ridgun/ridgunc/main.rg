@@ -1,6 +1,6 @@
 -- ============================================================
 -- src/main/ridgun/ridgunc/main.rg
--- Self-Hosted Ridgun Compiler CLI Driver (ridgunc v0.9.10)
+-- Self-Hosted Ridgun Compiler CLI Driver (ridgunc v0.9.11)
 -- Shared Library (`src/main/ridgun/lib/`): ast.rg, lexer.rg,
 -- parser.rg, analyzer.rg, typecheck.rg, compiler.rg, vm.rg,
 -- elf64.rg, x86_64.rg, arm64.rg
@@ -74,7 +74,7 @@ fn :: strip_rg_ext String => String
 fn :: run_cli_build_lib String     String     String      => ()
       run_cli_build_lib input_path output_out target_arch
         | str_ends_with_suffix output_out ".so" =
-          st = build_native_target_shared_library input_path output_out target_arch
+          st = build native target so library input_path output_out target_arch
           report_so_status input_path output_out st
         | str_ends_with_suffix output_out ".rglib" =
           st = emit_rglib_file input_path output_out
@@ -83,13 +83,13 @@ fn :: run_cli_build_lib String     String     String      => ()
           rglib_out = output_out + ".rglib"
           so_out = output_out + ".so"
           st1 = emit_rglib_file input_path rglib_out
-          st2 = build_native_target_shared_library input_path so_out target_arch
+          st2 = build native target so library input_path so_out target_arch
           _ = report_rglib_status input_path rglib_out st1
           report_so_status input_path so_out st2
 
 fn :: run_cli_build_so String     String    String      => ()
       run_cli_build_so input_path output_so target_arch =
-        status = build_native_target_shared_library input_path output_so target_arch
+        status = build native target so library input_path output_so target_arch
         report_so_status input_path output_so status
 
 fn :: report_rglib_status String     String     Int  => ()
@@ -106,12 +106,12 @@ fn :: report_so_status String     String    Int  => ()
 
 fn :: run_cli_build String     String     => ()
       run_cli_build input_path output_bin =
-        status = build_native_executable input_path output_bin
+        status = build native executable input_path output_bin
         report_build_status input_path output_bin status
 
 fn :: run_cli_build_target String     String     String      => ()
       run_cli_build_target input_path output_bin target_arch =
-        status = build_native_target_executable input_path output_bin target_arch
+        status = build native target executable input_path output_bin target_arch
         report_build_status input_path output_bin status
 
 fn :: report_build_status String     String     Int  => ()
@@ -123,7 +123,7 @@ fn :: report_build_status String     String     Int  => ()
 fn :: run_cli_run String     => ()
       run_cli_run input_path =
         _ = sys_mkdir "target" 493
-        status = build_native_fast_executable input_path "target/.ridgunc_run_bin"
+        status = build native fast executable input_path "target/.ridgunc_run_bin"
         exec_built_run status
 
 fn :: exec_built_run Int => ()
@@ -153,7 +153,7 @@ fn :: run_self_hosted_pipeline_demo => ()
 
 fn :: run_cli_version => ()
       run_cli_version =
-        echo "ridgunc 0.9.10 (self-hosted Ridgun compiler, x86_64-unknown-linux-gnu)"
+        echo "ridgunc 0.9.11 (self-hosted Ridgun compiler, x86_64-unknown-linux-gnu)"
 
 fn :: run_cli_help => ()
       run_cli_help =
