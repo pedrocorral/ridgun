@@ -1,5 +1,5 @@
 ---
-rule: "Always pass -c user.name=\"Pedro Corral\" and -c user.email=\"pedro@obdin.com\" on every git commit command."
+rule: "Always pass -c user.name='Pedro Corral' and -c user.email='pedro@obdin.com' on every git commit command."
 author: pedro@obdin.com
 scope: project
 updated: 2026-10-17

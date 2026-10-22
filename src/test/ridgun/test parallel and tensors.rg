@@ -170,6 +170,7 @@ fn :: main => ()
         assert equals (parallel pipe heavy) (55, 720)
         assert equals (parallel pipe light) (12, 15)
         assert equals (||map fib [8, 9, 10]) [21, 34, 55]
+        assert equals (||map fib [6, 7, 8, 9, 10, 11]) [8, 13, 21, 34, 55, 89]
         ag_fib = agent fib
         send 10 to ag_fib
         send 11 to ag_fib
@@ -177,6 +178,10 @@ fn :: main => ()
         assert equals (receive from ag_fib) 55
         assert equals (receive from ag_fib) 89
         assert equals (receive from ag_fib) 144
+        send 9 to ag_fib
+        send 10 to ag_fib
+        assert equals (receive from ag_fib) 34
+        assert equals (receive from ag_fib) 55
         stop ag_fib
         assert equals (agent alive ag_fib) False
         echo "=== All parallel & tensor tests passed ==="
