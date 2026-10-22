@@ -1,6 +1,6 @@
-# Ridgun (`v0.9.8`)
+# Ridgun (`v0.9.12`)
 
-**A tabular, pure-by-default functional & systems programming language built for massive parallelism, symbolic tensor algebra, and deterministic zero-GC memory management.**
+**A tabular, pure-by-default functional & systems programming language built for massive parallelism, native isolated agents, symbolic tensor algebra, and deterministic zero-GC memory management.**
 
 Ridgun combines the declarative clarity of tabular functional programming with native systems performance. Its self-hosted compiler (**`ridgunc`**) and project manager/formatter (**`stable`**) are written **100% in pure Ridgun** (`src/main/ridgun/`, zero Rust/C code or external compiler dependencies) and emit standalone, statically linked Linux ELF64 executables (`x86_64` and `ARM64` / Raspberry Pi) directly to disk with zero Garbage Collector pauses.
 
@@ -8,7 +8,7 @@ Ridgun combines the declarative clarity of tabular functional programming with n
 
 ## 📖 The Ridgun Book — Complete Guide in 7 Languages
 
-Learn Ridgun from scratch—from your first tabular function to parallel DAGs, symbolic tensors, and `RMM1`/`RMM2` deterministic memory management—in your preferred language:
+Learn Ridgun from scratch—from your first tabular function to parallel DAGs, the Native Agent Model (`agent`, `send ... to`, `receive from`), symbolic tensors, and `RMM1`/`RMM2` deterministic memory management—in your preferred language:
 
 | Language | Online Interactive Book (`HTML`) | Markdown Chapters (`00`–`08`) |
 |---|---|---|
@@ -65,17 +65,19 @@ Learn Ridgun from scratch—from your first tabular function to parallel DAGs, s
 2. **Unified `=` Block Grammar (`(none)`, `|`, `||`) & Compact Nested Closers (`|.` / `||.`)**:
    - Every `=` (in functions, operators, local bindings `x =`, or guard branches) accepts sequential lines, conditional guard blocks (`|`), or parallel DAG blocks (`||`).
    - Guard branches can nest 3–4+ levels deep to form rich decision trees, using the compact inline **`|.`** closer (`| otherwise = val |.`) only when returning to an outer branch level below.
-3. **Parallel DAG Blocks (`|| expr -> var`) & Multicore Combinators (`||map`, `||filter`)**:
+3. **Parallel DAG Blocks (`|| expr -> var`), Multicore Combinators (`||map`, `||filter`), and the Native Agent Model (`agent`, `send ... to`, `receive from`)**:
    - Parallel dataflow dependencies are declared directly with `|| expr -> var` (no `where` keyword required). The static analyzer verifies cycle freedom at compile time and schedules independent branches in parallel.
    - `map`, `filter`, and `fold` execute sequentially left-to-right, while **`||map`** and **`||filter`** distribute list elements across multicore worker threads using Ridgun's `||` parallel prefix.
+   - **Zero-boilerplate Native Agent Model (`FR-COMP-009`)**: Any standard function or operator (`fn ::` or `op ::`) can be wrapped into an isolated concurrent agent in one line (`ag = agent (my fn)` for stateless agents, or `ag = agent (step fn) init_state` for stateful/session agents `S M => S` and `S M => S R`). Communicate via statically typed `send msg to ag` (or multi-argument `send a b to ag`), blocking `receive from ag`, non-blocking `try receive from ag` (`Some r | None`), and `stop ag` (which deterministically frees the agent's isolated state via `RMM1`/`RMM2`).
 4. **Immutable by Default (`x = ...`) with Explicit `mut` (`mut x = ...`)**:
    - Local bindings are immutable constants unless declared with `mut x = expr`, preventing accidental rebinding in the same scope.
 5. **Deterministic Memory Without a Garbage Collector (`RMM1`, `RMM2` & `with region`)**:
    - **Policy `RMM1` (Compiled Memory Management)**: Static last-use deallocation (`rg_cmm_drop`), zero-copy return moves (`rg_cmm_move`), and 1-cycle pointer-identity guards (`ptr(a) != ptr(c)`) for branching functions.
    - **Policy `RMM2` (Assignment & Cascaded Structure Counting)**: Incoming function arguments are untouched (`+0`/`-0`), local/container assignments add `+1`, returned locals are spared in transit, and non-returned locals cascade `-1` through child structures on scope exit.
-   - **Lexical Regions (`with region 64_KB do`)**: Enforce hard byte quotas on untrusted workloads and free entire arenas in $O(1)$.
-6. **Natural-Language Spaces in `fn ::` & `op ::`, Open `expand type`, Polymorphism (`A`..`Z`), and Symbolic Tensors (`@`)**:
+   - **Lexical Regions (`with region 64_KB do`) & Timeouts (`with timeout 250_ms`)**: Enforce hard byte quotas and wall-clock execution deadlines on untrusted workloads and free entire arenas in $O(1)$.
+6. **Natural-Language Spaces in `fn ::` & `op ::`, Unified Tuple/Sequence Signatures (`FR-COMP-008`), Open `expand type`, Polymorphism (`A`..`Z`), and Symbolic Tensors (`@`)**:
    - Define multi-word functions and N-ary operators with natural spaces instead of underscores (`fn :: format err AppErr => String`, `op :: clamp Int between Int and Int => Int`).
+   - Argument sequences and tuples are unified (`FR-COMP-008`): write clean space-separated tuple and return type signatures (`=> Int Int [String String] String`, `[String String]`, `(A B)`) without comma clutter.
    - Share ADT constructor names across types (`Error`, `Var`), use bare type names as variants (`type Something = String | Int | MyStruct Float Int`), extend types via `expand type`, and merge new `fn ::` clauses automatically before `_` catch-alls.
    - Single uppercase letters (`A`..`Z`) act as zero-noise polymorphic type variables.
    - Native `Tensor[N, K]` types check symbolic dimensions at compile time and support Einstein summation (`A_ik @ B_kj`) and Hadamard broadcasting (`A_ij * B_j`).
@@ -152,6 +154,18 @@ fn :: compute total Bool   Int => Int
 -- 7. Symbolic-dimension Tensor contraction (Einstein summation `@`)
 fn :: linear layer Tensor[B, In] Tensor[In, Out] Tensor[B, Out] => Tensor[B, Out]
       linear layer x             weights         bias           =  (x_bi @ weights_io) + bias
+
+-- 8. Native Agent Model (`agent`, `send ... to`, `receive from`, `stop`)
+fn :: add visit Int Int => Int
+      add visit acc n   =  acc + n
+
+fn :: track visits Int => Int
+      track visits delta =
+        counter = agent (add visit) 10
+        send delta to counter
+        total = receive from counter
+        stop counter
+        total
 ```
 
 ---
@@ -233,6 +247,9 @@ ridgun/
 |---|---|
 | [**Language Specification (`docs/lang/spec.md`)**](docs/lang/spec.md) | Complete syntax, type system, unified `=` blocks, `|` / `|.` decision trees, `||` DAGs, `mut`, ADTs, tensors, and canonical formatting rules |
 | [**RMM Memory Architecture (`docs/etc/cmm_architecture.md`)**](docs/etc/cmm_architecture.md) | Detailed design of `RMM1` (Linear & Conditional CMM) and `RMM2` (Assignment & Cascaded Structure Counting) |
+| [**Low-Level Runtime Design (`docs/etc/low_level_ridgun_runtime_design.md`)**](docs/etc/low_level_ridgun_runtime_design.md) | Architecture and instruction design for the 100% pure-Ridgun symbolic `x86_64` and `ARM64` runtime kernels |
+| [**FR-COMP-009 (`docs/requirements/functional/compiler/`)**](docs/requirements/functional/compiler/FR-COMP-009-native-agent-model-and-message-passing.md) | Requirement specification for Ridgun's Native Agent Model (`agent`, `send ... to`, `receive from`, `try receive from`, `stop`) |
+| [**FR-COMP-008 (`docs/requirements/functional/compiler/`)**](docs/requirements/functional/compiler/FR-COMP-008-space-separated-tuple-and-sequence-type-signatures.md) | Requirement specification for unified space-separated tuple and sequence type signatures |
 | [**FR-COMP-004 (`docs/requirements/functional/compiler/`)**](docs/requirements/functional/compiler/FR-COMP-004-native-elf64-codegen-x86-64-and-arm64.md) | Requirement specification for 100% pure-Ridgun native ELF64 machine-code generation (`x86_64` and `ARM64` Raspberry Pi) without Rust or `rustc` |
 | [**FR-COMP-003 (`docs/requirements/functional/compiler/`)**](docs/requirements/functional/compiler/FR-COMP-003-unified-equals-grammar-guards-parallel-pipes-and-mut.md) | Requirement specification for unified `=` grammar, `|.` / `||.` closers, `mut`, and lowercase logical operators |
 | [**FR-COMP-002 (`docs/requirements/functional/compiler/`)**](docs/requirements/functional/compiler/FR-COMP-002-compiled-memory-management-cmm.md) | Requirement specification for `RMM1` and `RMM2` deterministic memory management |
