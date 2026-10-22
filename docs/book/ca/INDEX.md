@@ -10,5 +10,5 @@
 | `04-pattern-matching-i-guardes.md` | Capítol 04: Pattern matching, guardes `|`, arbres imbricats amb `|.` i TCO | Control de flux funcional i bucles recursius |
 | `05-llistes-tuples-i-sequencies.md` | Capítol 05: Llistes, tuples, funcions variàdiques i màscares de seqüències | Treballar amb col·leccions i canonades de dades |
 | `06-tipus-algebraics-i-polimorfisme.md` | Capítol 06: ADTs (registres i tipus suma), polimorfisme (`A`..`Z`) i operadors `op` | Modelar dominis de dades i funcions genèriques |
-| `07-ordre-superior-i-parallelisme-dag.md` | Capítol 07: `map`/`||map`/`filter`/`||filter`/`fold`, DAGs paral·lels amb `||` i `->`, i canals | Programació funcional d'ordre superior i concurrència |
+| `07-ordre-superior-i-parallelisme-dag.md` | Capítol 07: `map`/`||map`/`filter`/`||filter`/`fold`, DAGs paral·lels amb `||` i `->`, agents (`agent`, `send ... to`, `receive from`) i canals | Programació funcional d'ordre superior i concurrència |
 | `08-tensors-rmm-regions-i-sistemes.md` | Capítol 08: Tensors, memòria compilada RMM (`RMM1`/`RMM2`), regions i sistemes POSIX | Càlcul numèric, memòria determinista i eines UNIX |

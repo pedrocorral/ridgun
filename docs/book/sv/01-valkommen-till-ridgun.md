@@ -110,7 +110,7 @@ Ridgun försöker inte uppfinna ett fyrkantigt hjul på nytt; det lånar skamlö
 | **Haskell / ML** | Rena funktioner, mönstermatchning (*pattern matching*) per fall, algebraiska datatyper (`Option`, `Result`) och polymorfism (`A`..`Z`). | De abstrakta monaderna, de 40 `LANGUAGE`-pragmana och skräpsamlaren. |
 | **J / APL** | Besattheten av kodens tabellform, inbyggda tensorer och sekvensmasker (`s["-+-"]`). | De hieroglyfiska symbolerna som är omöjliga att skriva på ett vanligt tangentbord. |
 | **Rust / C** | Små inbyggda ELF-binärer, noll GC, minneskontroll (`with region`) och POSIX-systemanrop. | Den ständiga kampen med *borrow checker*, livstider `'a` och syntaktisk mångordighet. |
-| **Erlang / Go** | Samtidighet via kanaler (`chan_send`, `chan_recv`) och lättviktiga uppgifter (`spawn`, `join`). | `nil`-pekare och delade muteringar av misstag. |
+| **Erlang / Go** | Isolerade agenter (`agent`, `send ... to`, `receive from`) och samtidighet via kanaler (`new bounded channel`). | `nil`-pekare och delade muteringar av misstag. |
 
 ---
 

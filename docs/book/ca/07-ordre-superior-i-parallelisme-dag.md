@@ -145,45 +145,60 @@ Directe, visual i retorna la tupla `(fib n, fact n)`.
 
 ---
 
-## 7.4. Quan vols el volant manual: `spawn`, `join` i Canals CSP
+## 7.4. Quan vols el volant manual: el Model Natiu d'Agents (`agent`, `send ... to`, `receive from`) i Canals CSP
 
-El paral·lelisme automàtic de `||` i `map` cobreix el 90% dels casos. Però de vegades estàs programant un sistema d'actors, una cua de treballs o una canonada productor-consumidor i vols controlar tu mateix les tasques i els missatges.
+El paral·lelisme automàtic de `||` i `||map` cobreix el 90% dels casos. Però quan programes un servidor persistent, sessions d'usuari amb estat aïllat, cues de treballs o una canonada productor-consumidor, vols **agents concurrents amb memòria aïllada i pas de missatges tipat**.
 
-Per a això tens dues eines netes:
+En Ridgun no cal inventar cap sintaxi estranya com `actor ::`: **qualsevol funció normal (`fn ::` o `op ::`) es converteix en un agent concurrent en una sola línia amb `agent`**:
 
-### 1. Llançar tasques amb `spawn` i recollir el resultat amb `join`
+### 1. Agents sense estat i amb estat aïllat (`agent`, `send ... to`, `receive from`, `stop`)
+- `ag = agent (la meva funcio)`: converteix una funció `M => R` en un agent sense estat de tipus `Agent M R`.
+- `ag = agent (funcio amb estat) estat_inicial`: converteix una funció `S M => S` (o `S M => S R`) en un agent amb estat aïllat que recorda el seu estat missatge rere missatge sense cap `Mutex`.
+- `send msg to ag` (o amb diversos arguments: `send a b to ag`): envia un missatge tipat a la bústia de l'agent.
+- `res = receive from ag` (o `try receive from ag` sense bloquejar): recull la següent resposta de la bústia de sortida de l'agent.
+- `stop ag`: atura l'agent i allibera el seu estat automàticament mitjançant `RMM1`/`RMM2`.
+
 ```ridgun
-processar_lot Int => Int
-processar_lot id  =  id * 100
+fn :: sumar visita Int Int => Int
+      sumar visita acum n  =  acum + n
 
-main => ()
-main =
-  tasca1 = spawn processar_lot 1
-  tasca2 = spawn processar_lot 2
-  -- Mentrestant podries fer altres coses aquí...
-  res1 = join tasca1
-  res2 = join tasca2
-  echo "Han acabat amb:" res1 "i" res2
+fn :: processar lot Int Int => Int
+      processar lot id  t   =  (id * 100) + t
+
+fn :: main => ()
+      main =
+        comptador = agent (sumar visita) 10
+        send 5 to comptador
+        send 7 to comptador
+        v1 = receive from comptador
+        v2 = receive from comptador
+        stop comptador
+
+        treballador = agent (processar lot)
+        send 3 25 to treballador
+        lot = receive from treballador
+        stop treballador
+        echo "Visites:" v1 "->" v2 "| Lot:" lot
 ```
 
-### 2. Passar missatges per canals afitats (`new_bounded_channel`)
-Igual que en Go o Erlang, en lloc de compartir memòria entre fils, envies valors immutables a través d'un tub segur:
+### 2. Passar missatges per canals afitats (`new bounded channel`)
+Igual que en Go o Erlang, a més d'agents també pots crear tubs explícits per comunicar etapes:
 
-- `new_bounded_channel capacitat`: crea un canal amb espai per a `capacitat` missatges.
-- `chan_send valor canal` (o `send_through valor canal`): fica un missatge al tub.
-- `chan_recv canal` (o `receive_from canal`): treu el següent missatge del tub.
-- `chan_try_recv canal`: mira si hi ha missatge sense quedar-se esperant; retorna `Some valor` o `None`.
-- `receive_from_timeout canal ticks`: espera un límit de temps i retorna `Ok valor` o `Err Timeout`.
+- `new bounded channel capacitat`: crea un canal amb espai per a `capacitat` missatges.
+- `send through valor canal` (o `chan send valor canal`): fica un missatge al tub.
+- `receive from canal` (o `chan recv canal`): treu el següent missatge del tub.
+- `try receive from canal`: mira si hi ha missatge sense quedar-se esperant; retorna `Some valor` o `None`.
+- `receive from timeout canal ticks`: espera un límit de temps i retorna `Ok valor` o `Err Timeout`.
 
 ```ridgun
-main => ()
-main =
-  tub = new_bounded_channel 4
-  _ = chan_send "Tasca A completada" tub
-  _ = chan_send "Tasca B completada" tub
-  primer = chan_recv tub
-  segon = chan_recv tub
-  echo primer "|" segon
+fn :: main => ()
+      main =
+        tub = new bounded channel 4
+        _ = send through "Tasca A completada" tub
+        _ = send through "Tasca B completada" tub
+        primer = receive from tub
+        segon = receive from tub
+        echo primer "|" segon
 ```
 
 I ara, corda't el cinturó per al **Capítol 08**, el gran final: **tensors amb dimensions verificades en compilació, variables d'àmbit (`context`/`shared`), regions de memòria deterministes, accés directe a maquinari MMIO i programació de sistemes UNIX/POSIX**.

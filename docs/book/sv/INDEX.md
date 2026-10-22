@@ -9,6 +9,6 @@
 | `04-monstermatchning-och-vakter.md` | Kapitel 04: Mönstermatchning, booleska vakter (`|`, `|.`) och svansrekursion (TCO) | Du bygger villkorslogik, nästlade beslutsträd eller rekursiva loopar |
 | `05-listor-tupler-och-sekvenser.md` | Kapitel 05: Listor `[T]`, variadiska funktioner, tupler och sekvensmasker `s["-+-"]` | Du arbetar med datasamlingar, listmönster eller sekvensfiltrering |
 | `06-algebraiska-datatyper-och-polymorfism.md` | Kapitel 06: Produkttyper, summatyper, `Option`/`Result`, polymorfism (`A`..`Z`) och `op ::` | Du modellerar domäntyper, felhantering eller egna mixfix-operatorer |
-| `07-hogre-ordningen-och-dag-parallellism.md` | Kapitel 07: `map`/`||map`/`filter`/`||filter`/`fold`, parallella DAG-block (`||`, `||.`, `->`), `spawn`/`join` och kanaler | Du vill parallellisera beräkningar eller använda högre ordningens funktioner |
+| `07-hogre-ordningen-och-dag-parallellism.md` | Kapitel 07: `map`/`||map`/`filter`/`||filter`/`fold`, parallella DAG-block (`||`, `||.`, `->`), agenter (`agent`, `send ... to`, `receive from`) och kanaler | Du vill parallellisera beräkningar eller använda högre ordningens funktioner |
 | `08-tensorer-rmm-regioner-och-system.md` | Kapitel 08: Kompilerat minne (`RMM1`/`RMM2`), `with region`, `Tensor`, `context`/`shared`, `hardware` och POSIX | Du skriver systemverktyg, tensoralgebra eller minneskritisk kod |
 | `index.html` | Självständig HTML-utgåva av Ridgun-boken på svenska | Du vill läsa hela den svenska boken i en webbläsare |

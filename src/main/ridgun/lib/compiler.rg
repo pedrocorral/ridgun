@@ -8,6 +8,8 @@
 -- @implements FR-COMP-001
 -- @implements FR-COMP-006
 -- @implements FR-COMP-007
+-- @implements FR-COMP-008
+-- @implements FR-COMP-009
 -- @implements FR-VM-001
 -- @implements FR-VM-002
 -- ============================================================
@@ -592,7 +594,7 @@ fn :: build_str_pool_loop [String] Int     String [RStrEntry] => RStrPool
 
 fn :: build_str_pool [RFnDef] [String]   => RStrPool
       build_str_pool fns      extra_strs =
-        base_strs = ["", "+", "-", "*", "/", "%", "Linux", "MacOS", "Windows", "X86_64", "Arm64"] :: extra_strs
+        base_strs = ["", "+", "-", "*", "/", "%", "Linux", "MacOS", "Windows", "X86_64", "Arm64", "Ok", "Some", "None"] :: extra_strs
         all_strs = collect_fndef_list_strs fns base_strs
         build_str_pool_loop all_strs 0 "" []
 
@@ -932,7 +934,6 @@ fn :: builtin_call_id String             => Int
       builtin_call_id "chan_recv"        =  32
       builtin_call_id "try_receive_from" =  33
       builtin_call_id "chan_try_recv"    =  33
-      builtin_call_id "join"             =  34
       builtin_call_id "new_bounded_channel" = 35
       builtin_call_id "str_char_at"      =  40
       builtin_call_id "str_concat"       =  41
@@ -947,7 +948,6 @@ fn :: builtin_call_id String             => Int
       builtin_call_id "send_through"     =  50
       builtin_call_id "chan_send"        =  50
       builtin_call_id "receive_from_timeout" = 51
-      builtin_call_id "spawn"            =  52
       builtin_call_id "map"              =  53
       builtin_call_id "seq_map"          =  53
       builtin_call_id "||map"            =  54
@@ -1056,7 +1056,76 @@ fn :: prim_type_tag_id String   => Int
       prim_type_tag_id "Float"  =  4
       prim_type_tag_id _        =  0
 
+fn :: is_agent_call_name String             => Bool
+      is_agent_call_name "agent"            =  True
+      is_agent_call_name "send_to"          =  True
+      is_agent_call_name "receive_from"     =  True
+      is_agent_call_name "try_receive_from" =  True
+      is_agent_call_name "stop"             =  True
+      is_agent_call_name "agent_alive"      =  True
+      is_agent_call_name _                  =  False
+
+fn :: lower_agent_call RNativeEnv String [RExpr] [String] Int RNativeCode => RNativeCode
+      lower_agent_call env "agent" (fn_e:[]) bound_locals sp st =
+        st1 = lower_expr env fn_e bound_locals sp st
+        ins = [NStoreSlot sp, NCallBuiltin 1 (sp + 1) 0, NStoreSlot (sp + 1), NCallBuiltin 1 (sp + 2) 0, NStoreSlot (sp + 2), NLoadImmInt 1, NStoreSlot (sp + 3), NLoadImmInt 0, NStoreSlot (sp + 4), NMakeTuple (sp + 3) 2, NStoreSlot (sp + 3), NCloneSlot (sp + 1), NStoreSlot (sp + 4), NCallBuiltin 50 (sp + 3) 2, NMakeTuple sp 3]
+        nc_emit_list st1 ins (sp + 5)
+      lower_agent_call env "agent" (fn_e:init_e:[]) bound_locals sp st =
+        st1 = lower_expr env fn_e bound_locals sp st
+        st2 = nc_emit st1 (NStoreSlot sp) (sp + 1)
+        st3 = lower_expr env init_e bound_locals (sp + 4) st2
+        ins = [NStoreSlot (sp + 4), NCallBuiltin 1 (sp + 1) 0, NStoreSlot (sp + 1), NCallBuiltin 1 (sp + 2) 0, NStoreSlot (sp + 2), NLoadImmInt 2, NStoreSlot (sp + 3), NMakeTuple (sp + 3) 2, NStoreSlot (sp + 3), NCloneSlot (sp + 1), NStoreSlot (sp + 4), NCallBuiltin 50 (sp + 3) 2, NMakeTuple sp 3]
+        nc_emit_list st3 ins (sp + 5)
+      lower_agent_call env "send_to" (msg_e:ag_e:[]) bound_locals sp st =
+        st1 = lower_expr env msg_e bound_locals sp st
+        st2 = nc_emit st1 (NStoreSlot sp) (sp + 1)
+        st3 = lower_expr env ag_e bound_locals (sp + 1) st2
+        st4 = nc_emit st3 (NStoreSlot (sp + 1)) (sp + 2)
+        stopped_lbl = nc_lbl st4
+        stateful_lbl = stopped_lbl + 1
+        same_res_lbl = stopped_lbl + 2
+        split_pair_lbl = stopped_lbl + 3
+        store_state_lbl = stopped_lbl + 4
+        done_lbl = stopped_lbl + 5
+        st5 = nc_set_lbl st4 (stopped_lbl + 6)
+        ins_unpack = [NTupleGet (sp + 1) 0, NStoreSlot (sp + 2), NTupleGet (sp + 1) 1, NStoreSlot (sp + 3), NTupleGet (sp + 1) 2, NStoreSlot (sp + 4), NCloneSlot (sp + 3), NStoreSlot (sp + 5), NCallBuiltin 32 (sp + 5) 1, NStoreSlot (sp + 5), NTupleGet (sp + 5) 0, NStoreSlot (sp + 6), NTupleGet (sp + 5) 1, NStoreSlot (sp + 7)]
+        ins_stateless = [NMatchInt (sp + 6) 1, NJumpIfZero stateful_lbl, NCloneSlot sp, NStoreSlot (sp + 8), NCallIndirect1 (sp + 2) (sp + 8), NStoreSlot (sp + 8), NCloneSlot (sp + 5), NStoreSlot (sp + 9), NCloneSlot (sp + 3), NStoreSlot (sp + 10), NCallBuiltin 50 (sp + 9) 2, NCloneSlot (sp + 8), NStoreSlot (sp + 9), NCloneSlot (sp + 4), NStoreSlot (sp + 10), NCallBuiltin 50 (sp + 9) 2, NJump done_lbl]
+        ins_stateful = [NLabel stateful_lbl, NMatchInt (sp + 6) 2, NJumpIfZero stopped_lbl, NCloneSlot (sp + 7), NStoreSlot (sp + 8), NCloneSlot sp, NStoreSlot (sp + 9), NCallIndirect2 (sp + 2) (sp + 8), NStoreSlot (sp + 8), NMatchTuple (sp + 8) 2, NJumpIfZero same_res_lbl, NMatchTuple (sp + 7) 2, NJumpIfZero split_pair_lbl, NLabel same_res_lbl, NCloneSlot (sp + 8), NStoreSlot (sp + 9), NCloneSlot (sp + 8), NStoreSlot (sp + 10), NJump store_state_lbl, NLabel split_pair_lbl, NTupleGet (sp + 8) 0, NStoreSlot (sp + 9), NTupleGet (sp + 8) 1, NStoreSlot (sp + 10), NLabel store_state_lbl, NLoadImmInt 2, NStoreSlot (sp + 11), NCloneSlot (sp + 9), NStoreSlot (sp + 12), NMakeTuple (sp + 11) 2, NStoreSlot (sp + 11), NCloneSlot (sp + 3), NStoreSlot (sp + 12), NCallBuiltin 50 (sp + 11) 2, NCloneSlot (sp + 10), NStoreSlot (sp + 11), NCloneSlot (sp + 4), NStoreSlot (sp + 12), NCallBuiltin 50 (sp + 11) 2, NJump done_lbl]
+        ins_stopped = [NLabel stopped_lbl, NCloneSlot (sp + 5), NStoreSlot (sp + 9), NCloneSlot (sp + 3), NStoreSlot (sp + 10), NCallBuiltin 50 (sp + 9) 2, NLabel done_lbl, NClearLocals sp (sp + 13), NLoadImmRaw 0]
+        nc_emit_list st5 (ins_unpack :: ins_stateless :: ins_stateful :: ins_stopped) (sp + 13)
+      lower_agent_call env "receive_from" (target_e:[]) bound_locals sp st =
+        not_ag_lbl = nc_lbl st
+        st1 = nc_set_lbl st (not_ag_lbl + 1)
+        st2 = lower_expr env target_e bound_locals sp st1
+        ins = [NStoreSlot sp, NMatchTuple sp 3, NJumpIfZero not_ag_lbl, NTupleGet sp 2, NStoreSlot sp, NLabel not_ag_lbl, NCallBuiltin 32 sp 1]
+        nc_emit_list st2 ins (sp + 2)
+      lower_agent_call env "try_receive_from" (target_e:[]) bound_locals sp st =
+        not_ag_lbl = nc_lbl st
+        none_lbl = not_ag_lbl + 1
+        done_lbl = not_ag_lbl + 2
+        st1 = nc_set_lbl st (not_ag_lbl + 3)
+        st2 = lower_expr env target_e bound_locals sp st1
+        ok_off = env_str_off env "Ok"
+        some_off = env_str_off env "Some"
+        none_off = env_str_off env "None"
+        ins = [NStoreSlot sp, NMatchTuple sp 3, NJumpIfZero not_ag_lbl, NTupleGet sp 2, NStoreSlot sp, NLabel not_ag_lbl, NCallBuiltin 33 sp 1, NStoreSlot sp, NMatchAdt sp ok_off 2 1, NJumpIfZero none_lbl, NAdtField sp 0, NStoreSlot (sp + 1), NMakeAdt some_off 4 (sp + 1) 1, NStoreSlot (sp + 1), NClearLocals sp (sp + 1), NMoveSlot (sp + 1), NJump done_lbl, NLabel none_lbl, NClearLocals sp (sp + 2), NLoadAdt0 none_off 4, NLabel done_lbl]
+        nc_emit_list st2 ins (sp + 2)
+      lower_agent_call env "stop" (ag_e:[]) bound_locals sp st =
+        st1 = lower_expr env ag_e bound_locals sp st
+        ins = [NStoreSlot sp, NTupleGet sp 1, NStoreSlot (sp + 1), NCloneSlot (sp + 1), NStoreSlot (sp + 2), NCallBuiltin 32 (sp + 2) 1, NStoreSlot (sp + 2), NLoadImmInt 0, NStoreSlot (sp + 2), NLoadImmInt 0, NStoreSlot (sp + 3), NMakeTuple (sp + 2) 2, NStoreSlot (sp + 2), NCloneSlot (sp + 1), NStoreSlot (sp + 3), NCallBuiltin 50 (sp + 2) 2, NClearLocals sp (sp + 4), NLoadImmRaw 0]
+        nc_emit_list st1 ins (sp + 4)
+      lower_agent_call env "agent_alive" (ag_e:[]) bound_locals sp st =
+        alive_lbl = nc_lbl st
+        done_lbl = alive_lbl + 1
+        st1 = nc_set_lbl st (alive_lbl + 2)
+        st2 = lower_expr env ag_e bound_locals sp st1
+        ins = [NStoreSlot sp, NTupleGet sp 1, NStoreSlot (sp + 1), NCloneSlot (sp + 1), NStoreSlot (sp + 2), NCallBuiltin 32 (sp + 2) 1, NStoreSlot (sp + 2), NTupleGet (sp + 2) 0, NStoreSlot (sp + 3), NCloneSlot (sp + 2), NStoreSlot (sp + 4), NCloneSlot (sp + 1), NStoreSlot (sp + 5), NCallBuiltin 50 (sp + 4) 2, NMatchInt (sp + 3) 0, NJumpIfZero alive_lbl, NClearLocals sp (sp + 6), NLoadImmRaw 2, NJump done_lbl, NLabel alive_lbl, NClearLocals sp (sp + 6), NLoadImmRaw 6, NLabel done_lbl]
+        nc_emit_list st2 ins (sp + 6)
+      lower_agent_call _ _ _ _ _ st = st
+
 fn :: lower_call_expr RNativeEnv String [RExpr] [String] Int RNativeCode => RNativeCode
+      lower_call_expr env fname args bound_locals sp st
+        | is_agent_call_name fname = lower_agent_call env fname args bound_locals sp st
       lower_call_expr env fname [] bound_locals sp st
         | (lookup_local bound_locals fname) >= 0 =
           nc_emit st (NCloneSlot (env_var_slot env fname)) sp
@@ -1406,7 +1475,7 @@ fn :: lower_tco_arg_expr RNativeEnv RExpr [RExpr] [String] [String] Int RNativeC
         st1 = lower_tco_arg_list_to_slots env elems es bound_locals scope_vars sp 0 st
         nc_emit st1 (NMakeTuple sp count) (sp + count + 1)
       lower_tco_arg_expr env (ECall fname args) es bound_locals scope_vars sp st
-        | (lookup_local bound_locals fname) < 0 AND (NOT (is_upper_ident fname)) AND (builtin_call_id fname) < 0 AND fname != "sys_os" AND fname != "sys_arch" AND fname != "__record_update__" AND fname != "__unpack2__" =
+        | (lookup_local bound_locals fname) < 0 AND (NOT (is_upper_ident fname)) AND (builtin_call_id fname) < 0 AND (NOT (is_agent_call_name fname)) AND fname != "sys_os" AND fname != "sys_arch" AND fname != "__record_update__" AND fname != "__unpack2__" =
           count = rexpr_list_len args
           st1 = lower_tco_arg_list_to_slots env args es bound_locals scope_vars sp 0 st
           nc_emit st1 (NCallFn (env_fn_id env fname) sp count) (sp + count + 1)
@@ -1781,7 +1850,6 @@ fn :: collect_refs_expr RExpr              [String] => [String]
       collect_refs_expr (ENot inner)       acc      =  collect_refs_expr inner acc
       collect_refs_expr (EOut inner)       acc      =  collect_refs_expr inner acc
       collect_refs_expr (EBin bop l r)     acc      =  collect_refs_expr r (collect_refs_expr l (add_unique_str (binop_op_tag bop) acc))
-      collect_refs_expr (ECall "spawn" ((EStr s):args)) acc = collect_refs_expr_list args (add_unique_str s (add_unique_str "spawn" acc))
       collect_refs_expr (ECall fname args) acc      =  collect_refs_expr_list args (add_unique_str fname acc)
       collect_refs_expr (EEcho args)       acc      =  collect_refs_expr_list args acc
       collect_refs_expr (EStrInterp parts) acc      =  collect_refs_expr_list parts acc
@@ -1868,7 +1936,15 @@ fn :: build_spawn_dispatch_instrs [RFnEntry] [RStrEntry] Int [RNativeInstr] => [
         | arity == 1 =
           off = lookup_str_off str_tbl name
           arm = [NMatchStr 0 off (str_len name), NJumpIfZero lbl, NMoveSlot 1, NStoreSlot 2, NCallFn fid 2 1, NReturn, NLabel lbl]
-      build_spawn_dispatch_instrs rest str_tbl (lbl + 1) (acc :: arm)
+          build_spawn_dispatch_instrs rest str_tbl (lbl + 1) (acc :: arm)
+        | arity == 2 =
+          off = lookup_str_off str_tbl name
+          arm = [NMatchStr 0 off (str_len name), NJumpIfZero lbl, NTupleGet 1 0, NStoreSlot 2, NTupleGet 1 1, NStoreSlot 3, NCallFn fid 2 2, NReturn, NLabel lbl]
+          build_spawn_dispatch_instrs rest str_tbl (lbl + 1) (acc :: arm)
+        | arity == 3 =
+          off = lookup_str_off str_tbl name
+          arm = [NMatchStr 0 off (str_len name), NJumpIfZero lbl, NTupleGet 1 0, NStoreSlot 2, NTupleGet 1 1, NStoreSlot 3, NTupleGet 1 2, NStoreSlot 4, NCallFn fid 2 3, NReturn, NLabel lbl]
+          build_spawn_dispatch_instrs rest str_tbl (lbl + 1) (acc :: arm)
         | otherwise =
           build_spawn_dispatch_instrs rest str_tbl lbl acc
 
@@ -1879,7 +1955,11 @@ fn :: build_call2_dispatch_instrs [RFnEntry] [RStrEntry] Int [RNativeInstr] => [
         | arity == 2 =
           off = lookup_str_off str_tbl name
           arm = [NMatchStr 0 off (str_len name), NJumpIfZero lbl, NMoveSlot 1, NStoreSlot 3, NMoveSlot 2, NStoreSlot 4, NCallFn fid 3 2, NReturn, NLabel lbl]
-      build_call2_dispatch_instrs rest str_tbl (lbl + 1) (acc :: arm)
+          build_call2_dispatch_instrs rest str_tbl (lbl + 1) (acc :: arm)
+        | arity == 3 =
+          off = lookup_str_off str_tbl name
+          arm = [NMatchStr 0 off (str_len name), NJumpIfZero lbl, NMoveSlot 1, NStoreSlot 3, NTupleGet 2 0, NStoreSlot 4, NTupleGet 2 1, NStoreSlot 5, NCallFn fid 3 3, NReturn, NLabel lbl]
+          build_call2_dispatch_instrs rest str_tbl (lbl + 1) (acc :: arm)
         | otherwise =
           build_call2_dispatch_instrs rest str_tbl lbl acc
 
@@ -1919,8 +1999,8 @@ fn :: lower_program_to_native RProgram => RNativeProg
         fn_tbl = build_fn_table_fields field_tbl fn_names (5 + (list_str_len fn_names)) fn_tbl1
         entry_fid = lookup_fn_id fn_tbl entry_name
         main_wrapper = NativeFn 1 "__rg_entry_main" 0 2 [NCallFn entry_fid 0 0, NReturn]
-        spawn_disp = NativeFn 2 "__rg_dispatch_spawn" 2 4 (build_spawn_dispatch_instrs fn_tbl str_tbl 1 [])
-        call2_disp = NativeFn 3 "__rg_dispatch_call2" 3 6 (build_call2_dispatch_instrs fn_tbl str_tbl 1 [])
+        spawn_disp = NativeFn 2 "__rg_dispatch_spawn" 2 6 (build_spawn_dispatch_instrs fn_tbl str_tbl 1 [])
+        call2_disp = NativeFn 3 "__rg_dispatch_call2" 3 7 (build_call2_dispatch_instrs fn_tbl str_tbl 1 [])
         binop_disp = NativeFn 4 "__rg_dispatch_binop" 3 6 (build_binop_dispatch_instrs fn_tbl str_tbl 1 [])
         user_native_fns = lower_fndef_list fns str_tbl fn_tbl field_tbl
         field_native_fns = lower_field_getter_fns field_tbl fn_names fn_tbl
@@ -1945,8 +2025,8 @@ fn :: lower_library_to_native RProgram => RNativeProg
         fn_tbl = build_fn_table_fields field_tbl fn_names (5 + (list_str_len fn_names)) fn_tbl1
         entry_fid = lookup_fn_id fn_tbl "main"
         main_wrapper = build_lib_entry_wrapper entry_fid
-        spawn_disp = NativeFn 2 "__rg_dispatch_spawn" 2 4 (build_spawn_dispatch_instrs fn_tbl str_tbl 1 [])
-        call2_disp = NativeFn 3 "__rg_dispatch_call2" 3 6 (build_call2_dispatch_instrs fn_tbl str_tbl 1 [])
+        spawn_disp = NativeFn 2 "__rg_dispatch_spawn" 2 6 (build_spawn_dispatch_instrs fn_tbl str_tbl 1 [])
+        call2_disp = NativeFn 3 "__rg_dispatch_call2" 3 7 (build_call2_dispatch_instrs fn_tbl str_tbl 1 [])
         binop_disp = NativeFn 4 "__rg_dispatch_binop" 3 6 (build_binop_dispatch_instrs fn_tbl str_tbl 1 [])
         user_native_fns = lower_fndef_list fns str_tbl fn_tbl field_tbl
         field_native_fns = lower_field_getter_fns field_tbl fn_names fn_tbl

@@ -1,9 +1,9 @@
 ---
 id: TASK-0013
 title: Replace opaque rt_x86_64_kernel_hex and rt_arm64_kernel_hex blobs with readable Ridgun runtime codegen (rt_slot 1..55)
-status: going-on
+status: completed
 created: 2026-10-21
-completed:
+completed: 2026-10-22
 requirements:
   - FR-COMP-002
   - FR-COMP-004

@@ -110,7 +110,7 @@ Ridgunek ez du gurpil karratua berrasmatu nahi; konplexurik gabe hartzen du mail
 | **Haskell / ML** | Funtzio puruak, kasukako *pattern matching*-a, datu-mota aljebraikoak (`Option`, `Result`) eta polimorfismoa (`A`..`Z`). | Monada abstraktuak, 40 `LANGUAGE pragma`-k eta zabor-biltzailea. |
 | **J / APL** | Kodearen forma taularatuarekiko obsesioa, tentsore natiboak eta sekuentzia-maskarak (`s["-+-"]`). | Teklatu arrunt batean idazteko ezinezkoak diren ikur hieroglifikoak. |
 | **Rust / C** | ELF bitar natibo txikiak, zero GC, memoriaren kontrola (`with region`) eta POSIX sistema-deiak. | *Borrow checker*-arekiko etengabeko borroka, `'a` *lifetime*-ak eta berritsukeria sintaktikoa. |
-| **Erlang / Go** | Kanal bidezko konkurrentzia (`chan_send`, `chan_recv`) eta ataza arinak (`spawn`, `join`). | `nil` erakusleak eta deskuiduz partekatutako mutazioak. |
+| **Erlang / Go** | Agente isolatuak (`agent`, `send ... to`, `receive from`) eta kanal bidezko konkurrentzia (`new bounded channel`). | `nil` erakusleak eta deskuiduz partekatutako mutazioak. |
 
 ---
 

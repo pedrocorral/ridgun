@@ -10,5 +10,5 @@
 | `04-pattern-matching-and-guards.md` | Chapter 04: Pattern matching, boolean guards, and tail-call optimization (TCO) | Functional control flow and tail-recursive loops |
 | `05-lists-tuples-and-sequences.md` | Chapter 05: Lists, tuples, variadic functions, and sequence masks | Working with collections and data pipelines |
 | `06-algebraic-data-types-and-polymorphism.md` | Chapter 06: ADTs (records and sum types), polymorphism (`A`..`Z`), and `op` operators | Modeling data domains and generic functions |
-| `07-higher-order-functions-and-dag-parallelism.md` | Chapter 07: `map`/`||map`/`filter`/`||filter`/`fold`, parallel `||` DAGs, and channels | Higher-order functional programming and concurrency |
+| `07-higher-order-functions-and-dag-parallelism.md` | Chapter 07: `map`/`||map`/`filter`/`||filter`/`fold`, parallel `||` DAGs, agents (`agent`, `send ... to`, `receive from`), and channels | Higher-order functional programming and concurrency |
 | `08-tensors-rmm-regions-and-systems.md` | Chapter 08: Symbolic-dimension tensors, RMM (`RMM1`/`RMM2`), memory regions, MMIO, and POSIX | Numerical computing, deterministic memory, and UNIX systems programming |

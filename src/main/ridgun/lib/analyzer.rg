@@ -79,7 +79,7 @@ fn :: lookup_fn_summary [RFnSummary] String => (Bool, RFnSummary)
 
 fn :: is_yielding_builtin String => Bool
       is_yielding_builtin callee =
-        callee == "recv" OR callee == "receive_from" OR callee == "receive_from_timeout" OR callee == "send_through" OR callee == "join"
+        callee == "recv" OR callee == "receive_from" OR callee == "try_receive_from" OR callee == "receive_from_timeout" OR callee == "send_to" OR callee == "send_through" OR callee == "agent" OR callee == "stop"
 
 fn :: param_effect_at [RParamEffect] Int => RParamEffect
       param_effect_at []             _   =  EffReadOnly
@@ -542,7 +542,7 @@ fn :: merge_moved_errs [RAnalysisError] ([String], [RAnalysisError]) => ([String
 
 fn :: is_channel_send_call String => Bool
       is_channel_send_call callee =
-        callee == "send" OR callee == "send_through" OR callee == "chan_send"
+        callee == "send" OR callee == "send_to" OR callee == "send_through" OR callee == "chan_send"
 
 fn :: mark_channel_sent String [RExpr] [String] [String] => [String]
       mark_channel_sent callee ((EVar sent_var):_) mut_vars moved

@@ -1,6 +1,6 @@
 -- ============================================================
 -- harness/skills/implement-code-ridgun/references/cheatsheet.rg
--- Canonical Ridgun v0.9.11 Reference Cheatsheet for AI Agents
+-- Canonical Ridgun v0.9.12 Reference Cheatsheet for AI Agents
 -- ============================================================
 
 -- 1. Sum ADTs, Shared Constructors, Bare Type Variants, `expand type` & Product Records (`FR-COMP-005`)
@@ -156,12 +156,24 @@ fn :: check timeout budget => Int
           rem = sys remaining ms
           rem
 
--- 12. Zero-Argument Entrypoint (`fn :: main => ()`)
+-- 12. Native Agent Model (`agent`, `send ... to`, `receive from`, `stop`) (`FR-COMP-009`)
+fn :: add visits Int    Int   => Int
+      add visits visits delta =  visits + delta
+
+fn :: run visit agent => Int
+      run visit agent =
+        counter = agent (add visits) 10
+        send 5 to counter
+        res = receive from counter
+        stop counter
+        res
+
+-- 13. Zero-Argument Entrypoint (`fn :: main => ()`)
 fn :: main => ()
       main =
         spec  = enable tls (ServerSpec "localhost" 8080 False)
         code  = route request 1 2 True True 500 0
         res   = process items [1, 2, 3, 4, 5]
-        total = (fst res) + (filter section loop 4 2)
+        total = (fst res) + (filter section loop 4 2) + (run visit agent)
         rem   = check timeout budget
         echo "Server {host spec}:{port spec} code={code} total={total} rem={rem}"

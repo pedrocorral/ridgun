@@ -145,45 +145,60 @@ Zuzena, bisuala eta `(fib n, fact n)` tupla itzultzen du.
 
 ---
 
-## 7.4. Eskuzko bolantea nahi duzunean: `spawn`, `join` eta CSP Kanalak
+## 7.4. Eskuzko bolantea nahi duzunean: Agenteen Eredu Natiboa (`agent`, `send ... to`, `receive from`) eta CSP Kanalak
 
-`||` eta `map`-en paralelismo automatikoak kasuen % 90a estaltzen du. Baina batzuetan aktore-sistema bat, lan-ilara bat edo ekoizle-kontsumitzaile hodi bat programatzen ari zara eta zuk zeuk kontrolatu nahi dituzu atazak eta mezuak.
+`||` eta `||map`-en paralelismo automatikoak kasuen % 90a estaltzen du. Baina zerbitzari iraunkor bat, egoera isolatuko erabiltzaile-saioak, lan-ilara bat edo ekoizle-kontsumitzaile hodi bat programatzen ari zarenean, **memoria isolatuko agente konkurrenteak eta motadun mezu-igarotzea** nahi dituzu.
 
-Horretarako bi tresna garbi dituzu:
+Ridgunen ez dago `actor ::` bezalako sintaxi arrotz bat asmatu beharrik: **edozein funtzio arrunt (`fn ::` edo `op ::`) agente konkurrente bihurtzen da lerro bakar batean `agent` erabiliz**:
 
-### 1. Atazak `spawn`-ekin abiarazi eta emaitza `join`-ekin jaso
+### 1. Egoerarik gabeko eta egoera isolatuko agenteak (`agent`, `send ... to`, `receive from`, `stop`)
+- `ag = agent (nire funtzioa)`: `M => R` funtzio bat `Agent M R` motako egoerarik gabeko agente bihurtzen du.
+- `ag = agent (egoeradun funtzioa) hasierako_egoera`: `S M => S` (edo `S M => S R`) funtzio bat egoera isolatuko agente bihurtzen du, mezuz mezu bere egoera gogoratuz `Mutex` bakar bat ere gabe.
+- `send msg to ag` (edo argumentu askorekin: `send a b to ag`): motadun mezu bat bidaltzen du agentearen postontzira.
+- `em = receive from ag` (edo `try receive from ag` blokeatu gabe): agentearen irteerako postontziko hurrengo erantzuna jasotzen du.
+- `stop ag`: agentea gelditzen du eta bere egoera automatikoki askatzen du `RMM1`/`RMM2` bidez.
+
 ```ridgun
-prozesatu_sorta Int => Int
-prozesatu_sorta id  =  id * 100
+fn :: gehitu bisita Int Int => Int
+      gehitu bisita met n   =  met + n
 
-main => ()
-main =
-  ataza1 = spawn prozesatu_sorta 1
-  ataza2 = spawn prozesatu_sorta 2
-  -- Bitartean beste gauza batzuk egin zenitzake hemen...
-  em1 = join ataza1
-  em2 = join ataza2
-  echo "Honekin amaitu dute:" em1 "eta" em2
+fn :: prozesatu sorta Int Int => Int
+      prozesatu sorta id  t   =  (id * 100) + t
+
+fn :: main => ()
+      main =
+        kontagailua = agent (gehitu bisita) 10
+        send 5 to kontagailua
+        send 7 to kontagailua
+        b1 = receive from kontagailua
+        b2 = receive from kontagailua
+        stop kontagailua
+
+        langilea = agent (prozesatu sorta)
+        send 3 25 to langilea
+        sorta = receive from langilea
+        stop langilea
+        echo "Bisitak:" b1 "->" b2 "| Sorta:" sorta
 ```
 
-### 2. Mezuak kanal mugatuetatik pasatzea (`new_bounded_channel`)
-Go edo Erlangen bezalaxe, harien artean memoria partekatu beharrean, balio aldaezinak bidaltzen dituzu hodi seguru baten bidez:
+### 2. Mezuak kanal mugatuetatik pasatzea (`new bounded channel`)
+Go edo Erlangen bezalaxe, agenteez gain hodi esplizituak ere sor ditzakezu etapak komunikatzeko:
 
-- `new_bounded_channel edukiera`: `edukiera` mezurentzako lekua duen kanal bat sortzen du.
-- `chan_send balioa kanala` (edo `send_through balioa kanala`): mezu bat hodian sartzen du.
-- `chan_recv kanala` (edo `receive_from kanala`): hurrengo mezua hoditik ateratzen du.
-- `chan_try_recv kanala`: mezurik dagoen begiratzen du zain geratu gabe; `Some balioa` edo `None` itzultzen du.
-- `receive_from_timeout kanala ticks`: denbora-muga bat itxaroten du eta `Ok balioa` edo `Err Timeout` itzultzen du.
+- `new bounded channel edukiera`: `edukiera` mezurentzako lekua duen kanal bat sortzen du.
+- `send through balioa kanala` (edo `chan send balioa kanala`): mezu bat hodian sartzen du.
+- `receive from kanala` (edo `chan recv kanala`): hurrengo mezua hoditik ateratzen du.
+- `try receive from kanala`: mezurik dagoen begiratzen du zain geratu gabe; `Some balioa` edo `None` itzultzen du.
+- `receive from timeout kanala ticks`: denbora-muga bat itxaroten du eta `Ok balioa` edo `Err Timeout` itzultzen du.
 
 ```ridgun
-main => ()
-main =
-  hodia = new_bounded_channel 4
-  _ = chan_send "A ataza osatuta" hodia
-  _ = chan_send "B ataza osatuta" hodia
-  lehena = chan_recv hodia
-  bigarrena = chan_recv hodia
-  echo lehena "|" bigarrena
+fn :: main => ()
+      main =
+        hodia = new bounded channel 4
+        _ = send through "A ataza osatuta" hodia
+        _ = send through "B ataza osatuta" hodia
+        lehena = receive from hodia
+        bigarrena = receive from hodia
+        echo lehena "|" bigarrena
 ```
 
 Eta orain, lotu gerrikoa **08. kapitulurako**, amaiera handirako: **konpilazio-garaian egiaztatutako dimentsioak dituzten tentsoreak, esparru-aldagaiak (`context`/`shared`), memoria-eskualde deterministak, MMIO hardwarerako sarbide zuzena eta UNIX/POSIX sistemen programazioa**.

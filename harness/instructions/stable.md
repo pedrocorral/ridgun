@@ -5,7 +5,7 @@ description: "Use when creating, editing, or running build.rg, stable plugins (p
 applyTo: "build.rg,plugins/**/*.rg,.stable/plugins/**/*.rg"
 optional: false
 ---
-# `stable` project manager, library & plugin conventions (`v0.9.11`)
+# `stable` project manager, library & plugin conventions (`v0.9.12`)
 
 Read and follow the `implement-stable-project` and `implement-code-ridgun` skills before editing `build.rg` or `plugins/*.rg`.
 

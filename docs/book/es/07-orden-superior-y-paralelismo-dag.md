@@ -145,44 +145,59 @@ Directo, visual y devuelve la tupla `(fib n, fact n)`.
 
 ---
 
-## 7.4. Cuando quieres el volante manual: `spawn`, `join` y Canales CSP
+## 7.4. Cuando quieres el volante manual: el Modelo Nativo de Agentes (`agent`, `send ... to`, `receive from`) y Canales CSP
 
-El paralelismo automático de `||` y `||map` cubre el 90% de los casos. Pero a veces estás programando un sistema de actores, una cola de trabajos o un pipeline productor-consumidor y quieres controlar tú mismo las tareas y los mensajes.
+El paralelismo automático de `||` y `||map` cubre el 90% de los casos. Pero cuando programas un servidor persistente, sesiones de usuario con estado aislado, colas de trabajo o un pipeline productor-consumidor, quieres **agentes concurrentes con memoria aislada y paso de mensajes tipado**.
 
-Para eso tienes dos herramientas limpias:
+En Ridgun no hace falta inventar una sintaxis extraña como `actor ::`: **cualquier función normal (`fn ::` u `op ::`) se convierte en un agente concurrente en una línea con `agent`**:
 
-### 1. Lanzar tareas con `spawn` y recoger el resultado con `join`
+### 1. Agentes sin estado y con estado aislado (`agent`, `send ... to`, `receive from`, `stop`)
+- `ag = agent (mi funcion)`: convierte una función `M => R` en un agente sin estado de tipo `Agent M R`.
+- `ag = agent (mi funcion con estado) estado_inicial`: convierte una función `S M => S` (o `S M => S R`) en un agente con estado aislado que recuerda su estado mensaje tras mensaje sin un solo `Mutex`.
+- `send msg to ag` (o con varios argumentos: `send a b to ag`): envía un mensaje tipado al buzón del agente.
+- `res = receive from ag` (o `try receive from ag` sin bloquear): recoge la siguiente respuesta del buzón de salida del agente.
+- `stop ag`: detiene el agente y libera su estado automáticamente mediante `RMM1`/`RMM2`.
+
 ```ridgun
-fn :: procesar lote Int => Int
-      procesar lote id  =  id * 100
+fn :: sumar visita Int Int => Int
+      sumar visita acum n  =  acum + n
+
+fn :: procesar lote Int Int => Int
+      procesar lote id  t   =  (id * 100) + t
 
 fn :: main => ()
       main =
-        tarea1 = spawn procesar lote 1
-        tarea2 = spawn procesar lote 2
-        -- Mientras tanto podrías hacer otras cosas aquí...
-        res1 = join tarea1
-        res2 = join tarea2
-        echo "Terminaron con:" res1 "y" res2
+        contador = agent (sumar visita) 10
+        send 5 to contador
+        send 7 to contador
+        v1 = receive from contador
+        v2 = receive from contador
+        stop contador
+
+        trabajador = agent (procesar lote)
+        send 3 25 to trabajador
+        lote = receive from trabajador
+        stop trabajador
+        echo "Visitas:" v1 "->" v2 "| Lote:" lote
 ```
 
 ### 2. Pasar mensajes por canales acotados (`new bounded channel`)
-Igual que en Go o Erlang, en lugar de compartir memoria entre hilos, envías valores inmutables a través de un tubo seguro:
+Igual que en Go o Erlang, además de agentes también puedes crear tubos explícitos para comunicar etapas:
 
 - `new bounded channel capacidad`: crea un canal con espacio para `capacidad` mensajes.
-- `chan send valor canal` (o `send through valor canal`): mete un mensaje en el tubo.
-- `chan recv canal` (o `receive from canal`): saca el siguiente mensaje del tubo.
-- `chan try recv canal`: mira si hay mensaje sin quedarse esperando; devuelve `Some valor` o `None`.
+- `send through valor canal` (o `chan send valor canal`): mete un mensaje en el tubo.
+- `receive from canal` (o `chan recv canal`): saca el siguiente mensaje del tubo.
+- `try receive from canal`: mira si hay mensaje sin quedarse esperando; devuelve `Some valor` o `None`.
 - `receive from timeout canal ticks`: espera un límite de tiempo y devuelve `Ok valor` o `Err Timeout`.
 
 ```ridgun
 fn :: main => ()
       main =
         tubo = new bounded channel 4
-        _ = chan send "Tarea A completada" tubo
-        _ = chan send "Tarea B completada" tubo
-        primero = chan recv tubo
-        segundo = chan recv tubo
+        _ = send through "Tarea A completada" tubo
+        _ = send through "Tarea B completada" tubo
+        primero = receive from tubo
+        segundo = receive from tubo
         echo primero "|" segundo
 ```
 

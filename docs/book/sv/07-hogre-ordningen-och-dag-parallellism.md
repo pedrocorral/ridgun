@@ -145,45 +145,60 @@ Rakt, visuellt och returnerar tupeln `(fib n, fact n)`.
 
 ---
 
-## 7.4. När du vill hålla i ratten själv: `spawn`, `join` och CSP-kanaler
+## 7.4. När du vill hålla i ratten själv: den inbyggda agentmodellen (`agent`, `send ... to`, `receive from`) och CSP-kanaler
 
-Den automatiska parallellismen i `where`-liknande DAG-block och `pmap`/`map` täcker 90 % av fallen. Men ibland programmerar du ett aktörssystem, en jobbkö eller en producent–konsument-pipeline och vill själv styra uppgifterna och meddelandena.
+Den automatiska parallellismen i `||`-block och `||map` täcker 90 % av fallen. Men när du bygger en beständig server, isolerade användarsessioner, en jobbkö eller en producent–konsument-pipeline vill du ha **samtidiga agenter med isolerat minne och statiskt typad meddelandehantering**.
 
-För det har du två rena verktyg:
+I Ridgun behövs inget särskilt nyckelord som `actor ::`: **vilken vanlig funktion som helst (`fn ::` eller `op ::`) förvandlas till en samtidig agent på en enda rad med `agent`**:
 
-### 1. Starta uppgifter med `spawn` och hämta in resultatet med `join`
+### 1. Tillståndslösa och tillståndsbärande agenter (`agent`, `send ... to`, `receive from`, `stop`)
+- `ag = agent (min funktion)`: gör om en funktion `M => R` till en tillståndslös agent av typen `Agent M R`.
+- `ag = agent (funktion med tillstand) starttillstand`: gör om en funktion `S M => S` (eller `S M => S R`) till en agent med isolerat tillstånd som minns sitt tillstånd från meddelande till meddelande utan en enda `Mutex`.
+- `send msg to ag` (eller med flera argument: `send a b to ag`): skickar ett typat meddelande till agentens inkorg.
+- `res = receive from ag` (eller icke-blockerande `try receive from ag`): hämtar nästa svar ur agentens utkorg.
+- `stop ag`: stoppar agenten och frigör dess tillstånd deterministiskt via `RMM1`/`RMM2`.
+
 ```ridgun
-bearbeta_parti Int => Int
-bearbeta_parti id  =  id * 100
+fn :: addera besok Int Int => Int
+      addera besok ack n   =  ack + n
 
-main => ()
-main =
-  uppgift1 = spawn bearbeta_parti 1
-  uppgift2 = spawn bearbeta_parti 2
-  -- Under tiden skulle du kunna göra andra saker här...
-  res1 = join uppgift1
-  res2 = join uppgift2
-  echo "De avslutades med:" res1 "och" res2
+fn :: bearbeta parti Int Int => Int
+      bearbeta parti id  t   =  (id * 100) + t
+
+fn :: main => ()
+      main =
+        raknare = agent (addera besok) 10
+        send 5 to raknare
+        send 7 to raknare
+        v1 = receive from raknare
+        v2 = receive from raknare
+        stop raknare
+
+        arbetare = agent (bearbeta parti)
+        send 3 25 to arbetare
+        parti = receive from arbetare
+        stop arbetare
+        echo "Besök:" v1 "->" v2 "| Parti:" parti
 ```
 
-### 2. Skicka meddelanden via begränsade kanaler (`new_bounded_channel`)
-Precis som i Go eller Erlang skickar du oföränderliga värden genom ett säkert rör i stället för att dela minne mellan trådar:
+### 2. Skicka meddelanden via begränsade kanaler (`new bounded channel`)
+Precis som i Go eller Erlang kan du utöver agenter även skapa uttryckliga rör för att koppla ihop steg:
 
-- `new_bounded_channel kapacitet`: skapar en kanal med plats för `kapacitet` meddelanden.
-- `chan_send varde kanal` (eller `send_through varde kanal`): lägger in ett meddelande i röret.
-- `chan_recv kanal` (eller `receive_from kanal`): hämtar nästa meddelande ur röret.
-- `chan_try_recv kanal`: tittar efter om det finns ett meddelande utan att bli stående och vänta; returnerar `Some varde` eller `None`.
-- `receive_from_timeout kanal ticks`: väntar upp till en tidsgräns och returnerar `Ok varde` eller `Err Timeout`.
+- `new bounded channel kapacitet`: skapar en kanal med plats för `kapacitet` meddelanden.
+- `send through varde kanal` (eller `chan send varde kanal`): lägger in ett meddelande i röret.
+- `receive from kanal` (eller `chan recv kanal`): hämtar nästa meddelande ur röret.
+- `try receive from kanal`: tittar efter om det finns ett meddelande utan att bli stående och vänta; returnerar `Some varde` eller `None`.
+- `receive from timeout kanal ticks`: väntar upp till en tidsgräns och returnerar `Ok varde` eller `Err Timeout`.
 
 ```ridgun
-main => ()
-main =
-  ror = new_bounded_channel 4
-  _ = chan_send "Uppgift A slutförd" ror
-  _ = chan_send "Uppgift B slutförd" ror
-  forsta = chan_recv ror
-  andra = chan_recv ror
-  echo forsta "|" andra
+fn :: main => ()
+      main =
+        ror = new bounded channel 4
+        _ = send through "Uppgift A slutförd" ror
+        _ = send through "Uppgift B slutförd" ror
+        forsta = receive from ror
+        andra = receive from ror
+        echo forsta "|" andra
 ```
 
 Och spänn nu fast säkerhetsbältet inför **Kapitel 08**, den stora finalen: **tensorer med kompileringstidsverifierade dimensioner, räckviddsvariabler (`context`/`shared`), deterministiska minnesregioner, direkt hårdvaruåtkomst via MMIO och UNIX/POSIX-systemprogrammering**.

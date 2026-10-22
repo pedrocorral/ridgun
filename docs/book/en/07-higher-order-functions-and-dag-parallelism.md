@@ -145,45 +145,60 @@ Direct, visual, and it returns the tuple `(fib n, fact n)`.
 
 ---
 
-## 7.4. When You Want Manual Steering: `spawn`, `join`, and CSP Channels
+## 7.4. When You Want Manual Steering: the Native Agent Model (`agent`, `send ... to`, `receive from`) and CSP Channels
 
-Automatic parallelism via `||` blocks and `map` covers 90% of real-world cases. But sometimes you are building an actor system, a job queue, or a producer-consumer pipeline and want to control tasks and messages yourself.
+Automatic parallelism via `||` blocks and `||map` covers 90% of real-world cases. But when you are building a persistent server, isolated user sessions, a job queue, or a producer-consumer pipeline, you want **concurrent agents with isolated memory and statically typed message passing**.
 
-For that, you have two clean tools:
+In Ridgun there is no need for a special `actor ::` declaration keyword: **any normal function (`fn ::` or `op ::`) becomes a concurrent agent in a single line with `agent`**:
 
-### 1. Launching tasks with `spawn` and collecting the result with `join`
+### 1. Stateless and stateful agents (`agent`, `send ... to`, `receive from`, `stop`)
+- `ag = agent (my function)`: wraps a function `M => R` into a stateless agent of type `Agent M R`.
+- `ag = agent (stateful function) initial_state`: wraps a function `S M => S` (or `S M => S R`) into an agent with isolated state that remembers its state across messages without a single `Mutex`.
+- `send msg to ag` (or with multiple arguments: `send a b to ag`): sends a typed message to the agent's inbox.
+- `res = receive from ag` (or non-blocking `try receive from ag`): pulls the next reply from the agent's outbox.
+- `stop ag`: terminates the agent and deterministically frees its state via `RMM1`/`RMM2`.
+
 ```ridgun
-process_batch Int => Int
-process_batch id  =  id * 100
+fn :: add visit Int Int => Int
+      add visit acc n   =  acc + n
 
-main => ()
-main =
-  task1 = spawn process_batch 1
-  task2 = spawn process_batch 2
-  -- Meanwhile you could do other work right here...
-  res1 = join task1
-  res2 = join task2
-  echo "Finished with:" res1 "and" res2
+fn :: process batch Int Int => Int
+      process batch id  t   =  (id * 100) + t
+
+fn :: main => ()
+      main =
+        counter = agent (add visit) 10
+        send 5 to counter
+        send 7 to counter
+        v1 = receive from counter
+        v2 = receive from counter
+        stop counter
+
+        worker = agent (process batch)
+        send 3 25 to worker
+        batch = receive from worker
+        stop worker
+        echo "Visits:" v1 "->" v2 "| Batch:" batch
 ```
 
-### 2. Passing messages through bounded channels (`new_bounded_channel`)
-Just like in Go or Erlang, instead of sharing mutable memory across threads, you send immutable values through a thread-safe pipe:
+### 2. Passing messages through bounded channels (`new bounded channel`)
+Just like in Go or Erlang, in addition to agents you can also create explicit thread-safe pipes to connect pipeline stages:
 
-- `new_bounded_channel capacity`: creates a channel with room for `capacity` messages.
-- `chan_send value channel` (or `send_through value channel`): puts a message into the pipe.
-- `chan_recv channel` (or `receive_from channel`): pulls the next message from the pipe.
-- `chan_try_recv channel`: checks whether a message is waiting without blocking; returns `Some value` or `None`.
-- `receive_from_timeout channel ticks`: waits up to a time limit and returns `Ok value` or `Err Timeout`.
+- `new bounded channel capacity`: creates a channel with room for `capacity` messages.
+- `send through value channel` (or `chan send value channel`): puts a message into the pipe.
+- `receive from channel` (or `chan recv channel`): pulls the next message from the pipe.
+- `try receive from channel`: checks whether a message is waiting without blocking; returns `Some value` or `None`.
+- `receive from timeout channel ticks`: waits up to a time limit and returns `Ok value` or `Err Timeout`.
 
 ```ridgun
-main => ()
-main =
-  pipe = new_bounded_channel 4
-  _ = chan_send "Task A completed" pipe
-  _ = chan_send "Task B completed" pipe
-  first = chan_recv pipe
-  second = chan_recv pipe
-  echo first "|" second
+fn :: main => ()
+      main =
+        pipe = new bounded channel 4
+        _ = send through "Task A completed" pipe
+        _ = send through "Task B completed" pipe
+        first = receive from pipe
+        second = receive from pipe
+        echo first "|" second
 ```
 
 And now, fasten your seatbelt for **Chapter 08**, the grand finale: **tensors with compile-time verified dimensions, scoped variables (`context`/`shared`), deterministic memory regions, direct MMIO hardware access, and UNIX/POSIX systems programming**.

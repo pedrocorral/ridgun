@@ -1,14 +1,14 @@
 ---
 name: implement-code-ridgun
-description: Implement, refactor or review Ridgun (.rg) code and build.rg definitions using the exact Ridgun v0.9.11 grammar, type system, RMM1/RMM2 deterministic memory rules, parallel || DAGs, with timeout quotas, PAL primitives, and pure-Ridgun stable/ridgunc ELF64 toolchain; use for any Ridgun (.rg) change.
+description: Implement, refactor or review Ridgun (.rg) code and build.rg definitions using the exact Ridgun v0.9.12 grammar, type system, Native Agent Model (agent, send ... to, receive from, try receive from, stop), RMM1/RMM2 deterministic memory rules, parallel || DAGs, with timeout quotas, PAL primitives, and pure-Ridgun stable/ridgunc ELF64 toolchain; use for any Ridgun (.rg) change.
 ---
-# implement-code-ridgun (`v0.9.11`)
+# implement-code-ridgun (`v0.9.12`)
 
 Reading budget: `harness/skills/implement-code-ridgun/references/cheatsheet.rg` (or `docs/lang/spec.md` when a construct is unfamiliar), `build.rg`, and the target `.rg` files under `src/main/ridgun/` or `src/test/ridgun/`.
 
 ---
 
-## 1. Project & Architecture Overview (`v0.9.11`)
+## 1. Project & Architecture Overview (`v0.9.12`)
 - **100% Pure Ridgun (Zero Rust / Zero `rustc`)**: Both `ridgunc` (`src/main/ridgun/ridgunc/main.rg`) and `stable` (`src/main/ridgun/stable/main.rg`) are written 100% in Ridgun and emit standalone, statically linked Linux ELF64 executables directly to disk via `elf64.rg`, `x86_64.rg` (`EM_X86_64 = 62`), and `arm64.rg` (`EM_AARCH64 = 183` for Raspberry Pi).
 - **Project Layout**:
   - `build.rg`: Pure-Ridgun project manifest (`fn :: project name => String`, `project version`, `main entry`, `source dir`, `test dir`, `target dir`).
@@ -20,7 +20,7 @@ Reading budget: `harness/skills/implement-code-ridgun/references/cheatsheet.rg` 
 
 ## 2. LLM Anti-Patterns: "Never Write This → Write This Instead"
 
-| Common LLM Mistake (INVALID) | Correct Ridgun `v0.9.11` (VALID) | Why |
+| Common LLM Mistake (INVALID) | Correct Ridgun `v0.9.12` (VALID) | Why |
 |---|---|---|
 | `fn :: parse_header String => (Int, [(String, String)], String)` | `fn :: parse header String => Int [String String] String` | Prefer natural spaces in function/built-in names (`FR-COMP-005`) and space-separated tuple/sequence type signatures (`FR-COMP-008`) |
 | `// comment` or `# comment` | `-- comment` | Only `--` starts a comment |
@@ -188,14 +188,20 @@ Ridgun achieves deterministic memory management with **zero Garbage Collector pa
 
 ---
 
-## 5. Tensors, Channels & Concurrency
+## 5. Tensors, Native Agent Model & Channels
 - **Symbolic Tensor Shapes & Contraction (`Tensor[N, K]`, `@`)**:
   - Compile-time dimension verification: `fn :: linear Tensor[B, In] Tensor[In, Out] => Tensor[B, Out]`.
   - Creation & indexing: `m = zeros [2, 2]`, `m[0, 1] = 3.5`, `v = m[0, 1]`.
   - Einstein summation (`A_ik @ B_kj` or `einsum "ik,kj->ij" a b`) and Hadamard element-wise ops (`a @+ b`, `a @- b`, `a @* b`, `a @/ b`).
-- **Affine Channels (`channel`, `send`, `recv`)**:
-  - `ch = channel ()`, `_ = send ch msg`, `out = recv ch`.
-  - Reading `msg` after `send ch msg` is rejected at compile time (`ErrUseAfterSend`).
+- **Native Agent Model (`agent`, `send ... to`, `receive from`, `try receive from`, `stop`) (`FR-COMP-009`)**:
+  - Any `fn ::` or `op ::` function can be wrapped into an isolated agent:
+    - Stateless agent: `ag = agent (procesar mensaje con tiempo)` (`M1 ... Mn => R` $\to$ `Agent (M1 ... Mn) R`).
+    - Stateful agent: `ag = agent (sumar visita) 0` (`S M => S` or `S M => S R` $\to$ `Agent M S` or `Agent M R`, with `RMM1`/`RMM2` automatic state release on every transition).
+  - Operations: `send msg to ag` (or multi-argument `send a b to ag`), `res = receive from ag`, `opt = try receive from ag` (`Some res | None`), `stop ag`, `agent alive ag` (`Bool`).
+  - Legacy `spawn` and `join` are retired: use `||` / `||map` / `||filter` for computational fork-join parallelism and `agent` for decoupled stateful/service processes.
+- **Affine Channels (`new channel`, `send through`, `receive from`)**:
+  - `ch = new channel`, `_ = send through msg ch`, `out = receive from ch`.
+  - Reading a `mut` variable `msg` after `send msg to ag` or `send through msg ch` is rejected at compile time (`ErrUseAfterSend`).
 
 ---
 

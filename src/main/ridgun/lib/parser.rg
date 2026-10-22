@@ -9,6 +9,7 @@
 -- @implements FR-COMP-006
 -- @implements FR-COMP-007
 -- @implements FR-COMP-008
+-- @implements FR-COMP-009
 -- ============================================================
 import ast
 import lexer
@@ -883,9 +884,13 @@ fn :: line_has_equals [RToken]       => Bool
       line_has_equals (TokEquals:_)  =  True
       line_has_equals (_:ts)         =  line_has_equals ts
 
-fn :: is_echo_expr RExpr     => Bool
-      is_echo_expr (EEcho _) =  True
-      is_echo_expr _         =  False
+fn :: is_echo_expr RExpr                    => Bool
+      is_echo_expr (EEcho _)                =  True
+      is_echo_expr (ECall "send" _)         =  True
+      is_echo_expr (ECall "send_to" _)      =  True
+      is_echo_expr (ECall "send_through" _) =  True
+      is_echo_expr (ECall "stop" _)         =  True
+      is_echo_expr _                        =  False
 
 fn :: line_followed_by_pipe [RToken]       => Bool
       line_followed_by_pipe []             =  False
@@ -1593,7 +1598,7 @@ fn :: arity_matches Int Int    => Bool
 
 fn :: builtin_arity_entries => [RArityEntry]
       builtin_arity_entries =
-        [ArityEntry "assert_equals" 2, ArityEntry "assert_true" 1, ArityEntry "send_through" 2, ArityEntry "receive_from" 1, ArityEntry "try_receive_from" 1, ArityEntry "receive_from_timeout" 2, ArityEntry "new_mailbox" 0, ArityEntry "new_channel" 0, ArityEntry "new_bounded_channel" 1, ArityEntry "chan_send" 2, ArityEntry "chan_recv" 1, ArityEntry "chan_try_recv" 1, ArityEntry "str_len" 1, ArityEntry "str_char_at" 2, ArityEntry "str_slice" 3, ArityEntry "str_contains" 2, ArityEntry "str_starts_with" 2, ArityEntry "str_concat" 2, ArityEntry "int_to_str" 1, ArityEntry "str_to_int" 1, ArityEntry "char_from_code" 1, ArityEntry "trim_str" 1, ArityEntry "read_file" 1, ArityEntry "load_rg_source" 1, ArityEntry "read_bytes" 1, ArityEntry "write_bytes" 2, ArityEntry "write_file" 2, ArityEntry "shell_exec" 1, ArityEntry "list_str_len" 1, ArityEntry "list_dir" 1, ArityEntry "file_lstat" 1, ArityEntry "sha256_file" 1, ArityEntry "sha256_str" 1, ArityEntry "sys_os" 0, ArityEntry "sys_arch" 0, ArityEntry "sys_mkdir" 2, ArityEntry "sys_chmod" 2, ArityEntry "sys_exec" 3, ArityEntry "sys_chdir" 1, ArityEntry "sys_getcwd" 0, ArityEntry "sys_getenv" 1, ArityEntry "sys_setenv" 2, ArityEntry "sys_exit" 1, ArityEntry "sys_getuid" 0, ArityEntry "sys_getgid" 0, ArityEntry "sys_getpid" 0, ArityEntry "sys_time_ms" 0, ArityEntry "sys_deadline_ms" 0, ArityEntry "sys_remaining_ms" 0, ArityEntry "sys_sleep_ms" 1, ArityEntry "sys_open_mode" 2, ArityEntry "sys_open" 3, ArityEntry "sys_close" 1, ArityEntry "sys_read_fd" 2, ArityEntry "sys_write_fd" 2, ArityEntry "sys_poll" 3, ArityEntry "sys_terminate" 2, ArityEntry "sys_kill" 2, ArityEntry "sys_call" 7, ArityEntry "sys_username" 1, ArityEntry "sys_user_groups" 1, ArityEntry "sys_lookup_uid_gid" 1, ArityEntry "sys_setresgid" 1, ArityEntry "sys_setgroups" 1, ArityEntry "sys_setresuid" 1, ArityEntry "sys_execve" 3, ArityEntry "sys_read_pass" 1, ArityEntry "cli_args" 0, ArityEntry "cmm_live_blocks" 0, ArityEntry "cmm_cond_spared" 0, ArityEntry "cmm_cond_freed" 0, ArityEntry "cmm_same_ptr" 2, ArityEntry "seq_map" 2, ArityEntry "par_map" 2, ArityEntry "seq_filter" 2, ArityEntry "par_filter" 2]
+        [ArityEntry "assert_equals" 2, ArityEntry "assert_true" 1, ArityEntry "send_to" 2, ArityEntry "send_through" 2, ArityEntry "receive_from" 1, ArityEntry "try_receive_from" 1, ArityEntry "receive_from_timeout" 2, ArityEntry "stop" 1, ArityEntry "agent_alive" 1, ArityEntry "new_mailbox" 0, ArityEntry "new_channel" 0, ArityEntry "new_bounded_channel" 1, ArityEntry "chan_send" 2, ArityEntry "chan_recv" 1, ArityEntry "chan_try_recv" 1, ArityEntry "str_len" 1, ArityEntry "str_char_at" 2, ArityEntry "str_slice" 3, ArityEntry "str_contains" 2, ArityEntry "str_starts_with" 2, ArityEntry "str_concat" 2, ArityEntry "int_to_str" 1, ArityEntry "str_to_int" 1, ArityEntry "char_from_code" 1, ArityEntry "trim_str" 1, ArityEntry "read_file" 1, ArityEntry "load_rg_source" 1, ArityEntry "read_bytes" 1, ArityEntry "write_bytes" 2, ArityEntry "write_file" 2, ArityEntry "shell_exec" 1, ArityEntry "list_str_len" 1, ArityEntry "list_dir" 1, ArityEntry "file_lstat" 1, ArityEntry "sha256_file" 1, ArityEntry "sha256_str" 1, ArityEntry "sys_os" 0, ArityEntry "sys_arch" 0, ArityEntry "sys_mkdir" 2, ArityEntry "sys_chmod" 2, ArityEntry "sys_exec" 3, ArityEntry "sys_chdir" 1, ArityEntry "sys_getcwd" 0, ArityEntry "sys_getenv" 1, ArityEntry "sys_setenv" 2, ArityEntry "sys_exit" 1, ArityEntry "sys_getuid" 0, ArityEntry "sys_getgid" 0, ArityEntry "sys_getpid" 0, ArityEntry "sys_time_ms" 0, ArityEntry "sys_deadline_ms" 0, ArityEntry "sys_remaining_ms" 0, ArityEntry "sys_sleep_ms" 1, ArityEntry "sys_open_mode" 2, ArityEntry "sys_open" 3, ArityEntry "sys_close" 1, ArityEntry "sys_read_fd" 2, ArityEntry "sys_write_fd" 2, ArityEntry "sys_poll" 3, ArityEntry "sys_terminate" 2, ArityEntry "sys_kill" 2, ArityEntry "sys_call" 7, ArityEntry "sys_username" 1, ArityEntry "sys_user_groups" 1, ArityEntry "sys_lookup_uid_gid" 1, ArityEntry "sys_setresgid" 1, ArityEntry "sys_setgroups" 1, ArityEntry "sys_setresuid" 1, ArityEntry "sys_execve" 3, ArityEntry "sys_read_pass" 1, ArityEntry "cli_args" 0, ArityEntry "cmm_live_blocks" 0, ArityEntry "cmm_cond_spared" 0, ArityEntry "cmm_cond_freed" 0, ArityEntry "cmm_same_ptr" 2, ArityEntry "seq_map" 2, ArityEntry "par_map" 2, ArityEntry "seq_filter" 2, ArityEntry "par_filter" 2]
 
 fn :: collect_fn_arities [RFnDef] => [RArityEntry]
       collect_fn_arities []       =  builtin_arity_entries
@@ -1754,8 +1759,26 @@ fn :: has_longer_arity_prefix [RArityEntry] String  [RExpr]         => Bool
         (has_arity_prefix arities (fn_name + "_" + w)) AND (can_complete_op arities (fn_name + "_" + w) rest)
       has_longer_arity_prefix _             _       _               =  False
 
+fn :: split_send_to_args [RExpr]                 [RExpr] => (Bool, [RExpr], RExpr)
+      split_send_to_args ((EVar "to"):target:[]) acc     =  (True, acc, target)
+      split_send_to_args (x:xs)                  acc     =  split_send_to_args xs (acc :: [x])
+      split_send_to_args []                      _       =  (False, [], EUnit)
+
+fn :: pack_send_to_msg [RExpr]     => RExpr
+      pack_send_to_msg (single:[]) =  single
+      pack_send_to_msg msgs        =  ETuple msgs
+
+fn :: finish_send_to_norm String [RExpr] [RArityEntry] (Bool, [RExpr], RExpr) => RExpr
+      finish_send_to_norm _       _    arities (True, msg_atoms, target) =
+        normed_msgs = norm_expr_list (collapse_fn_ref_args msg_atoms arities) arities
+        ECall "send_to" [pack_send_to_msg normed_msgs, norm_expr target arities]
+      finish_send_to_norm fn_name args arities (False, _, _)             =
+        norm_call_mixfix fn_name args arities (extract_mixfix_call "" ([EVar fn_name] :: args) arities [])
+
 fn :: norm_call String  [RExpr] [RArityEntry] => RExpr
       norm_call fn_name args    arities
+        | fn_name == "agent" AND (NOT (has_longer_arity_prefix arities "agent" args)) = ECall "agent" (norm_expr_list (collapse_fn_ref_args args arities) arities)
+        | fn_name == "send" = finish_send_to_norm fn_name args arities (split_send_to_args args [])
         | (is_std_builtin fn_name) AND (NOT (has_longer_arity_prefix arities fn_name args)) = ECall fn_name (norm_expr_list (maybe_collapse_args args (std_builtin_arity fn_name) arities) arities)
         | (lookup_arity arities fn_name) >= 0 AND (NOT (has_longer_arity_prefix arities fn_name args)) = ECall fn_name (norm_expr_list (maybe_collapse_args args (lookup_arity arities fn_name) arities) arities)
         | fn_name == "__chain__" = norm_call_chain args arities (extract_mixfix_call "" args arities [])
@@ -1770,6 +1793,7 @@ fn :: norm_call_chain [RExpr]   [RArityEntry] (String, [RExpr]) => RExpr
 fn :: norm_call_chain_step [RExpr] [RArityEntry] String Int [RExpr] => RExpr
       norm_call_chain_step orig_args arities mangled ar c_ops
         | arity_matches ar (expr_list_count c_ops) = ECall mangled (norm_expr_list c_ops arities)
+        | ar > 0 AND (expr_list_count c_ops) == 0 = EVar mangled
         | otherwise = norm_call_chain_fallback (norm_expr_list orig_args arities) arities
 
 fn :: norm_call_chain_fallback [RExpr] [RArityEntry] => RExpr
@@ -1785,6 +1809,7 @@ fn :: norm_call_mixfix String [RExpr] [RArityEntry] (String, [RExpr]) => RExpr
 fn :: norm_call_mixfix_step String [RExpr] [RArityEntry] String Int [RExpr] => RExpr
       norm_call_mixfix_step orig_name orig_args arities mangled ar c_ops
         | arity_matches ar (expr_list_count c_ops) = ECall mangled (norm_expr_list c_ops arities)
+        | ar > 0 AND (expr_list_count c_ops) == 0 = EVar mangled
         | otherwise = norm_call_mixfix_fallback orig_name (norm_expr_list orig_args arities) arities
 
 fn :: norm_call_mixfix_fallback String    [RExpr] [RArityEntry] => RExpr

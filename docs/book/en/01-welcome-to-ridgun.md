@@ -110,7 +110,7 @@ Ridgun doesn't try to reinvent the flat tire; it unapologetically borrows the be
 | **Haskell / ML** | Pure functions, case-by-case *pattern matching*, algebraic data types (`Option`, `Result`), and polymorphism (`A`..`Z`). | Abstract monad transformers, 40 `LANGUAGE` pragmas, and the garbage collector. |
 | **J / APL** | Obsession with tabular code layout, native tensors, and sequence masks (`s["-+-"]`). | Hieroglyphic symbols that are impossible to type on a normal keyboard. |
 | **Rust / C** | Tiny native ELF binaries, zero GC, deterministic memory control (`with region`), and POSIX system calls. | Constant battles with the *borrow checker*, `'a` *lifetimes*, and syntactic verbosity. |
-| **Erlang / Go** | Channel-based concurrency (`chan_send`, `chan_recv`) and lightweight tasks (`spawn`, `join`). | `nil` pointers and accidental shared mutable state. |
+| **Erlang / Go** | Isolated agents (`agent`, `send ... to`, `receive from`) and channel-based concurrency (`new bounded channel`). | `nil` pointers and accidental shared mutable state. |
 
 ---
 

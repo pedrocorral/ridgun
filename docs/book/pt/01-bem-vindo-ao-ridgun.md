@@ -110,7 +110,7 @@ O Ridgun não pretende reinventar a roda quadrada; pede emprestado sem complexos
 | **Haskell / ML** | Funções puras, *pattern matching* por casos, tipos algébricos (`Option`, `Result`) e polimorfismo (`A`..`Z`). | As mónadas abstratas, os 40 `LANGUAGE pragmas` e o coletor de lixo. |
 | **J / APL** | A obsessão pela forma tabular do código, tensores nativos e máscaras de sequências (`s["-+-"]`). | Os símbolos hieroglíficos impossíveis de escrever num teclado normal. |
 | **Rust / C** | Binários ELF nativos pequenos, zero GC, controlo de memória (`with region`) e chamadas ao sistema POSIX. | A luta constante com o *borrow checker*, os *lifetimes* `'a` e a verbosidade sintática. |
-| **Erlang / Go** | Concorrência por canais (`chan_send`, `chan_recv`) e tarefas leves (`spawn`, `join`). | Os ponteiros `nil` e as mutações partilhadas por descuido. |
+| **Erlang / Go** | Agentes isolados (`agent`, `send ... to`, `receive from`) e concorrência por canais (`new bounded channel`). | Os ponteiros `nil` e as mutações partilhadas por descuido. |
 
 ---
 

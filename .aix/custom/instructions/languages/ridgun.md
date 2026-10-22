@@ -5,11 +5,11 @@ description: "Use when writing, refactoring, or reviewing Ridgun (.rg) source fi
 applyTo: "**/*.rg,build.rg"
 optional: false
 ---
-# Ridgun conventions (`.rg` — `v0.9.11`)
+# Ridgun conventions (`.rg` — `v0.9.12`)
 
 Read and follow the `implement-code-ridgun` skill before editing any `.rg` file.
 
-## Layout and 100% pure-Ridgun ELF64 toolchain (`v0.9.11`)
+## Layout and 100% pure-Ridgun ELF64 toolchain (`v0.9.12`)
 - Shared modules live in `src/main/ridgun/lib/*.rg`; executable entrypoints live in `src/main/ridgun/<target>/main.rg` (compiled directly to standalone Linux ELF64 executables at `target/<target>` without Rust, C, or `rustc`).
 - Library compilation (`FR-COMP-006`): modules without `fn :: main => ()` can be compiled as `.rglib` bundles (`ridgunc build --lib <file.rg> -o <out.rglib>`) and native Linux ELF64 `ET_DYN` shared objects (`ridgunc build --so <file.rg> -o <lib.so>`), or built via `stable built lib` (`fn :: project kind => String` = `"lib"` in `build.rg`, scaffolded via `stable new --lib <name>`).
 - Extensible `stable` (`FR-TOOL-003`): projects can declare custom tasks in `build.rg` (`fn :: task <name> => String`) and load plugins (`fn :: plugins => [String]`, `plugins/*.rg`, `.stable/plugins/*.rg`); inspect via `stable tasks` and `stable plugins`.
@@ -44,7 +44,10 @@ Read and follow the `implement-code-ridgun` skill before editing any `.rg` file.
   - Higher-order list combinators: sequential `map f xs`, `filter p xs`, `fold f init xs`, and multicore parallel **`||map f xs`** and **`||filter p xs`**.
 - **Deterministic Memory (`RMM1` / `RMM2`) & Concurrency Safety (`FR-COMP-002`)**:
   - Zero Garbage Collector: `RMM1` handles static last-use drops (`rg_cmm_drop`), zero-copy return moves, and 1-cycle pointer-identity checks (`ptr(a) != ptr(c)`); `RMM2` leaves incoming arguments untouched (`+0 / -0`), increments (`+1`) on local/container assignment, spares the returned local in transit, and cascades `-1` to child structures on scope exit.
-  - Parallel `|| expr -> var` bindings must be acyclic and disjoint on slice writes (`|| val -> m[i, j]`); channels enforce affine move ownership (`ErrUseAfterSend`).
+  - Parallel `|| expr -> var` bindings must be acyclic and disjoint on slice writes (`|| val -> m[i, j]`); channels and agents enforce affine move ownership (`ErrUseAfterSend`).
+- **Native Agent Model (`FR-COMP-009`)**:
+  - Any `fn ::` or `op ::` function can be instantiated as an autonomous agent without special declaration keywords: `ag = agent fn` (stateless `M => R`) or `ag = agent fn init_state` (stateful `S M => S` or `S M => S R`).
+  - Communicate via `send msg to ag` (or multi-argument `send a b to ag`), `receive from ag`, `try receive from ag` (`Some r | None`), `stop ag`, and `agent alive ag`, typed as `Agent In Out` (or `(Agent In Out)`). Legacy `spawn` and `join` are retired.
 - **Declarative Timeouts (`with timeout`) & Cross-Platform PAL Primitives (`FR-COMP-007`)**:
   - Duration suffixes `_ms` (`* 1`), `_s` (`* 1000`), and `_min` (`* 60000`) desugar at lex time to integer milliseconds (`Int`).
   - `with timeout 500_ms do ...` (or `with region 64_MB, timeout 500_ms do ...`) pushes a monotonic deadline onto the execution context stack (`sys deadline ms => Int`, `sys remaining ms => Int`) and automatically clamps `sys poll` inside the block.

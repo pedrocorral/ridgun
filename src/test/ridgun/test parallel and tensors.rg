@@ -89,6 +89,37 @@ fn :: channel roundtrip String => String
         _ = send through msg ch
         receive from ch
 
+type OptionStr = Some String | None
+
+fn :: unwrap opt str OptionStr     => String
+      unwrap opt str (Some s)      =  s
+      unwrap opt str None          =  "empty"
+
+op :: procesar mensaje String con tiempo Int => String
+      procesar mensaje msg    con tiempo t   =  "{msg}:{t}ms"
+
+fn :: sumar visita Int     Int   => Int
+      sumar visita visitas delta =  visitas + delta
+
+type SesionHttp = usuario: String, peticiones: Int
+
+op :: atender http SesionHttp String => SesionHttp String
+      atender http ses        req
+        | str starts with req "LOGIN:" =
+          nombre = str slice req 6 (str len req)
+          nueva = ses with usuario: nombre, peticiones: (peticiones ses) + 1
+          (nueva, "200-LOGIN-{nombre}")
+        | otherwise =
+          n = (peticiones ses) + 1
+          nueva = ses with peticiones: n
+          quien = usuario ses
+          (nueva, "200-{quien}-req-{n}")
+
+fn :: consultar contador (Agent Int Int) Int => Int
+      consultar contador ag              n   =
+        send n to ag
+        receive from ag
+
 fn :: main => ()
       main =
         echo "=== Parallel || DAG, Tensors, Einsum, Masks, Region, Context & Shared (Slots 38..55) ==="
@@ -103,4 +134,27 @@ fn :: main => ()
         assert equals (read active tag) "default-tag"
         assert equals (apply hof triple val sum pair [2, 4, 6, 8]) ([12, 18, 24], 54)
         assert equals (channel roundtrip "phase4-channel-ok") "phase4-channel-ok"
+        echo "=== FR-COMP-009: Native Agent Model (agent, send to, receive from, try receive from, stop) ==="
+        ag_msg = agent (procesar mensaje con tiempo)
+        assert equals (unwrap opt str (try receive from ag_msg)) "empty"
+        send "pedido-1" 15 to ag_msg
+        send "pedido-2" 30 to ag_msg
+        assert equals (unwrap opt str (try receive from ag_msg)) "pedido-1:15ms"
+        assert equals (receive from ag_msg) "pedido-2:30ms"
+        assert equals (unwrap opt str (try receive from ag_msg)) "empty"
+        ag_cnt = agent (sumar visita) 10
+        assert equals (agent alive ag_cnt) True
+        assert equals (consultar contador ag_cnt 5) 15
+        assert equals (consultar contador ag_cnt 7) 22
+        stop ag_cnt
+        assert equals (agent alive ag_cnt) False
+        ag_http = agent (atender http) (SesionHttp "anon" 0)
+        send "LOGIN:ana" to ag_http
+        send "GET /carrito" to ag_http
+        send "POST /comprar" to ag_http
+        assert equals (receive from ag_http) "200-LOGIN-ana"
+        assert equals (receive from ag_http) "200-ana-req-2"
+        assert equals (receive from ag_http) "200-ana-req-3"
+        stop ag_http
+        assert equals (agent alive ag_http) False
         echo "=== All parallel & tensor tests passed ==="
