@@ -440,6 +440,36 @@ fn :: arm64_rt_slot Int => [Int]
       arm64_rt_slot 36  =  (u32_le (arm64_movz 0 0 0)) :: arm64_ret
       -- rt_37 (rg_bin_op): branch to 0x401240 (+70 words from slot 37)
       arm64_rt_slot 37  =  (arm64_b 4198976 4198696) :: arm64_nop
+      -- rt_38 (rg_index_get): branch to 0x4012F0
+      arm64_rt_slot 38  =  (arm64_b 4199152 4198704) :: arm64_nop
+      -- rt_39 (rg_index_set): branch to 0x401304
+      arm64_rt_slot 39  =  (arm64_b 4199172 4198712) :: arm64_nop
+      -- rt_40 (rg_seq_select): NOP ; RET (X0 holds seq ptr)
+      arm64_rt_slot 40  =  arm64_nop :: arm64_ret
+      -- rt_41 (rg_einsum): LDR X0, [X0] ; RET
+      arm64_rt_slot 41  =  (arm64_ldr_base 0 0) :: arm64_ret
+      -- rt_42 (rg_hadamard): LDR X0, [X1] ; RET
+      arm64_rt_slot 42  =  (arm64_ldr_base 0 1) :: arm64_ret
+      -- rt_43 (rg_push_ctx): MOV X0, X2 ; RET
+      arm64_rt_slot 43  =  (arm64_mov_reg 0 2) :: arm64_ret
+      -- rt_44 (rg_pop_ctx): MOV X0, X2 ; RET
+      arm64_rt_slot 44  =  (arm64_mov_reg 0 2) :: arm64_ret
+      -- rt_45 (rg_has_ctx): MOVZ X0, #1 ; RET
+      arm64_rt_slot 45  =  (u32_le (arm64_movz 0 1 0)) :: arm64_ret
+      -- rt_46 (rg_get_ctx): MOVZ X0, #0 ; RET
+      arm64_rt_slot 46  =  (u32_le (arm64_movz 0 0 0)) :: arm64_ret
+      -- rt_47 (rg_enter_region): MOVZ X0, #0 ; RET
+      arm64_rt_slot 47  =  (u32_le (arm64_movz 0 0 0)) :: arm64_ret
+      -- rt_48 (rg_exit_region): MOV X0, X1 ; RET (returns block result in X1)
+      arm64_rt_slot 48  =  (arm64_mov_reg 0 1) :: arm64_ret
+      -- rt_49 (rg_has_shared): MOVZ X0, #1 ; RET
+      arm64_rt_slot 49  =  (u32_le (arm64_movz 0 1 0)) :: arm64_ret
+      -- rt_50 (rg_get_shared): MOVZ X0, #0 ; RET
+      arm64_rt_slot 50  =  (u32_le (arm64_movz 0 0 0)) :: arm64_ret
+      -- rt_51 (rg_init_shared): MOV X0, X2 ; RET
+      arm64_rt_slot 51  =  (arm64_mov_reg 0 2) :: arm64_ret
+      -- rt_52 (rg_store_shared): MOV X0, X2 ; RET
+      arm64_rt_slot 52  =  (arm64_mov_reg 0 2) :: arm64_ret
       -- rt_55 (rg_call_builtin / PAL dispatch): branch to 0x401270 (+46 words from slot 55)
       arm64_rt_slot 55  =  (arm64_b 4199024 4198840) :: arm64_nop
       -- Default slot: RET ; NOP
@@ -508,10 +538,20 @@ fn :: arm64_rt_slot26_match_nonempty => [Int]
       arm64_rt_slot26_match_nonempty =
         (arm64_cmp_reg 0 31) :: (arm64_cset_ne 0) :: arm64_ret
 
+-- 0x4012F0 (Slot 38: rg_index_get, 5 words = 20 bytes): LDR X9, [X0] ; LDR X10, [X1] ; ASR X10, X10, #1 ; LDR X0, [X9, X10, LSL #3] ; RET
+fn :: arm64_rt_slot38_index_get => [Int]
+      arm64_rt_slot38_index_get =
+        (arm64_ldr_base 9 0) :: (arm64_ldr_base 10 1) :: (arm64_asr_1 10 10) :: (u32_le 4167768896) :: arm64_ret
+
+-- 0x401304 (Slot 39: rg_index_set, 5 words = 20 bytes): LDR X9, [X0] ; LDR X10, [X1] ; ASR X10, X10, #1 ; STR X3, [X9, X10, LSL #3] ; RET
+fn :: arm64_rt_slot39_index_set => [Int]
+      arm64_rt_slot39_index_set =
+        (arm64_ldr_base 9 0) :: (arm64_ldr_base 10 1) :: (arm64_asr_1 10 10) :: (u32_le 4163574595) :: arm64_ret
+
 fn :: build_arm64_rt_kernel => [Int]
       build_arm64_rt_kernel =
         jt = arm64_rt_stub_table 0 []
-        jt :: arm64_rt_start_code :: arm64_rt_slot1_init_frame :: arm64_rt_slot3_tco_copy :: arm64_rt_slot21_match_int :: arm64_rt_slot24_match_bool :: arm64_rt_slot37_bin_op :: arm64_rt_slot55_pal_dispatch :: arm64_rt_slot22_match_ptr_eq :: arm64_rt_slot25_match_empty :: arm64_rt_slot26_match_nonempty
+        jt :: arm64_rt_start_code :: arm64_rt_slot1_init_frame :: arm64_rt_slot3_tco_copy :: arm64_rt_slot21_match_int :: arm64_rt_slot24_match_bool :: arm64_rt_slot37_bin_op :: arm64_rt_slot55_pal_dispatch :: arm64_rt_slot22_match_ptr_eq :: arm64_rt_slot25_match_empty :: arm64_rt_slot26_match_nonempty :: arm64_rt_slot38_index_get :: arm64_rt_slot39_index_set
 
 -- ── Public ARM64 ELF64 Image Builder ─────────────────────────
 

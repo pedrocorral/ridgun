@@ -1325,7 +1325,13 @@ fn :: try_parse_op_template [Bool] [String] [RToken] [RPattern] => (Bool, [RPatt
         | otherwise = (False, [], [tok] :: ts_rest)
       try_parse_op_template _ _ ts _ = (False, [], ts)
 
+fn :: skip_true_slots [Bool]        => [Bool]
+      skip_true_slots (True:t_rest) =  skip_true_slots t_rest
+      skip_true_slots other         =  other
+
 fn :: try_parse_op_pat [Bool] [String] [RPattern] (RPattern, [RToken]) => (Bool, [RPattern], [RToken])
+      try_parse_op_pat t_rest kws pats ((PatSeqBind v), rest) =
+        try_parse_op_template (skip_true_slots t_rest) kws rest (pats :: [PatSeqBind v])
       try_parse_op_pat t_rest kws pats (pat, rest) =
         try_parse_op_template t_rest kws rest (pats :: [pat])
 

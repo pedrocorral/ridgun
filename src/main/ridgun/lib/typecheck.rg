@@ -182,7 +182,7 @@ fn :: types_compatible RType              RType              => Bool
       types_compatible other              (TyVariadic inner) =
         (types_compatible inner other) OR (types_compatible (TyList inner) other)
       types_compatible (TyVar a)          (TyVar b)
-        | a == b = True
+        | a == b OR ("adt:" + a) == b OR ("adt:" + b) == a = True
         | (is_poly_type_var a) OR (is_poly_type_var b) = True
         | (str_starts_with a "adt:") AND (str_starts_with b "adt:") AND ((str_contains a b) OR (str_contains b a) OR (str_contains a ("adt:" + (rtype_to_str (TyVar b)))) OR (str_contains b ("adt:" + (rtype_to_str (TyVar a))))) = True
         | otherwise = False

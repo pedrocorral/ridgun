@@ -5,11 +5,11 @@ description: "Use when writing, refactoring, or reviewing Ridgun (.rg) source fi
 applyTo: "**/*.rg,build.rg"
 optional: false
 ---
-# Ridgun conventions (`.rg` — `v0.9.5`)
+# Ridgun conventions (`.rg` — `v0.9.10`)
 
 Read and follow the `implement-code-ridgun` skill before editing any `.rg` file.
 
-## Layout and 100% pure-Ridgun ELF64 toolchain (`v0.9.5`)
+## Layout and 100% pure-Ridgun ELF64 toolchain (`v0.9.10`)
 - Shared modules live in `src/main/ridgun/lib/*.rg`; executable entrypoints live in `src/main/ridgun/<target>/main.rg` (compiled directly to standalone Linux ELF64 executables at `target/<target>` without Rust, C, or `rustc`).
 - Library compilation (`FR-COMP-006`): modules without `fn :: main => ()` can be compiled as `.rglib` bundles (`ridgunc build --lib <file.rg> -o <out.rglib>`) and native Linux ELF64 `ET_DYN` shared objects (`ridgunc build --so <file.rg> -o <lib.so>`), or built via `stable built lib` (`fn :: project kind => String` = `"lib"` in `build.rg`, scaffolded via `stable new --lib <name>`).
 - Extensible `stable` (`FR-TOOL-003`): projects can declare custom tasks in `build.rg` (`fn :: task <name> => String`) and load plugins (`fn :: plugins => [String]`, `plugins/*.rg`, `.stable/plugins/*.rg`); inspect via `stable tasks` and `stable plugins`.
@@ -18,7 +18,7 @@ Read and follow the `implement-code-ridgun` skill before editing any `.rg` file.
 
 ## Syntax invariants (never violate)
 - **Comments**: `--` only (never `//`, `#`, or `/* */`). **Imports**: `import <module>` at top of file (resolved from same dir or `src/main/ridgun/lib/`, no quotes or `.rg`).
-- **Signatures, Multi-Word `fn ::` Spaces & Generics (`A`..`Z`)**: `fn ::` and `op ::` prefixes are optional (`name T1 T2 => Ret` or `fn :: name T1 T2 => Ret`; multi-word `fn :: format err AppErr => String` or mixfix `op :: word T1 word T2 => Ret`). Multi-word `fn ::` functions, `build.rg` settings (`fn :: project name => String`), and built-ins (`assert equals`, `str len`, `read file`, `cmm live blocks`) use natural spaces (`" "`) instead of `_` (`_`-joined identifiers remain backward-compatible). Polymorphic type variables are **single uppercase letters (`A`..`Z`)** (e.g., `list len [A] => Int`, `fst (A, B) => A`, `swap A with B => (B, A)`), unified across arguments and substituted into the return type. **Never** put `()` before `=>` for 0-arg functions (`fn :: main => ()`, not `fn :: main () => ()`).
+- **Signatures, Space-Separated Tuple/Sequence Types (`FR-COMP-008`), Multi-Word `fn ::` Spaces & Generics (`A`..`Z`)**: `fn ::` and `op ::` prefixes are optional (`name T1 T2 => Ret` or `fn :: name T1 T2 => Ret`; multi-word `fn :: format err AppErr => String` or mixfix `op :: word T1 word T2 => Ret`). Multi-word `fn ::` functions, `build.rg` settings (`fn :: project name => String`), and built-ins (`assert equals`, `str len`, `read file`, `cmm live blocks`) use natural spaces (`" "`) instead of `_` (`_`-joined identifiers remain backward-compatible). Argument sequences and tuples are unified (`FR-COMP-008`): space-separated return types (`=> Int Int [String String] String`), space-separated tuple elements inside list brackets (`[String String]` $\equiv$ `[(String, String)]`), and space-separated tuple elements inside parentheses (`(A B)` $\equiv$ `(A, B)`) are 100% interchangeable with comma-separated tuple syntax `(Int, Int, [(String, String)], String)`. Polymorphic type variables are **single uppercase letters (`A`..`Z`)** (e.g., `list len [A] => Int`, `fst (A B) => A`, `swap A with B => B A`), unified across arguments and substituted into the return type. **Never** put `()` before `=>` for 0-arg functions (`fn :: main => ()`, not `fn :: main () => ()`).
 - **Contextual `type` and `with`**: `type` and `with` are contextual keywords and can be used freely as function names, operator words in `op ::`, parameter patterns, local variables, and record field names (`type` is only a declaration keyword at top-level `type UpperName = ...`). Do not use structural keywords (`fn`, `op`, `import`, `otherwise`, `do`, `atomic`, `mut`) as operator words.
 - **Unified `=` Grammar (`(none)`, `|`, `||`) & Nested Block Closers (`|.` / `||.`) (`FR-COMP-003`)**:
   - Every function clause (`fn ::`), operator clause (`op ::`), local variable binding (`x =` / `mut x =`), and guard branch (`| cond =` / `| otherwise =`) **requires `=`** and accepts:
