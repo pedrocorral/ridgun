@@ -181,7 +181,14 @@ fn :: main => ()
         echo "Visites:" v1 "->" v2 "| Lot:" lot
 ```
 
-### 2. Passar missatges per canals afitats (`new bounded channel`)
+### 2. Elecció intel·ligent en temps de compilació (*Green Threads* vs. Fils Reals del Nucli)
+Una pregunta habitual és: *"Els blocs `||`, `||map` i els agents `agent` creen sempre fils del sistema operatiu o corren com a tasques lleugeres?"*
+
+En Ridgun, **el compilador pren aquesta decisió per tu analitzant estàticament cada funció**:
+- **Funcions lleugeres (`TierTrivial` / `StratInlineSequential`)**: Si la funció que passes a `||`, `||map`, `||filter` o `agent` té poca profunditat (aritmètica, formatat de cadenes, transició d'estat ràpida d'una sessió HTTP), escalfar fils del sistema operatiu costaria més que el propi càlcul. El compilador l'executa com un pas *green-thread* ultralleuger sense sobrecàrrega de `SYS_clone`.
+- **Càlculs pesats o recursius profunds (`TierDynamicRecursive` / `TierHeavyCPU`)**: Si la funció té recursió profunda (com `fib` o `fact`) o àlgebra de tensors (`einsum`, `hadamard`, `@`), el compilador genera automàticament el despatx multinucli sobre **fils reals del nucli (`SYS_clone`)**, processant les branques `||` o la cua de missatges de l'`agent` en paral·lel real sobre tots els teus nuclis de CPU.
+
+### 3. Passar missatges per canals afitats (`new bounded channel`)
 Igual que en Go o Erlang, a més d'agents també pots crear tubs explícits per comunicar etapes:
 
 - `new bounded channel capacitat`: crea un canal amb espai per a `capacitat` missatges.

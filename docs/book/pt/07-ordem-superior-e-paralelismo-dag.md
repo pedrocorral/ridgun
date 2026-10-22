@@ -181,7 +181,14 @@ fn :: main => ()
         echo "Visitas:" v1 "->" v2 "| Lote:" lote
 ```
 
-### 2. Passar mensagens por canais limitados (`new bounded channel`)
+### 2. Escolha inteligente em tempo de compilação (*Green Threads* vs. Threads Reais do Kernel)
+Uma pergunta habitual é: *"Os blocos `||`, `||map` e os agentes `agent` criam sempre threads do sistema operativo ou correm como tarefas leves?"*
+
+Em Ridgun, **o compilador toma essa decisão por si analisando estaticamente cada função**:
+- **Funções leves (`TierTrivial` / `StratInlineSequential`)**: Se a função que passa a `||`, `||map`, `||filter` ou `agent` tiver pouca profundidade (aritmética, formatação de cadeias, transição rápida de estado de uma sessão HTTP), aquecer threads do sistema operativo custaria mais do que o próprio cálculo. O compilador executa-a como um passo *green-thread* ultraleve sem sobrecarga de `SYS_clone`.
+- **Cálculos pesados ou recursivos profundos (`TierDynamicRecursive` / `TierHeavyCPU`)**: Se a função tiver recursão profunda (como `fib` ou `fact`) ou álgebra de tensores (`einsum`, `hadamard`, `@`), o compilador gera automaticamente o despacho multinúcleo sobre **threads reais do kernel (`SYS_clone`)**, processando os ramos `||` ou a fila de mensagens do `agent` em paralelo real sobre todos os núcleos do seu CPU.
+
+### 3. Passar mensagens por canais limitados (`new bounded channel`)
 Tal como em Go ou Erlang, além de agentes também pode criar tubos explícitos para ligar etapas:
 
 - `new bounded channel capacidade`: cria um canal com espaço para `capacidade` mensagens.

@@ -118,7 +118,7 @@ Ridgun doesn't try to reinvent the flat tire; it unapologetically borrows the be
 
 Giving credit to the classics is good manners, but if Ridgun were just a "greatest hits album" of other languages, you wouldn't be reading this book.
 
-There are **seven things** we designed and integrated into Ridgun that you won't find together—and many of them not even separately—in any other language today:
+There are **eight things** we designed and integrated into Ridgun that you won't find together—and many of them not even separately—in any other language today:
 
 ### 1. Parallel `||` blocks with `->` that are true parallel graphs, not mere syntactic sugar
 In other functional languages, a local binding block merely orders expressions that are then evaluated on a single thread.
@@ -131,7 +131,20 @@ annual_report id  =  revenue - expenses
 ```
 You draw the dataflow arrows (`->`). The compiler analyzes what depends on what, **statically verifies that you haven't created any infinite dependency cycles**, and launches independent branches in parallel without you writing a single `async`, `await`, `Future`, or `Mutex`.
 
-### 2. Code as a two-dimensional table where the signature is the column header
+### 2. Zero-friction Native Agent Model (`agent`) with smart compile-time thread selection
+In other languages, programming with actors or agents forces you to define special classes, implement traits, juggle locks, or infect your functions with `async`.
+In Ridgun, **any ordinary pure function (`fn ::` or `op ::`) turns directly into an autonomous agent—stateless or with isolated state—using `agent`**:
+```ridgun
+serve_http (Session, String) => (Session, String)
+...
+server = agent serve_http initial_session
+send "GET /profile" to server
+reply = receive from server
+stop server
+```
+Better yet: the compiler **statically analyzes function call depth and computational cost at compile time** across `agent`, `||`, and `||map`. If a function is lightweight, it executes as an instant *green-thread* step without paying OS thread warmup overhead; if it is a heavy or deeply recursive computation, it is automatically dispatched in parallel across real OS kernel threads (`SYS_clone`) over your CPU cores.
+
+### 3. Code as a two-dimensional table where the signature is the column header
 In every other language, the type signature lives on its own line and the function body sits below it like an ordinary paragraph of text.
 In Ridgun, **the type signature is literally the header of a table**, and every clause below aligns each pattern vertically under its type and each `=` under the `=>`:
 ```ridgun
@@ -141,7 +154,7 @@ divide a   b   =  Some (a / b)
 ```
 No other language treats the signature and its equations as a single visual matrix verified by the compiler and automatically typeset by `stable format`.
 
-### 3. Typed and aligned N-ary phrase operators (*Mixfix* `op ::`)
+### 4. Typed and aligned N-ary phrase operators (*Mixfix* `op ::`)
 In most languages, you either settle for `+`, `-`, `*` or at best define a cryptic binary operator like `<|>` that nobody can read.
 In Ridgun you can create **operators that read like natural phrases with as many typed slots as you want** (even using contextual words like `type` or `with`):
 ```ridgun
@@ -153,14 +166,14 @@ op :: Int clamped_between Int and_max Int => Int
 ```
 And then in your code you write `speed clamped_between 0 and_max 120`. It reads like plain English, yet it is 100% statically typed and compiled to native machine code.
 
-### 4. Visual sequence masks (`s(+ _)` and `s["-+-"]`)
+### 5. Visual sequence masks (`s(+ _)` and `s["-+-"]`)
 Have you ever had to write an index salad like `filter(\(i, x) -> i % 2 == 0)` just to keep even elements or extract a rhythmic pattern from a list?
 In Ridgun you pass a **visual mask** directly:
 - `data["-+-"]`: drops the first (`-`), keeps the second (`+`), drops the third (`-`).
 - `data["+-~"]`: the `~` symbol repeats the `+-` pattern in a loop until the end of the list (all even indices in one stroke).
 Zero index arithmetic, zero *off-by-one* bugs.
 
-### 5. "Zero-noise" polymorphism (`A`..`Z`) governed by your domain
+### 6. "Zero-noise" polymorphism (`A`..`Z`) governed by your domain
 In Rust, TypeScript, or Java, making a function generic means littering the line with angle brackets: `fn swap<A, B>(pair: (A, B)) -> (B, A)`.
 In Ridgun you simply use a standalone uppercase letter:
 ```ridgun
@@ -169,10 +182,10 @@ swap (x, y) =  (y, x)
 ```
 *"What if I want a real type in my program called `type A`?"* — No problem: in Ridgun **your `type` declarations win**. If `type A` does not exist, `A` is a generic type variable; the instant you define `type A = ...`, it becomes your concrete type across the module.
 
-### 6. Zero foreign configuration files: `build.rg` is pure Ridgun
+### 7. Zero foreign configuration files: `build.rg` is pure Ridgun
 Forget learning TOML for Cargo, JSON for npm, XML for Maven, or the arcane tab-sensitive syntax of a `Makefile`. In Ridgun, the recipe that builds your project (`build.rg`) **is just another `.rg` file**, using the exact same pure functions and *pattern matching* as the rest of your code.
 
-### 7. The "Holy Trinity" that seemed impossible: Haskell-level expressiveness + RMM memory without GC or Lifetimes + ~350 KB binaries
+### 8. The "Holy Trinity" that seemed impossible: Haskell-level expressiveness + RMM memory without GC or Lifetimes + ~350 KB binaries
 Until today you had to choose:
 - If you wanted pure functional expressiveness (Haskell, OCaml, Elixir), you paid for it with a garbage collector and a heavy runtime.
 - If you wanted tiny GC-free systems binaries (C, Rust, Zig), you paid for it by juggling raw pointers or wrestling with the *borrow checker* while writing imperative code full of `let mut`.

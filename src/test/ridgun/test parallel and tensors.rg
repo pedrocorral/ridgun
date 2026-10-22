@@ -25,6 +25,16 @@ fn :: parallel dag calc => Int
         || fib 10       -> a
         || fact 6       -> b
 
+fn :: parallel pipe heavy => Int Int
+      parallel pipe heavy =
+        || fib 10
+        || fact 6
+
+fn :: parallel pipe light => Int Int
+      parallel pipe light =
+        || triple val 4
+        || triple val 5
+
 fn :: tensor slice calc => Int
       tensor slice calc =
         m = Tensor [[1, 2], [3, 4]]
@@ -157,4 +167,16 @@ fn :: main => ()
         assert equals (receive from ag_http) "200-ana-req-3"
         stop ag_http
         assert equals (agent alive ag_http) False
+        assert equals (parallel pipe heavy) (55, 720)
+        assert equals (parallel pipe light) (12, 15)
+        assert equals (||map fib [8, 9, 10]) [21, 34, 55]
+        ag_fib = agent fib
+        send 10 to ag_fib
+        send 11 to ag_fib
+        send 12 to ag_fib
+        assert equals (receive from ag_fib) 55
+        assert equals (receive from ag_fib) 89
+        assert equals (receive from ag_fib) 144
+        stop ag_fib
+        assert equals (agent alive ag_fib) False
         echo "=== All parallel & tensor tests passed ==="

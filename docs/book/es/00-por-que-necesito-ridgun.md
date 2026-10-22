@@ -87,6 +87,18 @@ informe_mensual d     =  combinar metricas_red metricas_disco metricas_cpu
 
 Tú solo has escrito tres líneas limpias indicando de dónde sale cada dato. El compilador ve que las tres ramas son independientes y sabe que puede lanzarlas en paralelo sin que exista ni la más mínima posibilidad de un *data race* o un *deadlock*.
 
+¿Y si necesitas agentes persistentes con buzón de mensajes y estado aislado (por ejemplo, para mantener miles de sesiones de clientes, trabajadores en segundo plano o conexiones de red)? En Ridgun no tienes que definir clases `Actor` ni usar `Mutex`: **cualquier función normal se convierte en un agente autónomo en una sola línea con `agent`**:
+
+```ridgun
+contador = agent (sumar visita) 0
+send 1 to contador
+send 5 to contador
+total = receive from contador
+stop contador
+```
+
+Además, el compilador realiza una **elección inteligente en tiempo de compilación**: analiza estáticamente la profundidad y el coste de cada función en `||`, `||map`, `||filter` y `agent` para ejecutar las funciones ligeras como pasos *green-thread* de sobrecarga cero (sin pagar el coste de calentar hilos del sistema operativo) y despachar automáticamente los cálculos pesados o recursivos a hilos reales del kernel en múltiples núcleos (`SYS_clone`).
+
 ---
 
 ## Dolor n.º 4: "El recolector de basura decide pausar el mundo justo en el peor momento"
@@ -114,7 +126,8 @@ Cada estructura temporal es liberada de forma determinista por el compilador (`R
 Ridgun está hecho para ti si alguna vez has querido:
 
 1. **Escribir herramientas de sistemas, compiladores, analizadores o utilidades CLI** que arranquen en microsegundos, pesen unos pocos cientos de KB y no puedan romperse por punteros nulos ni efectos colaterales ocultos.
-2. **Programar algoritmos, pipelines de datos o álgebra de tensores** donde el compilador verifique por ti hasta las dimensiones de las matrices (`Tensor[M, K] * Tensor[K, N] => Tensor[M, N]`) antes de ejecutar nada.
-3. **Disfrutar leyendo tu propio código**: que cada archivo `.rg` parezca una página de un libro bien maquetado gracias al formateador tabular automático (`stable format`).
+2. **Construir sistemas concurrentes y servidores basados en el Modelo Nativo de Agentes (`agent`, `send ... to`, `receive from`, `stop`)**, donde cualquier función pura se convierte en un agente con o sin estado aislado y el compilador elige inteligentemente entre ejecución *green-thread* ultraligera e hilos nativos multinúcleo.
+3. **Programar algoritmos, pipelines de datos o álgebra de tensores** donde el compilador verifique por ti hasta las dimensiones de las matrices (`Tensor[M, K] * Tensor[K, N] => Tensor[M, N]`) antes de ejecutar nada.
+4. **Disfrutar leyendo tu propio código**: que cada archivo `.rg` parezca una página de un libro bien maquetado gracias al formateador tabular automático (`stable format`).
 
 ¿Te pica la curiosidad? Pasa al **Capítulo 01** y escribamos nuestro primer programa en menos de dos minutos.

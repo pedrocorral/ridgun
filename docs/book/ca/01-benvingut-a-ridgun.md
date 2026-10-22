@@ -118,7 +118,7 @@ Ridgun no pretén reinventar la roda quadrada; manlleva sense complexos el millo
 
 Reconèixer els clàssics és de bona educació, però si Ridgun fos només un "recopilatori de grans èxits" d'altres llenguatges, no estaries llegint aquest llibre.
 
-Hi ha **set coses** que hem dissenyat i integrat a Ridgun que no trobaràs juntes —i moltes d'elles, ni tan sols per separat— en cap altre llenguatge actual:
+Hi ha **vuit coses** que hem dissenyat i integrat a Ridgun que no trobaràs juntes —i moltes d'elles, ni tan sols per separat— en cap altre llenguatge actual:
 
 ### 1. Blocs paral·lels `||` amb `->` que són grafs paral·lels reals, no simple sucre sintàctic
 En altres llenguatges funcionals un bloc de variables locals només ordena expressions que després s'avaluen en un únic fil.
@@ -131,7 +131,20 @@ informe_anual id  =  ingressos - despeses
 ```
 Tu dibuixes les fletxes de flux (`->`). El compilador analitza qui depèn de qui, **verifica estàticament que no hagis creat cap cicle infinit**, i llança les branques independents en paral·lel sense que escriguis ni un sol `async`, `await`, `Future` ni `Mutex`.
 
-### 2. El codi com a taula bidimensional on la signatura és la capçalera de les columnes
+### 2. Model Natiu d'Agents (`agent`) de zero fricció amb elecció intel·ligent en compilació
+En altres llenguatges, programar amb actors o agents t'obliga a crear classes especials, implementar *traits*, gestionar *locks* o infectar les teves funcions amb `async`.
+En Ridgun, **qualsevol funció pura normal (`fn ::` o `op ::`) es converteix directament en un agent autònom —amb o sense estat aïllat— usant `agent`**:
+```ridgun
+atendre_http (Sessio, String) => (Sessio, String)
+...
+servidor = agent atendre_http sessio_inicial
+send "GET /perfil" to servidor
+resposta = receive from servidor
+stop servidor
+```
+Millor encara: el compilador **analitza en temps de compilació la profunditat i el cost computacional de la funció** tant a `agent` com a `||` i `||map`. Si la funció és lleugera, l'executa com un *green thread* instantani sense pagar el cost d'escalfar fils del sistema operatiu; si és un càlcul pesat o recursiu profund, la despatxa automàticament en paral·lel sobre fils reals del nucli (`SYS_clone`) repartits pels nuclis de la teva CPU.
+
+### 3. El codi com a taula bidimensional on la signatura és la capçalera de les columnes
 En qualsevol altre llenguatge, la signatura de tipus va per lliure en una línia i el cos de la funció va a sota com un paràgraf de text normal.
 En Ridgun, **la signatura de tipus és literalment la capçalera d'una taula**, i cada cas a sota alinea cada patró just en la vertical del seu tipus i cada `=` sota el `=>`:
 ```ridgun
@@ -141,7 +154,7 @@ dividir a   b   =  Some (a / b)
 ```
 Ningú més tracta la signatura i les equacions com una única matriu visual verificada pel compilador i maquetada automàticament per `stable format`.
 
-### 3. Operadors frase (*Mixfix* N-aris) tipats i alineats (`op ::`)
+### 4. Operadors frase (*Mixfix* N-aris) tipats i alineats (`op ::`)
 En la majoria dels llenguatges, o t'aguantes amb `+`, `-`, `*` o com a molt defineixes un operador binari críptic com `<|>` que ningú sap què significa.
 En Ridgun pots crear **operadors que són frases llegibles amb tants buits tipats com vulguis** (incloent-hi paraules contextuals com `type` o `with`):
 ```ridgun
@@ -153,14 +166,14 @@ op :: Int limitat_entre Int i Int => Int
 ```
 I després al teu codi escrius `velocitat limitat_entre 0 i 120`. Es llegeix com català (o anglès), però està 100% tipat i compilat a codi natiu.
 
-### 4. Màscares visuals sobre seqüències (`s(+ _)` i `s["-+-"]`)
+### 5. Màscares visuals sobre seqüències (`s(+ _)` i `s["-+-"]`)
 Alguna vegada has hagut d'escriure una amanida d'índexs `filter(\(i, x) -> i % 2 == 0)` només per quedar-te amb els elements parells o extreure un patró rítmic d'una llista?
 En Ridgun li passes directament una **màscara visual**:
 - `dades["-+-"]`: descarta el primer (`-`), es queda el segon (`+`), descarta el tercer (`-`).
 - `dades["+-~"]`: el símbol `~` repeteix el patró `+-` en bucle fins al final de la llista (tots els índexs parells d'un sol cop).
 Zero aritmètica d'índexs, zero errors *off-by-one*.
 
-### 5. Polimorfisme de "zero soroll" (`A`..`Z`) governat pel teu domini
+### 6. Polimorfisme de "zero soroll" (`A`..`Z`) governat pel teu domini
 En Rust, TypeScript o Java, quan una funció és genèrica has d'omplir la línia de parèntesis angulars: `fn intercanviar<A, B>(parell: (A, B)) -> (B, A)`.
 En Ridgun simplement fas servir una lletra majúscula solta:
 ```ridgun
@@ -169,10 +182,10 @@ intercanviar (x, y) =  (y, x)
 ```
 *"I si al meu programa vull tenir un tipus real que es digui `type A`?"* — Cap problema: en Ridgun **les teves declaracions `type` manen**. Si no existeix `type A`, `A` és genèric; en l'instant en què defineixes `type A = ...`, passa a ser el teu tipus concret en tot el mòdul.
 
-### 6. Zero fitxers de configuració estranys: `build.rg` és Ridgun pur
+### 7. Zero fitxers de configuració estranys: `build.rg` és Ridgun pur
 Oblida't d'aprendre TOML per a Cargo, JSON per a npm, XML per a Maven o la sintaxi arcana de `Makefile` amb tabuladors invisibles. En Ridgun, la recepta que construeix el teu projecte (`build.rg`) **és un fitxer `.rg` més**, amb les mateixes funcions pures i el mateix *pattern matching* que la resta del teu codi.
 
-### 7. La "Santíssima Trinitat" que semblava impossible: Nivell Haskell + Memòria RMM sense GC ni Lifetimes + Binaris de ~350 KB
+### 8. La "Santíssima Trinitat" que semblava impossible: Nivell Haskell + Memòria RMM sense GC ni Lifetimes + Binaris de ~350 KB
 Fins avui havies de triar:
 - Si volies expressivitat funcional pura (Haskell, OCaml, Elixir), pagaves amb un recol·lector de brossa i un runtime pesat.
 - Si volies binaris diminuts de sistema sense recol·lector de brossa (C, Rust, Zig), pagaves gestionant punters o barallant-te amb el *borrow checker* i escrivint codi imperatiu ple de `let mut`.

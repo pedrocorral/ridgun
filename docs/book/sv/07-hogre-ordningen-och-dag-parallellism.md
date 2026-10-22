@@ -181,7 +181,14 @@ fn :: main => ()
         echo "Besök:" v1 "->" v2 "| Parti:" parti
 ```
 
-### 2. Skicka meddelanden via begränsade kanaler (`new bounded channel`)
+### 2. Smart val vid kompilering (*Green Threads* vs. Riktiga Kärntrådar)
+En vanlig fråga är: *"Skapar `||`-block, `||map` och `agent`-agenter alltid operativsystemtrådar, eller körs de som lätta uppgifter?"*
+
+I Ridgun **fattar kompilatorn det beslutet åt dig genom att statiskt analysera varje funktion**:
+- **Lätta funktioner (`TierTrivial` / `StratInlineSequential`)**: Om funktionen du skickar till `||`, `||map`, `||filter` eller `agent` har litet djup (aritmetik, strängformatering, snabba tillståndsövergångar i en HTTP-session) skulle det kosta mer att värma upp operativsystemtrådar än själva beräkningen. Kompilatorn kör den som ett ultralätt *green-thread*-steg utan `SYS_clone`-overhead.
+- **Tunga eller djupt rekursiva beräkningar (`TierDynamicRecursive` / `TierHeavyCPU`)**: Om funktionen har djup rekursion (som `fib` eller `fact`) eller tensoralgebra (`einsum`, `hadamard`, `@`) genererar kompilatorn automatiskt flerkärnig utskickning över **riktiga kärntrådar (`SYS_clone`)**, och bearbetar `||`-grenar eller `agent`-meddelandekön i äkta hårdvaruparallellism över alla dina CPU-kärnor.
+
+### 3. Skicka meddelanden via begränsade kanaler (`new bounded channel`)
 Precis som i Go eller Erlang kan du utöver agenter även skapa uttryckliga rör för att koppla ihop steg:
 
 - `new bounded channel kapacitet`: skapar en kanal med plats för `kapacitet` meddelanden.

@@ -118,7 +118,7 @@ Ridgun non pretende reinventar a roda cadrada; toma prestado sen complexos o mel
 
 Recoñecer os clásicos é de boa educación, pero se Ridgun fose só un "compilatorio de grandes éxitos" doutras linguaxes, non estarías lendo este libro.
 
-Hai **sete cousas** que deseñamos e integramos en Ridgun que non vas atopar xuntas —e moitas delas, nin sequera por separado— en ningunha outra linguaxe actual:
+Hai **oito cousas** que deseñamos e integramos en Ridgun que non vas atopar xuntas —e moitas delas, nin sequera por separado— en ningunha outra linguaxe actual:
 
 ### 1. Bloques paralelos `||` con `->` que son grafos paralelos reais, non simple azucre sintáctico
 Noutras linguaxes funcionais un bloque de variables locais só ordena expresións que logo se avalían nun único fío.
@@ -131,7 +131,20 @@ informe_anual id  =  ingresos - gastos
 ```
 Ti debuxas as frechas de fluxo (`->`). O compilador analiza quen depende de quen, **verifica estaticamente que non crearas ningún ciclo infinito**, e lanza as ramas independentes en paralelo sen que escribas nin un só `async`, `await`, `Future` nin `Mutex`.
 
-### 2. O código como táboa bidimensional onde a sinatura é a cabeceira das columnas
+### 2. Modelo Nativo de Axentes (`agent`) de cero fricción con elección intelixente en compilación
+Noutras linguaxes, programar con actores ou axentes obrígate a crear clases especiais, implementar *traits*, xestionar *locks* ou infectar as túas funcións con `async`.
+En Ridgun, **calquera función pura normal (`fn ::` ou `op ::`) convértese directamente nun axente autónomo —con ou sen estado illado— usando `agent`**:
+```ridgun
+atender_http (Sesion, String) => (Sesion, String)
+...
+servidor = agent atender_http sesion_inicial
+send "GET /perfil" to servidor
+resposta = receive from servidor
+stop servidor
+```
+Mellor aínda: o compilador **analiza en tempo de compilación a profundidade e o custo computacional da función** tanto en `agent` coma en `||` e `||map`. Se a función é lixeira, execútaa como un *green thread* instantáneo sen pagar o custo de quentar fíos do sistema operativo; se é un cálculo pesado ou recursivo profundo, despáchao automaticamente en paralelo sobre fíos reais do kernel (`SYS_clone`) repartidos polos núcleos da túa CPU.
+
+### 3. O código como táboa bidimensional onde a sinatura é a cabeceira das columnas
 En calquera outra linguaxe, a sinatura de tipos vai por libre nunha liña e o corpo da función vai debaixo como un parágrafo de texto normal.
 En Ridgun, **a sinatura de tipos é literalmente a cabeceira dunha táboa**, e cada caso debaixo aliña cada patrón xusto na vertical do seu tipo e cada `=` baixo o `=>`:
 ```ridgun
@@ -141,7 +154,7 @@ dividir a   b   =  Some (a / b)
 ```
 Ninguén máis trata a sinatura e as ecuacións como unha única matriz visual verificada polo compilador e maquetada automaticamente por `stable format`.
 
-### 3. Operadores frase (*Mixfix* N-arios) tipados e aliñados (`op ::`)
+### 4. Operadores frase (*Mixfix* N-arios) tipados e aliñados (`op ::`)
 Na maioría das linguaxes, ou te aguantas con `+`, `-`, `*` ou como moito defines un operador binario críptico como `<|>` que ninguén sabe que significa.
 En Ridgun podes crear **operadores que son frases lexibles con tantos ocos tipados como queiras** (incluíndo palabras contextuais como `type` ou `with`):
 ```ridgun
@@ -153,14 +166,14 @@ op :: Int limitado_entre Int e Int => Int
 ```
 E logo no teu código escribes `velocidade limitado_entre 0 e 120`. Lese coma galego (ou inglés), pero está 100% tipado e compilado a código nativo.
 
-### 4. Máscaras visuais sobre secuencias (`s(+ _)` e `s["-+-"]`)
+### 5. Máscaras visuais sobre secuencias (`s(+ _)` e `s["-+-"]`)
 Algunha vez tiveches que escribir unha ensalada de índices `filter(\(i, x) -> i % 2 == 0)` só para quedar cos elementos pares ou extraer un patrón rítmico dunha lista?
 En Ridgun pásaslle directamente unha **máscara visual**:
 - `datos["-+-"]`: descarta o primeiro (`-`), queda co segundo (`+`), descarta o terceiro (`-`).
 - `datos["+-~"]`: o símbolo `~` repite o patrón `+-` en bucle ata o final da lista (todos os índices pares dun golpe).
 Cero aritmética de índices, cero erros *off-by-one*.
 
-### 5. Polimorfismo de "cero ruído" (`A`..`Z`) gobernado polo teu dominio
+### 6. Polimorfismo de "cero ruído" (`A`..`Z`) gobernado polo teu dominio
 En Rust, TypeScript ou Java, cando unha función é xenérica tes que encher a liña de parénteses angulares: `fn intercambiar<A, B>(par: (A, B)) -> (B, A)`.
 En Ridgun simplemente usas unha letra maiúscula solta:
 ```ridgun
@@ -169,10 +182,10 @@ intercambiar (x, y) =  (y, x)
 ```
 *"E se no meu programa quero ter un tipo real que se chame `type A`?"* — Ningún problema: en Ridgun **as túas declaracións `type` mandan**. Se non existe `type A`, `A` é xenérico; no instante en que defines `type A = ...`, pasa a ser o teu tipo concreto en todo o módulo.
 
-### 6. Cero ficheiros de configuración estraños: `build.rg` é Ridgun puro
+### 7. Cero ficheiros de configuración estraños: `build.rg` é Ridgun puro
 Esquece aprender TOML para Cargo, JSON para npm, XML para Maven ou a sintaxe arcana de `Makefile` con tabuladores invisibles. En Ridgun, a receita que constrúe o teu proxecto (`build.rg`) **é un ficheiro `.rg` máis**, coas mesmas funcións puras e o mesmo *pattern matching* có resto do teu código.
 
-### 7. A "Santísima Trindade" que parecía imposible: Nivel Haskell + Memoria RMM sen GC nin Lifetimes + Binarios de ~350 KB
+### 8. A "Santísima Trindade" que parecía imposible: Nivel Haskell + Memoria RMM sen GC nin Lifetimes + Binarios de ~350 KB
 Ata hoxe tiñas que escoller:
 - Se querías expresividade funcional pura (Haskell, OCaml, Elixir), pagabas cun colector de lixo e un runtime pesado.
 - Se querías binarios diminutos de sistema sen colector de lixo (C, Rust, Zig), pagabas xestionando punteiros ou pelexando co *borrow checker* e escribindo código imperativo cheo de `let mut`.

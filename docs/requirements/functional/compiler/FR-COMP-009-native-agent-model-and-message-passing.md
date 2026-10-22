@@ -38,6 +38,11 @@ The Ridgun language and `ridgunc` / `stable` toolchain SHALL replace legacy unst
    - Type signatures SHALL support `Agent` (both unparameterized `Agent` and parameterized `Agent In Out` / `(Agent In Out)`).
    - Legacy unstructured `spawn` and `join` built-ins SHALL be removed from the language, documentation, harnesses, and books in favor of `||` / `||map` / `||filter` (for structured dataflow parallelism) and `agent` (for decoupled stateful/service processes).
 
+6. **Smart Compile-Time Execution Strategy Selection (Green Execution vs Multicore OS Kernel Threads)**:
+   - The compiler (`compiler.rg`) SHALL consult the static analyzer's 4-tier `RFnSummary` classification (`StratInlineSequential` / `TierTrivial`, `StratKernelWorkerJob` / `TierHeavyCPU`, `StratLazyStealableTask` / `TierDynamicRecursive`, `StratFullGreenThread`) when lowering `agent`, `||` blocks (`EWhere` and `EParPipe`), and `||map` / `||filter`:
+     - **Lightweight Green-Thread Execution (`StratInlineSequential` / `TierTrivial`)**: Shallow, non-recursive functions execute inline as lightweight green steps without paying OS thread creation (`SYS_mmap` + `SYS_clone`) warmup costs.
+     - **Multicore OS Kernel Thread Execution (`StratKernelWorkerJob` / `StratLazyStealableTask` / `StratFullGreenThread`)**: Heavy CPU/tensor or recursive functions in `agent fn` (status `3` mailbox batching), independent `||` DAG waves ($\ge 2$ heavy branches via `"__rg_par_eval__"`), and `||map` / `||filter` automatically dispatch across real OS kernel threads (`SYS_clone`, `NCallBuiltin 54` / `56`).
+
 ## Rationale
 - **Orthogonal Concurrency Model**: `||`, `||map`, and `||filter` solve scoped computational fork-join parallelism with compile-time DAG verification, while `agent` solves long-lived, decoupled service concurrency (HTTP/TCP connection handlers, session stores, state machines, actors) with isolated state and typed message queues.
 - **Best of Erlang + Akka Typed + Native RMM**: Ridgun agents combine Erlang's true memory isolation and inline `receive from` ergonomics with Akka Typed's compile-time message type safety and Ridgun's zero-GC deterministic `RMM1`/`RMM2` state reclamation.
@@ -47,3 +52,4 @@ The Ridgun language and `ridgunc` / `stable` toolchain SHALL replace legacy unst
 2. **AC-2 (Stateful Agents `S M => S` and `S M => S R`)**: Creating `ag = agent fn init_state` preserves and updates isolated state across multiple messages without locks or memory leaks, supporting both `S M => S` (counter) and `S M => S R` (persistent HTTP/session handler returning new state + response).
 3. **AC-3 (Non-Blocking `try receive from` and `stop` / `agent alive`)**: `try receive from ag` returns `None` when no response is queued and `Some r` when ready; `stop ag` transitions `agent alive ag` from `True` to `False` and frees the agent's state.
 4. **AC-4 (Retirement of `spawn`/`join`)**: `spawn` and `join` are removed from the compiler, harnesses, and all 7 book editions (`docs/book/`).
+5. **AC-5 (Smart Compile-Time Strategy Selection)**: `compiler.rg` automatically selects lightweight green execution (`StratInlineSequential`) for trivial functions and multicore OS thread execution (`SYS_clone`, `NCallBuiltin 54`/`56`) for heavy/recursive `agent`s, `||` DAG waves, and `||map`/`||filter`.

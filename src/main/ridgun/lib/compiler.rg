@@ -594,7 +594,7 @@ fn :: build_str_pool_loop [String] Int     String [RStrEntry] => RStrPool
 
 fn :: build_str_pool [RFnDef] [String]   => RStrPool
       build_str_pool fns      extra_strs =
-        base_strs = ["", "+", "-", "*", "/", "%", "Linux", "MacOS", "Windows", "X86_64", "Arm64", "Ok", "Some", "None"] :: extra_strs
+        base_strs = ["", "+", "-", "*", "/", "%", "Linux", "MacOS", "Windows", "X86_64", "Arm64", "Ok", "Some", "None", "__rg_par_eval__"] :: extra_strs
         all_strs = collect_fndef_list_strs fns base_strs
         build_str_pool_loop all_strs 0 "" []
 
@@ -668,6 +668,98 @@ fn :: lookup_fn_arity [RFnEntry] String => Int
       lookup_fn_arity ((FnEntry k _ arity):rest) target
         | k == target = arity
         | otherwise = lookup_fn_arity rest target
+
+fn :: expr_has_heavy_ops RExpr              => Bool
+      expr_has_heavy_ops (ETensor _)        =  True
+      expr_has_heavy_ops (EEinsum _ _)      =  True
+      expr_has_heavy_ops (EHadamard _ _ _ _ _) = True
+      expr_has_heavy_ops (EBin OpMatMul _ _) = True
+      expr_has_heavy_ops (EBin _ l r)       =  (expr_has_heavy_ops l) OR (expr_has_heavy_ops r)
+      expr_has_heavy_ops (ENot inner)       =  expr_has_heavy_ops inner
+      expr_has_heavy_ops (EOut inner)       =  expr_has_heavy_ops inner
+      expr_has_heavy_ops (ECall _ args)     =  expr_list_has_heavy_ops args
+      expr_has_heavy_ops (EList elems)      =  expr_list_has_heavy_ops elems
+      expr_has_heavy_ops (ETuple elems)     =  expr_list_has_heavy_ops elems
+      expr_has_heavy_ops (EBlock stmts)     =  stmt_list_has_heavy_ops stmts
+      expr_has_heavy_ops (EGuard guards)    =  guard_list_has_heavy_ops guards
+      expr_has_heavy_ops (EWhere body binds) = (expr_has_heavy_ops body) OR (where_list_has_heavy_ops binds)
+      expr_has_heavy_ops (EParPipe branches) = expr_list_has_heavy_ops branches
+      expr_has_heavy_ops (EWithCtx _ v b)   =  (expr_has_heavy_ops v) OR (expr_has_heavy_ops b)
+      expr_has_heavy_ops (EWithRegion _ b)  =  expr_has_heavy_ops b
+      expr_has_heavy_ops _                  =  False
+
+fn :: expr_list_has_heavy_ops [RExpr] => Bool
+      expr_list_has_heavy_ops []      =  False
+      expr_list_has_heavy_ops (e:es)
+        | expr_has_heavy_ops e = True
+        | otherwise = expr_list_has_heavy_ops es
+
+fn :: stmt_list_has_heavy_ops [RStmt]            => Bool
+      stmt_list_has_heavy_ops []                 =  False
+      stmt_list_has_heavy_ops ((StmtLet _ e):ss)
+        | expr_has_heavy_ops e = True
+        | otherwise = stmt_list_has_heavy_ops ss
+      stmt_list_has_heavy_ops ((StmtMut _ e):ss)
+        | expr_has_heavy_ops e = True
+        | otherwise = stmt_list_has_heavy_ops ss
+      stmt_list_has_heavy_ops ((StmtExpr e):ss)
+        | expr_has_heavy_ops e = True
+        | otherwise = stmt_list_has_heavy_ops ss
+      stmt_list_has_heavy_ops (_:ss)             =  stmt_list_has_heavy_ops ss
+
+fn :: where_list_has_heavy_ops [RWhereBind] => Bool
+      where_list_has_heavy_ops []           =  False
+      where_list_has_heavy_ops ((WhereBind e _ _):wbs)
+        | expr_has_heavy_ops e = True
+        | otherwise = where_list_has_heavy_ops wbs
+
+fn :: guard_list_has_heavy_ops [RGuard] => Bool
+      guard_list_has_heavy_ops []       =  False
+      guard_list_has_heavy_ops ((GuardBranch c b):gs)
+        | (expr_has_heavy_ops c) OR (expr_has_heavy_ops b) = True
+        | otherwise = guard_list_has_heavy_ops gs
+
+fn :: cases_have_heavy_ops [RFnCase] => Bool
+      cases_have_heavy_ops []        =  False
+      cases_have_heavy_ops ((FnCase _ gs b):cs)
+        | (guard_list_has_heavy_ops gs) OR (expr_has_heavy_ops b) = True
+        | otherwise = cases_have_heavy_ops cs
+
+fn :: any_str_in_list [String] [String] => Bool
+      any_str_in_list []       _        =  False
+      any_str_in_list (x:xs)   targets
+        | str_in_list x targets = True
+        | otherwise = any_str_in_list xs targets
+
+fn :: collect_direct_heavy_fns [RFnDef] => [String]
+      collect_direct_heavy_fns []       =  []
+      collect_direct_heavy_fns ((FnDef name _ _ cases):fs)
+        | (count_case_calls name cases) > 0 OR (cases_have_heavy_ops cases) =
+          [name] :: (collect_direct_heavy_fns fs)
+        | otherwise = collect_direct_heavy_fns fs
+
+fn :: collect_caller_heavy_fns [RFnDef] [String] => [String]
+      collect_caller_heavy_fns []       heavy    =  heavy
+      collect_caller_heavy_fns ((FnDef name _ _ cases):fs) heavy
+        | str_in_list name heavy = collect_caller_heavy_fns fs heavy
+        | any_str_in_list (collect_refs_cases cases []) heavy =
+          collect_caller_heavy_fns fs (heavy :: [name])
+        | otherwise = collect_caller_heavy_fns fs heavy
+
+fn :: build_heavy_fn_entries [String] [RFnEntry] => [RFnEntry]
+      build_heavy_fn_entries []       acc        =  acc
+      build_heavy_fn_entries (h:hs)   acc        =
+        build_heavy_fn_entries hs (acc :: [FnEntry ("__heavy__" + h) 1 (0 - 1)])
+
+fn :: attach_heavy_fn_entries [RFnDef] [String] [RFnEntry] => [RFnEntry]
+      attach_heavy_fn_entries fns      fn_names fn_tbl
+        | (list_str_len fn_names) <= 200 =
+          direct_heavy = collect_direct_heavy_fns fns
+          all_heavy = collect_caller_heavy_fns fns direct_heavy
+          build_heavy_fn_entries all_heavy fn_tbl
+        | otherwise =
+          direct_heavy = collect_direct_heavy_fns fns
+          build_heavy_fn_entries direct_heavy fn_tbl
 
 -- ── Local Variable Collection & RMM2 Liveness Helpers ────────
 
@@ -837,6 +929,10 @@ fn :: env_fn_id RNativeEnv String => Int
 
 fn :: env_fn_arity RNativeEnv String => Int
       env_fn_arity (NativeEnv _ _ _ _ fn_tbl _) fname = lookup_fn_arity fn_tbl fname
+
+fn :: env_fn_is_heavy RNativeEnv String => Bool
+      env_fn_is_heavy (NativeEnv _ _ _ _ fn_tbl _) fname =
+        (lookup_fn_id fn_tbl ("__heavy__" + fname)) > 0
 
 fn :: env_field_idx RNativeEnv String => Int
       env_field_idx (NativeEnv _ _ _ _ _ field_tbl) fname = lookup_field_idx field_tbl fname
@@ -1065,11 +1161,34 @@ fn :: is_agent_call_name String             => Bool
       is_agent_call_name "agent_alive"      =  True
       is_agent_call_name _                  =  False
 
+fn :: is_heavy_agent_fn_expr RNativeEnv RExpr [String] => Bool
+      is_heavy_agent_fn_expr env (EVar callee_fn) bound_locals =
+        (lookup_local bound_locals callee_fn) < 0 AND (env_fn_is_heavy env callee_fn)
+      is_heavy_agent_fn_expr _ _ _ = False
+
+fn :: emit_agent_flush_heavy RNativeCode Int => RNativeCode
+      emit_agent_flush_heavy st          sp  =
+        not_ag_lbl = nc_lbl st
+        no_batch_lbl = not_ag_lbl + 1
+        loop_lbl = not_ag_lbl + 2
+        after_loop_lbl = not_ag_lbl + 3
+        st1 = nc_set_lbl st (not_ag_lbl + 4)
+        ins_check = [NMatchTuple sp 3, NJumpIfZero not_ag_lbl, NTupleGet sp 0, NStoreSlot (sp + 1), NTupleGet sp 1, NStoreSlot (sp + 2), NTupleGet sp 2, NStoreSlot sp, NCloneSlot (sp + 2), NStoreSlot (sp + 3), NCallBuiltin 32 (sp + 3) 1, NStoreSlot (sp + 3), NTupleGet (sp + 3) 0, NStoreSlot (sp + 4), NTupleGet (sp + 3) 1, NStoreSlot (sp + 5), NMatchInt (sp + 4) 3, NJumpIfZero no_batch_lbl, NMatchNonEmpty (sp + 5), NJumpIfZero no_batch_lbl]
+        ins_run = [NLoadImmInt 3, NStoreSlot (sp + 6), NMakeList (sp + 7) 0, NStoreSlot (sp + 7), NMakeTuple (sp + 6) 2, NStoreSlot (sp + 6), NCloneSlot (sp + 2), NStoreSlot (sp + 7), NCallBuiltin 50 (sp + 6) 2, NMoveSlot (sp + 1), NStoreSlot (sp + 6), NMoveSlot (sp + 5), NStoreSlot (sp + 7), NCallBuiltin 54 (sp + 6) 2, NStoreSlot (sp + 6)]
+        ins_loop = [NLabel loop_lbl, NMatchNonEmpty (sp + 6), NJumpIfZero after_loop_lbl, NListHead (sp + 6), NStoreSlot (sp + 7), NListTail (sp + 6), NStoreSlot (sp + 6), NMoveSlot (sp + 7), NStoreSlot (sp + 8), NCloneSlot sp, NStoreSlot (sp + 9), NCallBuiltin 50 (sp + 8) 2, NJump loop_lbl]
+        ins_end = [NLabel no_batch_lbl, NMoveSlot (sp + 3), NStoreSlot (sp + 6), NCloneSlot (sp + 2), NStoreSlot (sp + 7), NCallBuiltin 50 (sp + 6) 2, NLabel after_loop_lbl, NClearLocals (sp + 1) (sp + 10), NLabel not_ag_lbl]
+        nc_emit_list st1 (ins_check :: ins_run :: ins_loop :: ins_end) (sp + 10)
+
 fn :: lower_agent_call RNativeEnv String [RExpr] [String] Int RNativeCode => RNativeCode
-      lower_agent_call env "agent" (fn_e:[]) bound_locals sp st =
-        st1 = lower_expr env fn_e bound_locals sp st
-        ins = [NStoreSlot sp, NCallBuiltin 1 (sp + 1) 0, NStoreSlot (sp + 1), NCallBuiltin 1 (sp + 2) 0, NStoreSlot (sp + 2), NLoadImmInt 1, NStoreSlot (sp + 3), NLoadImmInt 0, NStoreSlot (sp + 4), NMakeTuple (sp + 3) 2, NStoreSlot (sp + 3), NCloneSlot (sp + 1), NStoreSlot (sp + 4), NCallBuiltin 50 (sp + 3) 2, NMakeTuple sp 3]
-        nc_emit_list st1 ins (sp + 5)
+      lower_agent_call env "agent" (fn_e:[]) bound_locals sp st
+        | is_heavy_agent_fn_expr env fn_e bound_locals =
+          st1 = lower_expr env fn_e bound_locals sp st
+          ins = [NStoreSlot sp, NCallBuiltin 1 (sp + 1) 0, NStoreSlot (sp + 1), NCallBuiltin 1 (sp + 2) 0, NStoreSlot (sp + 2), NLoadImmInt 3, NStoreSlot (sp + 3), NMakeList (sp + 4) 0, NStoreSlot (sp + 4), NMakeTuple (sp + 3) 2, NStoreSlot (sp + 3), NCloneSlot (sp + 1), NStoreSlot (sp + 4), NCallBuiltin 50 (sp + 3) 2, NMakeTuple sp 3]
+          nc_emit_list st1 ins (sp + 5)
+        | otherwise =
+          st1 = lower_expr env fn_e bound_locals sp st
+          ins = [NStoreSlot sp, NCallBuiltin 1 (sp + 1) 0, NStoreSlot (sp + 1), NCallBuiltin 1 (sp + 2) 0, NStoreSlot (sp + 2), NLoadImmInt 1, NStoreSlot (sp + 3), NLoadImmInt 0, NStoreSlot (sp + 4), NMakeTuple (sp + 3) 2, NStoreSlot (sp + 3), NCloneSlot (sp + 1), NStoreSlot (sp + 4), NCallBuiltin 50 (sp + 3) 2, NMakeTuple sp 3]
+          nc_emit_list st1 ins (sp + 5)
       lower_agent_call env "agent" (fn_e:init_e:[]) bound_locals sp st =
         st1 = lower_expr env fn_e bound_locals sp st
         st2 = nc_emit st1 (NStoreSlot sp) (sp + 1)
@@ -1083,37 +1202,41 @@ fn :: lower_agent_call RNativeEnv String [RExpr] [String] Int RNativeCode => RNa
         st4 = nc_emit st3 (NStoreSlot (sp + 1)) (sp + 2)
         stopped_lbl = nc_lbl st4
         stateful_lbl = stopped_lbl + 1
-        same_res_lbl = stopped_lbl + 2
-        split_pair_lbl = stopped_lbl + 3
-        store_state_lbl = stopped_lbl + 4
-        done_lbl = stopped_lbl + 5
-        st5 = nc_set_lbl st4 (stopped_lbl + 6)
+        heavy_lbl = stopped_lbl + 2
+        same_res_lbl = stopped_lbl + 3
+        split_pair_lbl = stopped_lbl + 4
+        store_state_lbl = stopped_lbl + 5
+        done_lbl = stopped_lbl + 6
+        st5 = nc_set_lbl st4 (stopped_lbl + 7)
         ins_unpack = [NTupleGet (sp + 1) 0, NStoreSlot (sp + 2), NTupleGet (sp + 1) 1, NStoreSlot (sp + 3), NTupleGet (sp + 1) 2, NStoreSlot (sp + 4), NCloneSlot (sp + 3), NStoreSlot (sp + 5), NCallBuiltin 32 (sp + 5) 1, NStoreSlot (sp + 5), NTupleGet (sp + 5) 0, NStoreSlot (sp + 6), NTupleGet (sp + 5) 1, NStoreSlot (sp + 7)]
         ins_stateless = [NMatchInt (sp + 6) 1, NJumpIfZero stateful_lbl, NCloneSlot sp, NStoreSlot (sp + 8), NCallIndirect1 (sp + 2) (sp + 8), NStoreSlot (sp + 8), NCloneSlot (sp + 5), NStoreSlot (sp + 9), NCloneSlot (sp + 3), NStoreSlot (sp + 10), NCallBuiltin 50 (sp + 9) 2, NCloneSlot (sp + 8), NStoreSlot (sp + 9), NCloneSlot (sp + 4), NStoreSlot (sp + 10), NCallBuiltin 50 (sp + 9) 2, NJump done_lbl]
-        ins_stateful = [NLabel stateful_lbl, NMatchInt (sp + 6) 2, NJumpIfZero stopped_lbl, NCloneSlot (sp + 7), NStoreSlot (sp + 8), NCloneSlot sp, NStoreSlot (sp + 9), NCallIndirect2 (sp + 2) (sp + 8), NStoreSlot (sp + 8), NMatchTuple (sp + 8) 2, NJumpIfZero same_res_lbl, NMatchTuple (sp + 7) 2, NJumpIfZero split_pair_lbl, NLabel same_res_lbl, NCloneSlot (sp + 8), NStoreSlot (sp + 9), NCloneSlot (sp + 8), NStoreSlot (sp + 10), NJump store_state_lbl, NLabel split_pair_lbl, NTupleGet (sp + 8) 0, NStoreSlot (sp + 9), NTupleGet (sp + 8) 1, NStoreSlot (sp + 10), NLabel store_state_lbl, NLoadImmInt 2, NStoreSlot (sp + 11), NCloneSlot (sp + 9), NStoreSlot (sp + 12), NMakeTuple (sp + 11) 2, NStoreSlot (sp + 11), NCloneSlot (sp + 3), NStoreSlot (sp + 12), NCallBuiltin 50 (sp + 11) 2, NCloneSlot (sp + 10), NStoreSlot (sp + 11), NCloneSlot (sp + 4), NStoreSlot (sp + 12), NCallBuiltin 50 (sp + 11) 2, NJump done_lbl]
+        ins_stateful = [NLabel stateful_lbl, NMatchInt (sp + 6) 2, NJumpIfZero heavy_lbl, NCloneSlot (sp + 7), NStoreSlot (sp + 8), NCloneSlot sp, NStoreSlot (sp + 9), NCallIndirect2 (sp + 2) (sp + 8), NStoreSlot (sp + 8), NMatchTuple (sp + 8) 2, NJumpIfZero same_res_lbl, NMatchTuple (sp + 7) 2, NJumpIfZero split_pair_lbl, NLabel same_res_lbl, NCloneSlot (sp + 8), NStoreSlot (sp + 9), NCloneSlot (sp + 8), NStoreSlot (sp + 10), NJump store_state_lbl, NLabel split_pair_lbl, NTupleGet (sp + 8) 0, NStoreSlot (sp + 9), NTupleGet (sp + 8) 1, NStoreSlot (sp + 10), NLabel store_state_lbl, NLoadImmInt 2, NStoreSlot (sp + 11), NCloneSlot (sp + 9), NStoreSlot (sp + 12), NMakeTuple (sp + 11) 2, NStoreSlot (sp + 11), NCloneSlot (sp + 3), NStoreSlot (sp + 12), NCallBuiltin 50 (sp + 11) 2, NCloneSlot (sp + 10), NStoreSlot (sp + 11), NCloneSlot (sp + 4), NStoreSlot (sp + 12), NCallBuiltin 50 (sp + 11) 2, NJump done_lbl]
+        ins_heavy = [NLabel heavy_lbl, NMatchInt (sp + 6) 3, NJumpIfZero stopped_lbl, NMoveSlot (sp + 7), NStoreSlot (sp + 8), NCloneSlot sp, NStoreSlot (sp + 9), NMakeList (sp + 9) 1, NBinOp 14 (sp + 8), NStoreSlot (sp + 9), NLoadImmInt 3, NStoreSlot (sp + 8), NMakeTuple (sp + 8) 2, NStoreSlot (sp + 9), NCloneSlot (sp + 3), NStoreSlot (sp + 10), NCallBuiltin 50 (sp + 9) 2, NJump done_lbl]
         ins_stopped = [NLabel stopped_lbl, NCloneSlot (sp + 5), NStoreSlot (sp + 9), NCloneSlot (sp + 3), NStoreSlot (sp + 10), NCallBuiltin 50 (sp + 9) 2, NLabel done_lbl, NClearLocals sp (sp + 13), NLoadImmRaw 0]
-        nc_emit_list st5 (ins_unpack :: ins_stateless :: ins_stateful :: ins_stopped) (sp + 13)
+        nc_emit_list st5 (ins_unpack :: ins_stateless :: ins_stateful :: ins_heavy :: ins_stopped) (sp + 13)
       lower_agent_call env "receive_from" (target_e:[]) bound_locals sp st =
-        not_ag_lbl = nc_lbl st
-        st1 = nc_set_lbl st (not_ag_lbl + 1)
-        st2 = lower_expr env target_e bound_locals sp st1
-        ins = [NStoreSlot sp, NMatchTuple sp 3, NJumpIfZero not_ag_lbl, NTupleGet sp 2, NStoreSlot sp, NLabel not_ag_lbl, NCallBuiltin 32 sp 1]
-        nc_emit_list st2 ins (sp + 2)
+        st1 = lower_expr env target_e bound_locals sp st
+        st2 = nc_emit st1 (NStoreSlot sp) (sp + 1)
+        st3 = emit_agent_flush_heavy st2 sp
+        nc_emit st3 (NCallBuiltin 32 sp 1) (sp + 2)
       lower_agent_call env "try_receive_from" (target_e:[]) bound_locals sp st =
-        not_ag_lbl = nc_lbl st
-        none_lbl = not_ag_lbl + 1
-        done_lbl = not_ag_lbl + 2
-        st1 = nc_set_lbl st (not_ag_lbl + 3)
+        none_lbl = nc_lbl st
+        done_lbl = none_lbl + 1
+        st1 = nc_set_lbl st (none_lbl + 2)
         st2 = lower_expr env target_e bound_locals sp st1
+        st3 = nc_emit st2 (NStoreSlot sp) (sp + 1)
+        st4 = emit_agent_flush_heavy st3 sp
         ok_off = env_str_off env "Ok"
         some_off = env_str_off env "Some"
         none_off = env_str_off env "None"
-        ins = [NStoreSlot sp, NMatchTuple sp 3, NJumpIfZero not_ag_lbl, NTupleGet sp 2, NStoreSlot sp, NLabel not_ag_lbl, NCallBuiltin 33 sp 1, NStoreSlot sp, NMatchAdt sp ok_off 2 1, NJumpIfZero none_lbl, NAdtField sp 0, NStoreSlot (sp + 1), NMakeAdt some_off 4 (sp + 1) 1, NStoreSlot (sp + 1), NClearLocals sp (sp + 1), NMoveSlot (sp + 1), NJump done_lbl, NLabel none_lbl, NClearLocals sp (sp + 2), NLoadAdt0 none_off 4, NLabel done_lbl]
-        nc_emit_list st2 ins (sp + 2)
+        ins = [NCallBuiltin 33 sp 1, NStoreSlot sp, NMatchAdt sp ok_off 2 1, NJumpIfZero none_lbl, NAdtField sp 0, NStoreSlot (sp + 1), NMakeAdt some_off 4 (sp + 1) 1, NStoreSlot (sp + 1), NClearLocals sp (sp + 1), NMoveSlot (sp + 1), NJump done_lbl, NLabel none_lbl, NClearLocals sp (sp + 2), NLoadAdt0 none_off 4, NLabel done_lbl]
+        nc_emit_list st4 ins (sp + 2)
       lower_agent_call env "stop" (ag_e:[]) bound_locals sp st =
         st1 = lower_expr env ag_e bound_locals sp st
-        ins = [NStoreSlot sp, NTupleGet sp 1, NStoreSlot (sp + 1), NCloneSlot (sp + 1), NStoreSlot (sp + 2), NCallBuiltin 32 (sp + 2) 1, NStoreSlot (sp + 2), NLoadImmInt 0, NStoreSlot (sp + 2), NLoadImmInt 0, NStoreSlot (sp + 3), NMakeTuple (sp + 2) 2, NStoreSlot (sp + 2), NCloneSlot (sp + 1), NStoreSlot (sp + 3), NCallBuiltin 50 (sp + 2) 2, NClearLocals sp (sp + 4), NLoadImmRaw 0]
-        nc_emit_list st1 ins (sp + 4)
+        st2 = nc_emit_list st1 [NStoreSlot sp, NCloneSlot sp, NStoreSlot (sp + 1)] (sp + 2)
+        st3 = emit_agent_flush_heavy st2 (sp + 1)
+        ins = [NTupleGet sp 1, NStoreSlot (sp + 1), NCloneSlot (sp + 1), NStoreSlot (sp + 2), NCallBuiltin 32 (sp + 2) 1, NStoreSlot (sp + 2), NLoadImmInt 0, NStoreSlot (sp + 2), NLoadImmInt 0, NStoreSlot (sp + 3), NMakeTuple (sp + 2) 2, NStoreSlot (sp + 2), NCloneSlot (sp + 1), NStoreSlot (sp + 3), NCallBuiltin 50 (sp + 2) 2, NClearLocals sp (sp + 4), NLoadImmRaw 0]
+        nc_emit_list st3 ins (sp + 4)
       lower_agent_call env "agent_alive" (ag_e:[]) bound_locals sp st =
         alive_lbl = nc_lbl st
         done_lbl = alive_lbl + 1
@@ -1122,6 +1245,12 @@ fn :: lower_agent_call RNativeEnv String [RExpr] [String] Int RNativeCode => RNa
         ins = [NStoreSlot sp, NTupleGet sp 1, NStoreSlot (sp + 1), NCloneSlot (sp + 1), NStoreSlot (sp + 2), NCallBuiltin 32 (sp + 2) 1, NStoreSlot (sp + 2), NTupleGet (sp + 2) 0, NStoreSlot (sp + 3), NCloneSlot (sp + 2), NStoreSlot (sp + 4), NCloneSlot (sp + 1), NStoreSlot (sp + 5), NCallBuiltin 50 (sp + 4) 2, NMatchInt (sp + 3) 0, NJumpIfZero alive_lbl, NClearLocals sp (sp + 6), NLoadImmRaw 2, NJump done_lbl, NLabel alive_lbl, NClearLocals sp (sp + 6), NLoadImmRaw 6, NLabel done_lbl]
         nc_emit_list st2 ins (sp + 6)
       lower_agent_call _ _ _ _ _ st = st
+
+fn :: select_par_collection_builtin RNativeEnv String [RExpr] [String] => Int
+      select_par_collection_builtin env fname ((EVar callee_fn):_:[]) bound_locals
+        | (fname == "||map" OR fname == "par_map") AND (lookup_local bound_locals callee_fn) < 0 AND (env_fn_arity env callee_fn) > 0 AND (NOT (env_fn_is_heavy env callee_fn)) = 53
+        | (fname == "||filter" OR fname == "par_filter") AND (lookup_local bound_locals callee_fn) < 0 AND (env_fn_arity env callee_fn) > 0 AND (NOT (env_fn_is_heavy env callee_fn)) = 55
+      select_par_collection_builtin _ fname _ _ = builtin_call_id fname
 
 fn :: lower_call_expr RNativeEnv String [RExpr] [String] Int RNativeCode => RNativeCode
       lower_call_expr env fname args bound_locals sp st
@@ -1152,8 +1281,9 @@ fn :: lower_call_expr RNativeEnv String [RExpr] [String] Int RNativeCode => RNat
           lower_adt_ctor_call env args bound_locals off slen count sp st
         | (builtin_call_id fname) >= 0 =
           count = rexpr_list_len args
+          bid = select_par_collection_builtin env fname args bound_locals
           st1 = lower_expr_list_to_slots env args bound_locals sp 0 st
-          nc_emit st1 (NCallBuiltin (builtin_call_id fname) sp count) (sp + count + 1)
+          nc_emit st1 (NCallBuiltin bid sp count) (sp + count + 1)
         | otherwise =
           count = rexpr_list_len args
           st1 = lower_expr_list_to_slots env args bound_locals sp 0 st
@@ -1262,10 +1392,18 @@ fn :: lower_expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
         lower_expr_guards env guards bound_locals end_lbl sp st1
       lower_expr env (EWhere body binds) bound_locals sp st =
         lower_where_cmm env binds body bound_locals [] sp st
-      lower_expr env (EParPipe branches) bound_locals sp st =
-        count = rexpr_list_len branches
-        st1 = lower_expr_list_to_slots env branches bound_locals sp 0 st
-        nc_emit st1 (NMakeTuple sp count) (sp + count + 1)
+      lower_expr env (EParPipe branches) bound_locals sp st
+        | (rexpr_list_len branches) >= 2 AND (all_exprs_par_eval env branches bound_locals) =
+          count = rexpr_list_len branches
+          par_off = env_str_off env "__rg_par_eval__"
+          st1 = lower_par_eval_list env branches bound_locals sp 0 st
+          st2 = nc_emit_list st1 [NMakeList sp count, NStoreSlot (sp + 1), NLoadStrLit par_off 15, NStoreSlot sp, NCallBuiltin 54 sp 2, NStoreSlot sp] (sp + count + 2)
+          st3 = unpack_par_list_to_slots sp count 0 st2
+          nc_emit_list st3 [NClearLocals sp (sp + 1), NMakeTuple (sp + 1) count] (sp + count + 2)
+        | otherwise =
+          count = rexpr_list_len branches
+          st1 = lower_expr_list_to_slots env branches bound_locals sp 0 st
+          nc_emit st1 (NMakeTuple sp count) (sp + count + 1)
       lower_expr env (EWithCtx "__rg_timeout_ms__" val_e body) bound_locals sp st =
         st1 = lower_expr env val_e bound_locals sp st
         st2 = nc_emit_list st1 [NStoreSlot sp, NCallBuiltin 84 sp 1] (sp + 1)
@@ -1414,10 +1552,84 @@ fn :: lower_stmts_cmm RNativeEnv [RStmt] [String] [String] Int RNativeCode => RN
         st3 = lower_cmm_drops env dead_now sp st2
         lower_stmts_cmm env rest bound_locals scope_vars sp st3
 
+fn :: can_par_eval_expr RNativeEnv RExpr [String] => Bool
+      can_par_eval_expr env (ECall fname args) bound_locals =
+        arity = env_fn_arity env fname
+        nargs = rexpr_list_len args
+        (lookup_local bound_locals fname) < 0 AND (NOT (is_upper_ident fname)) AND (builtin_call_id fname) < 0 AND (NOT (is_agent_call_name fname)) AND fname != "sys_os" AND fname != "sys_arch" AND fname != "__record_update__" AND fname != "__unpack2__" AND arity >= 0 AND arity <= 3 AND nargs == arity AND (env_fn_is_heavy env fname)
+      can_par_eval_expr _ _ _ = False
+
+fn :: all_exprs_par_eval RNativeEnv [RExpr] [String] => Bool
+      all_exprs_par_eval _ [] _ = True
+      all_exprs_par_eval env (e:es) bound_locals
+        | can_par_eval_expr env e bound_locals = all_exprs_par_eval env es bound_locals
+        | otherwise = False
+
+fn :: lower_par_eval_arg RNativeEnv [RExpr] [String] Int RNativeCode => RNativeCode
+      lower_par_eval_arg _ [] _ slot st =
+        nc_emit_list st [NLoadImmInt 0, NStoreSlot slot] (slot + 1)
+      lower_par_eval_arg env (a1:[]) bound_locals slot st =
+        st1 = lower_expr env a1 bound_locals slot st
+        nc_emit st1 (NStoreSlot slot) (slot + 1)
+      lower_par_eval_arg env args bound_locals slot st =
+        count = rexpr_list_len args
+        st1 = lower_expr_list_to_slots env args bound_locals slot 0 st
+        nc_emit_list st1 [NMakeTuple slot count, NStoreSlot slot] (slot + count + 1)
+
+fn :: lower_par_eval_item RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
+      lower_par_eval_item env (ECall fname args) bound_locals slot st =
+        off = env_str_off env fname
+        st1 = nc_emit_list st [NLoadStrLit off (str_len fname), NStoreSlot slot] (slot + 1)
+        st2 = lower_par_eval_arg env args bound_locals (slot + 1) st1
+        nc_emit_list st2 [NMakeTuple slot 2, NStoreSlot slot] (slot + 2)
+      lower_par_eval_item _ _ _ _ st = st
+
+fn :: lower_par_eval_list RNativeEnv [RExpr] [String] Int Int RNativeCode => RNativeCode
+      lower_par_eval_list _ [] _ _ _ st = st
+      lower_par_eval_list env (e:es) bound_locals sp idx st =
+        st1 = lower_par_eval_item env e bound_locals (sp + idx) st
+        lower_par_eval_list env es bound_locals sp (idx + 1) st1
+
+fn :: unpack_par_list_to_slots Int Int Int RNativeCode => RNativeCode
+      unpack_par_list_to_slots _ count idx st
+        | idx >= count = st
+      unpack_par_list_to_slots list_slot count idx st =
+        dst = list_slot + 1 + idx
+        st1 = nc_emit_list st [NListHead list_slot, NStoreSlot dst, NListTail list_slot, NStoreSlot list_slot] (dst + 1)
+        unpack_par_list_to_slots list_slot count (idx + 1) st1
+
+fn :: can_par_where_pair RNativeEnv RExpr String RExpr String [String] => Bool
+      can_par_where_pair env e1 v1 e2 v2 bound_locals =
+        v1 != "_" AND v2 != "_" AND v1 != v2 AND (can_par_eval_expr env e1 bound_locals) AND (can_par_eval_expr env e2 bound_locals) AND (NOT (str_in_list v1 (cmm_expr_vars e2 [])))
+
+fn :: emit_par_where_pair RNativeEnv RExpr String RExpr String [RWhereBind] RExpr [String] [String] Int RNativeCode => RNativeCode
+      emit_par_where_pair env e1 v1 e2 v2 wbs body bound_locals scope_vars sp st =
+        used_in_pair = cmm_filter_in_list (cmm_expr_vars e2 (cmm_expr_vars e1 [])) scope_vars
+        live_after = cmm_where_vars wbs body []
+        live_with_vs = add_unique_str v1 (add_unique_str v2 live_after)
+        dead_inputs = cmm_filter_not_in_list (cmm_remove_str v1 (cmm_remove_str v2 used_in_pair)) live_with_vs
+        par_off = env_str_off env "__rg_par_eval__"
+        st1 = lower_par_eval_list env [e1, e2] bound_locals sp 0 st
+        st2 = nc_emit_list st1 [NMakeList sp 2, NStoreSlot (sp + 1), NLoadStrLit par_off 15, NStoreSlot sp, NCallBuiltin 54 sp 2, NStoreSlot sp, NListHead sp] (sp + 4)
+        st3 = lower_let_var_store env v1 bound_locals (sp + 4) st2
+        st4 = nc_emit_list st3 [NListTail sp, NStoreSlot sp, NListHead sp] (sp + 4)
+        locals1 = add_unique_str v1 bound_locals
+        st5 = lower_let_var_store env v2 locals1 (sp + 4) st4
+        st6 = nc_emit st5 (NClearLocals sp (sp + 1)) (sp + 4)
+        st7 = lower_cmm_drops env dead_inputs sp st6
+        st8 = lower_unused_let_drop env v1 (add_unique_str v2 live_after) sp st7
+        lower_unused_let_drop env v2 live_after sp st8
+
 fn :: lower_where_cmm RNativeEnv [RWhereBind] RExpr [String] [String] Int RNativeCode => RNativeCode
       lower_where_cmm env [] body bound_locals scope_vars sp st =
         used = cmm_filter_in_list (cmm_expr_vars body []) scope_vars
         lower_final_block_expr env body bound_locals used sp st
+      lower_where_cmm env ((WhereBind e1 v1 []):(WhereBind e2 v2 []):wbs) body bound_locals scope_vars sp st
+        | can_par_where_pair env e1 v1 e2 v2 bound_locals =
+          st1 = emit_par_where_pair env e1 v1 e2 v2 wbs body bound_locals scope_vars sp st
+          locals2 = add_unique_str v2 (add_unique_str v1 bound_locals)
+          scope2 = add_unique_str v2 (add_unique_str v1 scope_vars)
+          lower_where_cmm env wbs body locals2 scope2 sp st1
       lower_where_cmm env ((WhereBind e v []):wbs) body bound_locals scope_vars sp st =
         used_in_e = cmm_filter_in_list (cmm_expr_vars e []) scope_vars
         live_after = cmm_where_vars wbs body []
@@ -1596,6 +1808,12 @@ fn :: lower_tail_stmts_cmm RNativeEnv [RStmt] [String] [String] Int RNativeCode 
 fn :: lower_tail_where_cmm RNativeEnv [RWhereBind] RExpr [String] [String] Int RNativeCode => RNativeCode
       lower_tail_where_cmm env [] body bound_locals scope_vars sp st =
         lower_tail_return_cmm env body bound_locals scope_vars sp st
+      lower_tail_where_cmm env ((WhereBind e1 v1 []):(WhereBind e2 v2 []):wbs) body bound_locals scope_vars sp st
+        | can_par_where_pair env e1 v1 e2 v2 bound_locals =
+          st1 = emit_par_where_pair env e1 v1 e2 v2 wbs body bound_locals scope_vars sp st
+          locals2 = add_unique_str v2 (add_unique_str v1 bound_locals)
+          scope2 = add_unique_str v2 (add_unique_str v1 scope_vars)
+          lower_tail_where_cmm env wbs body locals2 scope2 sp st1
       lower_tail_where_cmm env ((WhereBind e v []):wbs) body bound_locals scope_vars sp st =
         used_in_e = cmm_filter_in_list (cmm_expr_vars e []) scope_vars
         live_after = cmm_where_vars wbs body []
@@ -1929,10 +2147,20 @@ fn :: find_entry_fn_name [RFnDef] String   => String
         | (infer_fndef_arity params cases) == 0 = find_entry_fn_name fs name
         | otherwise = find_entry_fn_name fs fallback
 
+fn :: build_spawn_dispatch_entry [RFnEntry] [RStrEntry] => [RNativeInstr]
+      build_spawn_dispatch_entry fn_tbl     str_tbl     =
+        par_off = lookup_str_off str_tbl "__rg_par_eval__"
+        par_hdr = [NMatchStr 0 par_off 15, NJumpIfZero 1, NTupleGet 1 0, NStoreSlot 2, NTupleGet 1 1, NStoreSlot 1, NMoveSlot 2, NStoreSlot 0, NLabel 1]
+        build_spawn_dispatch_instrs fn_tbl str_tbl 2 par_hdr
+
 fn :: build_spawn_dispatch_instrs [RFnEntry] [RStrEntry] Int [RNativeInstr] => [RNativeInstr]
       build_spawn_dispatch_instrs [] _ _ acc =
         acc :: [NLoadImmRaw 0, NReturn]
       build_spawn_dispatch_instrs ((FnEntry name fid arity):rest) str_tbl lbl acc
+        | arity == 0 =
+          off = lookup_str_off str_tbl name
+          arm = [NMatchStr 0 off (str_len name), NJumpIfZero lbl, NCallFn fid 2 0, NReturn, NLabel lbl]
+          build_spawn_dispatch_instrs rest str_tbl (lbl + 1) (acc :: arm)
         | arity == 1 =
           off = lookup_str_off str_tbl name
           arm = [NMatchStr 0 off (str_len name), NJumpIfZero lbl, NMoveSlot 1, NStoreSlot 2, NCallFn fid 2 1, NReturn, NLabel lbl]
@@ -1996,10 +2224,11 @@ fn :: lower_program_to_native RProgram => RNativeProg
         rodata_str = pool_rodata str_pool
         str_tbl = pool_entries str_pool
         fn_tbl1 = build_fn_table_fndefs fns 5 []
-        fn_tbl = build_fn_table_fields field_tbl fn_names (5 + (list_str_len fn_names)) fn_tbl1
+        fn_tbl2 = build_fn_table_fields field_tbl fn_names (5 + (list_str_len fn_names)) fn_tbl1
+        fn_tbl = attach_heavy_fn_entries fns fn_names fn_tbl2
         entry_fid = lookup_fn_id fn_tbl entry_name
         main_wrapper = NativeFn 1 "__rg_entry_main" 0 2 [NCallFn entry_fid 0 0, NReturn]
-        spawn_disp = NativeFn 2 "__rg_dispatch_spawn" 2 6 (build_spawn_dispatch_instrs fn_tbl str_tbl 1 [])
+        spawn_disp = NativeFn 2 "__rg_dispatch_spawn" 2 6 (build_spawn_dispatch_entry fn_tbl str_tbl)
         call2_disp = NativeFn 3 "__rg_dispatch_call2" 3 7 (build_call2_dispatch_instrs fn_tbl str_tbl 1 [])
         binop_disp = NativeFn 4 "__rg_dispatch_binop" 3 6 (build_binop_dispatch_instrs fn_tbl str_tbl 1 [])
         user_native_fns = lower_fndef_list fns str_tbl fn_tbl field_tbl
@@ -2022,10 +2251,11 @@ fn :: lower_library_to_native RProgram => RNativeProg
         rodata_str = pool_rodata str_pool
         str_tbl = pool_entries str_pool
         fn_tbl1 = build_fn_table_fndefs fns 5 []
-        fn_tbl = build_fn_table_fields field_tbl fn_names (5 + (list_str_len fn_names)) fn_tbl1
+        fn_tbl2 = build_fn_table_fields field_tbl fn_names (5 + (list_str_len fn_names)) fn_tbl1
+        fn_tbl = attach_heavy_fn_entries fns fn_names fn_tbl2
         entry_fid = lookup_fn_id fn_tbl "main"
         main_wrapper = build_lib_entry_wrapper entry_fid
-        spawn_disp = NativeFn 2 "__rg_dispatch_spawn" 2 6 (build_spawn_dispatch_instrs fn_tbl str_tbl 1 [])
+        spawn_disp = NativeFn 2 "__rg_dispatch_spawn" 2 6 (build_spawn_dispatch_entry fn_tbl str_tbl)
         call2_disp = NativeFn 3 "__rg_dispatch_call2" 3 7 (build_call2_dispatch_instrs fn_tbl str_tbl 1 [])
         binop_disp = NativeFn 4 "__rg_dispatch_binop" 3 6 (build_binop_dispatch_instrs fn_tbl str_tbl 1 [])
         user_native_fns = lower_fndef_list fns str_tbl fn_tbl field_tbl

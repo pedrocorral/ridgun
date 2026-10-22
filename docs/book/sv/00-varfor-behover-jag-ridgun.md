@@ -87,6 +87,18 @@ manadsrapport d    =  kombinera nat_matt disk_matt cpu_matt
 
 Du har bara skrivit tre rena rader som anger varifrån varje datamängd kommer. Kompilatorn ser att de tre grenarna är oberoende och vet att den kan starta dem parallellt utan minsta risk för vare sig *data race* eller *deadlock*.
 
+Och vad gör du om du behöver långlivade agenter med inkorg och isolerat tillstånd (till exempel för att hålla tusentals klientsessioner, bakgrundsarbetare eller nätverksanslutningar)? I Ridgun behöver du varken definiera `Actor`-klasser eller använda `Mutex`: **vilken vanlig funktion som helst blir en autonom agent på en enda rad med `agent`**:
+
+```ridgun
+raknare = agent (addera besok) 0
+send 1 to raknare
+send 5 to raknare
+totalt = receive from raknare
+stop raknare
+```
+
+Dessutom gör kompilatorn ett **smart val vid kompilering**: den analyserar statiskt djupet och kostnaden för varje funktion i `||`, `||map`, `||filter` och `agent` för att köra lätta funktioner som *green-thread*-steg utan overhead och automatiskt skicka tunga eller djupt rekursiva beräkningar till riktiga kärntrådar över flera CPU-kärnor (`SYS_clone`).
+
 ---
 
 ## Plåga nr 4: "Skräpsamlaren bestämmer sig för att pausa hela världen i exakt fel ögonblick"
@@ -114,7 +126,8 @@ Varje tillfällig struktur frigörs deterministiskt av kompilatorn (`RMM1` / `RM
 Ridgun är skapat för dig om du någonsin har velat:
 
 1. **Skriva systemverktyg, kompilatorer, parsrar eller CLI-verktyg** som startar på mikrosekunder, väger några hundra KB och inte kan krascha på grund av null-pekare eller dolda sidoeffekter.
-2. **Programmera algoritmer, datapipelines eller tensoralgebra** där kompilatorn kontrollerar ända ner till matrisdimensionerna åt dig (`Tensor[M, K] * Tensor[K, N] => Tensor[M, N]`) innan något ens körs.
-3. **Njuta av att läsa din egen kod**: låta varje `.rg`-fil se ut som en sida ur en välformgiven bok tack vare den automatiska tabellformateraren (`stable format`).
+2. **Bygga samtidiga system och servrar med den inbyggda agentmodellen (`agent`, `send ... to`, `receive from`, `stop`)**, där varje ren funktion kan bli en agent med eller utan isolerat tillstånd och kompilatorn smart väljer mellan ultralätta *green-thread*-steg och flerkärniga operativsystemtrådar.
+3. **Programmera algoritmer, datapipelines eller tensoralgebra** där kompilatorn kontrollerar ända ner till matrisdimensionerna åt dig (`Tensor[M, K] * Tensor[K, N] => Tensor[M, N]`) innan något ens körs.
+4. **Njuta av att läsa din egen kod**: låta varje `.rg`-fil se ut som en sida ur en välformgiven bok tack vare den automatiska tabellformateraren (`stable format`).
 
 Har vi väckt din nyfikenhet? Gå vidare till **Kapitel 01** så skriver vi vårt första program på under två minuter.

@@ -87,6 +87,18 @@ monthly_report d    =  combine net_metrics disk_metrics cpu_metrics
 
 You only wrote three clean lines stating where each piece of data comes from. The compiler sees that the three branches are independent and knows it can launch them in parallel without even the slightest possibility of a *data race* or a *deadlock*.
 
+And what if you need persistent concurrent agents with an isolated mailbox and state (for example, to maintain thousands of client sessions, background workers, or network connections)? In Ridgun you don't need `Actor` classes or `Mutex` locks: **any ordinary function becomes an autonomous agent in a single line with `agent`**:
+
+```ridgun
+counter = agent (add visit) 0
+send 1 to counter
+send 5 to counter
+total = receive from counter
+stop counter
+```
+
+Even better, the compiler performs **smart compile-time strategy selection**: it statically analyzes the depth and computational weight of each function in `||`, `||map`, `||filter`, and `agent`, executing lightweight functions as zero-overhead *green-thread* steps (without paying OS thread warmup costs) and automatically dispatching heavy or deeply recursive computations across real OS kernel threads (`SYS_clone`) on multiple CPU cores.
+
 ---
 
 ## Pain #4: "The garbage collector decides to stop the world at the worst possible moment"
@@ -114,7 +126,8 @@ Every temporary structure is freed deterministically by the compiler (`RMM1` / `
 Ridgun is built for you if you have ever wanted to:
 
 1. **Write systems tools, compilers, parsers, or CLI utilities** that start up in microseconds, weigh a few hundred KB, and cannot crash from null pointers or hidden side effects.
-2. **Program algorithms, data pipelines, or tensor algebra** where the compiler verifies even your matrix dimensions (`Tensor[M, K] * Tensor[K, N] => Tensor[M, N]`) before running a single instruction.
-3. **Enjoy reading your own code**: where every `.rg` file looks like a page from a well-typeset book thanks to the automatic tabular formatter (`stable format`).
+2. **Build concurrent systems and servers using the Native Agent Model (`agent`, `send ... to`, `receive from`, `stop`)**, where any pure function becomes a stateless or stateful isolated agent and the compiler smartly selects between ultra-lightweight *green-thread* steps and multicore native kernel threads.
+3. **Program algorithms, data pipelines, or tensor algebra** where the compiler verifies even your matrix dimensions (`Tensor[M, K] * Tensor[K, N] => Tensor[M, N]`) before running a single instruction.
+4. **Enjoy reading your own code**: where every `.rg` file looks like a page from a well-typeset book thanks to the automatic tabular formatter (`stable format`).
 
 Curious? Turn to **Chapter 01** and let's write our first program in under two minutes.

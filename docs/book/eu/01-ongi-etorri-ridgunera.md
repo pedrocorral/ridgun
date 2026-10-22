@@ -118,7 +118,7 @@ Ridgunek ez du gurpil karratua berrasmatu nahi; konplexurik gabe hartzen du mail
 
 Klasikoak aitortzea gizalegezkoa da, baina Ridgun beste lengoaia batzuen "arrakasta handien bilduma" hutsa balitz, ez zinateke liburu hau irakurtzen ariko.
 
-Badira Ridgunen diseinatu eta integratu ditugun **zazpi gauza**, egungo beste inongo lengoaiatan elkarrekin —eta horietako asko, ezta banaka ere— aurkituko ez dituzunak:
+Badira Ridgunen diseinatu eta integratu ditugun **zortzi gauza**, egungo beste inongo lengoaiatan elkarrekin —eta horietako asko, ezta banaka ere— aurkituko ez dituzunak:
 
 ### 1. `||` bloke paraleloak `->` geziekin: benetako grafo paraleloak dira, ez azukre sintaktiko hutsa
 Beste lengoaia funtzional batzuetan, aldagai lokalen bloke batek gero hari bakar batean ebaluatzen diren adierazpenak ordenatu baino ez ditu egiten.
@@ -131,7 +131,20 @@ urteko_txostena id  =  diru_sarrerak - gastuak
 ```
 Zuk fluxu-geziak (`->`) marrazten dituzu. Konpiladoreak aztertzen du zer dagoen zeren menpe, **estatikoki egiaztatzen du ez duzula begizta infinitorik sortu**, eta adar independenteak paraleloan abiarazten ditu zuk `async`, `await`, `Future` edo `Mutex` bakar bat ere idatzi gabe.
 
-### 2. Kodea bi dimentsioko taula gisa, non sinadura zutabeen goiburua den
+### 2. Marruskadurarik gabeko Agenteen Eredu Natiboa (`agent`) konpilazio-garaiko hari-aukeraketa adimendunarekin
+Beste lengoaia batzuetan, aktore edo agenteekin programatzeak klase bereziak sortzera, *trait*-ak inplementatzera, *lock*-ak kudeatzera edo funtzioak `async`-ekin kutsatzera behartzen zaitu.
+Ridgunen, **edozein funtzio puru arrunt (`fn ::` edo `op ::`) zuzenean agente autonomo bihurtzen da —egoera isolatuarekin edo gabe— `agent` erabiliz**:
+```ridgun
+erantzun_http (Saioa, String) => (Saioa, String)
+...
+zerbitzaria = agent erantzun_http hasierako_saioa
+send "GET /profila" to zerbitzaria
+erantzuna = receive from zerbitzaria
+stop zerbitzaria
+```
+Are hobeto: konpiladoreak **funtzioaren sakonera eta kostu konputazionala aztertzen ditu konpilazio-garaian** bai `agent`-en, bai `||` eta `||map`-en. Funtzioa arina bada, berehalako *green thread* gisa exekutatzen du sistema eragilearen hariak berotzearen kostua ordaindu gabe; kalkulu astuna edo errekurtsibo sakona bada, automatikoki paraleloan bidaltzen du kerneleko benetako harietara (`SYS_clone`) zure PUZaren nukleoetan zehar.
+
+### 3. Kodea bi dimentsioko taula gisa, non sinadura zutabeen goiburua den
 Beste edozein lengoaiatan, mota-sinadura bere aldetik doa lerro batean eta funtzioaren gorputza azpian doa testu arrunteko paragrafo baten moduan.
 Ridgunen, **mota-sinadura hitzez hitz taula baten goiburua da**, eta azpiko kasu bakoitzak eredu bakoitza bere motaren bertikalean bertan lerrokatzen du, eta `=` bakoitza `=>`-ren azpian:
 ```ridgun
@@ -141,7 +154,7 @@ zatitu a   b   =  Some (a / b)
 ```
 Beste inork ez ditu sinadura eta ekuazioak konpiladoreak egiaztatutako eta `stable format`-ek automatikoki maketatutako matrize bisual bakar gisa tratatzen.
 
-### 3. Esaldi-eragile (*Mixfix* N-ario) tipatuak eta lerrokatuak (`op ::`)
+### 4. Esaldi-eragile (*Mixfix* N-ario) tipatuak eta lerrokatuak (`op ::`)
 Lengoaia gehienetan, edo `+`, `-`, `*`-rekin konformatzen zara, edo gehienez ere inork zer esan nahi duen ez dakien `<|>` bezalako eragile bitar kriptiko bat definitzen duzu.
 Ridgunen **nahi adina hutsune tipatu dituzten esaldi irakurgarriak diren eragileak** sor ditzakezu (`type` edo `with` bezalako testuinguruko hitzak barne):
 ```ridgun
@@ -153,14 +166,14 @@ op :: Int mugatua Int eta Int artean => Int
 ```
 Eta gero zure kodean `abiadura mugatua 0 eta 120 artean` idazten duzu. Euskara (edo ingelesa) bezala irakurtzen da, baina % 100ean tipatuta eta kode natibora konpilatuta dago.
 
-### 4. Maskara bisualak sekuentzien gainean (`s(+ _)` eta `s["-+-"]`)
+### 5. Maskara bisualak sekuentzien gainean (`s(+ _)` eta `s["-+-"]`)
 Inoiz idatzi behar izan duzu `filter(\(i, x) -> i % 2 == 0)` moduko indize-entsalada bat elementu bikoitiekin geratzeko edo zerrenda batetik eredu erritmiko bat ateratzeko soilik?
 Ridgunen zuzenean **maskara bisual** bat pasatzen diozu:
 - `datuak["-+-"]`: lehenengoa baztertzen du (`-`), bigarrenarekin geratzen da (`+`), hirugarrena baztertzen du (`-`).
 - `datuak["+-~"]`: `~` ikurrak `+-` eredua begiztan errepikatzen du zerrendaren amaierara arte (indize bikoiti guztiak kolpe batez).
 Zero indize-aritmetika, zero *off-by-one* errore.
 
-### 5. "Zerozko zarata" duen polimorfismoa (`A`..`Z`), zure domeinuak gobernatua
+### 6. "Zerozko zarata" duen polimorfismoa (`A`..`Z`), zure domeinuak gobernatua
 Rust, TypeScript edo Javan, funtzio bat generikoa denean lerroa parentesi angeluarrez bete behar duzu: `fn trukatu<A, B>(bikotea: (A, B)) -> (B, A)`.
 Ridgunen letra larri solte bat erabiltzen duzu, besterik gabe:
 ```ridgun
@@ -169,10 +182,10 @@ trukatu (x, y) =  (y, x)
 ```
 *"Eta nire programan `type A` deitzen den benetako mota bat eduki nahi badut?"* — Arazorik ez: Ridgunen **zure `type` deklarazioek agintzen dute**. `type A` existitzen ez bada, `A` generikoa da; `type A = ...` definitzen duzun une berean, zure mota zehatza izatera pasatzen da modulu osoan.
 
-### 6. Zero konfigurazio-fitxategi arrotz: `build.rg` Ridgun purua da
+### 7. Zero konfigurazio-fitxategi arrotz: `build.rg` Ridgun purua da
 Ahaztu Cargorako TOML, npm-rako JSON, Mavenerako XML edo tabuladore ikusezinak dituen `Makefile`-ren sintaxi arkanoa ikasteaz. Ridgunen, zure proiektua eraikitzen duen errezeta (`build.rg`) **beste `.rg` fitxategi bat gehiago da**, zure gainerako kodearen funtzio puru eta *pattern matching* berberekin.
 
-### 7. Ezinezkoa zirudien "Hirutasun Santua": Haskell maila + RMM memoria GC eta Lifetimerik gabe + ~350 KB-ko bitarrak
+### 8. Ezinezkoa zirudien "Hirutasun Santua": Haskell maila + RMM memoria GC eta Lifetimerik gabe + ~350 KB-ko bitarrak
 Gaur arte aukeratu egin behar zenuen:
 - Adierazkortasun funtzional purua nahi bazenuen (Haskell, OCaml, Elixir), zabor-biltzaile batekin eta runtime astun batekin ordaintzen zenuen.
 - Zabor-biltzailerik gabeko sistemako bitar ñimiñoak nahi bazenituen (C, Rust, Zig), erakusleak kudeatuz edo *borrow checker*-arekin borrokatuz eta `let mut`-ez betetako kode inperatiboa idatziz ordaintzen zenuen.

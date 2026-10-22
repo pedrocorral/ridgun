@@ -181,7 +181,14 @@ fn :: main => ()
         echo "Visits:" v1 "->" v2 "| Batch:" batch
 ```
 
-### 2. Passing messages through bounded channels (`new bounded channel`)
+### 2. Smart compile-time strategy selection (*Green Threads* vs. Real OS Kernel Threads)
+A common question is: *"Do `||`, `||map`, and `agent` always spawn OS threads, or do they run as lightweight green tasks?"*
+
+In Ridgun, **the compiler makes that decision for you by statically analyzing each function**:
+- **Lightweight functions (`TierTrivial` / `StratInlineSequential`)**: If the function passed to `||`, `||map`, `||filter`, or `agent` has shallow depth (arithmetic, string formatting, fast HTTP session state transitions), warming up OS threads would cost more than the computation itself. The compiler executes it as an ultra-lightweight *green-thread* step with zero `SYS_clone` overhead.
+- **Heavy or deeply recursive computations (`TierDynamicRecursive` / `TierHeavyCPU`)**: If the function has deep recursion (like `fib` or `fact`) or tensor algebra (`einsum`, `hadamard`, `@`), the compiler automatically emits multicore dispatch across **real OS kernel threads (`SYS_clone`)**, processing `||` branches or queued `agent` messages in true hardware parallelism across your CPU cores.
+
+### 3. Passing messages through bounded channels (`new bounded channel`)
 Just like in Go or Erlang, in addition to agents you can also create explicit thread-safe pipes to connect pipeline stages:
 
 - `new bounded channel capacity`: creates a channel with room for `capacity` messages.

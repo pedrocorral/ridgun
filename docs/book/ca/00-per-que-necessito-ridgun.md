@@ -87,6 +87,18 @@ informe_mensual d     =  combinar metriques_xarxa metriques_disc metriques_cpu
 
 Tu només has escrit tres línies netes indicant d'on surt cada dada. El compilador veu que les tres branques són independents i sap que pot llançar-les en paral·lel sense que hi hagi ni la més mínima possibilitat d'un *data race* o un *deadlock*.
 
+I si necessites agents persistents amb bústia de missatges i estat aïllat (per exemple, per mantenir milers de sessions de clients, treballadors en segon pla o connexions de xarxa)? En Ridgun no cal definir classes `Actor` ni usar `Mutex`: **qualsevol funció normal es converteix en un agent autònom en una sola línia amb `agent`**:
+
+```ridgun
+comptador = agent (sumar visita) 0
+send 1 to comptador
+send 5 to comptador
+total = receive from comptador
+stop comptador
+```
+
+A més, el compilador realitza una **elecció intel·ligent en temps de compilació**: analitza estàticament la profunditat i el cost de cada funció a `||`, `||map`, `||filter` i `agent` per executar les funcions lleugeres com a passos *green-thread* de sobrecàrrega zero i despatxar automàticament els càlculs pesats o recursius a fils reals del nucli en múltiples nuclis (`SYS_clone`).
+
 ---
 
 ## Mal de cap núm. 4: "El recol·lector de brossa decideix pausar el món just en el pitjor moment"
@@ -114,7 +126,8 @@ Cada estructura temporal és alliberada de manera determinista pel compilador (`
 Ridgun està fet per a tu si alguna vegada has volgut:
 
 1. **Escriure eines de sistemes, compiladors, analitzadors o utilitats CLI** que arrenquin en microsegons, pesin uns pocs centenars de KB i no es puguin trencar per punters nuls ni efectes col·laterals ocults.
-2. **Programar algorismes, canonades de dades o àlgebra de tensors** on el compilador verifiqui per tu fins i tot les dimensions de les matrius (`Tensor[M, K] * Tensor[K, N] => Tensor[M, N]`) abans d'executar res.
-3. **Gaudir llegint el teu propi codi**: que cada fitxer `.rg` sembli una pàgina d'un llibre ben maquetat gràcies al formatador tabular automàtic (`stable format`).
+2. **Construir sistemes concurrents i servidors basats en el Model Natiu d'Agents (`agent`, `send ... to`, `receive from`, `stop`)**, on qualsevol funció pura es converteix en un agent amb o sense estat aïllat i el compilador tria intel·ligentment entre execució *green-thread* ultralleugera i fils natius multinucli.
+3. **Programar algorismes, canonades de dades o àlgebra de tensors** on el compilador verifiqui per tu fins i tot les dimensions de les matrius (`Tensor[M, K] * Tensor[K, N] => Tensor[M, N]`) abans d'executar res.
+4. **Gaudir llegint el teu propi codi**: que cada fitxer `.rg` sembli una pàgina d'un llibre ben maquetat gràcies al formatador tabular automàtic (`stable format`).
 
 Et pica la curiositat? Passa al **Capítol 01** i escrivim el nostre primer programa en menys de dos minuts.

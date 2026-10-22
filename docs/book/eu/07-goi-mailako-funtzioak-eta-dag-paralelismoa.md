@@ -181,7 +181,14 @@ fn :: main => ()
         echo "Bisitak:" b1 "->" b2 "| Sorta:" sorta
 ```
 
-### 2. Mezuak kanal mugatuetatik pasatzea (`new bounded channel`)
+### 2. Aukeraketa adimenduna konpilazio-garaian (*Green Threads* vs. Kerneleko Benetako Hariak)
+Ohiko galdera bat hau da: *"`||` blokeek, `||map`-ek eta `agent` agenteek beti sortzen al dituzte sistema eragilearen hariak, ala ataza arin gisa exekutatzen dira?"*
+
+Ridgunen, **konpiladoreak zure ordez hartzen du erabaki hori funtzio bakoitza estatikoki aztertuz**:
+- **Funtzio arinak (`TierTrivial` / `StratInlineSequential`)**: `||`, `||map`, `||filter` edo `agent`-era pasatzen duzun funtzioak sakonera txikia badu (aritmetika, kateen formateatzea, HTTP saio baten egoera-trantsizio azkarra), sistema eragilearen hariak berotzeak kalkuluak berak baino gehiago balioko luke. Konpiladoreak *green-thread* urrats ultraarin gisa exekutatzen du, `SYS_clone` gainkargarik gabe.
+- **Kalkulu astunak edo errekurtsibo sakonak (`TierDynamicRecursive` / `TierHeavyCPU`)**: Funtzioak errekurtsio sakona (`fib` edo `fact` bezala) edo tentsore-aljebra (`einsum`, `hadamard`, `@`) badu, konpiladoreak automatikoki sortzen du nukleo anitzeko bidalketa **kerneleko benetako harien gainean (`SYS_clone`)**, `||` adarrak edo `agent`-aren mezu-ilara zure PUZ nukleo guztietan benetako paraleloan prozesatuz.
+
+### 3. Mezuak kanal mugatuetatik pasatzea (`new bounded channel`)
 Go edo Erlangen bezalaxe, agenteez gain hodi esplizituak ere sor ditzakezu etapak komunikatzeko:
 
 - `new bounded channel edukiera`: `edukiera` mezurentzako lekua duen kanal bat sortzen du.

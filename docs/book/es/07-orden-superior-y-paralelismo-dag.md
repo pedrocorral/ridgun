@@ -181,7 +181,14 @@ fn :: main => ()
         echo "Visitas:" v1 "->" v2 "| Lote:" lote
 ```
 
-### 2. Pasar mensajes por canales acotados (`new bounded channel`)
+### 2. Elección inteligente en tiempo de compilación (*Green Threads* vs. Hilos Reales del Kernel)
+Una pregunta habitual es: *"¿Los bloques `||`, `||map` y los agentes `agent` crean siempre hilos del sistema operativo o corren como tareas ligeras?"*
+
+En Ridgun, **el compilador toma esa decisión por ti analizando estáticamente cada función**:
+- **Funciones ligeras (`TierTrivial` / `StratInlineSequential`)**: Si la función que pasas a `||`, `||map`, `||filter` o `agent` tiene poca profundidad (aritmética, formateo de cadenas, transición de estado rápida de una sesión HTTP), calentar hilos del sistema operativo costaría más que el propio cálculo. El compilador la ejecuta como un paso *green-thread* ultraligero sin sobrecarga de `SYS_clone`.
+- **Cálculos pesados o recursivos profundos (`TierDynamicRecursive` / `TierHeavyCPU`)**: Si la función tiene recursión profunda (como `fib` o `fact`) o álgebra de tensores (`einsum`, `hadamard`, `@`), el compilador genera automáticamente el despacho multinúcleo sobre **hilos reales del kernel (`SYS_clone`)**, procesando las ramas `||` o la cola de mensajes del `agent` en paralelo real sobre todos tus núcleos de CPU.
+
+### 3. Pasar mensajes por canales acotados (`new bounded channel`)
 Igual que en Go o Erlang, además de agentes también puedes crear tubos explícitos para comunicar etapas:
 
 - `new bounded channel capacidad`: crea un canal con espacio para `capacidad` mensajes.

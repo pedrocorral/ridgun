@@ -87,6 +87,18 @@ hileko_txostena d      =  konbinatu sare_metrikak disko_metrikak puz_metrikak
 
 Zuk hiru lerro garbi baino ez dituzu idatzi, datu bakoitza nondik ateratzen den adieraziz. Konpiladoreak ikusten du hiru adarrak independenteak direla eta badaki paraleloan abiarazi ditzakeela *data race* edo *deadlock* bat gertatzeko aukerarik txikiena ere egon gabe.
 
+Eta postontzia eta egoera isolatua duten agente iraunkorrak behar badituzu (adibidez, milaka bezero-saio, bigarren planoko langileak edo sare-konexioak mantentzeko)? Ridgunen ez duzu `Actor` klaserik definitu edo `Mutex`-ik erabili behar: **edozein funtzio arrunt agente autonomo bihurtzen da lerro bakar batean `agent`-ekin**:
+
+```ridgun
+kontagailua = agent (gehitu bisita) 0
+send 1 to kontagailua
+send 5 to kontagailua
+guztira = receive from kontagailua
+stop kontagailua
+```
+
+Gainera, konpiladoreak **aukeraketa adimenduna egiten du konpilazio-garaian**: `||`, `||map`, `||filter` eta `agent` barruko funtzio bakoitzaren sakonera eta kostua estatikoki aztertzen ditu, funtzio arinak zero gainkargako *green-thread* urrats gisa exekutatuz eta kalkulu astun edo errekurtsiboak nukleo anitzeko kerneleko benetako harietara (`SYS_clone`) automatikoki bidaliz.
+
 ---
 
 ## 4. mina: "Zabor-biltzaileak mundua gelditzea erabakitzen du unerik txarrenean"
@@ -114,7 +126,8 @@ Aldi baterako egitura bakoitza modu deterministan askatzen du konpiladoreak (`RM
 Ridgun zuretzat egina dago inoiz honako hau nahi izan baduzu:
 
 1. **Sistemetako tresnak, konpiladoreak, analizatzaileak edo CLI utilitateak idaztea**, mikrosegundotan abiarazten direnak, ehunka KB gutxi batzuk pisatzen dituztenak eta erakusle nuluek edo ezkutuko albo-ondorioek hautsi ezin dituztenak.
-2. **Algoritmoak, datu-hodiak edo tentsore-aljebra programatzea**, non konpiladoreak matrizeen dimentsioak ere (`Tensor[M, K] * Tensor[K, N] => Tensor[M, N]`) zure ordez egiaztatzen dituen ezer exekutatu aurretik.
-3. **Zure kode propioa irakurtzen gozatzea**: `.rg` fitxategi bakoitzak ondo maketatutako liburu baten orrialdea dirudiela, formateatzaile taularatu automatikoari esker (`stable format`).
+2. **Agenteen Eredu Natiboan (`agent`, `send ... to`, `receive from`, `stop`) oinarritutako sistema konkurrenteak eta zerbitzariak eraikitzea**, non edozein funtzio puru egoera isolatudun edo egoerarik gabeko agente bihurtzen den eta konpiladoreak modu adimendunean aukeratzen duen *green-thread* exekuzio ultraarinaren eta nukleo anitzeko hari natiboen artean.
+3. **Algoritmoak, datu-hodiak edo tentsore-aljebra programatzea**, non konpiladoreak matrizeen dimentsioak ere (`Tensor[M, K] * Tensor[K, N] => Tensor[M, N]`) zure ordez egiaztatzen dituen ezer exekutatu aurretik.
+4. **Zure kode propioa irakurtzen gozatzea**: `.rg` fitxategi bakoitzak ondo maketatutako liburu baten orrialdea dirudiela, formateatzaile taularatu automatikoari esker (`stable format`).
 
 Jakin-mina piztu zaizu? Pasa zaitez **01. kapitulura** eta idatz dezagun gure lehen programa bi minutu baino gutxiagoan.
