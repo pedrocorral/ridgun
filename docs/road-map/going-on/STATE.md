@@ -1,23 +1,23 @@
 ---
-updated: 2026-10-21T22:53
-active_task: none
+updated: 2026-10-22T11:05
+active_task: TASK-0013
 agent_runtime: gemini
 ---
 # Session state — read this first when resuming
 
 ## Where we are (3 lines max)
-- Branch `main`: Completed `TASK-0014` (`FR-TOOL-002`, `FR-TOOL-003`, `FR-COMP-006`) and released Ridgun `v0.9.6` (self-hosted `bin/ridgunc` and `bin/stable`, with previous binaries backed up at `bin/ridgunc.bak` and `bin/stable.bak`).
-- Refactored `src/main/ridgun/stable/main.rg` to consume standard libraries from `/home/boogie/ridgun-libs` (`str.rglib`, `posix.rglib`, `io.rglib`, `list.rglib`, `cli.rglib`) and added structured logging functions (`log info`, `log success`, `log error`, `log ok`, `log err`, `log pass`, `log fail`, `log step`, `log section`).
-- Upgraded `src/test/ridgun/test.rg` and `src/test/ridgun/test lib and plugins.rg` with comprehensive multi-angle test coverage for `stable` (all 5/5 test suites passing with 0 failures).
+- Branch `main`: Active on `TASK-0013` (`FR-COMP-002`, `FR-COMP-004`) and released Ridgun `v0.9.7` (with backups preserved at `bin/ridgunc.bak` and `bin/stable.bak`).
+- Completed **Phase 1 (`Slots 1..10`: Stack Frames & `RMM1`/`RMM2` Memory Management)** and initial **Phase 2 (`Slots 11..16`: Real/String/ADT/List/Tuple constructors)** in symbolic Ridgun in `src/main/ridgun/lib/x86_64.rg` and `src/main/ridgun/lib/arm64.rg`, plus the 56-entry `0x401000` jump table (`x86_build_rt_jump_table` / `arm64_rt_stub_table`).
+- Verified 2-stage self-hosting fixed point (`target/ridgunc_stage1 == target/ridgunc_candidate`) and all 5/5 test suites green (`0` failures).
 ## Files to load for the active task (nothing else)
-- `src/main/ridgun/stable/main.rg`
-- `src/test/ridgun/test lib and plugins.rg`
-- `docs/road-map/completed/2026-10/TASK-0014-refactor-stable-to-consume-standard-libraries-str-.md`
+- `src/main/ridgun/lib/x86_64.rg`
+- `src/main/ridgun/lib/arm64.rg`
+- `docs/road-map/going-on/TASK-0013-replace-opaque-rt-x86-64-kernel-hex-and-rt-arm64-k.md`
 ## Last verified facts (tests green? migrations applied? env?)
 - `./bin/stable check` = 13 modules checked, 0 errors.
 - `./bin/stable test` = 5/5 test suites passed (`test basics.rg`, `test core language.rg`, `test lib and plugins.rg`, `test parallel and tensors.rg`, `test strings.rg`).
 - `aix docs validate` = 0 errors.
 ## Immediate next action
-- Pick or create the next road-map task when new requirements arrive.
+- Continue `TASK-0013` with remaining Phase 2 routines (`Slots 17..37`: `NMakeTensor`, `NStrInterp`, `NPackSeq`, pattern matching `Slots 20..33`, and `NNot`/`NOut`/`NEcho`/`NBinOp` `Slots 34..37`).
 ## Blockers / questions for the user
 - None.

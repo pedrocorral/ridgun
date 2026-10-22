@@ -281,6 +281,20 @@ fn :: map item value Int => Int
 fn :: fold pair sum Int Int => Int
       fold pair sum x   y   =  x + y + 1
 
+-- 3) Symbolic Runtime Slots 1..16 (Tail-call frame slide & RMM2 rebind/cascade):
+fn :: tco list accum Int [Int] => [Int]
+      tco list accum 0   acc   =  acc
+      tco list accum n   acc   =  tco list accum (n - 1) ([n] :: acc)
+
+fn :: rmm2 rebind self trace => (Int, Int)
+      rmm2 rebind self trace =
+        base = cmm_live_blocks
+        mut xs = [100, 200, 300]
+        xs = elegir True xs [400, 500]
+        live_mid = cmm_live_blocks - base
+        len_xs = list len xs
+        (len_xs, live_mid)
+
 fn :: main => ()
       main =
         echo "=== Core Language, ADTs, Mixfix, Variadics & Higher-Order Ops ==="
@@ -375,4 +389,6 @@ fn :: main => ()
         assert equals (filter section loop 4 2) 42
         assert equals (map item value 23) 123
         assert equals (fold pair sum 10 20) 31
+        assert equals (tco list accum 5 []) [1, 2, 3, 4, 5]
+        assert equals (rmm2 rebind self trace) (3, 1)
         echo "=== All core language tests passed ==="

@@ -327,41 +327,76 @@ fn :: arm64_encode_fns [RNativeFn] Int          [RLabelEntry] [Int] => [Int]
 -- AArch64 instructions). Short 2-instruction primitives execute inline inside their
 -- 8-byte jump table slot; multi-instruction routines branch (`B`) to `0x4011C0+`.
 
+fn :: arm64_nop => [Int]
+      arm64_nop =  u32_le 3573751839
+
+fn :: arm64_ret => [Int]
+      arm64_ret =  u32_le 3596551104
+
+fn :: arm64_svc0 => [Int]
+      arm64_svc0 =  u32_le 3556769793
+
+fn :: arm64_blr Int => [Int]
+      arm64_blr rn  =  u32_le (3594452992 + (rn * 32))
+
+fn :: arm64_ldr_base Int Int => [Int]
+      arm64_ldr_base rt  rn  =  u32_le (4181721088 + (rn * 32) + rt)
+
+fn :: arm64_str_base Int Int => [Int]
+      arm64_str_base rt  rn  =  u32_le (4177526784 + (rn * 32) + rt)
+
+fn :: arm64_asr_1 Int Int => [Int]
+      arm64_asr_1 rd  rn  =  u32_le (2470575104 + (rn * 32) + rd)
+
+fn :: arm64_lsl_1 Int Int => [Int]
+      arm64_lsl_1 rd  rn  =  u32_le (3544186880 + (rn * 32) + rd)
+
+fn :: arm64_orr_1 Int Int => [Int]
+      arm64_orr_1 rd  rn  =  u32_le (2990538752 + (rn * 32) + rd)
+
+fn :: arm64_cmp_reg Int Int => [Int]
+      arm64_cmp_reg rn  rm  =  u32_le (3942645791 + (rm * 65536) + (rn * 32))
+
+fn :: arm64_cset_eq Int => [Int]
+      arm64_cset_eq rd  =  u32_le (2594117600 + rd)
+
 fn :: arm64_rt_slot Int => [Int]
       -- rt_0 (_start): branch to 0x4011C0 (+112 words)
-      arm64_rt_slot 0   =  (u32_le 335544432) :: (u32_le 3573751839)
+      arm64_rt_slot 0   =  (arm64_b 4198848 4198400) :: arm64_nop
       -- rt_1 (rg_init_frame): branch to 0x4011E8 (+121 words from slot 1)
-      arm64_rt_slot 1   =  (u32_le 335544441) :: (u32_le 3573751839)
+      arm64_rt_slot 1   =  (arm64_b 4198888 4198408) :: arm64_nop
       -- rt_2 (rg_epilogue): MOV X0, X2 ; RET
-      arm64_rt_slot 2   =  (u32_le 2852258784) :: (u32_le 3596551104)
+      arm64_rt_slot 2   =  (arm64_mov_reg 0 2) :: arm64_ret
       -- rt_3 (rg_tco_copy): branch to 0x401204 (+126 words from slot 3)
-      arm64_rt_slot 3   =  (u32_le 335544446) :: (u32_le 3573751839)
+      arm64_rt_slot 3   =  (arm64_b 4198916 4198424) :: arm64_nop
+      -- rt_4 (rg_clear_locals): NOP ; RET
+      arm64_rt_slot 4   =  arm64_nop :: arm64_ret
       -- rt_5 (rg_clone): NOP ; RET (X0 already holds value)
-      arm64_rt_slot 5   =  (u32_le 3573751839) :: (u32_le 3596551104)
+      arm64_rt_slot 5   =  arm64_nop :: arm64_ret
       -- rt_6 (rg_drop): NOP ; RET
-      arm64_rt_slot 6   =  (u32_le 3573751839) :: (u32_le 3596551104)
+      arm64_rt_slot 6   =  arm64_nop :: arm64_ret
       -- rt_7 (rg_cmm_move): LDR X0, [X0] ; RET
-      arm64_rt_slot 7   =  (u32_le 4181721088) :: (u32_le 3596551104)
+      arm64_rt_slot 7   =  (arm64_ldr_base 0 0) :: arm64_ret
       -- rt_8 (rg_store_local): STR X1, [X0] ; RET
-      arm64_rt_slot 8   =  (u32_le 4177526785) :: (u32_le 3596551104)
+      arm64_rt_slot 8   =  (arm64_str_base 1 0) :: arm64_ret
       -- rt_9 (rg_rebind_local): STR X1, [X0] ; RET
-      arm64_rt_slot 9   =  (u32_le 4177526785) :: (u32_le 3596551104)
+      arm64_rt_slot 9   =  (arm64_str_base 1 0) :: arm64_ret
       -- rt_10 (rg_cmm_drop): STR XZR, [X0] ; RET
-      arm64_rt_slot 10  =  (u32_le 4177526815) :: (u32_le 3596551104)
+      arm64_rt_slot 10  =  (arm64_str_base 31 0) :: arm64_ret
       -- rt_20 (rg_as_bool): UBFX X0, X0, #1, #1 ; RET
-      arm64_rt_slot 20  =  (u32_le 3544253440) :: (u32_le 3596551104)
+      arm64_rt_slot 20  =  (u32_le 3544253440) :: arm64_ret
       -- rt_21 (rg_match_int): branch to 0x401220 (+94 words from slot 21)
-      arm64_rt_slot 21  =  (u32_le 335544414) :: (u32_le 3573751839)
+      arm64_rt_slot 21  =  (arm64_b 4198944 4198568) :: arm64_nop
       -- rt_24 (rg_match_bool): branch to 0x401230 (+92 words from slot 24)
-      arm64_rt_slot 24  =  (u32_le 335544412) :: (u32_le 3573751839)
+      arm64_rt_slot 24  =  (arm64_b 4198960 4198592) :: arm64_nop
       -- rt_34 (rg_not): EOR X0, X0, #2 ; RET
-      arm64_rt_slot 34  =  (u32_le 3531538432) :: (u32_le 3596551104)
+      arm64_rt_slot 34  =  (u32_le 3531538432) :: arm64_ret
       -- rt_37 (rg_bin_op): branch to 0x401240 (+70 words from slot 37)
-      arm64_rt_slot 37  =  (u32_le 335544390) :: (u32_le 3573751839)
+      arm64_rt_slot 37  =  (arm64_b 4198976 4198696) :: arm64_nop
       -- rt_55 (rg_call_builtin / PAL dispatch): branch to 0x401270 (+46 words from slot 55)
-      arm64_rt_slot 55  =  (u32_le 335544366) :: (u32_le 3573751839)
+      arm64_rt_slot 55  =  (arm64_b 4199024 4198840) :: arm64_nop
       -- Default slot: RET ; NOP
-      arm64_rt_slot _   =  (u32_le 3596551104) :: (u32_le 3573751839)
+      arm64_rt_slot _   =  arm64_ret :: arm64_nop
 
 fn :: arm64_rt_stub_table Int [Int] => [Int]
       arm64_rt_stub_table idx acc
@@ -370,28 +405,51 @@ fn :: arm64_rt_stub_table Int [Int] => [Int]
           entry = arm64_rt_slot idx
           arm64_rt_stub_table (idx + 1) (acc :: entry)
 
+-- Phase 1 & Core Symbolic ARM64 Runtime Routines (`0x4011C0+`)
+
+-- 0x4011C0 (_start, 10 words = 40 bytes):
+-- Load main_vaddr from 0x400080, pass SP in X0, BLR X10, then SYS_exit_group(0) (X8=94, SVC #0)
+fn :: arm64_rt_start_code => [Int]
+      arm64_rt_start_code =
+        (arm64_mov_imm64 9 4194432) :: (arm64_ldr_base 10 9) :: (arm64_mov_sp_to_reg 0) :: (arm64_blr 10) :: (u32_le (arm64_movz 0 0 0)) :: (u32_le (arm64_movz 8 94 0)) :: arm64_svc0
+
+-- 0x4011E8 (Slot 1: rg_init_frame, 7 words = 28 bytes):
+-- Copy X2 args from [X1] into [X0]
+fn :: arm64_rt_slot1_init_frame => [Int]
+      arm64_rt_slot1_init_frame =
+        (u32_le 3019898978) :: (u32_le 4165009449) :: (u32_le 4160815113) :: (u32_le 3407873090) :: (u32_le 1409286141) :: arm64_ret :: arm64_nop
+
+-- 0x401204 (Slot 3: rg_tco_copy, 7 words = 28 bytes):
+-- Copy X2 args from [X0 + X1*8] into [X0]
+fn :: arm64_rt_slot3_tco_copy => [Int]
+      arm64_rt_slot3_tco_copy =
+        (u32_le 2335705099) :: (u32_le 3019898978) :: (u32_le 4165009545) :: (u32_le 4160815113) :: (u32_le 3407873090) :: (u32_le 1409286141) :: arm64_ret
+
+-- 0x401220 (Slot 21: rg_match_int, 4 words = 16 bytes): ASR X0, X0, #1 ; CMP X0, X1 ; CSET X0, EQ ; RET
+fn :: arm64_rt_slot21_match_int => [Int]
+      arm64_rt_slot21_match_int =
+        (arm64_asr_1 0 0) :: (arm64_cmp_reg 0 1) :: (arm64_cset_eq 0) :: arm64_ret
+
+-- 0x401230 (Slot 24: rg_match_bool, 4 words = 16 bytes): UBFX X0, X0, #1, #1 ; CMP X0, X1 ; CSET X0, EQ ; RET
+fn :: arm64_rt_slot24_match_bool => [Int]
+      arm64_rt_slot24_match_bool =
+        (u32_le 3544253440) :: (arm64_cmp_reg 0 1) :: (arm64_cset_eq 0) :: arm64_ret
+
+-- 0x401240 (Slot 37: rg_bin_op, 12 words = 48 bytes):
+-- LDR X9, [X1] ; ASR X9, X9, #1 ; ASR X10, X2, #1 ; ADD/SUB/MUL dispatch ; LSL X0, X0, #1 ; ORR X0, X0, #1 ; RET
+fn :: arm64_rt_slot37_bin_op => [Int]
+      arm64_rt_slot37_bin_op =
+        (arm64_ldr_base 9 1) :: (u32_le 2470575399) :: (arm64_asr_1 10 2) :: (u32_le 3942649856) :: (u32_le 1409286148) :: (u32_le 2332688681) :: (u32_le 335544323) :: (u32_le 3406430505) :: (u32_le 2583691561) :: (arm64_lsl_1 0 0) :: (arm64_orr_1 0 0) :: arm64_ret
+
+-- 0x401270 (Slot 55: rg_call_builtin PAL dispatch, 23 words = 92 bytes):
+fn :: arm64_rt_slot55_pal_dispatch => [Int]
+      arm64_rt_slot55_pal_dispatch =
+        (u32_le 4043380767) :: (u32_le 1409286337) :: (u32_le (arm64_movz 8 172 0)) :: arm64_svc0 :: (arm64_lsl_1 0 0) :: (arm64_orr_1 0 0) :: arm64_ret :: (u32_le 4043387935) :: (u32_le 1409286401) :: (arm64_ldr_base 0 1) :: (arm64_asr_1 0 0) :: (u32_le (arm64_movz 8 57 0)) :: arm64_svc0 :: (arm64_lsl_1 0 0) :: (arm64_orr_1 0 0) :: arm64_ret :: (u32_le 4043396127) :: (u32_le 1409286273) :: (arm64_ldr_base 0 1) :: (arm64_str_base 31 1) :: arm64_ret :: (u32_le (arm64_movz 0 0 0)) :: arm64_ret
+
 fn :: build_arm64_rt_kernel => [Int]
       build_arm64_rt_kernel =
         jt = arm64_rt_stub_table 0 []
-        -- 0x4011C0 (_start, 10 words = 40 bytes):
-        -- Load main_vaddr from 0x400080, pass SP in X0, BLR X10, then SYS_exit_group(0) (X8=94, SVC #0)
-        start_code = (arm64_mov_imm64 9 4194432) :: (u32_le 4181721386) :: (arm64_mov_sp_to_reg 0) :: (u32_le 3594453280) :: (u32_le 3531603968) :: (u32_le 3531605192) :: (u32_le 3556769793)
-        -- 0x4011E8 (rg_init_frame, 7 words = 28 bytes):
-        -- Copy X2 args from [X1] into [X0]
-        init_frame_code = (u32_le 3019898978) :: (u32_le 4165009449) :: (u32_le 4160815113) :: (u32_le 3407873090) :: (u32_le 1409286141) :: (u32_le 3596551104) :: (u32_le 3573751839)
-        -- 0x401204 (rg_tco_copy, 7 words = 28 bytes):
-        -- Copy X2 args from [X0 + X1*8] into [X0]
-        tco_code = (u32_le 2335705099) :: (u32_le 3019898978) :: (u32_le 4165009545) :: (u32_le 4160815113) :: (u32_le 3407873090) :: (u32_le 1409286141) :: (u32_le 3596551104)
-        -- 0x401220 (rg_match_int, 4 words = 16 bytes): ASR X0, X0, #1 ; CMP X0, X1 ; CSET X0, EQ ; RET
-        match_int_code = (u32_le 2470575104) :: (u32_le 3942711327) :: (u32_le 2594117600) :: (u32_le 3596551104)
-        -- 0x401230 (rg_match_bool, 4 words = 16 bytes): UBFX X0, X0, #1, #1 ; CMP X0, X1 ; CSET X0, EQ ; RET
-        match_bool_code = (u32_le 3544253440) :: (u32_le 3942711327) :: (u32_le 2594117600) :: (u32_le 3596551104)
-        -- 0x401240 (rg_bin_op, 12 words = 48 bytes):
-        -- LDR X9, [X1] ; ASR X9, X9, #1 ; ASR X10, X2, #1 ; ADD/SUB/MUL dispatch ; LSL X0, X0, #1 ; ORR X0, X0, #1 ; RET
-        binop_code = (u32_le 4181721129) :: (u32_le 2470575399) :: (u32_le 2470575178) :: (u32_le 3942649856) :: (u32_le 1409286148) :: (u32_le 2332688681) :: (u32_le 335544323) :: (u32_le 3406430505) :: (u32_le 2583691561) :: (u32_le 3544186880) :: (u32_le 2990538752) :: (u32_le 3596551104)
-        -- 0x401270 (rg_call_builtin PAL dispatch, 23 words = 92 bytes):
-        builtin_code = (u32_le 4043380767) :: (u32_le 1409286337) :: (u32_le 3531609480) :: (u32_le 3556769793) :: (u32_le 3544186880) :: (u32_le 2990538752) :: (u32_le 3596551104) :: (u32_le 4043387935) :: (u32_le 1409286401) :: (u32_le 4181721120) :: (u32_le 2470575104) :: (u32_le 3531605800) :: (u32_le 3556769793) :: (u32_le 3544186880) :: (u32_le 2990538752) :: (u32_le 3596551104) :: (u32_le 4043396127) :: (u32_le 1409286273) :: (u32_le 4181721120) :: (u32_le 4177526847) :: (u32_le 3596551104) :: (u32_le 3531603968) :: (u32_le 3596551104)
-        jt :: start_code :: init_frame_code :: tco_code :: match_int_code :: match_bool_code :: binop_code :: builtin_code
+        jt :: arm64_rt_start_code :: arm64_rt_slot1_init_frame :: arm64_rt_slot3_tco_copy :: arm64_rt_slot21_match_int :: arm64_rt_slot24_match_bool :: arm64_rt_slot37_bin_op :: arm64_rt_slot55_pal_dispatch
 
 -- ── Public ARM64 ELF64 Image Builder ─────────────────────────
 

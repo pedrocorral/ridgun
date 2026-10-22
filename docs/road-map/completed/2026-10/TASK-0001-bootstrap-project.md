@@ -1,13 +1,16 @@
 ---
 id: TASK-0001
 title: Bootstrap project — vision, glossary, stack decision, layout
-status: pending
+status: completed
 created: 2026-09-04
-completed:
+completed: 2026-10-22
 requirements: []
 tests: []
 security: []
 context_files: [docs/requirements/product/vision.md, docs/requirements/product/glossary.md, docs/requirements/decisions/ADR-0001-adopt-aix-and-choose-stack.md, .aix/meta-docs/architecture/project-layout.md]
+owner: agent-001
+claimed: 2026-10-22T07:46:27Z
+claimed_by: agent gemini@solarfall
 ---
 # TASK-0001 — Bootstrap project
 
