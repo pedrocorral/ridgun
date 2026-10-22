@@ -1,6 +1,6 @@
 -- ============================================================
 -- src/main/ridgun/stable/main.rg
--- `stable` v0.9.5 — The Interactive Build Tool for Ridgun (100% Ridgun)
+-- `stable` v0.9.6 — The Interactive Build Tool for Ridgun (100% Ridgun)
 -- Written in Ridgun's natural-language mixfix operator style (`op :: ...`).
 -- Inspired by Scala's sbt: parses `build.rg` using the Ridgun
 -- compiler AST, supports `src/main/ridgun/lib/` + parallel
@@ -21,6 +21,10 @@ import typecheck
 import compiler
 import vm
 import formatter
+import str
+import io
+import list
+import cli
 
 -- Project configuration loaded from `build.rg`
 type StableConfig = ProjectConfig String String String String String String
@@ -33,23 +37,22 @@ type StableCommand = CmdNoop | CmdExit | CmdHelp | CmdVersion | CmdInfo | CmdRel
 
 expand type StableCommand = CmdCustomTask String String [String] | CmdPluginExec String [String]
 
--- ── String & Shell Operators in Pure Ridgun ──────────────────
+-- ── String & Filesystem Operators (powered by `str` & `io` libraries) ──
 
 op :: flush non empty line String into [String] => [String]
       flush non empty line ""     into acc      =  acc
       flush non empty line line   into acc      =  acc :: [line]
 
-op :: split lines loop String at Int of Int from Int into [String] => [String]
-      split lines loop s at pos of len from line_start into acc
-        | pos >= len = flush non empty line (trim_str (str_slice s line_start len)) into acc
-        | (str_char_at s pos) == 10 = split lines loop s at (pos + 1) of len from (pos + 1) into (flush non empty line (trim_str (str_slice s line_start pos)) into acc)
-        | otherwise = split lines loop s at (pos + 1) of len from line_start into acc
+op :: filter non empty trimmed [String] into [String] => [String]
+      filter non empty trimmed []       into acc      =  acc
+      filter non empty trimmed (l:ls)   into acc      =
+        filter non empty trimmed ls into (flush non empty line (str trim l) into acc)
 
 op :: split lines of String => [String]
-      split lines of s      =  split lines loop s at 0 of (str_len s) from 0 into []
+      split lines of s      =  filter non empty trimmed (str split s "\n") into []
 
 op :: char Int is whitespace => Bool
-      char c   is whitespace =  c == 32 OR c == 9 OR c == 10 OR c == 13
+      char c   is whitespace =  is ascii space c
 
 op :: split words loop String at Int of Int word String into [String] => [String]
       split words loop s at pos of len word cur into acc
@@ -61,35 +64,106 @@ op :: split words of String => [String]
       split words of s      =  split words loop s at 0 of (str_len s) word "" into []
 
 op :: join words [String] with spaces => String
-      join words []       with spaces =  ""
-      join words (w:[])   with spaces =  w
-      join words (w:ws)   with spaces =  w + " " + (join words ws with spaces)
+      join words ws       with spaces =  str join ws " "
+
+op :: collect flat rg in String entries [String] => [String]
+      collect flat rg in _      entries []       =  []
+      collect flat rg in dir    entries (e:es)   =
+        full = dir + "/" + e
+        append flat rg if match full to (collect flat rg in dir entries es)
+
+op :: append flat rg if match String to [String] => [String]
+      append flat rg if match full   to rest
+        | (is file full) AND (str ends with full ".rg") = [full] :: rest
+        | otherwise = rest
+
+op :: collect sub rg in String entries [String] => [String]
+      collect sub rg in _      entries []       =  []
+      collect sub rg in dir    entries (e:es)   =
+        sub = dir + "/" + e
+        append sub rg if dir sub to (collect sub rg in dir entries es)
+
+op :: append sub rg if dir String to [String] => [String]
+      append sub rg if dir sub    to rest
+        | is dir sub = (collect flat rg in sub entries (list_dir sub)) :: rest
+        | otherwise  = rest
 
 op :: list rg files in String => [String]
-      list rg files in dir    =
-        _ = shell_exec ('mkdir -p target && ls -1 "' + dir + '"/*.rg "' + dir + '"/*/*.rg 2>/dev/null > target/.stable_files.txt || true')
-        raw = read_file "target/.stable_files.txt"
-        _ = shell_exec "rm -f target/.stable_files.txt"
-        split lines of raw
+      list rg files in dir
+        | NOT (is dir dir) = []
+        | otherwise =
+          ents = list str sort (list_dir dir)
+          (collect flat rg in dir entries ents) :: (collect sub rg in dir entries ents)
+
+op :: collect exec entries in String entries [String] => [String]
+      collect exec entries in _      entries []       =  []
+      collect exec entries in dir    entries (e:es)   =
+        cand = dir + "/" + e + "/main.rg"
+        append if file exists cand to (collect exec entries in dir entries es)
+
+op :: append if file exists String to [String] => [String]
+      append if file exists path   to rest
+        | is file path = [path] :: rest
+        | otherwise    = rest
 
 op :: list exec entries in String => [String]
-      list exec entries in dir    =
-        _ = shell_exec ('mkdir -p target && ls -1 "' + dir + '"/*/main.rg 2>/dev/null > target/.stable_entries.txt || true')
-        raw = read_file "target/.stable_entries.txt"
-        _ = shell_exec "rm -f target/.stable_entries.txt"
-        split lines of raw
+      list exec entries in dir
+        | NOT (is dir dir) = []
+        | otherwise = collect exec entries in dir entries (list str sort (list_dir dir))
+
+op :: is test filename String => Bool
+      is test filename name   =
+        (str ends with name ".rg") AND ((str_starts_with name "test_") OR (str_starts_with name "test "))
+
+op :: collect test files in String entries [String] => [String]
+      collect test files in _      entries []       =  []
+      collect test files in dir    entries (e:es)   =
+        full = dir + "/" + e
+        append test file if match e full to (collect test files in dir entries es)
+
+op :: append test file if match String String to [String] => [String]
+      append test file if match name   full   to rest
+        | (is file full) AND (is test filename name) = [full] :: rest
+        | otherwise = rest
 
 op :: list test files in String => [String]
-      list test files in dir    =
-        _ = shell_exec ('mkdir -p target && ls -1 "' + dir + '"/test_*.rg "' + dir + '"/test\ *.rg 2>/dev/null > target/.stable_tfiles.txt || true')
-        raw = read_file "target/.stable_tfiles.txt"
-        _ = shell_exec "rm -f target/.stable_tfiles.txt"
-        split lines of raw
+      list test files in dir
+        | NOT (is dir dir) = []
+        | otherwise = collect test files in dir entries (list str sort (list_dir dir))
 
 op :: file String exists => Bool
-      file path   exists =
-        code = shell_exec ('test -f "' + path + '"')
-        code == 0
+      file path   exists =  is file path
+
+-- ── Structured Console Logging Functions ─────────────────────
+
+fn :: log info String => ()
+      log info msg    =  echo "[info] {msg}"
+
+fn :: log success String => ()
+      log success msg    =  echo "[success] {msg}"
+
+fn :: log error String => ()
+      log error msg    =  echo "[error] {msg}"
+
+fn :: log step String String => ()
+      log step tag    msg    =
+        padded = str pad right "[{tag}]" 7 " "
+        echo "  {padded}{msg}"
+
+fn :: log ok String => ()
+      log ok msg    =  log step "ok" msg
+
+fn :: log err String => ()
+      log err msg    =  log step "err" msg
+
+fn :: log pass String => ()
+      log pass msg    =  log step "PASS" msg
+
+fn :: log fail String => ()
+      log fail msg    =  log step "FAIL" msg
+
+fn :: log section String => ()
+      log section title  =  echo "=== {title} ==="
 
 op :: read prompt line with String     => (Bool, String)
       read prompt line with prompt_str =
@@ -101,7 +175,7 @@ op :: decode prompt status Int => (Bool, String)
       decode prompt status 0   =
         line = read_file "target/.stable_line.txt"
         _ = shell_exec "rm -f target/.stable_line.txt"
-        (True, trim_str line)
+        (True, str trim line)
       decode prompt status _   =
         _ = shell_exec "rm -f target/.stable_line.txt"
         (False, "")
@@ -118,7 +192,7 @@ op :: extract function body from [RFnDef] named String default String => String
 
 op :: load build config from String     => StableConfig
       load build config from build_path
-        | NOT (file build_path exists) = ProjectConfig "ridgunc" "0.9.5" "src/main/ridgun/ridgunc/main.rg" "src/main/ridgun" "src/test/ridgun" "target"
+        | NOT (file build_path exists) = ProjectConfig "ridgunc" "0.9.6" "src/main/ridgun/ridgunc/main.rg" "src/main/ridgun" "src/test/ridgun" "target"
         | otherwise = parse build config source (read_file build_path)
 
 op :: parse build config source String => StableConfig
@@ -130,7 +204,7 @@ op :: parse build config source String => StableConfig
 op :: extract config from program RProgram        => StableConfig
       extract config from program (Program fns _) =
         name_str = extract function body from fns named "project_name" default "ridgunc"
-        ver = extract function body from fns named "project_version" default "0.9.5"
+        ver = extract function body from fns named "project_version" default "0.9.6"
         main_ep = extract function body from fns named "main_entry" default "src/main/ridgun/ridgunc/main.rg"
         sdir = extract function body from fns named "source_dir" default "src/main/ridgun"
         tdir = extract function body from fns named "test_dir" default "src/test/ridgun"
@@ -154,11 +228,11 @@ op :: report check module String prog RProgram errors [RTypeError] => (Int, Int)
       report check module path   prog prog_ast errors []           =
         fn_c = count_fn_defs prog_ast
         ty_c = count_type_defs prog_ast
-        _ = echo "  [ok]   {path} ({fn_c} fn, {ty_c} types)"
+        _ = log ok "{path} ({fn_c} fn, {ty_c} types)"
         (1, 0)
       report check module path   prog _        errors errs         =
         ec = type_err_count errs
-        _ = echo "  [err]  {path}: {ec} error(s)"
+        _ = log err "{path}: {ec} error(s)"
         _ = print error lines (format_type_errors errs)
         (0, ec)
 
@@ -181,15 +255,15 @@ op :: print error lines [String] => ()
 op :: run task check on StableConfig => Int
       run task check on (ProjectConfig name_str ver _ sdir _ _) =
         files = list rg files in sdir
-        _ = echo "[info] Checking project '{name_str}' v{ver} in {sdir}/ ..."
+        _ = log info "Checking project '{name_str}' v{ver} in {sdir}/ ..."
         finish task check with (check modules files ok 0 err 0)
 
 op :: finish task check with (Int, Int)    => Int
       finish task check with (ok_c, 0)     =
-        _ = echo "[success] Checked {ok_c} module(s) — 0 errors."
+        _ = log success "Checked {ok_c} module(s) — 0 errors."
         0
       finish task check with (ok_c, err_c) =
-        _ = echo "[error] Checked {ok_c} module(s) — {err_c} error(s) found."
+        _ = log error "Checked {ok_c} module(s) — {err_c} error(s) found."
         1
 
 -- ── Task 2: `compile` (Emit .rgc Bytecode Artifacts) ─────────
@@ -225,7 +299,7 @@ fn :: compile_single_module (String, String) => Int
         bname = base filename of path at 0 len (str_len path) slash (0 - 1)
         out_rgc = out_dir + "/" + (rgc artifact name for path base bname)
         fn_c = emit_rgc_file path out_rgc
-        _ = echo "  [rgc]  {path} -> {out_rgc} ({fn_c} functions)"
+        _ = log step "rgc" "{path} -> {out_rgc} ({fn_c} functions)"
         1
 
 op :: sum ints [Int]     acc Int   => Int
@@ -248,7 +322,7 @@ op :: compile if check status Int  from String into String  => Int
         _ = shell_exec ('mkdir -p "' + out_dir + '"')
         files = list rg files in sdir
         c_count = compile modules files into out_dir count 0
-        _ = echo "[success] Compiled {c_count} bytecode artifact(s) into {out_dir}/."
+        _ = log success "Compiled {c_count} bytecode artifact(s) into {out_dir}/."
         0
       compile if check status code from _      into _       =  code
 
@@ -279,18 +353,18 @@ op :: build library artifacts from String into String named String version Strin
         _ = shell_exec ('mkdir -p "' + out_dir + '"')
         out_rglib = out_dir + "/" + lib_name + ".rglib"
         out_so = out_dir + "/lib" + lib_name + ".so"
-        _ = echo "[info] Building Ridgun library '{lib_name}' from {entry_path} (v{ver}) ..."
+        _ = log info "Building Ridgun library '{lib_name}' from {entry_path} (v{ver}) ..."
         st1 = emit_rglib_file entry_path out_rglib
         st2 = build_native_shared_library entry_path out_so
         report library build of out_rglib so out_so status1 st1 status2 st2
 
 op :: report library build of String    so String status1 Int status2 Int => Int
       report library build of out_rglib so out_so status1 0   status2 0   =
-        _ = echo "[success] Built Ridgun library bundle: {out_rglib}"
-        _ = echo "[success] Built native ELF64 shared object: {out_so}"
+        _ = log success "Built Ridgun library bundle: {out_rglib}"
+        _ = log success "Built native ELF64 shared object: {out_so}"
         0
       report library build of out_rglib so out_so status1 st1 status2 st2 =
-        _ = echo "[error] Library build failed for {out_rglib} / {out_so} (status {st1}, {st2})"
+        _ = log error "Library build failed for {out_rglib} / {out_so} (status {st1}, {st2})"
         1
 
 op :: run task build lib on StableConfig args [String]  => Int
@@ -303,7 +377,7 @@ op :: run task build lib on StableConfig args [String]  => Int
 
 op :: build target from String     into String  version String => Int
       build target from entry_path into out_bin version ver    =
-        _ = echo "[info] Building native executable '{out_bin}' from {entry_path} (v{ver}) ..."
+        _ = log info "Building native executable '{out_bin}' from {entry_path} (v{ver}) ..."
         st_code = build_native_executable entry_path out_bin
         report build of out_bin status st_code
 
@@ -350,10 +424,10 @@ op :: build discovered entries [String] name String version String entry String 
 
 op :: report build of String  status Int  => Int
       report build of out_bin status 0    =
-        _ = echo "[success] Built native ELF executable: {out_bin}"
+        _ = log success "Built native ELF executable: {out_bin}"
         0
       report build of out_bin status code =
-        _ = echo "[error] Build failed for {out_bin} (exit code {code})"
+        _ = log error "Build failed for {out_bin} (exit code {code})"
         code
 
 -- ── Task 4: `run` (Build if Needed & Run Native Binary) ─────
@@ -385,7 +459,7 @@ op :: ensure target built Bool from String into String version String => Int
 op :: exec binary if built Int  path String  args [String]   => Int
       exec binary if built 0    path out_bin args extra_args =
         arg_str = join words extra_args with spaces
-        _ = echo "[info] Running ./{out_bin} {arg_str}"
+        _ = log info "Running ./{out_bin} {arg_str}"
         shell_exec ("./" + out_bin + " " + arg_str)
       exec binary if built code path _       args _          =  code
 
@@ -393,7 +467,7 @@ op :: exec binary if built Int  path String  args [String]   => Int
 
 fn :: run_single_test_suite String => (Int, Int)
       run_single_test_suite tpath  =
-        _ = echo "[info] Compiling & running test suite: {tpath}"
+        _ = log info "Compiling & running test suite: {tpath}"
         bname = base filename of tpath at 0 len (str_len tpath) slash (0 - 1)
         bin_path = "target/.stable_test_" + bname + "_bin"
         st_code = build_native_fast_executable tpath bin_path
@@ -404,15 +478,15 @@ op :: run built test binary Int suite String binary String   => (Int, Int)
         run_st = shell_exec ('"./' + bin_path + '"; _st=$?; rm -f "' + bin_path + '"; exit $_st')
         record single test outcome run_st suite tpath
       run built test binary _   suite tpath  binary _        =
-        _ = echo "  [FAIL] {tpath} (compilation/typecheck failed)"
+        _ = log fail "{tpath} (compilation/typecheck failed)"
         (0, 1)
 
 op :: record single test outcome Int suite String => (Int, Int)
       record single test outcome 0   suite tpath  =
-        _ = echo "  [PASS] {tpath}"
+        _ = log pass "{tpath}"
         (1, 0)
       record single test outcome _   suite tpath  =
-        _ = echo "  [FAIL] {tpath} (non-zero exit status)"
+        _ = log fail "{tpath} (non-zero exit status)"
         (0, 1)
 
 op :: execute test suites [String] passed Int    failed Int    => (Int, Int)
@@ -424,16 +498,16 @@ op :: execute test suites [String] passed Int    failed Int    => (Int, Int)
 op :: run task test on StableConfig => Int
       run task test on (ProjectConfig name_str _ _ _ tdir _) =
         suites = list test files in tdir
-        _ = echo "[info] Running test suites for '{name_str}' in {tdir}/ ..."
+        _ = log info "Running test suites for '{name_str}' in {tdir}/ ..."
         finish task test with (execute test suites suites passed 0 failed 0)
 
 op :: finish task test with (Int, Int)       => Int
       finish task test with (pass_c, 0)      =
-        _ = echo "[success] Passed {pass_c}/{pass_c} test suite(s) — 0 failures."
+        _ = log success "Passed {pass_c}/{pass_c} test suite(s) — 0 failures."
         0
       finish task test with (pass_c, fail_c) =
         total = pass_c + fail_c
-        _ = echo "[error] Passed {pass_c}/{total} test suite(s) — {fail_c} failed."
+        _ = log error "Passed {pass_c}/{total} test suite(s) — {fail_c} failed."
         1
 
 -- ── Task 6: `format` (Canonical Aesthetic Formatting) ───────
@@ -443,13 +517,13 @@ op :: read raw file at String => String
 
 op :: report unchanged file String => Int
       report unchanged file path   =
-        _ = echo "  [ok]   {path} (already formatted)"
+        _ = log ok "{path} (already formatted)"
         0
 
 op :: save formatted file String content String    => Int
       save formatted file path   content formatted =
         _ = write_file path formatted
-        _ = echo "  [fmt]  {path} (formatted)"
+        _ = log step "fmt" "{path} (formatted)"
         1
 
 op :: apply formatted content String orig String formatted String        => Int
@@ -478,7 +552,7 @@ op :: include build file if present => [String]
 
 op :: finish task format with (Int, Int)     => Int
       finish task format with (chg_c, tot_c) =
-        _ = echo "[success] Formatted {chg_c}/{tot_c} file(s) using canonical Ridgun style."
+        _ = log success "Formatted {chg_c}/{tot_c} file(s) using canonical Ridgun style."
         0
 
 op :: run task format on StableConfig args [String]     => Int
@@ -487,10 +561,10 @@ op :: run task format on StableConfig args [String]     => Int
         s_files = list rg files in sdir
         t_files = list rg files in tdir
         all_files = b_files :: s_files :: t_files
-        _ = echo "[info] Formatting project '{name_str}' source files ..."
+        _ = log info "Formatting project '{name_str}' source files ..."
         finish task format with (format file list all_files changed 0 total 0)
       run task format on _            args target_paths =
-        _ = echo "[info] Formatting specified Ridgun file(s) ..."
+        _ = log info "Formatting specified Ridgun file(s) ..."
         finish task format with (format file list target_paths changed 0 total 0)
 
 -- ── Task 7: `clean` & `info` & `help` ───────────────────────
@@ -498,7 +572,7 @@ op :: run task format on StableConfig args [String]     => Int
 op :: run task clean on StableConfig => Int
       run task clean on (ProjectConfig _ _ _ _ _ out_dir) =
         _ = shell_exec ('rm -f "' + out_dir + '"/*.rgc "' + out_dir + '"/*.rglib "' + out_dir + '"/*.so "' + out_dir + '"/.stable_* "' + out_dir + '"/.ridgunc_*')
-        _ = echo "[success] Cleaned bytecode and library artifacts in {out_dir}/."
+        _ = log success "Cleaned bytecode and library artifacts in {out_dir}/."
         0
 
 op :: collect target names of [String]     => [String]
@@ -514,7 +588,7 @@ op :: run task info on StableConfig => Int
         tst_files = list test files in tdir
         src_c = list_str_len src_files
         tst_c = list_str_len tst_files
-        _ = echo "=== Project Info (build.rg) ==="
+        _ = log section "Project Info (build.rg)"
         _ = echo "  Project Name : {name_str}"
         _ = echo "  Project Kind : {pkind}"
         _ = echo "  Version      : {ver}"
@@ -560,13 +634,15 @@ op :: scaffold project named String in String => Int
         _ = shell_exec ('mkdir -p "' + root + '/src/main/ridgun/' + pname + '" "' + root + '/src/main/ridgun/lib" "' + root + '/src/test/ridgun" "' + root + '/target"')
         build_content = "-- build.rg — Ridgun Project Build Definition\n\nfn :: project name => String\n      project name =  \"" + pname + "\"\n\nfn :: project version => String\n      project version =  \"0.1.0\"\n\nfn :: main entry => String\n      main entry =  \"src/main/ridgun/" + pname + "/main.rg\"\n\nfn :: source dir => String\n      source dir =  \"src/main/ridgun\"\n\nfn :: test dir => String\n      test dir =  \"src/test/ridgun\"\n\nfn :: target dir => String\n      target dir =  \"target\"\n\nfn :: dependencies => [String]\n      dependencies =  []\n"
         main_content = "-- src/main/ridgun/" + pname + "/main.rg\n\nfn :: greet String => String\n      greet who    =  \"Hello from \" + who + \"!\"\n\nfn :: main => ()\n      main =  echo (greet \"" + pname + "\")\n"
-        test_content = "-- src/test/ridgun/test main.rg\n\nfn :: main => ()\n      main =  echo \"=== All " + pname + " tests passed ===\"\n"
+        test_lib_content = "-- src/test/ridgun/test.rg — Standard Test Assertions (`import test`)\n\nfn :: fail test String => ()\n      fail test msg    =\n        _ = echo \"[FAIL] \" msg\n        sys_exit 1\n\nfn :: assert equals A      A        => ()\n      assert equals actual expected\n        | actual == expected = echo \"  [ok]  \" actual \"==\" expected\n        | otherwise = fail test \"assert_equals failed\"\n\nfn :: assert true Bool => ()\n      assert true cond\n        | cond = echo \"  [ok]   True\"\n        | otherwise = fail test \"assert_true failed\"\n"
+        test_content = "-- src/test/ridgun/test main.rg\nimport test\n\nfn :: main => ()\n      main =\n        _ = assert true True\n        echo \"=== All " + pname + " tests passed ===\"\n"
         gitignore_content = "/target/\n/.stable/\n"
         _ = write_file (root + "/build.rg") build_content
         _ = write_file (root + "/src/main/ridgun/" + pname + "/main.rg") main_content
+        _ = write_file (root + "/src/test/ridgun/test.rg") test_lib_content
         _ = write_file (root + "/src/test/ridgun/test main.rg") test_content
         _ = write_file (root + "/.gitignore") gitignore_content
-        _ = echo "[success] Scaffolded Ridgun project '{pname}' in {root}/"
+        _ = log success "Scaffolded Ridgun project '{pname}' in {root}/"
         0
 
 op :: scaffold lib project named String in String => Int
@@ -574,52 +650,47 @@ op :: scaffold lib project named String in String => Int
         _ = shell_exec ('mkdir -p "' + root + '/src/main/ridgun/lib" "' + root + '/src/test/ridgun" "' + root + '/target"')
         build_content = "-- build.rg — Ridgun Library Project Definition\n\nfn :: project name => String\n      project name =  \"" + pname + "\"\n\nfn :: project kind => String\n      project kind =  \"lib\"\n\nfn :: project version => String\n      project version =  \"0.1.0\"\n\nfn :: main entry => String\n      main entry =  \"src/main/ridgun/lib/" + pname + ".rg\"\n\nfn :: source dir => String\n      source dir =  \"src/main/ridgun\"\n\nfn :: test dir => String\n      test dir =  \"src/test/ridgun\"\n\nfn :: target dir => String\n      target dir =  \"target\"\n\nfn :: dependencies => [String]\n      dependencies =  []\n"
         lib_content = "-- src/main/ridgun/lib/" + pname + ".rg\n\nfn :: greet String => String\n      greet who    =  \"Hello from library \" + who + \"!\"\n"
-        test_content = "-- src/test/ridgun/test main.rg\nimport " + pname + "\n\nfn :: main => ()\n      main =\n        _ = assert equals (greet \"" + pname + "\") \"Hello from library " + pname + "!\"\n        echo \"=== All " + pname + " library tests passed ===\"\n"
+        test_lib_content = "-- src/test/ridgun/test.rg — Standard Test Assertions (`import test`)\n\nfn :: fail test String => ()\n      fail test msg    =\n        _ = echo \"[FAIL] \" msg\n        sys_exit 1\n\nfn :: assert equals A      A        => ()\n      assert equals actual expected\n        | actual == expected = echo \"  [ok]  \" actual \"==\" expected\n        | otherwise = fail test \"assert_equals failed\"\n\nfn :: assert true Bool => ()\n      assert true cond\n        | cond = echo \"  [ok]   True\"\n        | otherwise = fail test \"assert_true failed\"\n"
+        test_content = "-- src/test/ridgun/test main.rg\nimport test\nimport " + pname + "\n\nfn :: main => ()\n      main =\n        _ = assert equals (greet \"" + pname + "\") \"Hello from library " + pname + "!\"\n        echo \"=== All " + pname + " library tests passed ===\"\n"
         gitignore_content = "/target/\n/.stable/\n"
         _ = write_file (root + "/build.rg") build_content
         _ = write_file (root + "/src/main/ridgun/lib/" + pname + ".rg") lib_content
+        _ = write_file (root + "/src/test/ridgun/test.rg") test_lib_content
         _ = write_file (root + "/src/test/ridgun/test main.rg") test_content
         _ = write_file (root + "/.gitignore") gitignore_content
-        _ = echo "[success] Scaffolded Ridgun library project '{pname}' in {root}/"
+        _ = log success "Scaffolded Ridgun library project '{pname}' in {root}/"
         0
 
-op :: run task new args [String]          => Int
-      run task new args []                =
-        _ = echo "[error] Usage: stable new [--lib] <project_name>"
+op :: run task new args [String]   => Int
+      run task new args extra_args =
+        pos_args = cli positionals extra_args
+        is_lib = cli has flag extra_args "--lib" "-l"
+        run task new target pos_args lib is_lib
+
+op :: run task new target [String]  lib Bool   => Int
+      run task new target []        lib _      =
+        _ = log error "Usage: stable new [--lib] <project_name>"
         1
-      run task new args ("--lib":pname:_)
+      run task new target (pname:_) lib is_lib
         | file (pname + "/build.rg") exists =
-          _ = echo "[error] Project '{pname}' already exists at {pname}/build.rg"
+          _ = log error "Project '{pname}' already exists at {pname}/build.rg"
           1
-        | otherwise = scaffold lib project named pname in pname
-      run task new args (pname:"--lib":_)
-        | file (pname + "/build.rg") exists =
-          _ = echo "[error] Project '{pname}' already exists at {pname}/build.rg"
-          1
-        | otherwise = scaffold lib project named pname in pname
-      run task new args (pname:_)
-        | file (pname + "/build.rg") exists =
-          _ = echo "[error] Project '{pname}' already exists at {pname}/build.rg"
-          1
+        | is_lib = scaffold lib project named pname in pname
         | otherwise = scaffold project named pname in pname
 
-op :: run task init args [String]    => Int
-      run task init args ("--lib":_)
+op :: run task init args [String]   => Int
+      run task init args extra_args
         | file "build.rg" exists =
-          _ = echo "[info] build.rg already exists in current directory."
+          _ = log info "build.rg already exists in current directory."
           0
         | otherwise =
           cwd = sys_getcwd
           pname = base filename of cwd at 0 len (str_len cwd) slash (0 - 1)
-          scaffold lib project named pname in "."
-      run task init args _
-        | file "build.rg" exists =
-          _ = echo "[info] build.rg already exists in current directory."
-          0
-        | otherwise =
-          cwd = sys_getcwd
-          pname = base filename of cwd at 0 len (str_len cwd) slash (0 - 1)
-          scaffold project named pname in "."
+          init current dir named pname lib (cli has flag extra_args "--lib" "-l")
+
+op :: init current dir named String lib Bool  => Int
+      init current dir named pname  lib True  =  scaffold lib project named pname in "."
+      init current dir named pname  lib False =  scaffold project named pname in "."
 
 op :: fetch dependency source String into String => Int
       fetch dependency source dep    into dest
@@ -634,14 +705,13 @@ op :: sync single dependency String => Int
         dest = ".stable/deps/" + bname
         _ = shell_exec 'mkdir -p .stable/deps src/main/ridgun/lib'
         st = fetch dependency source dep into dest
-        _ = shell_exec ('cp -f "' + dest + '"/src/main/ridgun/lib/*.rg src/main/ridgun/lib/ 2>/dev/null || cp -f "' + dest + '"/*.rg src/main/ridgun/lib/ 2>/dev/null || true')
-        _ = shell_exec ('cp -f "' + dest + '"/target/*.rglib src/main/ridgun/lib/ 2>/dev/null || cp -f "' + dest + '"/*.rglib src/main/ridgun/lib/ 2>/dev/null || true')
-        _ = echo "  [dep]  {dep} -> {dest}"
+        _ = shell_exec ('if ls "' + dest + '"/target/bundles/*.rglib >/dev/null 2>&1; then cp -f "' + dest + '"/target/bundles/*.rglib .stable/deps/ 2>/dev/null || true; elif ls "' + dest + '"/target/*.rglib >/dev/null 2>&1; then cp -f "' + dest + '"/target/*.rglib .stable/deps/ 2>/dev/null || true; elif ls "' + dest + '"/*.rglib >/dev/null 2>&1; then cp -f "' + dest + '"/*.rglib .stable/deps/ 2>/dev/null || true; else cp -f "' + dest + '"/src/main/ridgun/lib/*.rg src/main/ridgun/lib/ 2>/dev/null || cp -f "' + dest + '"/*.rg src/main/ridgun/lib/ 2>/dev/null || true; fi')
+        _ = log step "dep" "{dep} -> {dest}"
         st
 
 op :: sync dependency list [String] => Int
       sync dependency list []       =
-        _ = echo "  [ok]   No external dependencies declared in build.rg."
+        _ = log ok "No external dependencies declared in build.rg."
         0
       sync dependency list (d:ds)   =
         _ = sync single dependency d
@@ -650,9 +720,9 @@ op :: sync dependency list [String] => Int
 op :: run task deps => Int
       run task deps =
         deps = load dependencies from "build.rg"
-        _ = echo "[info] Synchronizing dependencies from build.rg into .stable/deps/ ..."
+        _ = log info "Synchronizing dependencies from build.rg into .stable/deps/ ..."
         _ = sync dependency list deps
-        _ = echo "[success] Dependencies synchronized."
+        _ = log success "Dependencies synchronized."
         0
 
 op :: format dep items [String] => String
@@ -668,7 +738,7 @@ op :: append dep block if needed String    => ()
 
 op :: run task add args [String]    => Int
       run task add args []          =
-        _ = echo "[error] Usage: stable add <git_url_or_path>"
+        _ = log error "Usage: stable add <git_url_or_path>"
         1
       run task add args (new_dep:_) =
         cur_deps = load dependencies from "build.rg"
@@ -676,15 +746,15 @@ op :: run task add args [String]    => Int
         dep_block = '\nfn :: dependencies => [String]\n      dependencies =  [' + (format dep items all_deps) + ']\n'
         _ = append dep block if needed dep_block
         _ = sync single dependency new_dep
-        _ = echo "[success] Added dependency '{new_dep}'."
+        _ = log success "Added dependency '{new_dep}'."
         0
 
 op :: install built binaries Int from String  => Int
       install built binaries 0   from out_dir =
-        home = sys_getenv "HOME"
+        home = env get or "HOME" "."
         inst_dir = home + "/.local/bin"
         _ = shell_exec ('mkdir -p "' + inst_dir + '" bin && for f in "' + out_dir + '"/*; do if [ -f "$f" ] && [ -x "$f" ]; then cp -f "$f" "' + inst_dir + '/" && cp -f "$f" bin/; fi; done')
-        _ = echo "[success] Installed executable(s) from {out_dir}/ into {inst_dir}/ and bin/."
+        _ = log success "Installed executable(s) from {out_dir}/ into {inst_dir}/ and bin/."
         0
       install built binaries st  from _       =  st
 
@@ -695,15 +765,9 @@ op :: run task install on StableConfig args [String] => Int
 
 -- ── Task 9: Custom Tasks, Plugins, and Framework Extensions (`FR-TOOL-003`) ──
 
-op :: replace underscores in String at Int len Int acc String => String
-      replace underscores in s      at pos len n   acc cur
-        | pos >= n = cur
-        | (str_char_at s pos) == 95 = replace underscores in s at (pos + 1) len n acc (cur + " ")
-        | otherwise = replace underscores in s at (pos + 1) len n acc (cur + (str_slice s pos (pos + 1)))
-
 op :: task display name of String   => String
       task display name of raw_name =
-        replace underscores in raw_name at 0 len (str_len raw_name) acc ""
+        str replace raw_name "_" " "
 
 op :: extract tasks from fns [RFnDef]    origin String     => [StableTask]
       extract tasks from fns []          origin _          =  []
@@ -760,19 +824,12 @@ op :: append resolved plugin String to [String] => [String]
 
 op :: discover plugin files => [String]
       discover plugin files =
-        _ = shell_exec 'mkdir -p target && ls -1 plugins/*.rg .stable/plugins/*.rg 2>/dev/null > target/.stable_plugins.txt || true'
-        raw = read_file "target/.stable_plugins.txt"
-        _ = shell_exec "rm -f target/.stable_plugins.txt"
-        auto_files = split lines of raw
+        auto_p1 = list rg files in "plugins"
+        auto_p2 = list rg files in ".stable/plugins"
+        auto_files = auto_p1 :: auto_p2
         decl_names = load declared plugins from "build.rg"
         decl_files = resolve plugin list decl_names
-        merge unique strings decl_files with auto_files
-
-op :: merge unique strings [String] with [String] => [String]
-      merge unique strings []       with acc      =  acc
-      merge unique strings (s:ss)   with acc
-        | str_in_list s acc = merge unique strings ss with acc
-        | otherwise = [s] :: (merge unique strings ss with acc)
+        list str dedup (decl_files :: auto_files)
 
 op :: load tasks from plugins [String]     => [StableTask]
       load tasks from plugins []           =  []
@@ -793,11 +850,6 @@ op :: words [String] start with [String] => Bool
         | a == b = words as start with bs
         | otherwise = False
 
-op :: drop words Int from [String] => [String]
-      drop words 0   from xs       =  xs
-      drop words _   from []       =  []
-      drop words n   from (_:xs)   =  drop words (n - 1) from xs
-
 op :: match task entry StableTask against [String] => (Bool, Int, String, String, [String])
       match task entry (TaskEntry key disp cmd _) against args_list =
         t_words = split words of disp
@@ -808,7 +860,7 @@ op :: match task words String String String [String] Int against [String] => (Bo
       match task words _ _ _ _ _ against [] = (False, 0, "", "", [])
       match task words key disp cmd t_words t_len against (first_w:rest_w)
         | first_w == key = (True, 1, disp, cmd, rest_w)
-        | words ([first_w] :: rest_w) start with t_words = (True, t_len, disp, cmd, drop words t_len from ([first_w] :: rest_w))
+        | words ([first_w] :: rest_w) start with t_words = (True, t_len, disp, cmd, list str drop ([first_w] :: rest_w) t_len)
         | otherwise = (False, 0, "", "", [])
 
 op :: pick longer task match (Bool, Int, String, String, [String]) and (Bool, Int, String, String, [String]) => (Bool, Int, String, String, [String])
@@ -834,11 +886,11 @@ op :: print custom tasks [StableTask] => ()
 op :: run task tasks => Int
       run task tasks =
         custom_ts = load all custom tasks
-        _ = echo "=== Built-in `stable` Tasks ==="
+        _ = log section "Built-in `stable` Tasks"
         _ = echo "  new [--lib] <name>, init [--lib], deps, add <dep>, install [target]"
         _ = echo "  build | built [lib | target], run [target], test, check, format, compile, clean"
         _ = echo "  info | status, tasks, plugins, reload, help, exit"
-        _ = echo "=== Custom Project & Plugin Tasks ==="
+        _ = log section "Custom Project & Plugin Tasks"
         report custom task list custom_ts
 
 op :: report custom task list [StableTask] => Int
@@ -854,7 +906,7 @@ op :: print plugin files [String]     => ()
       print plugin files (pp:rem_pps) =
         p_tasks = load tasks from file pp origin pp
         t_count = count custom tasks p_tasks
-        _ = echo "  [plugin] {pp} ({t_count} custom task(s))"
+        _ = log step "plugin" "{pp} ({t_count} custom task(s))"
         print plugin files rem_pps
 
 op :: count custom tasks [StableTask] => Int
@@ -864,7 +916,7 @@ op :: count custom tasks [StableTask] => Int
 op :: run task plugins => Int
       run task plugins =
         pfiles = discover plugin files
-        _ = echo "=== Loaded `stable` Plugins ==="
+        _ = log section "Loaded `stable` Plugins"
         report plugin file list pfiles
 
 op :: report plugin file list [String] => Int
@@ -984,13 +1036,13 @@ op :: dispatch command StableCommand on StableConfig => (Bool, StableConfig, Int
       dispatch command CmdExit on cfg = (False, cfg, 0)
       dispatch command CmdHelp on cfg = (True, cfg, run task help)
       dispatch command CmdVersion on cfg =
-        _ = echo "stable 0.9.5 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
+        _ = echo "stable 0.9.6 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
         (True, cfg, 0)
       dispatch command CmdInfo on cfg = (True, cfg, run task info on cfg)
       dispatch command CmdReload on _ =
         new_cfg = load build config from "build.rg"
         pname = project name of new_cfg
-        _ = echo "[info] Reloaded build.rg — current project is '{pname}'"
+        _ = log info "Reloaded build.rg — current project is '{pname}'"
         (True, new_cfg, 0)
       dispatch command CmdCheck on cfg = (True, cfg, run task check on cfg)
       dispatch command (CmdNew extra) on cfg = (True, cfg, run task new args extra)
@@ -1024,7 +1076,7 @@ op :: execute parsed command (Bool, StableCommand, String) on StableConfig => (B
       execute parsed command (True, cmd, _) on cfg =
         dispatch command cmd on cfg
       execute parsed command (False, _, unknown) on cfg =
-        _ = echo "[error] Unknown command: '{unknown}'. Type 'help' or 'tasks' for available commands."
+        _ = log error "Unknown command: '{unknown}'. Type 'help' or 'tasks' for available commands."
         (True, cfg, 1)
 
 op :: repl loop for StableConfig => ()
@@ -1044,16 +1096,16 @@ op :: repl step for StableConfig input (Bool, String) => ()
 
 op :: repl continue with (Bool, StableConfig, Int) => ()
       repl continue with (False, _, _)             =
-        echo "[info] Exiting stable."
+        log info "Exiting stable."
       repl continue with (True, next_cfg, _)       =
         repl loop for next_cfg
 
 op :: start interactive shell for StableConfig => ()
       start interactive shell for (ProjectConfig name_str ver main_ep sdir tdir out_dir) =
-        _ = echo "[info] Welcome to stable 0.9.5 (Ridgun Build Tool — 100% Ridgun)"
-        _ = echo "[info] Loading project definition from build.rg ..."
-        _ = echo "[info] Set current project to '{name_str}' v{ver} (main: {main_ep})"
-        _ = echo "[info] Commands: 'built' (or 'build'), 'run', 'test', 'check', 'compile', 'clean', 'info', 'exit'"
+        _ = log info "Welcome to stable 0.9.6 (Ridgun Build Tool — 100% Ridgun)"
+        _ = log info "Loading project definition from build.rg ..."
+        _ = log info "Set current project to '{name_str}' v{ver} (main: {main_ep})"
+        _ = log info "Commands: 'built' (or 'build'), 'run', 'test', 'check', 'compile', 'clean', 'info', 'exit'"
         repl loop for (ProjectConfig name_str ver main_ep sdir tdir out_dir)
 
 op :: strip stable argv [String]     => [String]
@@ -1069,11 +1121,18 @@ op :: strip stable script [String] => [String]
         | (str_contains first_arg "stable.rg") OR (str_contains first_arg "stable/main.rg") = rem_args
         | otherwise = [first_arg] :: rem_args
 
+op :: exit if non zero Int => ()
+      exit if non zero 0   =  ()
+      exit if non zero st  =  sys_exit st
+
 op :: dispatch stable cli [String]  on StableConfig => ()
       dispatch stable cli []        on cfg          =  start interactive shell for cfg
       dispatch stable cli args_list on cfg          =
-        _ = execute command args_list on cfg
-        ()
+        res = execute command args_list on cfg
+        exit if non zero (trd3 res)
+
+fn :: trd3 (Bool, StableConfig, Int) => Int
+      trd3 (_, _, st)                =  st
 
 fn :: main => ()
       main =

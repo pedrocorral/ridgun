@@ -1,18 +1,18 @@
 ---
-updated: 2026-10-21T21:17
+updated: 2026-10-21T22:53
 active_task: none
 agent_runtime: gemini
 ---
 # Session state — read this first when resuming
 
 ## Where we are (3 lines max)
-- Branch `main`: Completed `TASK-0012` (`FR-COMP-007`) and released Ridgun `v0.9.5` (self-hosted `bin/ridgunc` and `bin/stable`).
-- Implemented cross-platform PAL primitives (`sys os => SysOs`, `sys arch => SysArch`, `sys open mode`, `sys open`, `sys close`, `sys read fd`, `sys write fd`, `sys poll`, `sys terminate`, `sys kill`, `sys call`), duration suffixes (`_ms`, `_s`, `_min`), and declarative `with timeout <duration> do` execution quotas.
-- Stored the official PAL & `.rglib` system library specification in `docs/lang/pal-and-system-libraries.md` (and synced `/tmp/ridgun_posix_io_library_spec.md` + `harness/`).
+- Branch `main`: Completed `TASK-0014` (`FR-TOOL-002`, `FR-TOOL-003`, `FR-COMP-006`) and released Ridgun `v0.9.6` (self-hosted `bin/ridgunc` and `bin/stable`, with previous binaries backed up at `bin/ridgunc.bak` and `bin/stable.bak`).
+- Refactored `src/main/ridgun/stable/main.rg` to consume standard libraries from `/home/boogie/ridgun-libs` (`str.rglib`, `posix.rglib`, `io.rglib`, `list.rglib`, `cli.rglib`) and added structured logging functions (`log info`, `log success`, `log error`, `log ok`, `log err`, `log pass`, `log fail`, `log step`, `log section`).
+- Upgraded `src/test/ridgun/test.rg` and `src/test/ridgun/test lib and plugins.rg` with comprehensive multi-angle test coverage for `stable` (all 5/5 test suites passing with 0 failures).
 ## Files to load for the active task (nothing else)
-- `docs/requirements/functional/compiler/FR-COMP-007-low-level-posix-fd-poll-syscalls-and-with-timeout-blocks.md`
-- `docs/lang/pal-and-system-libraries.md`
-- `docs/road-map/completed/2026-10/TASK-0012-implement-low-level-linux-fd-poll-syscall-primitiv.md`
+- `src/main/ridgun/stable/main.rg`
+- `src/test/ridgun/test lib and plugins.rg`
+- `docs/road-map/completed/2026-10/TASK-0014-refactor-stable-to-consume-standard-libraries-str-.md`
 ## Last verified facts (tests green? migrations applied? env?)
 - `./bin/stable check` = 13 modules checked, 0 errors.
 - `./bin/stable test` = 5/5 test suites passed (`test basics.rg`, `test core language.rg`, `test lib and plugins.rg`, `test parallel and tensors.rg`, `test strings.rg`).

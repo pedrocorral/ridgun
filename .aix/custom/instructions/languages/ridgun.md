@@ -5,11 +5,11 @@ description: "Use when writing, refactoring, or reviewing Ridgun (.rg) source fi
 applyTo: "**/*.rg,build.rg"
 optional: false
 ---
-# Ridgun conventions (`.rg` — `v0.9.5`)
+# Ridgun conventions (`.rg` — `v0.9.6`)
 
 Read and follow the `implement-code-ridgun` skill before editing any `.rg` file.
 
-## Layout and 100% pure-Ridgun ELF64 toolchain (`v0.9.5`)
+## Layout and 100% pure-Ridgun ELF64 toolchain (`v0.9.6`)
 - Shared modules live in `src/main/ridgun/lib/*.rg`; executable entrypoints live in `src/main/ridgun/<target>/main.rg` (compiled directly to standalone Linux ELF64 executables at `target/<target>` without Rust, C, or `rustc`).
 - Library compilation (`FR-COMP-006`): modules without `fn :: main => ()` can be compiled as `.rglib` bundles (`ridgunc build --lib <file.rg> -o <out.rglib>`) and native Linux ELF64 `ET_DYN` shared objects (`ridgunc build --so <file.rg> -o <lib.so>`), or built via `stable built lib` (`fn :: project kind => String` = `"lib"` in `build.rg`, scaffolded via `stable new --lib <name>`).
 - Extensible `stable` (`FR-TOOL-003`): projects can declare custom tasks in `build.rg` (`fn :: task <name> => String`) and load plugins (`fn :: plugins => [String]`, `plugins/*.rg`, `.stable/plugins/*.rg`); inspect via `stable tasks` and `stable plugins`.

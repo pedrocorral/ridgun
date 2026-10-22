@@ -1855,20 +1855,6 @@ fn :: is_core_compiler_mod String      => Bool
       is_core_compiler_mod "formatter" =  True
       is_core_compiler_mod _           =  False
 
-fn :: join_words_space [String] => String
-      join_words_space []       =  ""
-      join_words_space (w:[])   =  w
-      join_words_space (w:ws)   =  w + " " + (join_words_space ws)
-
-fn :: collect_import_words [RToken]          [String] => ([String], [RToken])
-      collect_import_words []                acc      =  (acc, [])
-      collect_import_words (TokEof:rest)     acc      =  (acc, [TokEof] :: rest)
-      collect_import_words (TokNewline:rest) acc      =  (acc, rest)
-      collect_import_words ((TokIdent w):rest) acc    =  collect_import_words rest (acc :: [w])
-      collect_import_words (TokType:rest)    acc      =  collect_import_words rest (acc :: ["type"])
-      collect_import_words (TokWith:rest)    acc      =  collect_import_words rest (acc :: ["with"])
-      collect_import_words (_:rest)          acc      =  (acc, skip_to_newline rest)
-
 fn :: try_read_candidate_paths [String] => String
       try_read_candidate_paths []       =  ""
       try_read_candidate_paths (p:ps)   =
@@ -1878,46 +1864,6 @@ fn :: try_read_candidate_paths [String] => String
 fn :: try_read_candidate_step String  [String] => String
       try_read_candidate_step ""      ps       =  try_read_candidate_paths ps
       try_read_candidate_step content _        =  content
-
-fn :: resolve_import_candidates Bool  [String] => [String]
-      resolve_import_candidates True  (p:_)    =
-        [p, p + ".rglib", p + ".rg", "target/" + p, "dist/" + p, "lib/" + p, ".stable/deps/" + p]
-      resolve_import_candidates False []       =  []
-      resolve_import_candidates False (w:[])
-        | is_core_compiler_mod w = []
-        | otherwise =
-          [w + ".rglib", "target/" + w + ".rglib", "dist/" + w + ".rglib", "lib/" + w + ".rglib", ".stable/deps/" + w + ".rglib", "src/main/ridgun/lib/" + w + ".rglib"]
-      resolve_import_candidates False words    =
-        u_name = join_words_underscore words
-        sp_name = join_words_space words
-        [u_name + ".rglib", sp_name + ".rglib", "target/" + u_name + ".rglib", "target/" + sp_name + ".rglib", "dist/" + u_name + ".rglib", "lib/" + u_name + ".rglib", "lib/" + sp_name + ".rglib", ".stable/deps/" + u_name + ".rglib", "src/main/ridgun/lib/" + u_name + ".rglib", sp_name + ".rg", "lib/" + sp_name + ".rg", "src/main/ridgun/lib/" + sp_name + ".rg"]
-
-fn :: parse_import_stmt [RToken] [RFnDef] [RTypeDef] => RProgram
-      parse_import_stmt ((TokStr path):rest) fns tys =
-        cands = resolve_import_candidates True [path]
-        parse_import_with_src (try_read_candidate_paths cands) (skip_to_newline rest) fns tys
-      parse_import_stmt ((TokRawStr path):rest) fns tys =
-        cands = resolve_import_candidates True [path]
-        parse_import_with_src (try_read_candidate_paths cands) (skip_to_newline rest) fns tys
-      parse_import_stmt rest     fns      tys        =
-        w_res = collect_import_words rest []
-        parse_import_words w_res fns tys
-
-fn :: parse_import_words ([String], [RToken]) [RFnDef] [RTypeDef] => RProgram
-      parse_import_words (words, after_line)  fns      tys        =
-        cands = resolve_import_candidates False words
-        parse_import_with_src (try_read_candidate_paths cands) after_line fns tys
-
-fn :: parse_import_with_src String  [RToken]   [RFnDef] [RTypeDef] => RProgram
-      parse_import_with_src ""      after_line fns      tys        =
-        parse_items after_line fns tys
-      parse_import_with_src lib_src after_line fns      tys        =
-        lib_prog = parse_items (tokenize_src lib_src) fns tys
-        continue_after_import lib_prog after_line
-
-fn :: continue_after_import RProgram [RToken]   => RProgram
-      continue_after_import (Program fns2 tys2) after_line =
-        parse_items after_line fns2 tys2
 
 fn :: rglib_dir_of String Int Int Int        => String
       rglib_dir_of fpath  pos len last_slash
@@ -1934,13 +1880,18 @@ fn :: strip_quotes_len String Int => String
 fn :: strip_quotes String => String
       strip_quotes s      =  strip_quotes_len s (str_len s)
 
+fn :: has_local_rg_module String String => Bool
+      has_local_rg_module pdir   spec   =
+        ((read_file (pdir + "/" + spec + ".rg")) != "") OR ((read_file ("src/main/ridgun/lib/" + spec + ".rg")) != "")
+
 fn :: resolve_rglib_clean String String => String
       resolve_rglib_clean pdir   spec
         | is_core_compiler_mod spec = ""
         | str_contains spec ".rglib" =
-          try_read_candidate_paths [spec, pdir + "/" + spec, "target/" + spec, "dist/" + spec, "lib/" + spec, ".stable/deps/" + spec]
+          try_read_candidate_paths [spec, pdir + "/" + spec, "target/" + spec, "target/bundles/" + spec, "dist/" + spec, "lib/" + spec, ".stable/deps/" + spec, "/home/boogie/ridgun-libs/target/bundles/" + spec, "/home/boogie/ridgun-libs/target/" + spec]
+        | has_local_rg_module pdir spec = ""
         | otherwise =
-          try_read_candidate_paths [pdir + "/" + spec + ".rglib", pdir + "/lib/" + spec + ".rglib", spec + ".rglib", "target/" + spec + ".rglib", "dist/" + spec + ".rglib", "lib/" + spec + ".rglib", ".stable/deps/" + spec + ".rglib", "src/main/ridgun/lib/" + spec + ".rglib"]
+          try_read_candidate_paths [pdir + "/" + spec + ".rglib", pdir + "/lib/" + spec + ".rglib", spec + ".rglib", "target/" + spec + ".rglib", "target/bundles/" + spec + ".rglib", "dist/" + spec + ".rglib", "lib/" + spec + ".rglib", ".stable/deps/" + spec + ".rglib", "src/main/ridgun/lib/" + spec + ".rglib", "/home/boogie/ridgun-libs/target/bundles/" + spec + ".rglib", "/home/boogie/ridgun-libs/target/" + spec + ".rglib"]
 
 fn :: rglib_trim_lead String Int Int => String
       rglib_trim_lead s      pos len
@@ -2002,7 +1953,7 @@ fn :: parse_items [RToken]           [RFnDef] [RTypeDef] => RProgram
       parse_items (TokEof:_)         fns      tys        =  Program fns tys
       parse_items (TokNewline:rest)  fns      tys        =  parse_items rest fns tys
       parse_items (TokAt:rest)       fns      tys        =  parse_items (skip_to_newline rest) fns tys
-      parse_items (TokImport:rest)   fns      tys        =  parse_import_stmt rest fns tys
+      parse_items (TokImport:rest)   fns      tys        =  parse_items (skip_to_newline rest) fns tys
       parse_items (TokFn:rest)       fns      tys        =
         f_res = parse_fn_decl ([TokFn] :: rest)
         parse_items_after_fn f_res fns tys
