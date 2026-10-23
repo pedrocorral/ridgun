@@ -15,6 +15,6 @@ agent_runtime: gemini
 - `./bin/stable test` = 5/5 test suites passed (`test basics.rg`, `test core language.rg`, `test lib and plugins.rg`, `test parallel and tensors.rg`, `test strings.rg`).
 - `aix docs validate` = 0 errors.
 ## Immediate next action
-- Pick next roadmap task when requested.
+- Start `TASK-0019` (Greek and selected Unicode letters in function, operator, and variable identifiers) or `TASK-0020` (changing `agent` creation keyword to `agentic` so `agent` can be used as a variable identifier) from `docs/road-map/pending/backlog/`.
 ## Blockers / questions for the user
 - None.
