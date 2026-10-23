@@ -1,6 +1,6 @@
 -- ============================================================
 -- src/main/ridgun/stable/main.rg
--- `stable` v0.9.15 — The Interactive Build Tool for Ridgun (100% Ridgun)
+-- `stable` v0.9.16 — The Interactive Build Tool for Ridgun (100% Ridgun)
 -- Written in Ridgun's natural-language mixfix operator style (`op :: ...`).
 -- Decoupled from `ridgunc` internals per ADR-0001: delegates `check`,
 -- `compile`, `build`, `build lib`, and test/plugin compilation to the
@@ -1107,7 +1107,7 @@ op :: dispatch command StableCommand on StableConfig => (Bool, StableConfig, Int
       dispatch command CmdExit on cfg = (False, cfg, 0)
       dispatch command CmdHelp on cfg = (True, cfg, run task help)
       dispatch command CmdVersion on cfg =
-        _ = echo "stable 0.9.15 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
+        _ = echo "stable 0.9.16 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
         (True, cfg, 0)
       dispatch command CmdInfo on cfg = (True, cfg, run task info on cfg)
       dispatch command CmdReload on _ =
@@ -1173,7 +1173,7 @@ op :: repl continue with (Bool, StableConfig, Int) => ()
 
 op :: start interactive shell for StableConfig => ()
       start interactive shell for (ProjectConfig name_str ver main_ep sdir tdir out_dir) =
-        _ = log info "Welcome to stable 0.9.15 (Ridgun Build Tool — 100% Ridgun)"
+        _ = log info "Welcome to stable 0.9.16 (Ridgun Build Tool — 100% Ridgun)"
         _ = log info "Loading project definition from build.rg ..."
         _ = log info "Set current project to '{name_str}' v{ver} (main: {main_ep})"
         _ = log info "Commands: 'built' (or 'build'), 'run', 'test', 'check', 'compile', 'clean', 'info', 'exit'"
