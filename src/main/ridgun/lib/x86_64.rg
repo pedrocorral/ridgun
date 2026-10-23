@@ -4,6 +4,7 @@
 -- @implements FR-COMP-004
 -- @implements FR-COMP-007
 -- @implements FR-COMP-009
+-- @implements FR-COMP-010
 -- ============================================================
 
 import elf64
@@ -79,15 +80,25 @@ fn :: x86_64 instr size RNativeInstr       => Int
       x86_64 instr size (NMatchAdt _ _ _ -2) = 21
       x86_64 instr size (NMatchAdt _ _ _ -3) = 28
       x86_64 instr size (NMatchAdt _ _ _ -4) = 28
+      x86_64 instr size (NMatchAdt _ _ _ -5) = 28
       x86_64 instr size (NMatchAdt _ _ _ _) = 43
       x86_64 instr size (NListHead _)      =  13
       x86_64 instr size (NListTail _)      =  13
       x86_64 instr size (NTupleGet _ _)    =  23
-      x86_64 instr size (NAdtField _ _)    =  23
+      x86_64 instr size (NAdtField _ idx)
+        | idx <= -10 = 25
+        | otherwise = 23
       x86_64 instr size (NPackSeq _)       =  18
       x86_64 instr size NAsBool            =  8
-      x86_64 instr size NNot               =  8
+      x86_64 instr size NNot               =  18
       x86_64 instr size NOut               =  8
+      x86_64 instr size (NBinOp 11 _)      =  18
+      x86_64 instr size (NBinOp 12 _)      =  18
+      x86_64 instr size (NBinOp 13 _)      =  30
+      x86_64 instr size (NBinOp 17 _)      =  34
+      x86_64 instr size (NBinOp 18 _)      =  34
+      x86_64 instr size (NBinOp 19 _)      =  34
+      x86_64 instr size (NBinOp 20 _)      =  34
       x86_64 instr size (NBinOp _ _)       =  26
       x86_64 instr size (NAdtSet _ _)      =  26
       x86_64 instr size (NMakeList _ _)    =  23
@@ -202,6 +213,8 @@ fn :: x86_64 encode instr RNativeInstr Int Int Int Int [RLabelEntry] [RLabelEntr
         (x86 mov slot rdi slot) :: [49, 192, 72, 133, 255, 116, 13, 64, 246, 199, 7, 117, 7, 72, 131, 63, 1, 15, 148, 192]
       x86_64 encode instr (NMatchAdt slot _ _ -4) _ _ _ _ _ _ =
         (x86 mov slot rdi slot) :: [49, 192, 72, 133, 255, 116, 13, 64, 246, 199, 7, 117, 7, 72, 131, 63, 0, 15, 148, 192]
+      x86_64 encode instr (NMatchAdt slot _ _ -5) _ _ _ _ _ _ =
+        (x86 mov slot rdi slot) :: [49, 192, 72, 133, 255, 116, 13, 64, 246, 199, 7, 117, 7, 72, 131, 63, 5, 15, 148, 192]
       x86_64 encode instr (NMatchAdt slot off len arity) cur_vaddr _ _ rodata_vaddr _ _ =
         (x86 mov slot rdi slot) :: (x86 mov imm64 rsi (rodata_vaddr + off)) :: (x86 mov imm64 rdx len) :: (x86 mov imm64 rcx arity) :: (x86 call rt 31 (cur_vaddr + 43))
       x86_64 encode instr (NListHead slot) cur_vaddr _ _ _ _ _ =
@@ -210,16 +223,37 @@ fn :: x86_64 encode instr RNativeInstr Int Int Int Int [RLabelEntry] [RLabelEntr
         (x86 mov slot rdi slot) :: (x86 call rt 28 (cur_vaddr + 13))
       x86_64 encode instr (NTupleGet slot idx) cur_vaddr _ _ _ _ _ =
         (x86 mov slot rdi slot) :: (x86 mov imm64 rsi idx) :: (x86 call rt 30 (cur_vaddr + 23))
-      x86_64 encode instr (NAdtField slot idx) cur_vaddr _ _ _ _ _ =
-        (x86 mov slot rdi slot) :: (x86 mov imm64 rsi idx) :: (x86 call rt 32 (cur_vaddr + 23))
+      x86_64 encode instr (NAdtField slot -1) _ _ _ _ _ _ =
+        (x86 mov slot rdi slot) :: [72, 139, 127, 8, 72, 139, 71, 16, 72, 1, 192, 72, 131, 200, 1]
+      x86_64 encode instr (NAdtField slot -2) _ _ _ _ _ _ =
+        (x86 mov slot rdi slot) :: [72, 139, 127, 16, 72, 139, 71, 16, 72, 1, 192, 72, 131, 200, 1]
+      x86_64 encode instr (NAdtField slot idx) vaddr _ _ _ _ _
+        | idx <= -10 =
+          (x86 mov slot rdi slot) :: [72, 139, 127, 8, 72, 139, 127, 8, 72, 139, 71, ((0 - 10 - idx) * 8), 72, 1, 192, 12, 1]
+        | otherwise =
+          (x86 mov slot rdi slot) :: (x86 mov imm64 rsi idx) :: (x86 call rt 32 (vaddr + 23))
       x86_64 encode instr (NPackSeq arity) cur_vaddr _ _ _ _ _ =
         [72, 137, 231] :: (x86 mov imm64 rsi arity) :: (x86 call rt 19 (cur_vaddr + 18))
       x86_64 encode instr NAsBool cur_vaddr _ _ _ _ _ =
         [72, 137, 199] :: (x86 call rt 20 (cur_vaddr + 8))
-      x86_64 encode instr NNot cur_vaddr _ _ _ _ _ =
-        [72, 137, 199] :: (x86 call rt 34 (cur_vaddr + 8))
+      x86_64 encode instr NNot vaddr _ _ _ _ _ =
+        [168, 1, 116, 6, 72, 131, 240, 254, 235, 8, 72, 137, 199] :: (x86 call rt 34 (vaddr + 18))
       x86_64 encode instr NOut cur_vaddr _ _ _ _ _ =
         [72, 137, 199] :: (x86 call rt 35 (cur_vaddr + 8))
+      x86_64 encode instr (NBinOp 11 slot) _ _ _ _ _ _ =
+        (x86 lea slot rsi slot) :: [72, 139, 62, 72, 131, 38, 0, 72, 33, 248]
+      x86_64 encode instr (NBinOp 12 slot) _ _ _ _ _ _ =
+        (x86 lea slot rsi slot) :: [72, 139, 62, 72, 131, 38, 0, 72, 9, 248]
+      x86_64 encode instr (NBinOp 13 slot) _ _ _ _ _ _ =
+        (x86 lea slot rsi slot) :: [72, 139, 62, 72, 131, 38, 0, 137, 249, 131, 225, 1, 72, 49, 248, 72, 131, 192, 2, 72, 41, 200]
+      x86_64 encode instr (NBinOp 17 slot) _ _ _ _ _ _ =
+        [72, 137, 193, 72, 209, 233] :: (x86 lea slot rsi slot) :: [72, 139, 6, 72, 131, 38, 0, 72, 209, 232, 72, 211, 224, 72, 1, 192, 72, 131, 200, 1]
+      x86_64 encode instr (NBinOp 18 slot) _ _ _ _ _ _ =
+        [72, 137, 193, 72, 209, 233] :: (x86 lea slot rsi slot) :: [72, 139, 6, 72, 131, 38, 0, 72, 209, 232, 72, 211, 232, 72, 1, 192, 72, 131, 200, 1]
+      x86_64 encode instr (NBinOp 19 slot) _ _ _ _ _ _ =
+        [72, 137, 193, 72, 209, 233] :: (x86 lea slot rsi slot) :: [72, 139, 6, 72, 131, 38, 0, 72, 209, 232, 72, 211, 200, 72, 1, 192, 72, 131, 200, 1]
+      x86_64 encode instr (NBinOp 20 slot) _ _ _ _ _ _ =
+        [72, 137, 193, 72, 209, 233] :: (x86 lea slot rsi slot) :: [72, 139, 6, 72, 131, 38, 0, 72, 209, 232, 72, 211, 192, 72, 1, 192, 72, 131, 200, 1]
       x86_64 encode instr (NBinOp op_id lhs_slot) cur_vaddr _ _ _ _ _ =
         (x86 mov imm64 rdi op_id) :: (x86 lea slot rsi lhs_slot) :: [72, 137, 194] :: (x86 call rt 37 (cur_vaddr + 26))
       x86_64 encode instr (NAdtSet rec_slot idx) cur_vaddr _ _ _ _ _ =

@@ -1,8 +1,8 @@
 ---
-rule: "Never overwrite bin/stable or bin/ridgunc until the newly built candidate binary in target/ has been 100% verified with check and test."
+rule: "Never touch ~/.local/bin/ symlinks or overwrite bin/ridgunc and bin/stable until the candidate binary in target/ is 100% verified and fast."
 author: pedro@obdin.com
 scope: project
-updated: 2026-10-21
+updated: 2026-10-23
 ---
-**Why:** `bin/ridgunc` and `bin/stable` are the self-hosted bootstrap binaries of the toolchain; overwriting them before proving the new binary works can break self-hosting.
-**How to apply:** Always compile changes into a candidate binary in `target/` first (e.g. `target/stable_candidate`), run `target/stable_candidate check` and `target/stable_candidate test`, and only copy to `bin/stable` / `bin/ridgunc` after 100% of checks and tests pass.
+**Why:** `~/.local/bin/ridgunc` and `~/.local/bin/stable` are symlinks to `bin/`, and on 2026-10-23 overwriting `bin/ridgunc` before verifying external `.stable/deps/` imports broke downstream projects.
+**How to apply:** Never modify `~/.local/bin/` directly. Build candidates in `target/` (`target/ridgunc_candidate`, `target/stable_candidate`), verify speed and tests in `target/`, and only copy to `bin/` (`cp -f --remove-destination`) once 100% verified.

@@ -14,6 +14,7 @@
 -- @implements FR-COMP-007
 -- @implements FR-COMP-008
 -- @implements FR-COMP-009
+-- @implements FR-COMP-010
 -- @implements FR-VM-001
 -- @implements FR-VM-002
 -- ============================================================
@@ -56,7 +57,7 @@ fn :: parse_type_list_strs [String] => [RType]
 
 fn :: is_int_type_name String => Bool
       is_int_type_name s      =
-        s == "Int" OR s == "U8" OR s == "U16" OR s == "U32" OR s == "U64" OR s == "I8" OR s == "I16" OR s == "I32" OR s == "I64" OR s == "Usize"
+        s == "Int" OR s == "Byte" OR s == "U8" OR s == "U16" OR s == "U32" OR s == "U64" OR s == "I8" OR s == "I16" OR s == "I32" OR s == "I64" OR s == "Usize"
 
 fn :: find_fat_arrow_idx String Int Int => Int
       find_fat_arrow_idx s      pos len
@@ -140,7 +141,7 @@ fn :: rtype_list_len [RType] => Int
 fn :: dims_compatible [String] [String] => Bool
       dims_compatible []       []       =  True
       dims_compatible (a:as)   (b:bs)
-        | a == b OR (is_lower_ident a) OR (is_lower_ident b) = dims_compatible as bs
+        | a == b OR a == "_" OR b == "_" OR (is_lower_ident a) OR (is_lower_ident b) = dims_compatible as bs
         | otherwise = False
       dims_compatible _        _        =  False
 
@@ -398,6 +399,16 @@ fn :: ctor_param_types_arity_fallback [RTypeBind] String (Bool, [RType]) => [RTy
       ctor_param_types_arity_fallback fns ctor_name (False, _) =
         ctor_param_types fns ctor_name
 
+fn :: tensor pat expected RType        => RType
+      tensor pat expected (TyTensor d) =  TyTensor d
+      tensor pat expected _            =  TyTensor []
+
+fn :: bind int pats [RPattern] [RTypeBind] [RTypeBind] => [RTypeBind]
+      bind int pats []     locals _   =  locals
+      bind int pats (p:ps) locals fns =
+        locals1 = bind_pattern p TyInt locals fns
+        bind int pats ps locals1 fns
+
 fn :: bind_pattern RPattern RType [RTypeBind] [RTypeBind] => [RTypeBind]
       bind_pattern (PatVar v) expected locals _ =
         put_type_bind locals v expected
@@ -408,6 +419,9 @@ fn :: bind_pattern RPattern RType [RTypeBind] [RTypeBind] => [RTypeBind]
         bind_pattern t (TyList elem_ty) locals1 fns
       bind_pattern (PatTuple pats) (TyTuple tys) locals fns =
         bind_tuple_pats pats tys 0 locals fns
+      bind_pattern (PatCtor ":tensor-pat:" (t_pat:dim_pats)) expected locals fns =
+        locals1 = bind_pattern t_pat (tensor pat expected expected) locals fns
+        bind int pats dim_pats locals1 fns
       bind_pattern (PatCtor ctor_name args) expected locals fns =
         param_tys = ctor_param_types_for fns ctor_name expected (pat_list_arity args)
         bind_tuple_pats args param_tys 0 locals fns
@@ -447,10 +461,12 @@ fn :: bind_or_check_dims [String] [String] String String [RDimBind] => ([RDimBin
 
 fn :: check_single_dim String String String String (Bool, String) [RDimBind] => ([RDimBind], [RTypeError])
       check_single_dim ad pd callee fn_name (True, bound) dim_env
+        | pd == "_" OR ad == "_" = (dim_env, [])
         | bound != ad = (dim_env, [TypeError fn_name ("tensor dimension mismatch in call to '" + callee + "': symbolic dim '" + pd + "' bound to both '" + bound + "' and '" + ad + "'")])
         | otherwise = (dim_env, [])
-      check_single_dim ad pd _ _ (False, _) dim_env =
-        ([DimBind pd ad] :: dim_env, [])
+      check_single_dim ad pd _ _ (False, _) dim_env
+        | pd == "_" OR ad == "_" = (dim_env, [])
+        | otherwise = ([DimBind pd ad] :: dim_env, [])
 
 fn :: bind_or_check_dims_cont [String] [String] String String ([RDimBind], [RTypeError]) => ([RDimBind], [RTypeError])
       bind_or_check_dims_cont ads pds callee fn_name (dim_env1, errs1) =
@@ -508,6 +524,13 @@ fn :: binop_symbol RBinOp => String
       binop_symbol OpMul  =  "*"
       binop_symbol OpDiv  =  "/"
       binop_symbol OpMod  =  "%"
+      binop_symbol OpAnd  =  "and"
+      binop_symbol OpOr   =  "or"
+      binop_symbol OpXor  =  "xor"
+      binop_symbol OpShl  =  "shl"
+      binop_symbol OpShr  =  "shr"
+      binop_symbol OpRotr =  "rotr"
+      binop_symbol OpRotl =  "rotl"
       binop_symbol _      =  ""
 
 fn :: check_overloaded_arith RBinOp RType RType [RTypeBind] String => (RType, [RTypeError])
@@ -550,6 +573,10 @@ fn :: check_binop RBinOp RType RType [RTypeBind] String => (RType, [RTypeError])
       check_binop OpMul l r fns fn_name = check_arith_binop OpMul l r fns fn_name
       check_binop OpDiv l r fns fn_name = check_arith_binop OpDiv l r fns fn_name
       check_binop OpMod l r fns fn_name = check_arith_binop OpMod l r fns fn_name
+      check_binop OpShl l r fns fn_name = check_arith_binop OpShl l r fns fn_name
+      check_binop OpShr l r fns fn_name = check_arith_binop OpShr l r fns fn_name
+      check_binop OpRotr l r fns fn_name = check_arith_binop OpRotr l r fns fn_name
+      check_binop OpRotl l r fns fn_name = check_arith_binop OpRotl l r fns fn_name
       check_binop OpMatMul l r _ fn_name = check_matmul_binop l r fn_name
       check_binop OpFlatJoin _ _ _ _ = (TyVar "_seq", [])
       check_binop OpConcat l r _ fn_name = check_concat_binop l r fn_name
@@ -559,15 +586,21 @@ fn :: check_binop RBinOp RType RType [RTypeBind] String => (RType, [RTypeError])
       check_binop OpNeq l r _ fn_name
         | types_compatible l r = (TyBool, [])
         | otherwise = (TyBool, [TypeError fn_name ("equality comparison requires compatible types, got " + (rtype_to_str l) + " and " + (rtype_to_str r))])
-      check_binop OpAnd l r _ fn_name
+      check_binop OpAnd l r fns fn_name
         | (types_compatible l TyBool) AND (types_compatible r TyBool) = (TyBool, [])
-        | otherwise = (TyBool, [TypeError fn_name "logical operator requires Bool operands"])
-      check_binop OpOr l r _ fn_name
+        | (is_int_or_poly l) AND (is_int_or_poly r) = (TyInt, [])
+        | (types_compatible l (TyTensor [])) AND (types_compatible r (TyTensor [])) = (l, [])
+        | otherwise = check_overloaded_arith OpAnd l r fns fn_name
+      check_binop OpOr l r fns fn_name
         | (types_compatible l TyBool) AND (types_compatible r TyBool) = (TyBool, [])
-        | otherwise = (TyBool, [TypeError fn_name "logical operator requires Bool operands"])
-      check_binop OpXor l r _ fn_name
+        | (is_int_or_poly l) AND (is_int_or_poly r) = (TyInt, [])
+        | (types_compatible l (TyTensor [])) AND (types_compatible r (TyTensor [])) = (l, [])
+        | otherwise = check_overloaded_arith OpOr l r fns fn_name
+      check_binop OpXor l r fns fn_name
         | (types_compatible l TyBool) AND (types_compatible r TyBool) = (TyBool, [])
-        | otherwise = (TyBool, [TypeError fn_name "logical operator requires Bool operands"])
+        | (is_int_or_poly l) AND (is_int_or_poly r) = (TyInt, [])
+        | (types_compatible l (TyTensor [])) AND (types_compatible r (TyTensor [])) = (l, [])
+        | otherwise = check_overloaded_arith OpXor l r fns fn_name
       check_binop _ l r _ fn_name
         | (types_compatible l TyInt AND types_compatible r TyInt) OR (types_compatible l TyReal AND types_compatible r TyReal) OR (types_compatible l TyChar AND types_compatible r TyChar) = (TyBool, [])
         | otherwise = (TyBool, [TypeError fn_name ("comparison operator requires numeric operands, got " + (rtype_to_str l) + " and " + (rtype_to_str r))])
@@ -734,6 +767,9 @@ fn :: finish_poly_call RType [RTypeError] ([RTypeBind], [RTypeError]) => (RType,
         (subst_poly_type ret_ty poly_env, fixed_errs :: poly_errs)
 
 fn :: check_call_sig String [RType] [RType] RType String => (RType, [RTypeError])
+      check_call_sig callee (first_arg:rest_args) (rec_param:[]) (TyFun inner_params inner_ret) fn_name
+        | (rtype_list_len rest_args) >= 1 AND (types_compatible first_arg rec_param) =
+          check_call_sig callee rest_args inner_params inner_ret fn_name
       check_call_sig callee arg_tys param_tys ret_ty fn_name
         | is_last_variadic param_tys = check_variadic_call callee arg_tys param_tys ret_ty fn_name
         | (rtype_list_len arg_tys) == 1 AND (rtype_list_len param_tys) > 1 = check_tuple_chain_call callee (rtype_at arg_tys 0) arg_tys param_tys ret_ty fn_name
@@ -893,7 +929,7 @@ fn :: check_expr RExpr String [RTypeBind] [RTypeBind] => (RType, [RTypeError])
       check_expr (EIndex base idxs) fn_name locals fns =
         b_res = check_expr base fn_name locals fns
         i_res = check_expr_list idxs fn_name locals fns
-        (TyInt, (snd_errs b_res) :: (snd_list_errs i_res))
+        (infer index expr ty (fst ty b_res) idxs, (snd_errs b_res) :: (snd_list_errs i_res))
       check_expr (EIndexAssign _ idxs val_e) fn_name locals fns =
         i_res = check_expr_list idxs fn_name locals fns
         v_res = check_expr val_e fn_name locals fns
@@ -910,6 +946,13 @@ fn :: check_expr RExpr String [RTypeBind] [RTypeBind] => (RType, [RTypeError])
       check_expr (EBlock stmts) fn_name locals fns =
         check_block_stmts stmts TyUnit fn_name locals fns
 
+fn :: fst ty (RType, [RTypeError]) => RType
+      fst ty (ty, _)               =  ty
+
+fn :: infer index expr ty RType [RExpr] => RType
+      infer index expr ty (TyTuple elem_tys) ((EInt k):[]) = rtype_at elem_tys k
+      infer index expr ty _ _ = TyInt
+
 fn :: snd_errs (RType, [RTypeError]) => [RTypeError]
       snd_errs (_, errs)             =  errs
 
@@ -922,7 +965,9 @@ fn :: discard_tys_return RType  ([RType], [RTypeError]) => (RType, [RTypeError])
 fn :: check_not_inner (RType, [RTypeError]) String  => (RType, [RTypeError])
       check_not_inner (inner_ty, errs)      fn_name
         | types_compatible inner_ty TyBool = (TyBool, errs)
-        | otherwise = (TyBool, errs :: [TypeError fn_name ("NOT requires Bool operand, got " + (rtype_to_str inner_ty))])
+        | is_int_or_poly inner_ty = (TyInt, errs)
+        | types_compatible inner_ty (TyTensor []) = (inner_ty, errs)
+        | otherwise = (TyBool, errs :: [TypeError fn_name ("NOT requires Bool or Int operand, got " + (rtype_to_str inner_ty))])
 
 fn :: check_with_ctx_body String RExpr String [RTypeBind] [RTypeBind] (RType, [RTypeError]) => (RType, [RTypeError])
       check_with_ctx_body "__rg_timeout_ms__" body fn_name locals fns (val_ty, v_errs)
@@ -973,6 +1018,12 @@ fn :: merge_matching_sigs [RType] => (Bool, RType)
 
 fn :: resolve_callee_for_args String [RType] [RTypeBind] [RTypeBind] => (Bool, RType)
       resolve_callee_for_args callee arg_tys locals fns =
+        loc_b = lookup_type_bind locals callee
+        resolve_callee_local_first callee arg_tys locals fns loc_b
+
+fn :: resolve_callee_local_first String [RType] [RTypeBind] [RTypeBind] (Bool, RType) => (Bool, RType)
+      resolve_callee_local_first _ _ _ _ (True, (TyFun p r)) = (True, TyFun p r)
+      resolve_callee_local_first callee arg_tys locals fns _ =
         matched = merge_matching_sigs (collect_matching_sigs fns callee arg_tys)
         resolve_callee_args_fallback callee locals fns matched
 
@@ -1040,6 +1091,20 @@ fn :: finish_call_check String ([RType], [RTypeError]) String [RTypeBind] [RType
       finish_call_check "agent" (arg_tys, arg_errs) fn_name _ _ = check_agent_create arg_tys arg_errs fn_name
       finish_call_check "send_to" (arg_tys, arg_errs) fn_name _ _ = check_agent_send arg_tys arg_errs fn_name
       finish_call_check "ask_to" (arg_tys, arg_errs) fn_name _ _ = check_agent_ask arg_tys arg_errs fn_name
+      finish_call_check ":tensor-zeros:" (_, arg_errs) _ _ _ = (TyTensor [], arg_errs)
+      finish_call_check ":tensor-clone:" (_, arg_errs) _ _ _ = (TyTensor [], arg_errs)
+      finish_call_check ":tensor-row-slice:" (_, arg_errs) _ _ _ = (TyTensor [], arg_errs)
+      finish_call_check ":tensor-col-slice:" (_, arg_errs) _ _ _ = (TyTensor [], arg_errs)
+      finish_call_check ":tensor-set-row:" (_, arg_errs) _ _ _ = (TyUnit, arg_errs)
+      finish_call_check ":tensor-set-col:" (_, arg_errs) _ _ _ = (TyUnit, arg_errs)
+      finish_call_check ":tensor-map-rows:" (_, arg_errs) _ _ _ = (TyTensor [], arg_errs)
+      finish_call_check ":tensor-map-rows-in:" (_, arg_errs) _ _ _ = (TyVar "_any", arg_errs)
+      finish_call_check ":tensor-map-cols:" (_, arg_errs) _ _ _ = (TyTensor [], arg_errs)
+      finish_call_check ":tensor-map-cols-in:" (_, arg_errs) _ _ _ = (TyVar "_any", arg_errs)
+      finish_call_check ":tensor-map-elems:" (_, arg_errs) _ _ _ = (TyTensor [], arg_errs)
+      finish_call_check ":tensor-map-elems-in:" (_, arg_errs) _ _ _ = (TyVar "_any", arg_errs)
+      finish_call_check "__chain__" ((fn_ty:rest_tys), arg_errs) fn_name _ _ =
+        check_call_target "<expr>" rest_tys arg_errs (True, fn_ty) fn_name
       finish_call_check callee (arg_tys, arg_errs) fn_name locals fns =
         base_res = check_call_target callee arg_tys arg_errs (resolve_callee_for_args callee arg_tys locals fns) fn_name
         specialize_hof_return callee arg_tys base_res

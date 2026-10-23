@@ -8,6 +8,8 @@ updated: 2026-10-21
 depends_on:
   - FR-COMP-004
   - FR-COMP-005
+related:
+  - ADR-0001
 verified_by: []
 ---
 # FR-COMP-006 — Library Compilation (`.rglib` Package Bundles and ELF64 Shared Objects `.so`) Without Requiring `main`

@@ -2,24 +2,14 @@
 -- src/main/ridgun/stable/main.rg
 -- `stable` v0.9.15 — The Interactive Build Tool for Ridgun (100% Ridgun)
 -- Written in Ridgun's natural-language mixfix operator style (`op :: ...`).
--- Inspired by Scala's sbt: parses `build.rg` using the Ridgun
--- compiler AST, supports `src/main/ridgun/lib/` + parallel
--- executable folders (`src/main/ridgun/<target>/main.rg`),
--- and provides interactive (`stable> `) and batch commands:
--- `build` / `built [target]`, `run [target] [args...]`, `test`,
--- `compile`, `check`, `clean`, `info`, `reload`, `help`, `exit`.
+-- Decoupled from `ridgunc` internals per ADR-0001: delegates `check`,
+-- `compile`, `build`, `build lib`, and test/plugin compilation to the
+-- standalone `ridgunc` CLI binary instead of embedding the compiler.
 -- @implements FR-COMP-006
 -- @implements FR-TOOL-001
 -- @implements FR-TOOL-002
 -- @implements FR-TOOL-003
 -- ============================================================
-import ast
-import lexer
-import parser
-import analyzer
-import typecheck
-import compiler
-import vm
 import formatter
 import str
 import io
@@ -180,15 +170,135 @@ op :: decode prompt status Int => (Bool, String)
         _ = shell_exec "rm -f target/.stable_line.txt"
         (False, "")
 
--- ── `build.rg` AST Configuration Loader ─────────────────────
+-- ── `build.rg` Declarative Configuration & `ridgunc` CLI Bridge ──
 
-op :: extract function body from [RFnDef] named String default String => String
-      extract function body from [] named _ default default_val = default_val
-      extract function body from ((FnDef fn_name _ _ ((FnCase _ _ (EStr val)):_)):rem_fns) named target default default_val
-        | fn_name == target = val
-        | otherwise = extract function body from rem_fns named target default default_val
-      extract function body from (_:rem_fns) named target default default_val =
-        extract function body from rem_fns named target default default_val
+op :: base filename of String at Int len Int       slash Int        => String
+      base filename of path   at pos len total_len slash last_slash
+        | pos >= total_len = str_slice path (last_slash + 1) total_len
+        | (str_char_at path pos) == 47 = base filename of path at (pos + 1) len total_len slash pos
+        | otherwise = base filename of path at (pos + 1) len total_len slash last_slash
+
+op :: parent dir of String at Int len Int       slash Int        => String
+      parent dir of path   at pos len total_len slash last_slash
+        | pos >= total_len = str_slice path 0 last_slash
+        | (str_char_at path pos) == 47 = parent dir of path at (pos + 1) len total_len slash pos
+        | otherwise = parent dir of path at (pos + 1) len total_len slash last_slash
+
+op :: target name from entry String     => String
+      target name from entry entry_path =
+        pdir = parent dir of entry_path at 0 len (str_len entry_path) slash 0
+        base filename of pdir at 0 len (str_len pdir) slash (0 - 1)
+
+op :: first cli arg of [String] => String
+      first cli arg of []       =  ""
+      first cli arg of (a:_)    =  a
+
+op :: pick sibling ridgunc in String => String
+      pick sibling ridgunc in pdir
+        | file (pdir + "/ridgunc_candidate") exists = pdir + "/ridgunc_candidate"
+        | otherwise = pdir + "/ridgunc"
+
+op :: sibling ridgunc from argv0 String => String
+      sibling ridgunc from argv0 a0
+        | str_contains a0 "/" =
+          pdir = parent dir of a0 at 0 len (str_len a0) slash 0
+          pick sibling ridgunc in pdir
+        | otherwise = ""
+
+op :: resolve ridgunc binary => String
+      resolve ridgunc binary =
+        env_rg = env get or "RIDGUNC" ""
+        sib_rg = sibling ridgunc from argv0 (first cli arg of cli_args)
+        pick ridgunc binary env_rg sibling sib_rg
+
+op :: pick ridgunc binary String sibling String => String
+      pick ridgunc binary env_rg sibling sib_rg
+        | (env_rg != "") AND (file env_rg exists) = env_rg
+        | (sib_rg != "") AND (file sib_rg exists) = sib_rg
+        | file "bin/ridgunc" exists = "bin/ridgunc"
+        | file "target/ridgunc" exists = "target/ridgunc"
+        | file "/home/boogie/ridgun/bin/ridgunc" exists = "/home/boogie/ridgun/bin/ridgunc"
+        | otherwise = "ridgunc"
+
+op :: verify artifact built Int at String   => Int
+      verify artifact built 0   at out_path
+        | file out_path exists = 0
+        | otherwise = 1
+      verify artifact built _   at _        =  1
+
+op :: invoke ridgunc build String     into String  => Int
+      invoke ridgunc build entry_path into out_bin =
+        rg_bin = resolve ridgunc binary
+        _ = shell_exec ('rm -f "' + out_bin + '"')
+        st = shell_exec ('"' + rg_bin + '" build "' + entry_path + '" -o "' + out_bin + '" >/dev/null 2>&1')
+        verify artifact built st at out_bin
+
+op :: invoke ridgunc rglib String     into String    => Int
+      invoke ridgunc rglib entry_path into out_rglib =
+        rg_bin = resolve ridgunc binary
+        _ = shell_exec ('rm -f "' + out_rglib + '"')
+        st = shell_exec ('"' + rg_bin + '" build --lib "' + entry_path + '" -o "' + out_rglib + '" >/dev/null 2>&1')
+        verify artifact built st at out_rglib
+
+op :: invoke ridgunc so String     into String => Int
+      invoke ridgunc so entry_path into out_so =
+        rg_bin = resolve ridgunc binary
+        _ = shell_exec ('rm -f "' + out_so + '"')
+        st = shell_exec ('"' + rg_bin + '" build --so "' + entry_path + '" -o "' + out_so + '" >/dev/null 2>&1')
+        verify artifact built st at out_so
+
+op :: extract quoted strings String at Int len Int in_quote Bool cur String into [String] => [String]
+      extract quoted strings s      at pos len n   in_quote False cur _     into acc
+        | pos >= n = acc
+        | (str_char_at s pos) == 34 = extract quoted strings s at (pos + 1) len n in_quote True cur "" into acc
+        | otherwise = extract quoted strings s at (pos + 1) len n in_quote False cur "" into acc
+      extract quoted strings s      at pos len n   in_quote True  cur buf   into acc
+        | pos >= n = acc :: [buf]
+        | ((str_char_at s pos) == 92) AND ((pos + 1) < n) =
+          esc_ch = str_slice s (pos + 1) (pos + 2)
+          extract quoted strings s at (pos + 2) len n in_quote True cur (buf + esc_ch) into acc
+        | (str_char_at s pos) == 34 =
+          extract quoted strings s at (pos + 1) len n in_quote False cur "" into (acc :: [buf])
+        | otherwise =
+          ch = str_slice s pos (pos + 1)
+          extract quoted strings s at (pos + 1) len n in_quote True cur (buf + ch) into acc
+
+op :: quoted strings in String => [String]
+      quoted strings in s      =  extract quoted strings s at 0 len (str_len s) in_quote False cur "" into []
+
+op :: is declaration header line String => Bool
+      is declaration header line l      =
+        (str_starts_with l "--") OR (str_starts_with l "fn ") OR (str_starts_with l "fn::") OR (str_starts_with l "op ") OR (str_starts_with l "op::") OR (str_starts_with l "type ") OR (str_starts_with l "expand ") OR (str_starts_with l "import ") OR (str_starts_with l "|")
+
+op :: parse clause key and rhs String => (String, String)
+      parse clause key and rhs line
+        | is declaration header line line = ("", "")
+        | otherwise = split clause at equals line idx (str index of line "=")
+
+op :: split clause at equals String idx Int    => (String, String)
+      split clause at equals line   idx eq_idx
+        | eq_idx <= 0 = ("", "")
+        | otherwise =
+          lhs_words = split words of (str_slice line 0 eq_idx)
+          lhs_key = str join lhs_words "_"
+          rhs_txt = str trim (str_slice line (eq_idx + 1) (str_len line))
+          (lhs_key, rhs_txt)
+
+op :: first string or default [String] default String      => String
+      first string or default []       default default_val =  default_val
+      first string or default (s:_)    default _           =  s
+
+op :: extract function body from [String] named String default String => String
+      extract function body from []       named _      default default_val = default_val
+      extract function body from (l:ls)   named target default default_val =
+        pair = parse clause key and rhs l
+        match function clause pair rest ls named target default default_val
+
+op :: match function clause (String, String) rest [String] named String default String => String
+      match function clause (k, rhs)         rest ls       named target default default_val
+        | (k == target) AND (str_starts_with rhs "\"") =
+          first string or default (quoted strings in rhs) default default_val
+        | otherwise = extract function body from ls named target default default_val
 
 op :: load build config from String     => StableConfig
       load build config from build_path
@@ -197,18 +307,13 @@ op :: load build config from String     => StableConfig
 
 op :: parse build config source String => StableConfig
       parse build config source src    =
-        toks = tokenize_src src
-        prog_ast = parse_tokens toks
-        extract config from program prog_ast
-
-op :: extract config from program RProgram        => StableConfig
-      extract config from program (Program fns _) =
-        name_str = extract function body from fns named "project_name" default "ridgunc"
-        ver = extract function body from fns named "project_version" default "0.9.14"
-        main_ep = extract function body from fns named "main_entry" default "src/main/ridgun/ridgunc/main.rg"
-        sdir = extract function body from fns named "source_dir" default "src/main/ridgun"
-        tdir = extract function body from fns named "test_dir" default "src/test/ridgun"
-        out_dir = extract function body from fns named "target_dir" default "target"
+        lines = split lines of src
+        name_str = extract function body from lines named "project_name" default "ridgunc"
+        ver = extract function body from lines named "project_version" default "0.9.14"
+        main_ep = extract function body from lines named "main_entry" default "src/main/ridgun/ridgunc/main.rg"
+        sdir = extract function body from lines named "source_dir" default "src/main/ridgun"
+        tdir = extract function body from lines named "test_dir" default "src/test/ridgun"
+        out_dir = extract function body from lines named "target_dir" default "target"
         ProjectConfig name_str ver main_ep sdir tdir out_dir
 
 op :: project name of StableConfig => String
@@ -218,23 +323,23 @@ op :: project name of StableConfig => String
 
 fn :: check_single_module String => (Int, Int)
       check_single_module path   =
-        raw = load_rg_with_libs path
-        toks = tokenize_src raw
-        prog_ast = parse_tokens toks
-        errs = typecheck_program prog_ast
-        report check module path prog prog_ast errors errs
+        rg_bin = resolve ridgunc binary
+        _ = shell_exec "mkdir -p target"
+        chk_file = "target/.stable_chk_out.txt"
+        _ = shell_exec ('"' + rg_bin + '" check "' + path + '" > "' + chk_file + '" 2>&1')
+        out_txt = read_file chk_file
+        _ = shell_exec ('rm -f "' + chk_file + '"')
+        report check module path output out_txt
 
-op :: report check module String prog RProgram errors [RTypeError] => (Int, Int)
-      report check module path   prog prog_ast errors []           =
-        fn_c = count_fn_defs prog_ast
-        ty_c = count_type_defs prog_ast
-        _ = log ok "{path} ({fn_c} fn, {ty_c} types)"
-        (1, 0)
-      report check module path   prog _        errors errs         =
-        ec = type_err_count errs
-        _ = log err "{path}: {ec} error(s)"
-        _ = print error lines (format_type_errors errs)
-        (0, ec)
+op :: report check module String output String  => (Int, Int)
+      report check module path   output out_txt
+        | str_contains out_txt "0 error(s)." =
+          _ = log ok "{path}"
+          (1, 0)
+        | otherwise =
+          _ = log err "{path}: error(s)"
+          _ = print error lines (split lines of out_txt)
+          (0, 1)
 
 op :: sum check results [(Int, Int)] ok Int  err Int   => (Int, Int)
       sum check results []           ok ok_c err err_c =  (ok_c, err_c)
@@ -268,23 +373,6 @@ op :: finish task check with (Int, Int)    => Int
 
 -- ── Task 2: `compile` (Emit .rgc Bytecode Artifacts) ─────────
 
-op :: base filename of String at Int len Int       slash Int        => String
-      base filename of path   at pos len total_len slash last_slash
-        | pos >= total_len = str_slice path (last_slash + 1) total_len
-        | (str_char_at path pos) == 47 = base filename of path at (pos + 1) len total_len slash pos
-        | otherwise = base filename of path at (pos + 1) len total_len slash last_slash
-
-op :: parent dir of String at Int len Int       slash Int        => String
-      parent dir of path   at pos len total_len slash last_slash
-        | pos >= total_len = str_slice path 0 last_slash
-        | (str_char_at path pos) == 47 = parent dir of path at (pos + 1) len total_len slash pos
-        | otherwise = parent dir of path at (pos + 1) len total_len slash last_slash
-
-op :: target name from entry String     => String
-      target name from entry entry_path =
-        pdir = parent dir of entry_path at 0 len (str_len entry_path) slash 0
-        base filename of pdir at 0 len (str_len pdir) slash (0 - 1)
-
 op :: rgc artifact name for String base String    => String
       rgc artifact name for path   base "main.rg" =  (target name from entry path) + "_main.rgc"
       rgc artifact name for _      base bname     =  bname + "c"
@@ -298,8 +386,9 @@ fn :: compile_single_module (String, String) => Int
       compile_single_module (out_dir, path)  =
         bname = base filename of path at 0 len (str_len path) slash (0 - 1)
         out_rgc = out_dir + "/" + (rgc artifact name for path base bname)
-        fn_c = emit_rgc_file path out_rgc
-        _ = log step "rgc" "{path} -> {out_rgc} ({fn_c} functions)"
+        rg_bin = resolve ridgunc binary
+        _ = shell_exec ('"' + rg_bin + '" compile "' + path + '" -o "' + out_rgc + '" >/dev/null 2>&1')
+        _ = log step "rgc" "{path} -> {out_rgc}"
         1
 
 op :: sum ints [Int]     acc Int   => Int
@@ -332,12 +421,8 @@ op :: load project kind from String     => String
       load project kind from build_path
         | NOT (file build_path exists) = "bin"
         | otherwise =
-          toks = tokenize_src (read_file build_path)
-          extract kind from program (parse_tokens toks)
-
-op :: extract kind from program RProgram        => String
-      extract kind from program (Program fns _) =
-        extract function body from fns named "project_kind" default "bin"
+          lines = split lines of (read_file build_path)
+          extract function body from lines named "project_kind" default "bin"
 
 op :: resolve lib entry for String in String default String  => String
       resolve lib entry for tname  in sdir   default main_ep
@@ -354,8 +439,8 @@ op :: build library artifacts from String into String named String version Strin
         out_rglib = out_dir + "/" + lib_name + ".rglib"
         out_so = out_dir + "/lib" + lib_name + ".so"
         _ = log info "Building Ridgun library '{lib_name}' from {entry_path} (v{ver}) ..."
-        st1 = emit_rglib_file entry_path out_rglib
-        st2 = build native so library entry_path out_so
+        st1 = invoke ridgunc rglib entry_path into out_rglib
+        st2 = invoke ridgunc so entry_path into out_so
         report library build of out_rglib so out_so status1 st1 status2 st2
 
 op :: report library build of String    so String status1 Int status2 Int => Int
@@ -378,7 +463,7 @@ op :: run task build lib on StableConfig args [String]  => Int
 op :: build target from String     into String  version String => Int
       build target from entry_path into out_bin version ver    =
         _ = log info "Building native executable '{out_bin}' from {entry_path} (v{ver}) ..."
-        st_code = build native executable entry_path out_bin
+        st_code = invoke ridgunc build entry_path into out_bin
         report build of out_bin status st_code
 
 op :: pair entries [String] with dir String version String => [(String, String, String)]
@@ -470,7 +555,7 @@ fn :: run_single_test_suite String => (Int, Int)
         _ = log info "Compiling & running test suite: {tpath}"
         bname = base filename of tpath at 0 len (str_len tpath) slash (0 - 1)
         bin_path = "target/.stable_test_" + bname + "_bin"
-        st_code = build native fast executable tpath bin_path
+        st_code = invoke ridgunc build tpath into bin_path
         run built test binary st_code suite tpath binary bin_path
 
 op :: run built test binary Int suite String binary String   => (Int, Int)
@@ -602,32 +687,25 @@ op :: run task info on StableConfig => Int
 
 -- ── Task 8: `new`, `init`, `deps`, `add`, and `install` (`FR-TOOL-002`) ──
 
-op :: extract string list from [RExpr]         => [String]
-      extract string list from []              =  []
-      extract string list from ((EStr s):rest) =  [s] :: (extract string list from rest)
-      extract string list from (_:rest)        =  extract string list from rest
+op :: extract list function body from [String] named String => [String]
+      extract list function body from []       named _      =  []
+      extract list function body from (l:ls)   named target =
+        pair = parse clause key and rhs l
+        match list function clause pair rest ls named target
 
-op :: extract list function body from [RFnDef]    named String => [String]
-      extract list function body from []          named _      =  []
-      extract list function body from ((FnDef fn_name _ _ ((FnCase _ _ (EList items)):_)):rem_fns) named target
-        | fn_name == target = extract string list from items
-        | otherwise = extract list function body from rem_fns named target
-      extract list function body from ((FnDef fn_name _ _ ((FnCase _ _ (EStr val)):_)):rem_fns) named target
-        | fn_name == target = split words of val
-        | otherwise = extract list function body from rem_fns named target
-      extract list function body from (_:rem_fns) named target =
-        extract list function body from rem_fns named target
-
-op :: extract deps from program RProgram        => [String]
-      extract deps from program (Program fns _) =
-        extract list function body from fns named "dependencies"
+op :: match list function clause (String, String) rest [String] named String => [String]
+      match list function clause (k, rhs)         rest ls       named target
+        | (k == target) AND (str_starts_with rhs "[") = quoted strings in rhs
+        | (k == target) AND (str_starts_with rhs "\"") =
+          split words of (first string or default (quoted strings in rhs) default "")
+        | otherwise = extract list function body from ls named target
 
 op :: load dependencies from String     => [String]
       load dependencies from build_path
         | NOT (file build_path exists) = []
         | otherwise =
-          toks = tokenize_src (read_file build_path)
-          extract deps from program (parse_tokens toks)
+          lines = split lines of (read_file build_path)
+          extract list function body from lines named "dependencies"
 
 op :: scaffold project named String in String => Int
       scaffold project named pname  in root   =
@@ -753,7 +831,7 @@ op :: install built binaries Int from String  => Int
       install built binaries 0   from out_dir =
         home = env get or "HOME" "."
         inst_dir = home + "/.local/bin"
-        _ = shell_exec ('mkdir -p "' + inst_dir + '" bin && for f in "' + out_dir + '"/*; do if [ -f "$f" ] && [ -x "$f" ]; then cp -f "$f" "' + inst_dir + '/" && cp -f "$f" bin/; fi; done')
+        _ = shell_exec ('mkdir -p "' + inst_dir + '" bin && for f in "' + out_dir + '"/*; do if [ -f "$f" ] && [ -x "$f" ]; then cp -f --remove-destination "$f" bin/ && if [ ! -L "' + inst_dir + '/$(basename "$f")" ]; then cp -f --remove-destination "$f" "' + inst_dir + '/"; fi; fi; done')
         _ = log success "Installed executable(s) from {out_dir}/ into {inst_dir}/ and bin/."
         0
       install built binaries st  from _       =  st
@@ -769,38 +847,34 @@ op :: task display name of String   => String
       task display name of raw_name =
         str replace raw_name "_" " "
 
-op :: extract tasks from fns [RFnDef]    origin String     => [StableTask]
-      extract tasks from fns []          origin _          =  []
-      extract tasks from fns ((FnDef fn_name _ _ ((FnCase _ _ (EStr cmd)):_)):rem_fns) origin orig_label
-        | (str_starts_with fn_name "task_") AND ((str_len fn_name) > 5) =
-          raw_key = str_slice fn_name 5 (str_len fn_name)
-          disp = task display name of raw_key
-          [TaskEntry raw_key disp cmd orig_label] :: (extract tasks from fns rem_fns origin orig_label)
-        | otherwise = extract tasks from fns rem_fns origin orig_label
-      extract tasks from fns (_:rem_fns) origin orig_label =
-        extract tasks from fns rem_fns origin orig_label
+op :: extract tasks from lines [String] origin String     => [StableTask]
+      extract tasks from lines []       origin _          =  []
+      extract tasks from lines (l:ls)   origin orig_label =
+        pair = parse clause key and rhs l
+        match task clause pair rest ls origin orig_label
 
-op :: extract tasks from program RProgram        origin String => [StableTask]
-      extract tasks from program (Program fns _) origin orig   =
-        extract tasks from fns fns origin orig
+op :: match task clause (String, String) rest [String] origin String     => [StableTask]
+      match task clause (k, rhs)         rest ls       origin orig_label
+        | (str_starts_with k "task_") AND ((str_len k) > 5) AND (str_starts_with rhs "\"") =
+          raw_key = str_slice k 5 (str_len k)
+          disp = task display name of raw_key
+          cmd = first string or default (quoted strings in rhs) default ""
+          [TaskEntry raw_key disp cmd orig_label] :: (extract tasks from lines ls origin orig_label)
+        | otherwise = extract tasks from lines ls origin orig_label
 
 op :: load tasks from file String origin String => [StableTask]
       load tasks from file path   origin orig
         | NOT (file path exists) = []
         | otherwise =
-          prog = parse_tokens (tokenize_src (read_file path))
-          extract tasks from program prog origin orig
-
-op :: extract plugins from program RProgram        => [String]
-      extract plugins from program (Program fns _) =
-        extract list function body from fns named "plugins"
+          lines = split lines of (read_file path)
+          extract tasks from lines lines origin orig
 
 op :: load declared plugins from String     => [String]
       load declared plugins from build_path
         | NOT (file build_path exists) = []
         | otherwise =
-          toks = tokenize_src (read_file build_path)
-          extract plugins from program (parse_tokens toks)
+          lines = split lines of (read_file build_path)
+          extract list function body from lines named "plugins"
 
 op :: resolve plugin path for String => String
       resolve plugin path for p
@@ -819,7 +893,7 @@ op :: resolve plugin list [String]   => [String]
 op :: append resolved plugin String to [String] => [String]
       append resolved plugin ""     to acc      =  acc
       append resolved plugin path   to acc
-        | str_in_list path acc = acc
+        | list str contains acc path = acc
         | otherwise = [path] :: acc
 
 op :: discover plugin files => [String]
@@ -942,7 +1016,7 @@ op :: run executable plugin String args [String]   => Int
         _ = shell_exec "mkdir -p target"
         bname = base filename of ppath at 0 len (str_len ppath) slash (0 - 1)
         bin_path = "target/.stable_plugin_" + bname + "_bin"
-        st = build native fast executable ppath bin_path
+        st = invoke ridgunc build ppath into bin_path
         exec plugin binary st path bin_path args extra_args
 
 op :: exec plugin binary Int path String   args [String]   => Int

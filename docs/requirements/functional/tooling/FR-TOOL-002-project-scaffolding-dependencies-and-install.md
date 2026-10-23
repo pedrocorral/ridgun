@@ -8,7 +8,8 @@ domain: TOOL
 depends_on:
   - FR-TOOL-001
   - FR-COMP-004
-related: []
+related:
+  - ADR-0001
 tests: []
 ---
 # FR-TOOL-002 — Project scaffolding (`new` / `init`), dependency management (`deps` / `add`), and binary installation (`install`) in `stable`

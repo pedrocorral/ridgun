@@ -272,6 +272,23 @@ fn :: main => ()
         st_built_dep = shell exec ("cd target/test_lib_work/hello_app && \"" + stable_bin + "\" built && \"" + stable_bin + "\" run > run_dep.txt")
         assert int equals st_built_dep 0 "stable built & run hello_app with mathkit dependency"
         assert ok (str contains (read file "target/test_lib_work/hello_app/run_dep.txt") "Hello from library from_dep!")
+        -- 6c-bis. Regression suite: external project (`ext_solstice`) resolving `.stable/deps/{mod}.rglib`, `.stable/deps/{mod}.rg`, `.stable/deps/ridgun-libs/src/main/ridgun/lib/{mod}.rg`, transitive imports via local `.rg` modules, diamond imports, 0-arg ADTs, record getters & postfix operators
+        _ = shell exec "mkdir -p target/test_lib_work/ext_solstice/.stable/deps/ridgun-libs/src/main/ridgun/lib target/test_lib_work/ext_solstice/src/main/ridgun/lib target/test_lib_work/ext_solstice/src/main/ridgun/ext_solstice"
+        _ = shell exec "cp -f target/test_lib_work/mathkit/target/mathkit.rglib target/test_lib_work/ext_solstice/.stable/deps/mathkit.rglib"
+        ext_base_src = "type ExtMode = ModeFast | ModeSafe\n\ntype ExtCfg = ext_port: Int, ext_tag: String\n\nop :: String trim ext => String\n      s      trim ext =  s + \"_ok\"\n"
+        ext_mid_src = "import ext_base\n\nfn :: build ext cfg Int => ExtCfg\n      build ext cfg p   =  ExtCfg p (\"p\" trim ext)\n"
+        local_hlp_src = "import ext_mid\nimport mathkit\n\nfn :: check mode ExtMode => Bool\n      check mode ModeFast = True\n      check mode ModeSafe = False\n\nfn :: format helper ExtCfg Bool => String\n      format helper cfg True = (greet (ext_tag cfg)) + \":\" + (int_to_str (ext_port cfg))\n      format helper _ False = \"bad\"\n\nfn :: run helper Int => String\n      run helper p   =\n        cfg = build ext cfg p\n        ok_m = check mode ModeFast\n        format helper cfg ok_m\n"
+        ext_main_src = "import local_helper\nimport ext_base\n\nfn :: main => ()\n      main =  echo (run helper 8080)\n"
+        _ = write file "target/test_lib_work/ext_solstice/.stable/deps/ridgun-libs/src/main/ridgun/lib/ext_base.rg" ext_base_src
+        _ = write file "target/test_lib_work/ext_solstice/.stable/deps/ext_mid.rg" ext_mid_src
+        _ = write file "target/test_lib_work/ext_solstice/src/main/ridgun/lib/local_helper.rg" local_hlp_src
+        _ = write file "target/test_lib_work/ext_solstice/src/main/ridgun/ext_solstice/main.rg" ext_main_src
+        st_ext_chk = shell exec ("cd target/test_lib_work/ext_solstice && \"" + ridgunc_bin + "\" check src/main/ridgun/ext_solstice/main.rg > ext_chk.txt")
+        assert int equals st_ext_chk 0 "ridgunc check in external project with transitive .stable/deps imports"
+        assert ok (str contains (read file "target/test_lib_work/ext_solstice/ext_chk.txt") "0 error(s)")
+        st_ext_bld = shell exec ("cd target/test_lib_work/ext_solstice && \"" + ridgunc_bin + "\" build src/main/ridgun/ext_solstice/main.rg -o ext_bin && ./ext_bin > ext_out.txt")
+        assert int equals st_ext_bld 0 "ridgunc build & run in external project with transitive .stable/deps imports"
+        assert ok (str contains (read file "target/test_lib_work/ext_solstice/ext_out.txt") "Hello from library p_ok!:8080")
         -- 6d. Negative tests: `stable check` on a broken type error and `stable test` on a failing assertion must both exit with code 1
         _ = shell exec "mkdir -p target/test_lib_work/broken_proj/src/main/ridgun/broken target/test_lib_work/broken_proj/src/test/ridgun"
         _ = write file "target/test_lib_work/broken_proj/build.rg" "fn :: project name => String\n      project name =  \"broken\"\n"

@@ -146,6 +146,78 @@ fn :: consultar contador (Agent Int Int) Int => Int
         send n to ag
         receive from ag
 
+fn :: tensor shape sum Tensor[Byte]               => Int
+      tensor shape sum (Tensor[Byte * f * c] m)   =  f * 100 + c + m_(0, 0)
+      tensor shape sum (Tensor[Byte * n] v)       =  n * 10 + v_(0)
+      tensor shape sum _                          =  0 - 1
+
+fn :: inc vec elem Tensor[U64 * _] => Tensor[U64 * _]
+      inc vec elem v               =
+        v_(0) = v_(0) + 10
+        v
+
+fn :: double scalar U64 => U64
+      double scalar x   =  x * 2
+
+fn :: f blamka U64 U64 => U64
+      f blamka x   y   =  x + y + 2 * ((x and 0xFFFFFFFF) * (y and 0xFFFFFFFF))
+
+fn :: blamka g U64 U64 U64 U64 => U64 U64 U64 U64
+      blamka g a   b   c   d   =
+        mut a = f blamka a b
+        mut d = (d xor a) rotr 32
+        mut c = f blamka c d
+        mut b = (b xor c) rotr 24
+        a = f blamka a b
+        d = (d xor a) rotr 16
+        c = f blamka c d
+        b = (b xor c) rotr 63
+        (a, b, c, d)
+
+fn :: blamka p16 Tensor[U64 * 16] => ()
+      blamka p16 v                =
+        v_(0), v_(4), v_(8),  v_(12) = blamka g v_(0) v_(4) v_(8)  v_(12)
+        v_(1), v_(5), v_(9),  v_(13) = blamka g v_(1) v_(5) v_(9)  v_(13)
+        v_(2), v_(6), v_(10), v_(14) = blamka g v_(2) v_(6) v_(10) v_(14)
+        v_(3), v_(7), v_(11), v_(15) = blamka g v_(3) v_(7) v_(11) v_(15)
+        v_(0), v_(5), v_(10), v_(15) = blamka g v_(0) v_(5) v_(10) v_(15)
+        v_(1), v_(6), v_(11), v_(12) = blamka g v_(1) v_(6) v_(11) v_(12)
+        v_(2), v_(7), v_(8),  v_(13) = blamka g v_(2) v_(7) v_(8)  v_(13)
+        v_(3), v_(4), v_(9),  v_(14) = blamka g v_(3) v_(4) v_(9)  v_(14)
+
+fn :: compress block Tensor[U64 * 8 * 16] Tensor[U64 * 8 * 16] => Tensor[U64 * 8 * 16]
+      compress block x                    y                    =
+        r_ij = x_ij xor y_ij
+        z_ij = r_ij
+        ||map blamka p16 in z_(i,)
+        ||map blamka p16 in z_(,j)
+        z_ij xor r_ij
+
+type FnBox3 = cb3: (String String String => String)
+
+fn :: join3 String String String => String
+      join3 a0     a1     a2     =  a0 + a1 + a2
+
+fn :: join4 String String String String => String
+      join4 a0     a1     a2     a3     =  a0 + a1 + a2 + a3
+
+fn :: join6 String String String String String String => String
+      join6 a0     a1     a2     a3     a4     a5     =  a0 + a1 + a2 + a3 + a4 + a5
+
+fn :: call3 (String String String => String) String String String => String
+      call3 g                                a0     a1     a2     =  g a0 a1 a2
+
+fn :: call4 (String String String String => String) String String String String => String
+      call4 g                                       a0     a1     a2     a3     =  g a0 a1 a2 a3
+
+fn :: call6 (String String String String String String => String) String String String String String String => String
+      call6 g                                                     a0     a1     a2     a3     a4     a5     =  g a0 a1 a2 a3 a4 a5
+
+fn :: call box3 FnBox3 String String String => String
+      call box3 b      a0     a1     a2     =
+        f = cb3 b
+        f a0 a1 a2
+
 fn :: main => ()
       main =
         echo "=== Parallel || DAG, Tensors, Einsum, Masks, Region, Context & Shared (Slots 38..55) ==="
@@ -233,4 +305,49 @@ fn :: main => ()
         assert true ((t_fib1 - t_fib0) < 20)
         stop ag_fib
         assert equals (agent alive ag_fib) False
+        echo "=== FR-COMP-010: Typed Tensors, Subscript Views, Axis Map & Bitwise Ops ==="
+        assert equals (1 shl 8) 256
+        assert equals (256 shr 4) 16
+        assert equals ((1 shl 4) rotl 4) 256
+        assert equals ((256 rotr 4) xor 3) 19
+        assert equals (0xFF and 0x0F) 15
+        assert equals (0xF0 or 0x0F) 255
+        assert equals (not (not 42)) 42
+        m23 = Tensor [[7, 8, 9], [10, 11, 12]]
+        v4 = Tensor [5, 6, 7, 8]
+        assert equals (tensor shape sum m23) 210
+        assert equals (tensor shape sum v4) 45
+        z23 = Tensor[Byte * 2 * 3]
+        assert equals (tensor shape sum z23) 203
+        z23_(1, 2) = 99
+        assert equals z23_(1, 2) 99
+        col1 = m23_(,1)
+        assert equals col1_(0) 8
+        assert equals col1_(1) 11
+        z23_(0,) = Tensor [1, 2, 3]
+        z23_(,2) = Tensor [30, 40]
+        assert equals z23_(0, 1) 2
+        assert equals z23_(0, 2) 30
+        assert equals z23_(1, 2) 40
+        m23Copy = map inc vec elem m23_(i,)
+        assert equals m23_(0, 0) 7
+        assert equals m23Copy_(0, 0) 17
+        assert equals m23Copy_(1, 0) 20
+        map double scalar in m23Copy_ij
+        assert equals m23Copy_(0, 0) 34
+        assert equals m23Copy_(1, 0) 40
+        bx = Tensor[U64 * 8 * 16]
+        by = Tensor[U64 * 8 * 16]
+        bx_(0, 0) = 1
+        by_(0, 0) = 2
+        bz = compress block bx by
+        assert equals (tensor shape sum bz) ((800 + 16) + bz_(0, 0))
+        assert true (bz_(0, 0) != 0)
+        assert equals (call3 join3 "a" "b" "c") "abc"
+        assert equals (call4 join4 "a" "b" "c" "d") "abcd"
+        assert equals (call6 join6 "a" "b" "c" "d" "e" "f") "abcdef"
+        box3 = FnBox3 join3
+        assert equals (call box3 box3 "x" "y" "z") "xyz"
+        assert equals ((cb3 box3) "1" "2" "3") "123"
+        assert equals (cb3 box3 "p" "q" "r") "pqr"
         echo "=== All parallel & tensor tests passed ==="

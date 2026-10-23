@@ -10,6 +10,7 @@
 -- @implements FR-COMP-007
 -- @implements FR-COMP-008
 -- @implements FR-COMP-009
+-- @implements FR-COMP-010
 -- ============================================================
 import ast
 import lexer
@@ -77,6 +78,17 @@ fn :: all_lower_ascii String Int Int => Bool
         | (str_char_at s pos) >= 97 AND (str_char_at s pos) <= 122 = all_lower_ascii s (pos + 1) len
         | otherwise = False
 
+fn :: all einstein idx chars String Int Int => Bool
+      all einstein idx chars s      pos len
+        | pos >= len = True
+        | (str_char_at s pos) >= 105 and (str_char_at s pos) <= 108 = all einstein idx chars s (pos + 1) len
+        | otherwise = False
+
+fn :: is trailing underscore ident String => Bool
+      is trailing underscore ident s      =
+        len = str_len s
+        len > 1 and (str_char_at s (len - 1)) == 95
+
 fn :: is_subscript_ident String => Bool
       is_subscript_ident s      =
         u_idx = find_underscore s 0 (str_len s)
@@ -84,9 +96,11 @@ fn :: is_subscript_ident String => Bool
 
 fn :: check_subscript_parts String Int   Int => Bool
       check_subscript_parts s      u_idx len
-        | u_idx <= 0 OR (u_idx + 1) >= len = False
-        | NOT (is_upper_ident s) = False
-        | otherwise = all_lower_ascii s (u_idx + 1) len
+        | u_idx <= 0 or (u_idx + 1) >= len = False
+        | (find_underscore s (u_idx + 1) len) >= 0 = False
+        | is_upper_ident s = all_lower_ascii s (u_idx + 1) len
+        | (len - (u_idx + 1)) >= 2 and (len - (u_idx + 1)) <= 4 and (str_slice s (u_idx + 1) len) != "kill" = all einstein idx chars s (u_idx + 1) len
+        | otherwise = False
 
 fn :: split_subscript String => (String, String)
       split_subscript s      =
@@ -113,11 +127,33 @@ fn :: parse_tensor_dims [RToken]          => (String, [RToken])
         join_tensor_dim (int_to_str n) more
       parse_tensor_dims (_:rest)          =  parse_tensor_dims rest
 
+fn :: parse tensor bracket tail [RToken]           => (String, [RToken])
+      parse tensor bracket tail (TokRBracket:rest) =  ("", rest)
+      parse tensor bracket tail (TokNewline:rest)  =  ("", rest)
+      parse tensor bracket tail (TokEof:rest)      =  ("", rest)
+      parse tensor bracket tail []                 =  ("", [])
+      parse tensor bracket tail ((TokIdent "^"):(TokInt _):TokRBracket:rest) = ("", rest)
+      parse tensor bracket tail (TokStar:rest)     =  parse tensor bracket tail rest
+      parse tensor bracket tail (TokComma:rest)    =  parse tensor bracket tail rest
+      parse tensor bracket tail ((TokIdent d):rest) =
+        more = parse tensor bracket tail rest
+        join_tensor_dim d more
+      parse tensor bracket tail ((TokInt n):rest)  =
+        more = parse tensor bracket tail rest
+        join_tensor_dim (int_to_str n) more
+      parse tensor bracket tail (_:rest)           =  parse tensor bracket tail rest
+
+fn :: parse tensor bracket dims [RToken]                   => (String, [RToken])
+      parse tensor bracket dims ((TokIdent _):TokRBracket:rest) = ("", rest)
+      parse tensor bracket dims ((TokIdent _):rest)        =  parse tensor bracket tail rest
+      parse tensor bracket dims ts                         =  parse tensor bracket tail ts
+
 fn :: join_tensor_dim String (String, [RToken]) => (String, [RToken])
       join_tensor_dim d      ("", rest)         =  (d, rest)
       join_tensor_dim d      (more, rest)       =  (d + "," + more, rest)
 
 fn :: finish_tensor_type (String, [RToken]) => (String, [RToken])
+      finish_tensor_type ("", rest)         =  ("Tensor", rest)
       finish_tensor_type (dims, rest)       =  ("Tensor(" + dims + ")", rest)
 
 fn :: parse_type_tok [RToken]           => (String, [RToken])
@@ -127,8 +163,12 @@ fn :: parse_type_tok [RToken]           => (String, [RToken])
       parse_type_tok (TokLParen:rest)   =
         check_variadic_suffix (parse_type_paren rest)
       parse_type_tok ((TokIdent s):TokLParen:rest)
-        | s == "Tensor" OR s == "Tensor_GPU" = check_variadic_suffix (finish_tensor_type (parse_tensor_dims rest))
+        | s == "Tensor" or s == "Tensor_GPU" = check_variadic_suffix (finish_tensor_type (parse_tensor_dims rest))
         | otherwise = check_variadic_suffix (s, [TokLParen] :: rest)
+      parse_type_tok ((TokIdent s):TokIdxLBracket:rest)
+        | s == "Tensor" or s == "Tensor_GPU" = check_variadic_suffix (finish_tensor_type (parse tensor bracket dims rest))
+      parse_type_tok ((TokIdent s):TokLBracket:rest)
+        | s == "Tensor" or s == "Tensor_GPU" = check_variadic_suffix (finish_tensor_type (parse tensor bracket dims rest))
       parse_type_tok ((TokIdent s):rest) =
         check_variadic_suffix (s, rest)
       parse_type_tok (_:rest)           =  ("Int", rest)
@@ -241,6 +281,70 @@ fn :: prepend_str String ([String], [RToken]) => ([String], [RToken])
 
 -- ── Pattern Parsing ─────────────────────────────────────────
 
+fn :: extract fst str (String, String) => String
+      extract fst str (a, _)           =  a
+
+fn :: pat list count [RPattern] => Int
+      pat list count []         =  0
+      pat list count (_:ps)     =  1 + (pat list count ps)
+
+fn :: parse tensor pat dims [RToken]          => ([RPattern], [RToken])
+      parse tensor pat dims (TokRBracket:rest) =  ([], rest)
+      parse tensor pat dims (TokNewline:rest) =  ([], rest)
+      parse tensor pat dims (TokEof:rest)     =  ([], rest)
+      parse tensor pat dims []                =  ([], [])
+      parse tensor pat dims (TokStar:(TokInt n):rest) =
+        more = parse tensor pat dims rest
+        prepend_pat (PatInt n) more
+      parse tensor pat dims (TokStar:(TokIdent v):rest)
+        | v == "_" = prepend_pat PatWild (parse tensor pat dims rest)
+        | otherwise = prepend_pat (PatVar v) (parse tensor pat dims rest)
+      parse tensor pat dims (_:rest)          =  parse tensor pat dims rest
+
+fn :: strip rparen [RToken]         => [RToken]
+      strip rparen (TokRParen:rest) =  rest
+      strip rparen ts               =  ts
+
+fn :: finish tensor pat with inner RPattern [RPattern] (RPattern, [RToken]) => (RPattern, [RToken])
+      finish tensor pat with inner rank_pat dim_pats (t_pat, after_t) =
+        (PatCtor ":tensor-pat:" ([t_pat, rank_pat] :: dim_pats), strip rparen after_t)
+
+fn :: finish tensor pat target RPattern [RPattern] [RToken] => (RPattern, [RToken])
+      finish tensor pat target rank_pat dim_pats (TokRParen:rest) =
+        (PatCtor ":tensor-pat:" ([PatWild, rank_pat] :: dim_pats), rest)
+      finish tensor pat target rank_pat dim_pats ts =
+        finish tensor pat with inner rank_pat dim_pats (parse_pattern ts)
+
+fn :: finish tensor pat dims ([RPattern], [RToken]) Bool => (RPattern, [RToken])
+      finish tensor pat dims (dim_pats, after_rb) True =
+        finish tensor pat target (PatInt (pat list count dim_pats)) dim_pats after_rb
+      finish tensor pat dims (dim_pats, after_rb) False =
+        (PatCtor ":tensor-pat:" ([PatWild, PatInt (pat list count dim_pats)] :: dim_pats), after_rb)
+
+fn :: parse tensor pat after elem (String, [RToken]) Bool => (RPattern, [RToken])
+      parse tensor pat after elem (_, (TokRBracket:after_rb)) True =
+        finish tensor pat target PatWild [] after_rb
+      parse tensor pat after elem (_, (TokRBracket:after_rb)) False =
+        (PatCtor ":tensor-pat:" [PatWild, PatWild], after_rb)
+      parse tensor pat after elem (_, ((TokIdent "^"):(TokInt k):TokRBracket:after_rb)) True =
+        finish tensor pat target (PatInt k) [] after_rb
+      parse tensor pat after elem (_, ((TokIdent "^"):(TokInt k):TokRBracket:after_rb)) False =
+        (PatCtor ":tensor-pat:" [PatWild, PatInt k], after_rb)
+      parse tensor pat after elem (_, ((TokIdent "^"):(TokIdent kv):TokRBracket:after_rb)) True
+        | kv == "_" = finish tensor pat target PatWild [] after_rb
+        | otherwise = finish tensor pat target (PatVar kv) [] after_rb
+      parse tensor pat after elem (_, ((TokIdent "^"):(TokIdent kv):TokRBracket:after_rb)) False
+        | kv == "_" = (PatCtor ":tensor-pat:" [PatWild, PatWild], after_rb)
+        | otherwise = (PatCtor ":tensor-pat:" [PatWild, PatVar kv], after_rb)
+      parse tensor pat after elem (_, (TokStar:after_star)) has_paren =
+        finish tensor pat dims (parse tensor pat dims ([TokStar] :: after_star)) has_paren
+      parse tensor pat after elem (_, rest) has_paren =
+        finish tensor pat dims (parse tensor pat dims rest) has_paren
+
+fn :: parse tensor pat [RToken] Bool => (RPattern, [RToken])
+      parse tensor pat ts       has_paren =
+        parse tensor pat after elem (parse_type_tok ts) has_paren
+
 fn :: parse_pattern [RToken]           => (RPattern, [RToken])
       parse_pattern ((TokInt n):rest)  =  (PatInt n, rest)
       parse_pattern (TokMinus:(TokInt n):rest) = (PatInt (0 - n), rest)
@@ -254,9 +358,18 @@ fn :: parse_pattern [RToken]           => (RPattern, [RToken])
       parse_pattern (TokLParen:TokRParen:rest) = (PatWild, rest)
       parse_pattern (TokType:rest)     =  (PatVar "type", rest)
       parse_pattern (TokWith:rest)     =  (PatVar "with", rest)
+      parse_pattern (TokLParen:(TokIdent s):TokIdxLBracket:rest)
+        | s == "Tensor" or s == "Tensor_GPU" = parse tensor pat rest True
+      parse_pattern (TokLParen:(TokIdent s):TokLBracket:rest)
+        | s == "Tensor" or s == "Tensor_GPU" = parse tensor pat rest True
+      parse_pattern ((TokIdent s):TokIdxLBracket:rest)
+        | s == "Tensor" or s == "Tensor_GPU" = parse tensor pat rest False
+      parse_pattern ((TokIdent s):TokLBracket:rest)
+        | s == "Tensor" or s == "Tensor_GPU" = parse tensor pat rest False
       parse_pattern ((TokIdent s):rest)
         | s == "_" = (PatWild, rest)
-        | (is_upper_ident s) AND (str_len s) > 1 = (PatCtor s [], rest)
+        | is_subscript_ident s = (PatVar (extract fst str (split_subscript s)), rest)
+        | (is_upper_ident s) and (str_len s) > 1 = (PatCtor s [], rest)
         | otherwise = (PatVar s, rest)
       parse_pattern (TokLParen:rest)   =
         p1 = parse_pattern rest
@@ -409,9 +522,10 @@ fn :: is_atom_tok RToken        => Bool
       is_atom_tok (TokRawStr _) =  True
       is_atom_tok TokTrue       =  True
       is_atom_tok TokFalse      =  True
-      is_atom_tok (TokIdent _)  =  True
+      is_atom_tok (TokIdent w)  =  w != "shl" AND w != "shr" AND w != "rotr" AND w != "rotl"
       is_atom_tok TokType       =  True
       is_atom_tok TokWith       =  True
+      is_atom_tok TokNot        =  True
       is_atom_tok TokLParen     =  True
       is_atom_tok TokLBracket   =  True
       is_atom_tok _             =  False
@@ -511,7 +625,7 @@ fn :: parse_logic_loop (RExpr, [RToken]) => (RExpr, [RToken])
 
 fn :: parse_logic_combine RBinOp RExpr (RExpr, [RToken]) => (RExpr, [RToken])
       parse_logic_combine bop    left  (right, rest)     =
-        parse_logic_loop (EBin bop left right, rest)
+        parse_logic_loop (make_add_or_hadamard bop left right, rest)
 
 fn :: parse_not_expr [RToken]      => (RExpr, [RToken])
       parse_not_expr (TokNot:rest) =
@@ -539,14 +653,36 @@ fn :: parse_cmp_tail (RExpr, [RToken]) => (RExpr, [RToken])
 fn :: combine_bin RBinOp RExpr (RExpr, [RToken]) => (RExpr, [RToken])
       combine_bin bop    left  (right, rest)     =  (EBin bop left right, rest)
 
+fn :: is hadamard bop RBinOp  => Bool
+      is hadamard bop OpAdd   =  True
+      is hadamard bop OpSub   =  True
+      is hadamard bop OpMul   =  True
+      is hadamard bop OpDiv   =  True
+      is hadamard bop OpAnd   =  True
+      is hadamard bop OpOr    =  True
+      is hadamard bop OpXor   =  True
+      is hadamard bop _       =  False
+
 fn :: make_add_or_hadamard RBinOp RExpr     RExpr     => RExpr
       make_add_or_hadamard bop    (EVar v1) (EVar v2)
-        | (bop == OpAdd OR bop == OpSub OR bop == OpMul OR bop == OpDiv) AND (is_subscript_ident v1) AND (is_subscript_ident v2) = build_hadamard_node bop (split_subscript v1) (split_subscript v2)
+        | (is hadamard bop bop) and (is_subscript_ident v1) and (is_subscript_ident v2) = build_hadamard_node bop (split_subscript v1) (split_subscript v2)
+      make_add_or_hadamard bop    (EHadamard b1 l1 s1 r1 s2) (EVar v2)
+        | (is hadamard bop bop) and (is_subscript_ident v2) = build hadamard chain r bop (EHadamard b1 l1 s1 r1 s2) s1 (split_subscript v2)
+      make_add_or_hadamard bop    (EVar v1) (EHadamard b2 l2 s2 r2 s3)
+        | (is hadamard bop bop) and (is_subscript_ident v1) = build hadamard chain l bop (split_subscript v1) (EHadamard b2 l2 s2 r2 s3) s2
       make_add_or_hadamard bop    left      right     =  EBin bop left right
 
 fn :: build_hadamard_node RBinOp (String, String) (String, String) => RExpr
       build_hadamard_node bop    (b1, s1)         (b2, s2)         =
         EHadamard bop (EVar b1) s1 (EVar b2) s2
+
+fn :: build hadamard chain r RBinOp RExpr String (String, String) => RExpr
+      build hadamard chain r bop    left  s1     (b2, s2)         =
+        EHadamard bop left s1 (EVar b2) s2
+
+fn :: build hadamard chain l RBinOp (String, String) RExpr String => RExpr
+      build hadamard chain l bop    (b1, s1)         right s2     =
+        EHadamard bop (EVar b1) s1 right s2
 
 fn :: make_matmul_or_einsum RExpr             RExpr     => RExpr
       make_matmul_or_einsum (EEinsum es subs) (EVar v2)
@@ -605,6 +741,18 @@ fn :: parse_mul_loop (RExpr, [RToken]) => (RExpr, [RToken])
       parse_mul_loop (left, (TokAt:rest)) =
         r = parse_app_expr rest
         parse_matmul_combine left r
+      parse_mul_loop (left, ((TokIdent "shl"):rest)) =
+        r = parse_app_expr rest
+        parse_mul_combine OpShl left r
+      parse_mul_loop (left, ((TokIdent "shr"):rest)) =
+        r = parse_app_expr rest
+        parse_mul_combine OpShr left r
+      parse_mul_loop (left, ((TokIdent "rotr"):rest)) =
+        r = parse_app_expr rest
+        parse_mul_combine OpRotr left r
+      parse_mul_loop (left, ((TokIdent "rotl"):rest)) =
+        r = parse_app_expr rest
+        parse_mul_combine OpRotl left r
       parse_mul_loop res               =  res
 
 fn :: parse_mul_combine RBinOp RExpr (RExpr, [RToken]) => (RExpr, [RToken])
@@ -754,10 +902,15 @@ fn :: parse_atom_base [RToken]           => (RExpr, [RToken])
       parse_atom_base (TokFalse:rest)    =  (EBool False, rest)
       parse_atom_base (TokType:rest)     =  (EVar "type", rest)
       parse_atom_base (TokWith:rest)     =  (EVar "with", rest)
+      parse_atom_base (TokNot:rest)      =  (EVar "not", rest)
+      parse_atom_base ((TokIdent s):TokLBracket:(TokIdent elem_ty):TokStar:after_star)
+        | (s == "Tensor" or s == "Tensor_GPU") and (is_upper_ident elem_ty) = finish tensor alloc elem_ty (parse tensor alloc dims ([TokStar] :: after_star))
+      parse_atom_base ((TokIdent s):TokIdxLBracket:(TokIdent elem_ty):TokStar:after_star)
+        | (s == "Tensor" or s == "Tensor_GPU") and (is_upper_ident elem_ty) = finish tensor alloc elem_ty (parse tensor alloc dims ([TokStar] :: after_star))
       parse_atom_base ((TokIdent s):TokLBracket:rest)
-        | s == "Tensor" OR s == "Tensor_GPU" = finish_tensor_lit (parse_comma_exprs rest)
+        | s == "Tensor" or s == "Tensor_GPU" = finish_tensor_lit (parse_comma_exprs rest)
       parse_atom_base ((TokIdent s):TokIdxLBracket:rest)
-        | s == "Tensor" OR s == "Tensor_GPU" = finish_tensor_lit (parse_comma_exprs rest)
+        | s == "Tensor" or s == "Tensor_GPU" = finish_tensor_lit (parse_comma_exprs rest)
       parse_atom_base ((TokIdent s):rest) = (EVar s, rest)
       parse_atom_base (TokMinus:(TokInt n):rest) = (EInt (0 - n), rest)
       parse_atom_base (TokMinus:(TokReal r):rest) = (EReal ("-" + r), rest)
@@ -772,6 +925,32 @@ fn :: parse_atom_base [RToken]           => (RExpr, [RToken])
       parse_atom_base (_:rest)           =  (EUnit, rest)
       parse_atom_base []                 =  (EUnit, [])
 
+fn :: tensor zero fill String => RExpr
+      tensor zero fill "Real"  =  EReal "0.0"
+      tensor zero fill "Float" =  EReal "0.0"
+      tensor zero fill _       =  EInt 0
+
+fn :: parse tensor alloc dims [RToken]          => ([RExpr], [RToken])
+      parse tensor alloc dims (TokRBracket:rest) =  ([], rest)
+      parse tensor alloc dims (TokNewline:rest) =  ([], rest)
+      parse tensor alloc dims (TokEof:rest)     =  ([], rest)
+      parse tensor alloc dims []                =  ([], [])
+      parse tensor alloc dims (TokStar:rest)    =
+        d_res = parse_atom rest
+        parse tensor alloc dims cont d_res
+      parse tensor alloc dims ts                =
+        d_res = parse_atom ts
+        parse tensor alloc dims cont d_res
+
+fn :: parse tensor alloc dims cont (RExpr, [RToken]) => ([RExpr], [RToken])
+      parse tensor alloc dims cont (d_e, rest)       =
+        more = parse tensor alloc dims rest
+        prepend_expr d_e more
+
+fn :: finish tensor alloc String ([RExpr], [RToken]) => (RExpr, [RToken])
+      finish tensor alloc elem_ty (dims, rest)       =
+        (ECall ":tensor-zeros:" ([tensor zero fill elem_ty] :: dims), rest)
+
 fn :: finish_tensor_lit ([RExpr], [RToken]) => (RExpr, [RToken])
       finish_tensor_lit (elems, rest)       =  (ETensor elems, rest)
 
@@ -779,7 +958,43 @@ fn :: parse_postfix_index (RExpr, [RToken]) => (RExpr, [RToken])
       parse_postfix_index ((EVar v), (TokIdxLBracket:rest)) =
         idx_res = collect_bracket_indices ([TokIdxLBracket] :: rest) []
         finish_index_expr (EVar v) idx_res
-      parse_postfix_index res               =  res
+      parse_postfix_index ((EVar v), (TokLParen:rest))
+        | is trailing underscore ident v =
+          base_e = EVar (str_slice v 0 ((str_len v) - 1))
+          check chained subscript (parse subscript paren base_e rest)
+      parse_postfix_index res               =  check chained subscript res
+
+fn :: check chained subscript (RExpr, [RToken]) => (RExpr, [RToken])
+      check chained subscript (base_e, ((TokIdent "_"):TokLParen:rest)) =
+        check chained subscript (parse subscript paren base_e rest)
+      check chained subscript res = res
+
+fn :: parse subscript paren RExpr  [RToken]          => (RExpr, [RToken])
+      parse subscript paren base_e (TokComma:after_c) =
+        c_res = parse_expr after_c
+        finish col slice expr base_e c_res
+      parse subscript paren base_e ts                =
+        i1_res = parse_expr ts
+        parse subscript after first base_e i1_res
+
+fn :: finish col slice expr RExpr  (RExpr, [RToken]) => (RExpr, [RToken])
+      finish col slice expr base_e (col_e, rest)     =
+        (ECall ":tensor-col-slice:" [base_e, col_e], strip rparen rest)
+
+fn :: parse subscript after first RExpr  (RExpr, [RToken]) => (RExpr, [RToken])
+      parse subscript after first base_e (idx1, (TokComma:TokRParen:rest)) =
+        (ECall ":tensor-row-slice:" [base_e, idx1], rest)
+      parse subscript after first base_e (idx1, (TokComma:more_ts)) =
+        more_res = parse_comma_exprs more_ts
+        finish multi subscript expr base_e idx1 more_res
+      parse subscript after first base_e (idx1, (TokRParen:rest)) =
+        (EIndex base_e [idx1], rest)
+      parse subscript after first base_e (idx1, rest) =
+        (EIndex base_e [idx1], rest)
+
+fn :: finish multi subscript expr RExpr  RExpr ([RExpr], [RToken]) => (RExpr, [RToken])
+      finish multi subscript expr base_e idx1  (more_idxs, rest)   =
+        (EIndex base_e ([idx1] :: more_idxs), rest)
 
 fn :: collect_bracket_indices [RToken] [RExpr] => ([RExpr], [RToken])
       collect_bracket_indices (TokIdxLBracket:rest) acc =
@@ -1083,10 +1298,136 @@ fn :: parse_let_rhs_newline [RToken]  [RToken]       => (RExpr, [RToken])
       parse_let_rhs_newline orig_rest _              =
         check_trailing_comma_and_where (parse_expr orig_rest)
 
+fn :: wrap subscript let rhs (RExpr, [RToken]) => (RExpr, [RToken])
+      wrap subscript let rhs ((EVar rhs_v), rest)
+        | is_subscript_ident rhs_v = (ECall ":tensor-clone:" [EVar (extract fst str (split_subscript rhs_v))], rest)
+      wrap subscript let rhs res = res
+
+fn :: collect ident lhs list [RToken] [String] => (Bool, [String], [RToken])
+      collect ident lhs list ((TokIdent v):TokComma:rest) acc =
+        collect ident lhs list rest (acc :: [v])
+      collect ident lhs list ((TokIdent v):TokEquals:rest) acc =
+        (True, acc :: [v], rest)
+      collect ident lhs list ts acc =
+        (False, acc, ts)
+
+fn :: build tup unpack stmts [String] String Int [RStmt] => [RStmt]
+      build tup unpack stmts []       _        _   tail_stmts = tail_stmts
+      build tup unpack stmts (v:vs)   tmp_name idx tail_stmts =
+        [StmtMut v (EIndex (EVar tmp_name) [EInt idx])] :: (build tup unpack stmts vs tmp_name (idx + 1) tail_stmts)
+
+fn :: finish tup destructure String [String] (RExpr, [RToken]) => ([RStmt], [RToken])
+      finish tup destructure first_v vars (rhs_e, after_rhs) =
+        tmp_name = ":tup-" + first_v + ":"
+        more_res = parse_block_stmts_safe after_rhs
+        finish tup destructure more tmp_name vars rhs_e more_res
+
+fn :: finish tup destructure more String [String] RExpr ([RStmt], [RToken]) => ([RStmt], [RToken])
+      finish tup destructure more tmp_name vars rhs_e (more_stmts, rest) =
+        ([StmtMut tmp_name rhs_e] :: (build tup unpack stmts vars tmp_name 0 more_stmts), rest)
+
+fn :: parse tuple destructure stmt String (Bool, [String], [RToken]) [RToken] => ([RStmt], [RToken])
+      parse tuple destructure stmt first_v (True, vars, after_eq) _ =
+        finish tup destructure first_v vars (parse_let_rhs after_eq)
+      parse tuple destructure stmt first_v (False, _, _) orig_rest =
+        finish_expr_stmt (parse_expr ([TokIdent first_v, TokComma] :: orig_rest))
+
+fn :: collect multi subscript lhs [RToken] [RExpr] => (Bool, [RExpr], [RToken])
+      collect multi subscript lhs ((TokIdent vk):TokLParen:rest) acc
+        | is trailing underscore ident vk =
+          tk = str_slice vk 0 ((str_len vk) - 1)
+          collect multi subscript one tk acc (parse_comma_exprs rest)
+      collect multi subscript lhs ts acc =
+        (False, acc, ts)
+
+fn :: collect multi subscript one String [RExpr] ([RExpr], [RToken]) => (Bool, [RExpr], [RToken])
+      collect multi subscript one tk acc (idxs, (TokComma:rest)) =
+        collect multi subscript lhs rest (acc :: [EIndexAssign tk idxs EUnit])
+      collect multi subscript one tk acc (idxs, (TokEquals:rest)) =
+        (True, acc :: [EIndexAssign tk idxs EUnit], rest)
+      collect multi subscript one _ acc (_, rest) =
+        (False, acc, rest)
+
+fn :: build multi idx assign stmts [RExpr] String Int [RStmt] => [RStmt]
+      build multi idx assign stmts [] _ _ tail_stmts = tail_stmts
+      build multi idx assign stmts ((EIndexAssign tk idxs _):ts) tmp_name idx tail_stmts =
+        [StmtIndexAssign tk idxs (EIndex (EVar tmp_name) [EInt idx])] :: (build multi idx assign stmts ts tmp_name (idx + 1) tail_stmts)
+      build multi idx assign stmts (_:ts) tmp_name idx tail_stmts =
+        build multi idx assign stmts ts tmp_name (idx + 1) tail_stmts
+
+fn :: finish multi idx assign String [RExpr] (RExpr, [RToken]) => ([RStmt], [RToken])
+      finish multi idx assign t_name targets (rhs_e, after_rhs) =
+        tmp_name = ":idx-tup-" + t_name + ":"
+        more_res = parse_block_stmts_safe after_rhs
+        finish multi idx assign more tmp_name targets rhs_e more_res
+
+fn :: finish multi idx assign more String [RExpr] RExpr ([RStmt], [RToken]) => ([RStmt], [RToken])
+      finish multi idx assign more tmp_name targets rhs_e (more_stmts, rest) =
+        ([StmtMut tmp_name rhs_e] :: (build multi idx assign stmts targets tmp_name 0 more_stmts), rest)
+
+fn :: parse subscript col assign String String [RToken] (RExpr, [RToken]) => ([RStmt], [RToken])
+      parse subscript col assign t_name _ _ (col_e, (TokRParen:TokEquals:after_eq)) =
+        val_res = parse_let_rhs after_eq
+        finish slice set stmt ":tensor-set-col:" t_name col_e val_res
+      parse subscript col assign _ raw_name orig_rest _ =
+        finish_expr_stmt (parse_expr ([TokIdent raw_name, TokLParen] :: orig_rest))
+
+fn :: finish slice set stmt String String RExpr (RExpr, [RToken]) => ([RStmt], [RToken])
+      finish slice set stmt helper t_name idx_e (val_e, after_rhs) =
+        more = parse_block_stmts_safe after_rhs
+        prepend_stmt (StmtExpr (ECall helper [EVar t_name, idx_e, val_e])) more
+
+fn :: parse subscript assign after first String String [RToken] (RExpr, [RToken]) => ([RStmt], [RToken])
+      parse subscript assign after first t_name _ _ (idx1, (TokComma:TokRParen:TokEquals:after_eq)) =
+        val_res = parse_let_rhs after_eq
+        finish slice set stmt ":tensor-set-row:" t_name idx1 val_res
+      parse subscript assign after first t_name raw_name orig_rest (idx1, (TokComma:more_ts)) =
+        more_res = parse_comma_exprs more_ts
+        parse subscript assign after idxs t_name raw_name orig_rest idx1 more_res
+      parse subscript assign after first t_name _ _ (idx1, (TokRParen:TokEquals:after_eq)) =
+        val_res = parse_let_rhs after_eq
+        finish_idx_assign_stmt t_name [idx1] val_res
+      parse subscript assign after first t_name raw_name orig_rest (idx1, (TokRParen:TokComma:more_lhs)) =
+        multi_res = collect multi subscript lhs more_lhs [EIndexAssign t_name [idx1] EUnit]
+        finish multi subscript lhs t_name raw_name orig_rest multi_res
+      parse subscript assign after first _ raw_name orig_rest _ =
+        finish_expr_stmt (parse_expr ([TokIdent raw_name, TokLParen] :: orig_rest))
+
+fn :: parse subscript assign after idxs String String [RToken] RExpr ([RExpr], [RToken]) => ([RStmt], [RToken])
+      parse subscript assign after idxs t_name _ _ idx1 (more_idxs, (TokEquals:after_eq)) =
+        val_res = parse_let_rhs after_eq
+        finish_idx_assign_stmt t_name ([idx1] :: more_idxs) val_res
+      parse subscript assign after idxs t_name raw_name orig_rest idx1 (more_idxs, (TokComma:more_lhs)) =
+        multi_res = collect multi subscript lhs more_lhs [EIndexAssign t_name ([idx1] :: more_idxs) EUnit]
+        finish multi subscript lhs t_name raw_name orig_rest multi_res
+      parse subscript assign after idxs _ raw_name orig_rest _ _ =
+        finish_expr_stmt (parse_expr ([TokIdent raw_name, TokLParen] :: orig_rest))
+
+fn :: finish multi subscript lhs String String [RToken] (Bool, [RExpr], [RToken]) => ([RStmt], [RToken])
+      finish multi subscript lhs t_name _ _ (True, targets, after_eq) =
+        finish multi idx assign t_name targets (parse_let_rhs after_eq)
+      finish multi subscript lhs _ raw_name orig_rest (False, _, _) =
+        finish_expr_stmt (parse_expr ([TokIdent raw_name, TokLParen] :: orig_rest))
+
+fn :: parse subscript assign stmt String String [RToken] => ([RStmt], [RToken])
+      parse subscript assign stmt t_name raw_name (TokComma:after_c) =
+        parse subscript col assign t_name raw_name ([TokComma] :: after_c) (parse_expr after_c)
+      parse subscript assign stmt t_name raw_name ts =
+        parse subscript assign after first t_name raw_name ts (parse_expr ts)
+
 fn :: parse_block_line_ident String [RToken]         => ([RStmt], [RToken])
-      parse_block_line_ident name   (TokEquals:rest) =
-        e_res = parse_let_rhs rest
-        finish_let_stmt name e_res
+      parse_block_line_ident name   (TokEquals:rest)
+        | is_subscript_ident name =
+          e_res = wrap subscript let rhs (parse_let_rhs rest)
+          finish_mut_stmt (extract fst str (split_subscript name)) e_res
+        | otherwise =
+          e_res = parse_let_rhs rest
+          finish_let_stmt name e_res
+      parse_block_line_ident name   (TokComma:rest)
+        | line_has_equals rest = parse tuple destructure stmt name (collect ident lhs list rest [name]) rest
+      parse_block_line_ident name   (TokLParen:rest)
+        | (is trailing underscore ident name) and (line_has_equals rest) =
+          parse subscript assign stmt (str_slice name 0 ((str_len name) - 1)) name rest
       parse_block_line_ident name   (TokIdxLBracket:rest)
         | line_has_equals rest = parse_block_idx_assign name ([TokIdxLBracket] :: rest) (collect_bracket_indices ([TokIdxLBracket] :: rest) [])
       parse_block_line_ident name   rest
@@ -1286,6 +1627,10 @@ fn :: scan_op_header [RToken] [String] [String] [Bool] => ([String], [String], [
         scan_op_header rest (words :: ["and"]) params (tmpl :: [False])
       scan_op_header (TokOr:rest) words params tmpl =
         scan_op_header rest (words :: ["or"]) params (tmpl :: [False])
+      scan_op_header (TokXor:rest) words params tmpl =
+        scan_op_header rest (words :: ["xor"]) params (tmpl :: [False])
+      scan_op_header (TokNot:rest) words params tmpl =
+        scan_op_header rest (words :: ["not"]) params (tmpl :: [False])
       scan_op_header (TokPlus:rest) words params tmpl =
         scan_op_header rest (words :: ["+"]) params (tmpl :: [False])
       scan_op_header (TokMinus:rest) words params tmpl =
@@ -1313,6 +1658,8 @@ fn :: match_op_keyword RToken       String => Bool
       match_op_keyword TokWith      kw     =  kw == "with"
       match_op_keyword TokAnd       kw     =  kw == "and"
       match_op_keyword TokOr        kw     =  kw == "or"
+      match_op_keyword TokXor       kw     =  kw == "xor"
+      match_op_keyword TokNot       kw     =  kw == "not"
       match_op_keyword TokPlus      kw     =  kw == "+"
       match_op_keyword TokMinus     kw     =  kw == "-"
       match_op_keyword TokStar      kw     =  kw == "*"
@@ -1575,11 +1922,21 @@ fn :: lookup_arity [RArityEntry] String => Int
         | k == target = v
         | otherwise = lookup_arity rest target
 
+fn :: has_arity_prefix_loop [RArityEntry] String String => Bool
+      has_arity_prefix_loop [] _ _ = False
+      has_arity_prefix_loop ((ArityEntry k _):rest) pref pref_under
+        | k == pref OR (str_starts_with k pref_under) = True
+        | otherwise = has_arity_prefix_loop rest pref pref_under
+
 fn :: has_arity_prefix [RArityEntry] String => Bool
-      has_arity_prefix []            _      =  False
-      has_arity_prefix ((ArityEntry k _):rest) pref
-        | k == pref OR (str_starts_with k (pref + "_")) = True
-        | otherwise = has_arity_prefix rest pref
+      has_arity_prefix arities       pref   =
+        has_arity_prefix_loop arities pref (pref + "_")
+
+fn :: filter_arity_prefix [RArityEntry] String String => [RArityEntry]
+      filter_arity_prefix [] _ _ = []
+      filter_arity_prefix ((ArityEntry k v):rest) pref pref_under
+        | k == pref OR (str_starts_with k pref_under) = [ArityEntry k v] :: (filter_arity_prefix rest pref pref_under)
+        | otherwise = filter_arity_prefix rest pref pref_under
 
 fn :: has_variadic_param [String] => Bool
       has_variadic_param []       =  False
@@ -1604,6 +1961,29 @@ fn :: collect_fn_arities [RFnDef] => [RArityEntry]
       collect_fn_arities []       =  builtin_arity_entries
       collect_fn_arities ((FnDef name params _ _):fs) =
         [ArityEntry name (fn_def_arity params)] :: (collect_fn_arities fs)
+
+fn :: field_list_count [RField] => Int
+      field_list_count []       =  0
+      field_list_count (_:fs)   =  1 + (field_list_count fs)
+
+fn :: collect_variant_arities [RVariant] => [RArityEntry]
+      collect_variant_arities [] = []
+      collect_variant_arities ((TypeVariant _ []):vs) =
+        collect_variant_arities vs
+      collect_variant_arities ((TypeVariant ctor args):vs) =
+        [ArityEntry ctor (str_list_count args)] :: (collect_variant_arities vs)
+
+fn :: collect_field_arities [RField] => [RArityEntry]
+      collect_field_arities [] = []
+      collect_field_arities ((TypeField fname _):fs) =
+        [ArityEntry fname 1] :: (collect_field_arities fs)
+
+fn :: collect_type_arities [RTypeDef] => [RArityEntry]
+      collect_type_arities [] = []
+      collect_type_arities ((TypeDef _ vars []):ts) =
+        (collect_variant_arities vars) :: (collect_type_arities ts)
+      collect_type_arities ((TypeDef name vars fields):ts) =
+        [ArityEntry name (field_list_count fields)] :: (collect_variant_arities vars) :: (collect_field_arities fields) :: (collect_type_arities ts)
 
 fn :: str_list_count [String] => Int
       str_list_count []       =  0
@@ -1645,14 +2025,22 @@ fn :: can_complete_op [RArityEntry] String [RExpr]         => Bool
       can_complete_op arities       cand   []              =  (lookup_arity arities cand) >= 0
       can_complete_op arities       cand   ((EVar w):rest)
         | (lookup_arity arities cand) >= 0 = True
-        | (has_arity_prefix arities (join_op_word cand w)) AND (can_complete_op arities (join_op_word cand w) rest) = True
+        | has_arity_prefix arities (join_op_word cand w) = can_complete_op arities (join_op_word cand w) rest
         | otherwise = can_complete_op arities cand rest
       can_complete_op arities       cand   (_:rest)
         | (lookup_arity arities cand) >= 0 = True
         | otherwise = can_complete_op arities cand rest
 
+fn :: extract_mixfix_start String [RExpr] [RArityEntry] [RArityEntry] [RExpr] => (String, [RExpr])
+      extract_mixfix_start w rest arities w_cands operands
+        | (NOT ((is_std_builtin w) AND (expr_list_count operands) > 0)) AND (has_arity_prefix w_cands w) AND (can_complete_op w_cands w rest) = extract_mixfix_call w rest w_cands operands
+        | otherwise = extract_mixfix_call "" rest arities (operands :: [EVar w])
+
 fn :: extract_mixfix_call String [RExpr] [RArityEntry] [RExpr] => (String, [RExpr])
       extract_mixfix_call cur_name [] _ operands = (cur_name, operands)
+      extract_mixfix_call "" ((EVar w):rest) arities operands =
+        w_cands = filter_arity_prefix arities w (w + "_")
+        extract_mixfix_start w rest arities w_cands operands
       extract_mixfix_call cur_name ((EVar w):rest) arities operands
         | (NOT ((is_std_builtin cur_name) AND (expr_list_count operands) > 0)) AND (has_arity_prefix arities (join_op_word cur_name w)) AND (can_complete_op arities (join_op_word cur_name w) rest) = extract_mixfix_call (join_op_word cur_name w) rest arities operands
         | otherwise = extract_mixfix_call cur_name rest arities (operands :: [EVar w])
@@ -1728,6 +2116,18 @@ fn :: is_std_builtin String             => Bool
       is_std_builtin "sys_execve"       =  True
       is_std_builtin "sys_read_pass"    =  True
       is_std_builtin "__record_update__" = True
+      is_std_builtin ":tensor-zeros:" = True
+      is_std_builtin ":tensor-clone:" = True
+      is_std_builtin ":tensor-row-slice:" = True
+      is_std_builtin ":tensor-col-slice:" = True
+      is_std_builtin ":tensor-set-row:" = True
+      is_std_builtin ":tensor-set-col:" = True
+      is_std_builtin ":tensor-map-rows:" = True
+      is_std_builtin ":tensor-map-rows-in:" = True
+      is_std_builtin ":tensor-map-cols:" = True
+      is_std_builtin ":tensor-map-cols-in:" = True
+      is_std_builtin ":tensor-map-elems:" = True
+      is_std_builtin ":tensor-map-elems-in:" = True
       is_std_builtin _                  =  False
 
 fn :: std_builtin_arity String     => Int
@@ -1751,12 +2151,12 @@ fn :: collapse_fn_ref_args [RExpr]  [RArityEntry] => [RExpr]
 
 fn :: maybe_collapse_args [RExpr] Int         [RArityEntry] => [RExpr]
       maybe_collapse_args args    expected_ar arities
-        | expected_ar >= 0 AND (expr_list_count args) <= expected_ar = args
+        | expected_ar >= 0 and (expr_list_count args) <= expected_ar = args
         | otherwise = collapse_fn_ref_args args arities
 
 fn :: has_longer_arity_prefix [RArityEntry] String  [RExpr]         => Bool
       has_longer_arity_prefix arities       fn_name ((EVar w):rest) =
-        (has_arity_prefix arities (fn_name + "_" + w)) AND (can_complete_op arities (fn_name + "_" + w) rest)
+        (has_arity_prefix arities (fn_name + "_" + w)) and (can_complete_op arities (fn_name + "_" + w) rest)
       has_longer_arity_prefix _             _       _               =  False
 
 fn :: split_send_to_args [RExpr] [RExpr] => (Bool, [RExpr], RExpr)
@@ -1788,20 +2188,56 @@ fn :: finish_ask_norm String [RExpr] [RArityEntry] (Bool, [RExpr], RExpr) => REx
         normed_msgs = norm_expr_list (collapse_fn_ref_args msg_atoms arities) arities
         ECall "ask_to" [pack_send_to_msg normed_msgs, norm_expr target arities]
       finish_ask_norm fn_name args arities (False, _, _)
-        | (NOT (has_longer_arity_prefix arities fn_name args)) AND (lookup_arity arities fn_name) < 0 =
+        | (not (has_longer_arity_prefix arities fn_name args)) and (lookup_arity arities fn_name) < 0 =
           finish_ask_prefix args arities
         | otherwise =
           norm_call_mixfix fn_name args arities (extract_mixfix_call "" ([EVar fn_name] :: args) arities [])
 
+fn :: norm map in target RExpr RExpr [RArityEntry] => RExpr
+      norm map in target fn_e (ECall ":tensor-row-slice:" (base_e:_)) arities =
+        ECall ":tensor-map-rows-in:" [fn_e, norm_expr base_e arities]
+      norm map in target fn_e (ECall ":tensor-col-slice:" (base_e:_)) arities =
+        ECall ":tensor-map-cols-in:" [fn_e, norm_expr base_e arities]
+      norm map in target fn_e (EVar v) _
+        | is_subscript_ident v = ECall ":tensor-map-elems-in:" [fn_e, EVar (extract fst str (split_subscript v))]
+      norm map in target fn_e target_e arities =
+        ECall ":tensor-map-elems-in:" [fn_e, norm_expr target_e arities]
+
+fn :: norm map pure target String RExpr RExpr [RArityEntry] => RExpr
+      norm map pure target _ fn_e (ECall ":tensor-row-slice:" (base_e:_)) arities =
+        ECall ":tensor-map-rows:" [fn_e, norm_expr base_e arities]
+      norm map pure target _ fn_e (ECall ":tensor-col-slice:" (base_e:_)) arities =
+        ECall ":tensor-map-cols:" [fn_e, norm_expr base_e arities]
+      norm map pure target _ fn_e (EVar v) _
+        | is_subscript_ident v = ECall ":tensor-map-elems:" [fn_e, EVar (extract fst str (split_subscript v))]
+      norm map pure target fn_name fn_e target_e arities =
+        ECall fn_name [fn_e, norm_expr target_e arities]
+
+fn :: norm map call String [RExpr] [RArityEntry] => RExpr
+      norm map call _ (fn_arg:(EVar "in"):target_arg:[]) arities =
+        norm map in target (norm_expr fn_arg arities) target_arg arities
+      norm map call fn_name (fn_arg:target_arg:[]) arities =
+        norm map pure target fn_name (norm_expr fn_arg arities) target_arg arities
+      norm map call fn_name args arities =
+        ECall fn_name (norm_expr_list args arities)
+
+fn :: norm_call_with_cands String [RExpr] [RArityEntry] [RArityEntry] Int => RExpr
+      norm_call_with_cands fn_name args arities cands ar
+        | ar >= 0 and (not (has_longer_arity_prefix cands fn_name args)) = ECall fn_name (norm_expr_list (maybe_collapse_args args ar arities) arities)
+        | (not (is_std_builtin fn_name)) and (has_arity_prefix cands fn_name) and (can_complete_op cands fn_name args) = norm_call_mixfix fn_name args arities (extract_mixfix_call fn_name args cands [])
+        | otherwise = norm_call_mixfix fn_name args arities (extract_mixfix_call "" ([EVar fn_name] :: args) arities [])
+
 fn :: norm_call String  [RExpr] [RArityEntry] => RExpr
       norm_call fn_name args    arities
-        | fn_name == "agent" AND (NOT (has_longer_arity_prefix arities "agent" args)) = ECall "agent" (norm_expr_list (collapse_fn_ref_args args arities) arities)
+        | fn_name == "agent" and (not (has_longer_arity_prefix arities "agent" args)) = ECall "agent" (norm_expr_list (collapse_fn_ref_args args arities) arities)
         | fn_name == "send" = finish_send_to_norm fn_name args arities (split_send_to_args args [])
         | fn_name == "ask" = finish_ask_norm fn_name args arities (split_send_to_args args [])
-        | (is_std_builtin fn_name) AND (NOT (has_longer_arity_prefix arities fn_name args)) = ECall fn_name (norm_expr_list (maybe_collapse_args args (std_builtin_arity fn_name) arities) arities)
-        | (lookup_arity arities fn_name) >= 0 AND (NOT (has_longer_arity_prefix arities fn_name args)) = ECall fn_name (norm_expr_list (maybe_collapse_args args (lookup_arity arities fn_name) arities) arities)
+        | (fn_name == "map" or fn_name == "||map") and (not (has_longer_arity_prefix arities fn_name args)) = norm map call fn_name (collapse_fn_ref_args args arities) arities
+        | (is_std_builtin fn_name) and (not (has_longer_arity_prefix arities fn_name args)) = ECall fn_name (norm_expr_list (maybe_collapse_args args (std_builtin_arity fn_name) arities) arities)
         | fn_name == "__chain__" = norm_call_chain args arities (extract_mixfix_call "" args arities [])
-        | otherwise = norm_call_mixfix fn_name args arities (extract_mixfix_call "" ([EVar fn_name] :: args) arities [])
+        | otherwise =
+          cands = filter_arity_prefix arities fn_name (fn_name + "_")
+          norm_call_with_cands fn_name args arities cands (lookup_arity cands fn_name)
 
 fn :: norm_call_chain [RExpr]   [RArityEntry] (String, [RExpr]) => RExpr
       norm_call_chain orig_args arities       (mangled, operands) =
@@ -1812,7 +2248,7 @@ fn :: norm_call_chain [RExpr]   [RArityEntry] (String, [RExpr]) => RExpr
 fn :: norm_call_chain_step [RExpr] [RArityEntry] String Int [RExpr] => RExpr
       norm_call_chain_step orig_args arities mangled ar c_ops
         | arity_matches ar (expr_list_count c_ops) = ECall mangled (norm_expr_list c_ops arities)
-        | ar > 0 AND (expr_list_count c_ops) == 0 = EVar mangled
+        | ar > 0 and (expr_list_count c_ops) == 0 = EVar mangled
         | otherwise = norm_call_chain_fallback (norm_expr_list orig_args arities) arities
 
 fn :: norm_call_chain_fallback [RExpr] [RArityEntry] => RExpr
@@ -1828,7 +2264,7 @@ fn :: norm_call_mixfix String [RExpr] [RArityEntry] (String, [RExpr]) => RExpr
 fn :: norm_call_mixfix_step String [RExpr] [RArityEntry] String Int [RExpr] => RExpr
       norm_call_mixfix_step orig_name orig_args arities mangled ar c_ops
         | arity_matches ar (expr_list_count c_ops) = ECall mangled (norm_expr_list c_ops arities)
-        | ar > 0 AND (expr_list_count c_ops) == 0 = EVar mangled
+        | ar > 0 and (expr_list_count c_ops) == 0 = EVar mangled
         | otherwise = norm_call_mixfix_fallback orig_name (norm_expr_list orig_args arities) arities
 
 fn :: norm_call_mixfix_fallback String    [RExpr] [RArityEntry] => RExpr
@@ -1842,7 +2278,7 @@ fn :: finish_postfix_stack String    [RExpr]     [RExpr]          => RExpr
 fn :: flatten_mixfix_rhs RExpr [RArityEntry] => [RExpr]
       flatten_mixfix_rhs (ECall "__chain__" args) _ = args
       flatten_mixfix_rhs (ECall r_name r_args) arities
-        | ((lookup_arity arities r_name) < 0 AND (NOT (is_std_builtin r_name))) OR (has_longer_arity_prefix arities r_name r_args) = [EVar r_name] :: r_args
+        | ((lookup_arity arities r_name) < 0 and (not (is_std_builtin r_name))) or (has_longer_arity_prefix arities r_name r_args) = [EVar r_name] :: r_args
       flatten_mixfix_rhs other _             =  [other]
 
 fn :: can_absorb_mixfix_conj String [RExpr] String RExpr [RArityEntry] => Bool
@@ -1855,11 +2291,12 @@ fn :: can_absorb_mixfix_verify String    [RArityEntry] (String, [RExpr]) => Bool
       can_absorb_mixfix_verify conj_word arities       (full_mangled, full_ops) =
         ar = lookup_arity arities full_mangled
         c_ops = maybe_collapse_args full_ops ar arities
-        (str_contains full_mangled ("_" + conj_word)) AND (arity_matches ar (expr_list_count c_ops))
+        (str_contains full_mangled ("_" + conj_word)) and (arity_matches ar (expr_list_count c_ops))
 
 fn :: norm_expr RExpr              [RArityEntry] => RExpr
       norm_expr (EVar name)        arities
         | (lookup_arity arities name) == 0 = ECall name []
+        | is_subscript_ident name = EVar (extract fst str (split_subscript name))
         | otherwise = EVar name
       norm_expr (ENot inner)       arities       =  ENot (norm_expr inner arities)
       norm_expr (EOut inner)       arities       =  EOut (norm_expr inner arities)
@@ -1926,7 +2363,7 @@ fn :: norm_fndef_list [RFnDef] [RArityEntry] => [RFnDef]
 
 fn :: normalize_program RProgram          => RProgram
       normalize_program (Program fns tys) =
-        arities = collect_fn_arities fns
+        arities = (collect_fn_arities fns) :: (collect_type_arities tys)
         Program (norm_fndef_list fns arities) tys
 
 -- ── Library & Module Import Resolution (`.rglib` / `.rg`) ────
@@ -1970,18 +2407,22 @@ fn :: strip_quotes_len String Int => String
 fn :: strip_quotes String => String
       strip_quotes s      =  strip_quotes_len s (str_len s)
 
+fn :: read_local_rg_module String String => String
+      read_local_rg_module pdir   spec   =
+        try_read_candidate_paths [pdir + "/" + spec + ".rg", pdir + "/../lib/" + spec + ".rg", "src/main/ridgun/lib/" + spec + ".rg", "src/main/ridgun/" + spec + ".rg"]
+
 fn :: has_local_rg_module String String => Bool
       has_local_rg_module pdir   spec   =
-        ((read_file (pdir + "/" + spec + ".rg")) != "") OR ((read_file ("src/main/ridgun/lib/" + spec + ".rg")) != "")
+        (read_local_rg_module pdir spec) != ""
 
 fn :: resolve_rglib_clean String String => String
       resolve_rglib_clean pdir   spec
         | is_core_compiler_mod spec = ""
         | str_contains spec ".rglib" =
-          try_read_candidate_paths [spec, pdir + "/" + spec, "target/" + spec, "target/bundles/" + spec, "dist/" + spec, "lib/" + spec, ".stable/deps/" + spec, "/home/boogie/ridgun-libs/target/bundles/" + spec, "/home/boogie/ridgun-libs/target/" + spec]
+          try_read_candidate_paths [spec, pdir + "/" + spec, ".stable/deps/" + spec, "target/bundles/" + spec, "build/" + spec, "target/" + spec, "dist/" + spec, "lib/" + spec, ".stable/deps/ridgun-libs/target/bundles/" + spec, "/home/boogie/ridgun-libs/target/bundles/" + spec, "/home/boogie/ridgun-libs/target/" + spec]
         | has_local_rg_module pdir spec = ""
         | otherwise =
-          try_read_candidate_paths [pdir + "/" + spec + ".rglib", pdir + "/lib/" + spec + ".rglib", spec + ".rglib", "target/" + spec + ".rglib", "target/bundles/" + spec + ".rglib", "dist/" + spec + ".rglib", "lib/" + spec + ".rglib", ".stable/deps/" + spec + ".rglib", "src/main/ridgun/lib/" + spec + ".rglib", "/home/boogie/ridgun-libs/target/bundles/" + spec + ".rglib", "/home/boogie/ridgun-libs/target/" + spec + ".rglib"]
+          try_read_candidate_paths [".stable/deps/" + spec + ".rglib", ".stable/deps/" + spec + ".rg", ".stable/deps/ridgun-libs/target/bundles/" + spec + ".rglib", ".stable/deps/ridgun-libs/src/main/ridgun/lib/" + spec + ".rg", "target/bundles/" + spec + ".rglib", "build/" + spec + ".rglib", pdir + "/" + spec + ".rglib", pdir + "/lib/" + spec + ".rglib", spec + ".rglib", "target/" + spec + ".rglib", "dist/" + spec + ".rglib", "lib/" + spec + ".rglib", "src/main/ridgun/lib/" + spec + ".rglib", "/home/boogie/ridgun-libs/target/bundles/" + spec + ".rglib", "/home/boogie/ridgun-libs/target/" + spec + ".rglib", "/home/boogie/ridgun-libs/src/main/ridgun/lib/" + spec + ".rg"]
 
 fn :: rglib_trim_lead String Int Int => String
       rglib_trim_lead s      pos len
@@ -2013,32 +2454,90 @@ fn :: append_rglib_resolved String String  => String
       append_rglib_resolved acc    ""      =  acc
       append_rglib_resolved acc    lib_src =  acc + (strip_rgc_magic lib_src) + "\n"
 
-fn :: append_rglib_from_line String String String => String
-      append_rglib_from_line pdir   line   acc
-        | str_starts_with line "import " =
-          spec = str_slice line 7 (str_len line)
-          lib_src = resolve_rglib_for_spec pdir spec
-          append_rglib_resolved acc lib_src
-        | otherwise = acc
+fn :: str_in_seen_list String [String] => Bool
+      str_in_seen_list _      []       =  False
+      str_in_seen_list target (s:ss)
+        | s == target = True
+        | otherwise = str_in_seen_list target ss
 
-fn :: scan_rglib_imports String String Int Int Int String => String
-      scan_rglib_imports pdir s pos len line_start acc
-        | pos >= len =
-          line = rglib_trim (str_slice s line_start len)
-          append_rglib_from_line pdir line acc
-        | (str_char_at s pos) == 10 =
-          line = rglib_trim (str_slice s line_start pos)
-          acc2 = append_rglib_from_line pdir line acc
-      scan_rglib_imports pdir s (pos + 1) len (pos + 1) acc2
+fn :: append_rglib_from_line String String String [String] => (String, [String])
+      append_rglib_from_line pdir   line   acc    seen
+        | str_starts_with line "import " =
+          raw_spec = str_slice line 7 (str_len line)
+          clean_spec = strip_quotes (rglib_trim raw_spec)
+          append_rglib_if_unseen pdir clean_spec acc seen
+        | otherwise = (acc, seen)
+
+fn :: append_rglib_after_deps String (String, [String]) => (String, [String])
+      append_rglib_after_deps lib_src (acc2, seen2) =
+        (append_rglib_resolved acc2 lib_src, seen2)
+
+fn :: append_rglib_resolved_mod String String String [String] => (String, [String])
+      append_rglib_resolved_mod _ "" acc seen1 = (acc, seen1)
+      append_rglib_resolved_mod pdir lib_src acc seen1 =
+        res_deps = scan_rglib_imports_state pdir lib_src 0 (str_len lib_src) 0 acc seen1
+        append_rglib_after_deps lib_src res_deps
+
+fn :: append_rglib_local_or_ext String String String String [String] => (String, [String])
+      append_rglib_local_or_ext pdir clean_spec "" acc seen1 =
+        lib_src = resolve_rglib_clean pdir clean_spec
+        append_rglib_resolved_mod pdir lib_src acc seen1
+      append_rglib_local_or_ext pdir _ local_rg acc seen1 =
+        scan_rglib_imports_state pdir local_rg 0 (str_len local_rg) 0 acc seen1
+
+fn :: append_rglib_if_unseen String String String [String] => (String, [String])
+      append_rglib_if_unseen pdir clean_spec acc seen
+        | (is_core_compiler_mod clean_spec) OR (str_in_seen_list clean_spec seen) = (acc, seen)
         | otherwise =
-          scan_rglib_imports pdir s (pos + 1) len line_start acc
+          seen1 = [clean_spec] :: seen
+          local_rg = read_local_rg_module pdir clean_spec
+          append_rglib_local_or_ext pdir clean_spec local_rg acc seen1
+
+fn :: fst_str_seen (String, [String]) => String
+      fst_str_seen (a, _)             =  a
+
+fn :: skip_line_spaces String Int Int => Int
+      skip_line_spaces s p end_p
+        | p >= end_p = p
+        | (str_char_at s p) == 32 OR (str_char_at s p) == 9 = skip_line_spaces s (p + 1) end_p
+        | otherwise = p
+
+fn :: line_starts_with_import String Int Int => Bool
+      line_starts_with_import s start end_p =
+        p = skip_line_spaces s start end_p
+        (end_p - p) > 7 AND (str_char_at s p) == 105 AND (str_char_at s (p + 1)) == 109 AND (str_char_at s (p + 2)) == 112 AND (str_char_at s (p + 3)) == 111 AND (str_char_at s (p + 4)) == 114 AND (str_char_at s (p + 5)) == 116 AND (str_char_at s (p + 6)) == 32
+
+fn :: scan_rglib_line String String Int Int String [String] => (String, [String])
+      scan_rglib_line pdir s line_start end_p acc seen
+        | line_starts_with_import s line_start end_p =
+          line = rglib_trim (str_slice s line_start end_p)
+          append_rglib_from_line pdir line acc seen
+        | otherwise = (acc, seen)
+
+fn :: scan_rglib_imports_state String String Int Int Int String [String] => (String, [String])
+      scan_rglib_imports_state pdir s pos len line_start acc seen
+        | pos >= len =
+          scan_rglib_line pdir s line_start len acc seen
+        | (str_char_at s pos) == 10 =
+          res = scan_rglib_line pdir s line_start pos acc seen
+          scan_rglib_imports_cont pdir s (pos + 1) len res
+        | otherwise =
+          scan_rglib_imports_state pdir s (pos + 1) len line_start acc seen
+
+fn :: scan_rglib_imports_cont String String Int Int (String, [String]) => (String, [String])
+      scan_rglib_imports_cont pdir s next_pos len (acc2, seen2) =
+        scan_rglib_imports_state pdir s next_pos len next_pos acc2 seen2
+
+fn :: scan_rglib_imports String String Int Int Int String [String] => String
+      scan_rglib_imports pdir s pos len line_start acc seen =
+        fst_str_seen (scan_rglib_imports_state pdir s pos len line_start acc seen)
 
 fn :: load_rg_with_libs String     => String
       load_rg_with_libs input_path =
         base_src = load_rg_source input_path
         raw_file = read_file input_path
         pdir = rglib_dir_of input_path 0 (str_len input_path) (0 - 1)
-        lib_prefix = scan_rglib_imports pdir raw_file 0 (str_len raw_file) 0 ""
+        lib_prefix = scan_rglib_imports pdir raw_file 0 (str_len raw_file) 0 "" []
         lib_prefix + base_src
 
 -- ── Top-Level Program Loop ──────────────────────────────────
@@ -2105,9 +2604,56 @@ fn :: filter_catchall_cases [RFnCase] => [RFnCase]
         | is_catchall_case c = [c] :: (filter_catchall_cases cs)
         | otherwise = filter_catchall_cases cs
 
+fn :: pat_list_adt_ctor [RPattern] => String
+      pat_list_adt_ctor [] = ""
+      pat_list_adt_ctor ((PatCtor ctor _):_) = ctor
+      pat_list_adt_ctor (_:ps) = pat_list_adt_ctor ps
+
+fn :: cases_have_adt_ctor [RFnCase] String => Bool
+      cases_have_adt_ctor [] _ = False
+      cases_have_adt_ctor ((FnCase pats _ _):cs) target
+        | (pat_list_adt_ctor pats) == target = True
+        | otherwise = cases_have_adt_ctor cs target
+
+fn :: filter_new_extension_cases [RFnCase] [RFnCase] => [RFnCase]
+      filter_new_extension_cases _ [] = []
+      filter_new_extension_cases old_cs ((FnCase pats guards body):cs) =
+        ctor = pat_list_adt_ctor pats
+        filter_new_extension_step old_cs ctor (FnCase pats guards body) cs
+
+fn :: filter_new_extension_step [RFnCase] String RFnCase [RFnCase] => [RFnCase]
+      filter_new_extension_step old_cs ctor c cs
+        | ctor != "" AND (NOT (cases_have_adt_ctor old_cs ctor)) = [c] :: (filter_new_extension_cases old_cs cs)
+        | otherwise = filter_new_extension_cases old_cs cs
+
 fn :: merge_fn_cases [RFnCase] [RFnCase] => [RFnCase]
       merge_fn_cases old_cs    new_cs    =
-        (filter_specific_cases old_cs) :: (filter_specific_cases new_cs) :: (filter_catchall_cases new_cs) :: (filter_catchall_cases old_cs)
+        ext_cs = filter_new_extension_cases old_cs new_cs
+        (filter_specific_cases old_cs) :: (filter_specific_cases ext_cs) :: (filter_catchall_cases ext_cs) :: (filter_catchall_cases old_cs)
+
+fn :: has_variant_ctor [RVariant] String => Bool
+      has_variant_ctor [] _ = False
+      has_variant_ctor ((TypeVariant ctor _):vs) target
+        | ctor == target = True
+        | otherwise = has_variant_ctor vs target
+
+fn :: filter_new_variants [RVariant] [RVariant] => [RVariant]
+      filter_new_variants _ [] = []
+      filter_new_variants old_vs ((TypeVariant ctor args):vs)
+        | has_variant_ctor old_vs ctor = filter_new_variants old_vs vs
+        | otherwise = [TypeVariant ctor args] :: (filter_new_variants old_vs vs)
+
+fn :: has_field_name [RField] String => Bool
+      has_field_name [] _ = False
+      has_field_name ((TypeField fname _):fs) target
+        | fname == target = True
+        | otherwise = has_field_name fs target
+
+fn :: filter_new_fields [RField] [RField] => [RField]
+      filter_new_fields _ [] = []
+      filter_new_fields old_fs ((TypeField fname fty):fs)
+        | has_field_name old_fs fname = filter_new_fields old_fs fs
+        | otherwise = [TypeField fname fty] :: (filter_new_fields old_fs fs)
 
 fn :: has_fn_def [RFnDef] String => Bool
       has_fn_def []       _      =  False
@@ -2135,7 +2681,7 @@ fn :: has_type_def [RTypeDef] String => Bool
 fn :: update_type_def [RTypeDef] RTypeDef => [RTypeDef]
       update_type_def []         _        =  []
       update_type_def ((TypeDef k old_vs old_fs):ts) (TypeDef target new_vs new_fs)
-        | k == target = [TypeDef k (old_vs :: new_vs) (old_fs :: new_fs)] :: (update_type_def ts (TypeDef target new_vs new_fs))
+        | k == target = [TypeDef k (old_vs :: (filter_new_variants old_vs new_vs)) (old_fs :: (filter_new_fields old_fs new_fs))] :: (update_type_def ts (TypeDef target new_vs new_fs))
         | otherwise = [TypeDef k old_vs old_fs] :: (update_type_def ts (TypeDef target new_vs new_fs))
 
 fn :: merge_type_def [RTypeDef] RTypeDef => [RTypeDef]

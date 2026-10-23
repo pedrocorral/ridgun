@@ -9,7 +9,8 @@ depends_on:
   - FR-TOOL-002
   - FR-COMP-005
   - FR-COMP-006
-related: []
+related:
+  - ADR-0001
 tests: []
 ---
 # FR-TOOL-003 — Extensible `stable` Architecture (Custom Tasks, Plugins, and Open Command Extensions for Frameworks)

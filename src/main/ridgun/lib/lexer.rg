@@ -5,6 +5,7 @@
 -- (_KB/_MB/_GB/_ms/_s/_min), Real (f64), Interpolated Strings, Raw Strings,
 -- Attributes (@), Ellipsis (...), and Operators.
 -- @implements FR-COMP-007
+-- @implements FR-COMP-010
 -- ============================================================
 import ast
 
@@ -199,6 +200,7 @@ fn :: lex_one_tok String Int Int Int Int => (RToken, Int)
         | c == 91 AND pos > 0 AND ((is_alnum (str_char_at src (pos - 1))) OR ((str_char_at src (pos - 1)) == 93)) = (TokIdxLBracket, pos + 1)
         | c == 91 = (TokLBracket, pos + 1)
         | c == 93 = (TokRBracket, pos + 1)
+        | c == 94 = (TokIdent "^", pos + 1)
         | c == 44 = (TokComma, pos + 1)
         | c == 34 = tok_dquote src pos len
         | c == 39 = tok_squote src pos len

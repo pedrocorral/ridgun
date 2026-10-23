@@ -11,7 +11,8 @@ type RToken = TokFn | TokOp | TokType | TokImport | TokGlobal | TokContext | Tok
 type RPattern = PatInt Int | PatReal String | PatStr String | PatBool Bool | PatVar String | PatWild | PatEmpty | PatCons RPattern RPattern | PatTuple [RPattern] | PatCtor String [RPattern] | PatSeqBind String
 
 -- 3. Binary Operators
-type RBinOp = OpAdd | OpSub | OpMul | OpDiv | OpMod | OpEq | OpNeq | OpGt | OpLt | OpGtEq | OpLtEq | OpAnd | OpOr | OpXor | OpConcat | OpFlatJoin | OpMatMul
+-- @implements FR-COMP-010
+type RBinOp = OpAdd | OpSub | OpMul | OpDiv | OpMod | OpEq | OpNeq | OpGt | OpLt | OpGtEq | OpLtEq | OpAnd | OpOr | OpXor | OpConcat | OpFlatJoin | OpMatMul | OpShl | OpShr | OpRotr | OpRotl
 
 -- 4. Statements inside an indented block
 type RStmt = StmtLet String RExpr | StmtMut String RExpr | StmtExpr RExpr | StmtAtomic String RExpr | StmtIndexAssign String [RExpr] RExpr
