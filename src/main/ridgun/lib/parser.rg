@@ -2004,9 +2004,14 @@ fn :: resolve_rglib_for_spec String String   => String
       resolve_rglib_for_spec pdir   raw_spec =
         resolve_rglib_clean pdir (strip_quotes (rglib_trim raw_spec))
 
+fn :: strip_rgc_magic String => String
+      strip_rgc_magic s
+        | str_starts_with s "RGC1" = "-- " + s
+        | otherwise = s
+
 fn :: append_rglib_resolved String String  => String
       append_rglib_resolved acc    ""      =  acc
-      append_rglib_resolved acc    lib_src =  acc + lib_src + "\n"
+      append_rglib_resolved acc    lib_src =  acc + (strip_rgc_magic lib_src) + "\n"
 
 fn :: append_rglib_from_line String String String => String
       append_rglib_from_line pdir   line   acc

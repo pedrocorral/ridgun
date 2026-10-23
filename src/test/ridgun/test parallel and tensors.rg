@@ -113,6 +113,17 @@ fn :: dormir agente Int => String
         sys sleep ms ms
         "despierto-{ms}"
 
+type OptionInt = Some Int | None
+
+fn :: unwrap opt int OptionInt => Int
+      unwrap opt int (Some n)  =  n
+      unwrap opt int None      =  0 - 1
+
+fn :: dormir con estado Int Int => Int
+      dormir con estado acc ms  =
+        sys sleep ms ms
+        acc + ms
+
 fn :: sumar visita Int     Int   => Int
       sumar visita visitas delta =  visitas + delta
 
@@ -184,6 +195,19 @@ fn :: main => ()
         sys sleep ms 170
         assert equals (unwrap opt str (try receive from ag_sleep)) "despierto-120"
         stop ag_sleep
+        ag_sleep_st = agent (dormir con estado) 100
+        ts0 = sys time ms
+        send 120 to ag_sleep_st
+        ts1 = sys time ms
+        assert true ((ts1 - ts0) < 50)
+        assert equals (unwrap opt int (try receive from ag_sleep_st)) (0 - 1)
+        sys sleep ms 170
+        ts2 = sys time ms
+        assert equals (receive from ag_sleep_st) 220
+        ts3 = sys time ms
+        assert true ((ts3 - ts2) < 20)
+        assert equals (ask ag_sleep_st 30) 250
+        stop ag_sleep_st
         assert equals (parallel pipe heavy) (55, 720)
         assert equals (parallel pipe light) (12, 15)
         assert equals (||map fib [8, 9, 10]) [21, 34, 55]
