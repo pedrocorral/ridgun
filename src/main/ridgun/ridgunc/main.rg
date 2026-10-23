@@ -53,7 +53,8 @@ fn :: report_check_result String     RProgram [RTypeError] => ()
       report_check_result input_path _        errs         =
         err_c = type_err_count errs
         _ = print_error_lines (format_type_errors errs)
-        echo "[ridgunc check] {input_path}: {err_c} error(s) found."
+        _ = echo "[ridgunc check] {input_path}: {err_c} error(s) found."
+        sys_exit 1
 
 fn :: run_cli_compile String     String     => ()
       run_cli_compile input_path output_rgc =
@@ -96,13 +97,15 @@ fn :: report_rglib_status String     String     Int  => ()
       report_rglib_status input_path output_lib 0    =
         echo "[ridgunc build --lib] Ridgun library bundle created: {input_path} -> {output_lib}"
       report_rglib_status _          output_lib code =
-        echo "[ridgunc build --lib] Failed to build {output_lib} (exit code {code})"
+        _ = echo "[ridgunc build --lib] Failed to build {output_lib} (exit code {code})"
+        sys_exit 1
 
 fn :: report_so_status String     String    Int  => ()
       report_so_status input_path output_so 0    =
         echo "[ridgunc build --so] Native ELF64 shared library (.so) created: {input_path} -> {output_so}"
       report_so_status _          output_so code =
-        echo "[ridgunc build --so] Failed to build {output_so} (exit code {code})"
+        _ = echo "[ridgunc build --so] Failed to build {output_so} (exit code {code})"
+        sys_exit 1
 
 fn :: run_cli_build String     String     => ()
       run_cli_build input_path output_bin =
@@ -118,7 +121,8 @@ fn :: report_build_status String     String     Int  => ()
       report_build_status input_path output_bin 0    =
         echo "[ridgunc build] Native ELF executable created: {input_path} -> {output_bin}"
       report_build_status _          output_bin code =
-        echo "[ridgunc build] Failed to build {output_bin} (exit code {code})"
+        _ = echo "[ridgunc build] Failed to build {output_bin} (exit code {code})"
+        sys_exit 1
 
 fn :: run_cli_run String     => ()
       run_cli_run input_path =
@@ -130,7 +134,7 @@ fn :: exec_built_run Int => ()
       exec_built_run 0   =
         _ = shell_exec "./target/.ridgunc_run_bin; _st=$?; rm -f target/.ridgunc_run_bin; exit $_st"
         ()
-      exec_built_run _   =  ()
+      exec_built_run _   =  sys_exit 1
 
 fn :: run_self_hosted_pipeline_demo => ()
       run_self_hosted_pipeline_demo =

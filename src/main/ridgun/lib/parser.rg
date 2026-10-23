@@ -525,6 +525,9 @@ fn :: is_atom_tok RToken        => Bool
       is_atom_tok (TokIdent w)  =  w != "shl" AND w != "shr" AND w != "rotr" AND w != "rotl"
       is_atom_tok TokType       =  True
       is_atom_tok TokWith       =  True
+      is_atom_tok TokShared     =  True
+      is_atom_tok TokGlobal     =  True
+      is_atom_tok TokContext    =  True
       is_atom_tok TokNot        =  True
       is_atom_tok TokLParen     =  True
       is_atom_tok TokLBracket   =  True
@@ -902,6 +905,9 @@ fn :: parse_atom_base [RToken]           => (RExpr, [RToken])
       parse_atom_base (TokFalse:rest)    =  (EBool False, rest)
       parse_atom_base (TokType:rest)     =  (EVar "type", rest)
       parse_atom_base (TokWith:rest)     =  (EVar "with", rest)
+      parse_atom_base (TokShared:rest)   =  (EVar "shared", rest)
+      parse_atom_base (TokGlobal:rest)   =  (EVar "global", rest)
+      parse_atom_base (TokContext:rest)  =  (EVar "context", rest)
       parse_atom_base (TokNot:rest)      =  (EVar "not", rest)
       parse_atom_base ((TokIdent s):TokLBracket:(TokIdent elem_ty):TokStar:after_star)
         | (s == "Tensor" or s == "Tensor_GPU") and (is_upper_ident elem_ty) = finish tensor alloc elem_ty (parse tensor alloc dims ([TokStar] :: after_star))
@@ -1056,12 +1062,38 @@ fn :: finish_otherwise_after_dot RExpr (Bool, [RToken]) => ([RGuard], [RToken])
       finish_otherwise_after_dot body  (_, after_dot)   =
         ([GuardBranch (EBool True) body], after_dot)
 
+fn :: split_guard_cond [RToken] Int [RToken] => ([RToken], [RToken])
+      split_guard_cond [] _ acc = (acc, [])
+      split_guard_cond (TokEquals:rest) 0 acc = (acc, [TokEquals] :: rest)
+      split_guard_cond (TokNewline:rest) 0 acc = (acc, [TokNewline] :: rest)
+      split_guard_cond (TokEof:rest) 0 acc = (acc, [TokEof] :: rest)
+      split_guard_cond (TokLParen:rest) depth acc =
+        split_guard_cond rest (depth + 1) (acc :: [TokLParen])
+      split_guard_cond (TokLBracket:rest) depth acc =
+        split_guard_cond rest (depth + 1) (acc :: [TokLBracket])
+      split_guard_cond (TokRParen:rest) depth acc
+        | depth > 0 = split_guard_cond rest (depth - 1) (acc :: [TokRParen])
+        | otherwise = split_guard_cond rest 0 (acc :: [TokRParen])
+      split_guard_cond (TokRBracket:rest) depth acc
+        | depth > 0 = split_guard_cond rest (depth - 1) (acc :: [TokRBracket])
+        | otherwise = split_guard_cond rest 0 (acc :: [TokRBracket])
+      split_guard_cond (t:rest) depth acc =
+        split_guard_cond rest depth (acc :: [t])
+
+fn :: parse_guard_cond_split ([RToken], [RToken]) => (RExpr, [RToken])
+      parse_guard_cond_split (cond_toks, after_cond) =
+        c = parse_expr cond_toks
+        finish_guard_cond_split c after_cond
+
+fn :: finish_guard_cond_split (RExpr, [RToken]) [RToken] => (RExpr, [RToken])
+      finish_guard_cond_split (cond_e, _) after_cond = (cond_e, after_cond)
+
 fn :: parse_guards [RToken]       => ([RGuard], [RToken])
       parse_guards (TokPipe:TokOtherwise:TokEquals:rest) =
         b = parse_case_body rest
         finish_otherwise_guard b
       parse_guards (TokPipe:rest) =
-        c = parse_expr rest
+        c = parse_guard_cond_split (split_guard_cond rest 0 [])
         parse_guard_after_cond c
       parse_guards ts             =  ([], ts)
 
@@ -1623,6 +1655,12 @@ fn :: scan_op_header [RToken] [String] [String] [Bool] => ([String], [String], [
         scan_op_header rest (words :: ["type"]) params (tmpl :: [False])
       scan_op_header (TokWith:rest) words params tmpl =
         scan_op_header rest (words :: ["with"]) params (tmpl :: [False])
+      scan_op_header (TokShared:rest) words params tmpl =
+        scan_op_header rest (words :: ["shared"]) params (tmpl :: [False])
+      scan_op_header (TokGlobal:rest) words params tmpl =
+        scan_op_header rest (words :: ["global"]) params (tmpl :: [False])
+      scan_op_header (TokContext:rest) words params tmpl =
+        scan_op_header rest (words :: ["context"]) params (tmpl :: [False])
       scan_op_header (TokAnd:rest) words params tmpl =
         scan_op_header rest (words :: ["and"]) params (tmpl :: [False])
       scan_op_header (TokOr:rest) words params tmpl =
@@ -1656,6 +1694,9 @@ fn :: match_op_keyword RToken       String => Bool
       match_op_keyword (TokIdent s) kw     =  s == kw
       match_op_keyword TokType      kw     =  kw == "type"
       match_op_keyword TokWith      kw     =  kw == "with"
+      match_op_keyword TokShared    kw     =  kw == "shared"
+      match_op_keyword TokGlobal    kw     =  kw == "global"
+      match_op_keyword TokContext   kw     =  kw == "context"
       match_op_keyword TokAnd       kw     =  kw == "and"
       match_op_keyword TokOr        kw     =  kw == "or"
       match_op_keyword TokXor       kw     =  kw == "xor"
@@ -2659,11 +2700,26 @@ fn :: filter_new_fields [RField] [RField] => [RField]
         | has_field_name old_fs fname = filter_new_fields old_fs fs
         | otherwise = [TypeField fname fty] :: (filter_new_fields old_fs fs)
 
-fn :: has_fn_def [RFnDef] String => Bool
-      has_fn_def []       _      =  False
-      has_fn_def ((FnDef k _ _ _):fs) target
-        | k == target = True
-        | otherwise = has_fn_def fs target
+fn :: str_list_same [String] [String] => Bool
+      str_list_same []       []       =  True
+      str_list_same (a:as)   (b:bs)
+        | a == b = str_list_same as bs
+        | otherwise = False
+      str_list_same _        _        =  False
+
+fn :: has_any_fn_case [RFnCase] => Bool
+      has_any_fn_case []        =  False
+      has_any_fn_case (_:_)     =  True
+
+fn :: is_adt_ext_fndef [String] String [RFnCase] [String] String [RFnCase] => Bool
+      is_adt_ext_fndef old_ps old_ret old_cs new_ps new_ret new_cs =
+        (str_list_same old_ps new_ps) AND (old_ret == new_ret) AND (has_any_fn_case (filter_new_extension_cases old_cs new_cs))
+
+fn :: has_extensible_fn_def [RFnDef] RFnDef => Bool
+      has_extensible_fn_def [] _ = False
+      has_extensible_fn_def ((FnDef k old_ps old_ret old_cs):fs) (FnDef target new_ps new_ret new_cs)
+        | k == target = is_adt_ext_fndef old_ps old_ret old_cs new_ps new_ret new_cs
+        | otherwise = has_extensible_fn_def fs (FnDef target new_ps new_ret new_cs)
 
 fn :: update_fn_def [RFnDef] RFnDef => [RFnDef]
       update_fn_def []       _      =  []
@@ -2673,7 +2729,7 @@ fn :: update_fn_def [RFnDef] RFnDef => [RFnDef]
 
 fn :: merge_fn_def [RFnDef] RFnDef => [RFnDef]
       merge_fn_def fns      (FnDef name ps ret cs)
-        | has_fn_def fns name = update_fn_def fns (FnDef name ps ret cs)
+        | has_extensible_fn_def fns (FnDef name ps ret cs) = update_fn_def fns (FnDef name ps ret cs)
         | otherwise = fns :: [FnDef name ps ret cs]
 
 fn :: has_type_def [RTypeDef] String => Bool

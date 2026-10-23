@@ -121,9 +121,6 @@ op :: list test files in String => [String]
         | NOT (is dir dir) = []
         | otherwise = collect test files in dir entries (list str sort (list_dir dir))
 
-op :: file String exists => Bool
-      file path   exists =  is file path
-
 -- ── Structured Console Logging Functions ─────────────────────
 
 fn :: log info String => ()

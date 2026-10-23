@@ -1298,12 +1298,21 @@ fn :: typecheck_program RProgram => [RTypeError]
         env_pair = register_typedef_list tnames all_tdefs builtin_local_types builtin_fn_types
         typecheck_with_typedef_env tnames (Program fdefs tdefs) fdefs env_pair
 
+fn :: check_duplicate_fndefs [RFnDef] [String] => [RTypeError]
+      check_duplicate_fndefs []       _        =  []
+      check_duplicate_fndefs ((FnDef name _ _ _):fs) seen
+        | str_in_list name seen =
+          [TypeError name ("duplicate function definition '" + name + "'; function is already defined")] :: (check_duplicate_fndefs fs seen)
+        | otherwise =
+          check_duplicate_fndefs fs ([name] :: seen)
+
 fn :: typecheck_with_typedef_env [String] RProgram [RFnDef] ([RTypeBind], [RTypeBind]) => [RTypeError]
       typecheck_with_typedef_env tnames prog fdefs (locals, fns0) =
+        dup_errs = check_duplicate_fndefs fdefs []
         fns = register_fndef_sigs tnames fdefs fns0
         ty_errs = check_all_functions tnames fdefs locals fns
         an_errs = convert_analysis_errors (analyze_program_errors prog)
-        ty_errs :: an_errs
+        dup_errs :: ty_errs :: an_errs
 
 fn :: type_err_count [RTypeError] => Int
       type_err_count []           =  0
