@@ -32,7 +32,7 @@ fn :: arm64 mov reg Int Int => [Int]
       arm64 mov reg rd  rm  =  u32 le (2852127712 + (rm * 65536) + rd)
 
 fn :: arm64 mov sp to reg Int => [Int]
-      arm64 mov sp to reg rd  =  u32 le (2432697312 + rd)
+      arm64 mov sp to reg rd = u32 le (2432697312 + rd)
 
 fn :: arm64 ldr slot Int Int  => [Int]
       arm64 ldr slot rd  slot =  u32 le (4181722080 + ((slot % 4096) * 1024) + rd)
@@ -142,16 +142,16 @@ fn :: arm64 instr size RNativeInstr       => Int
       arm64 instr size (NTailCall _ _)    =  60
       arm64 instr size NReturn            =  52
 
-fn :: arm64 scan instrs [RNativeInstr] Int     [RLabelEntry] => RScanResult
-      arm64 scan instrs []             cur_off labels        =  ScanResult cur_off labels
-      arm64 scan instrs ((NLabel lid):rest) cur_off labels   =
+fn :: arm64 scan instrs [RNativeInstr] Int [RLabelEntry] => RScanResult
+      arm64 scan instrs [] cur_off labels = ScanResult cur_off labels
+      arm64 scan instrs ((NLabel lid):rest) cur_off labels =
         arm64 scan instrs rest cur_off (labels :: [LabelEntry lid cur_off])
-      arm64 scan instrs (ins:rest)     cur_off labels        =
+      arm64 scan instrs (ins:rest) cur_off labels =
         sz = arm64 instr size ins
         arm64 scan instrs rest (cur_off + sz) labels
 
-fn :: arm64 scan fns [RNativeFn] Int       [RLabelEntry] => RScanResult
-      arm64 scan fns []          cur_vaddr fn_table      =  ScanResult cur_vaddr fn_table
+fn :: arm64 scan fns [RNativeFn] Int [RLabelEntry] => RScanResult
+      arm64 scan fns [] cur_vaddr fn_table = ScanResult cur_vaddr fn_table
       arm64 scan fns ((NativeFn fid _ _ _ instrs):rest) cur_vaddr fn_table =
         sr = arm64 scan instrs instrs (cur_vaddr + 72) []
         end_vaddr = scan offset sr
@@ -312,8 +312,8 @@ fn :: arm64 encode instrs [RNativeInstr] Int Int Int Int [RLabelEntry] [RLabelEn
         bytes = arm64 encode instr ins cur_vaddr fn_vaddr num_slots rodata_vaddr lbl_table fn_table
         arm64 encode instrs rest (cur_vaddr + sz) fn_vaddr num_slots rodata_vaddr lbl_table fn_table (acc :: bytes)
 
-fn :: arm64 encode fns [RNativeFn] Int          [RLabelEntry] [Int] => [Int]
-      arm64 encode fns []          _            _             acc   =  acc
+fn :: arm64 encode fns [RNativeFn] Int [RLabelEntry] [Int] => [Int]
+      arm64 encode fns [] _ _ acc = acc
       arm64 encode fns ((NativeFn fid _ arity num_slots instrs):rest) rodata_vaddr fn_table acc =
         fn_vaddr = lookup label offset fn_table fid
         sr = arm64 scan instrs instrs (fn_vaddr + 72) []
@@ -569,7 +569,7 @@ fn :: build arm64 rt kernel => [Int]
 
 -- ── Public ARM64 ELF64 Image Builder ─────────────────────────
 
-fn :: emit arm64 elf kind Int    RNativeProg => [Int]
+fn :: emit arm64 elf kind Int RNativeProg => [Int]
       emit arm64 elf kind e_type (NativeProg main_fid spawn_fid call2_fid binop_fid fns rodata_str) =
         rt_bytes = build arm64 rt kernel
         rt_len = byte list len rt_bytes

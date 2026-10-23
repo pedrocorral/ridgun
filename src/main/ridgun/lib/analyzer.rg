@@ -79,7 +79,7 @@ fn :: lookup_fn_summary [RFnSummary] String => (Bool, RFnSummary)
 
 fn :: is_yielding_builtin String => Bool
       is_yielding_builtin callee =
-        callee == "recv" OR callee == "receive_from" OR callee == "try_receive_from" OR callee == "receive_from_timeout" OR callee == "send_to" OR callee == "send_through" OR callee == "agent" OR callee == "stop"
+        callee == "recv" OR callee == "receive_from" OR callee == "try_receive_from" OR callee == "receive_from_timeout" OR callee == "send_to" OR callee == "ask_to" OR callee == "send_through" OR callee == "agent" OR callee == "stop"
 
 fn :: param_effect_at [RParamEffect] Int => RParamEffect
       param_effect_at []             _   =  EffReadOnly

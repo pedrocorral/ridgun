@@ -23,12 +23,13 @@ The Ridgun language and `ridgunc` / `stable` toolchain SHALL replace legacy unst
        - When `fn :: S M => S`, each processed message transitions the internal state `s' = fn s msg`, deterministically releases the previous state `s` (`RMM1`/`RMM2`), and enqueues `s'` in the agent's output queue.
        - When `fn :: S M => S R` (a 2-element tuple/sequence return type where the first component is `S` and the second is `R`), each processed message transitions the internal state to `s'`, deterministically releases the previous state `s` (`RMM1`/`RMM2`), and enqueues the response `r :: R` in the agent's output queue.
 
-2. **Asynchronous Message Sending (`send ... to`)**:
-   - `send <msg> to <agent>` (and multi-argument `send <arg1> <arg2> ... to <agent>`, which packs the arguments into a tuple message) SHALL enqueue the message in `<agent>`'s input mailbox without blocking the caller, and may be used either as a standalone statement (`send x to ag`) or bound (`_ = send x to ag`).
+2. **Asynchronous Message Sending (`send ... to`) & Synchronous Request-Reply (`ask`)**:
+   - `send <msg> to <agent>` (and multi-argument `send <arg1> <arg2> ... to <agent>`, which packs the arguments into a tuple message) SHALL immediately dispatch the message to `<agent>` in the background without blocking the caller, and may be used either as a standalone statement (`send x to ag`) or bound (`_ = send x to ag`).
+   - `ask <agent> <msg...>` (Akka prefix style) and `ask <msg...> to <agent>` (Ridgun `to` style) SHALL perform a synchronous request-reply on `<agent>`, returning the typed response `R` directly.
 
 3. **Blocking and Non-Blocking Response Retrieval (`receive from` & `try receive from`)**:
-   - `receive from <agent>` SHALL retrieve and return the next response `R` from `<agent>`'s output mailbox.
-   - `try receive from <agent>` SHALL check `<agent>`'s output mailbox without blocking and return `Some r` (`Option R`) if a response is available or `None` if empty.
+   - `receive from <agent>` SHALL await completion of the oldest in-flight job and return the next response `R` from `<agent>`'s output mailbox in FIFO order.
+   - `try receive from <agent>` SHALL poll `<agent>`'s oldest in-flight job or output mailbox without blocking and return `Some r` (`Option R`) if a response is ready or `None` if still running or empty.
 
 4. **Deterministic Lifecycle & Cleanup (`stop` & `agent alive`)**:
    - `stop <agent>` (usable as a standalone statement or expression) SHALL terminate `<agent>`, close its mailboxes, and deterministically release its held state and queued values via `RMM1`/`RMM2`.

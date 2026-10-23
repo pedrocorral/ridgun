@@ -6,10 +6,10 @@
 import test
 
 context :: active_tag => String
-      active_tag =  "default-tag"
+active_tag =  "default-tag"
 
 shared :: visit_count => Int
-      visit_count =  10
+visit_count =  10
 
 fn :: fib Int => Int
       fib 0   =  0
@@ -101,12 +101,17 @@ fn :: channel roundtrip String => String
 
 type OptionStr = Some String | None
 
-fn :: unwrap opt str OptionStr     => String
-      unwrap opt str (Some s)      =  s
-      unwrap opt str None          =  "empty"
+fn :: unwrap opt str OptionStr => String
+      unwrap opt str (Some s)  =  s
+      unwrap opt str None      =  "empty"
 
 op :: procesar mensaje String con tiempo Int => String
       procesar mensaje msg    con tiempo t   =  "{msg}:{t}ms"
+
+fn :: dormir agente Int => String
+      dormir agente ms  =
+        sys sleep ms ms
+        "despierto-{ms}"
 
 fn :: sumar visita Int     Int   => Int
       sumar visita visitas delta =  visitas + delta
@@ -156,6 +161,8 @@ fn :: main => ()
         assert equals (agent alive ag_cnt) True
         assert equals (consultar contador ag_cnt 5) 15
         assert equals (consultar contador ag_cnt 7) 22
+        assert equals (ask ag_cnt 8) 30
+        assert equals (ask 12 to ag_cnt) 42
         stop ag_cnt
         assert equals (agent alive ag_cnt) False
         ag_http = agent (atender http) (SesionHttp "anon" 0)
@@ -165,8 +172,18 @@ fn :: main => ()
         assert equals (receive from ag_http) "200-LOGIN-ana"
         assert equals (receive from ag_http) "200-ana-req-2"
         assert equals (receive from ag_http) "200-ana-req-3"
+        assert equals (ask ag_http "GET /perfil") "200-ana-req-4"
         stop ag_http
         assert equals (agent alive ag_http) False
+        ag_sleep = agent (dormir agente)
+        t0 = sys time ms
+        send 120 to ag_sleep
+        t1 = sys time ms
+        assert true ((t1 - t0) < 50)
+        assert equals (unwrap opt str (try receive from ag_sleep)) "empty"
+        sys sleep ms 170
+        assert equals (unwrap opt str (try receive from ag_sleep)) "despierto-120"
+        stop ag_sleep
         assert equals (parallel pipe heavy) (55, 720)
         assert equals (parallel pipe light) (12, 15)
         assert equals (||map fib [8, 9, 10]) [21, 34, 55]
@@ -182,6 +199,14 @@ fn :: main => ()
         send 10 to ag_fib
         assert equals (receive from ag_fib) 34
         assert equals (receive from ag_fib) 55
+        assert equals (ask ag_fib 11) 89
+        assert equals (ask 12 to ag_fib) 144
+        send 28 to ag_fib
+        sys sleep ms 150
+        t_fib0 = sys time ms
+        assert equals (receive from ag_fib) 317811
+        t_fib1 = sys time ms
+        assert true ((t_fib1 - t_fib0) < 20)
         stop ag_fib
         assert equals (agent alive ag_fib) False
         echo "=== All parallel & tensor tests passed ==="

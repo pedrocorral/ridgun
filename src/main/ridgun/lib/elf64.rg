@@ -52,9 +52,9 @@ fn :: align up Int Int   => Int
         rem = val % align
         align up rem val align rem
 
-fn :: align up rem Int Int   Int => Int
-      align up rem val _     0   =  val
-      align up rem val align rem =  val + (align - rem)
+fn :: align up rem Int Int Int => Int
+      align up rem val _ 0 = val
+      align up rem val align rem = val + (align - rem)
 
 -- ── Fast Label Lookup Table ──────────────────────────────────
 
@@ -66,20 +66,20 @@ fn :: lookup label offset [RLabelEntry] Int       => Int
 
 -- ── Raw String Byte Converters ───────────────────────────────
 
-fn :: str to bytes chunk String Int       Int [Int] => [Int]
-      str to bytes chunk s      pos       end acc
+fn :: str to bytes chunk String Int Int [Int] => [Int]
+      str to bytes chunk s pos end acc
         | pos >= end = acc
         | (pos + 4) <= end =
           b0 = str char at s pos
           b1 = str char at s (pos + 1)
           b2 = str char at s (pos + 2)
           b3 = str char at s (pos + 3)
-      str to bytes chunk s      (pos + 4) end (acc :: [b0, b1, b2, b3])
+      str to bytes chunk s (pos + 4) end (acc :: [b0, b1, b2, b3])
         | otherwise =
           str to bytes chunk s (pos + 1) end (acc :: [str char at s pos])
 
-fn :: str to bytes range String Int   Int => [Int]
-      str to bytes range s      start end
+fn :: str to bytes range String Int Int => [Int]
+      str to bytes range s start end
         | start >= end = []
         | (end - start) <= 32 = str to bytes chunk s start end []
         | otherwise =
@@ -98,16 +98,16 @@ fn :: zero bytes loop Int   [Int] => [Int]
 fn :: zero bytes Int   => [Int]
       zero bytes count =  zero bytes loop count []
 
-fn :: byte list len loop [Int]  Int => Int
-      byte list len loop []     acc =  acc
-      byte list len loop (_:xs) acc =  byte list len loop xs (acc + 1)
+fn :: byte list len loop [Int] Int => Int
+      byte list len loop [] acc = acc
+      byte list len loop (_:xs) acc = byte list len loop xs (acc + 1)
 
 fn :: byte list len [Int] => Int
       byte list len xs    =  byte list len loop xs 0
 
 -- ── ELF64 Header (64B) + Program Header (56B) + Page 0 ───────
 
-fn :: build elf64 ehdr kind Int    Int     Int     => [Int]
+fn :: build elf64 ehdr kind Int Int Int => [Int]
       build elf64 ehdr kind e_type machine e_entry =
         e_ident = [127, 69, 76, 70, 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         e_ident :: (u16 le e_type) :: (u16 le machine) :: (u32 le 1) :: (u64 le e_entry) :: (u64 le 64) :: (u64 le 0) :: (u32 le 0) :: (u16 le 64) :: (u16 le 56) :: (u16 le 1) :: (u16 le 64) :: (u16 le 0) :: (u16 le 0)
