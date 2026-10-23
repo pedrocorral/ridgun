@@ -325,8 +325,8 @@ fn :: main => ()
         assert equals (head or [10, 20] 99) 10
         assert equals (head or ["x", "y"] "z") "x"
         base_spec = LsSpec False False 80
-        spec1 = base_spec with color: True
-        spec2 = spec1 with one_per_line: True, width: 120
+        spec1 = base_spec with color = True
+        spec2 = spec1 with one_per_line = True, width = 120
         assert equals (color spec1) True
         assert equals (width spec1) 80
         assert equals (one_per_line spec2) True
@@ -383,7 +383,7 @@ fn :: main => ()
         assert equals (format app err (AuthError "alice")) "AUTH:alice"
         assert equals (format app err (DbError 504 "primary")) "DB:504:primary"
         cfg0 = AppConfig "localhost" 8080 False
-        cfg1 = cfg0 with tls: True, port: 8443
+        cfg1 = cfg0 with tls = True, port = 8443
         assert equals (host cfg1) "localhost"
         assert equals (port cfg1) 8443
         assert equals (tls cfg1) True

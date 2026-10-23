@@ -133,11 +133,11 @@ op :: atender http SesionHttp String => SesionHttp String
       atender http ses        req
         | str starts with req "LOGIN:" =
           nombre = str slice req 6 (str len req)
-          nueva = ses with usuario: nombre, peticiones: (peticiones ses) + 1
+          nueva = ses with usuario = nombre, peticiones = (peticiones ses) + 1
           (nueva, "200-LOGIN-{nombre}")
         | otherwise =
           n = (peticiones ses) + 1
-          nueva = ses with peticiones: n
+          nueva = ses with peticiones = n
           quien = usuario ses
           (nueva, "200-{quien}-req-{n}")
 
@@ -217,6 +217,23 @@ fn :: call box3 FnBox3 String String String => String
       call box3 b      a0     a1     a2     =
         f = cb3 b
         f a0 a1 a2
+
+fn :: scale add Int Int Int => Int
+      scale add base factor x = base + (factor * x)
+
+fn :: make scaler Int Int => (Int => Int)
+      make scaler b   f   =  scale add b f
+
+fn :: run closure mem scope String => ()
+      run closure mem scope tag    =
+        pref = "pre-" + tag
+        g = join4 pref ":"
+        s1 = g "uno" "!"
+        s2 = g "dos" "?"
+        esc = make scaler 100 10
+        nums = map esc [1, 2, 3]
+        assert equals (s1 + "|" + s2) "pre-ok:uno!|pre-ok:dos?"
+        assert equals nums [110, 120, 130]
 
 fn :: main => ()
       main =
@@ -350,4 +367,7 @@ fn :: main => ()
         assert equals (call box3 box3 "x" "y" "z") "xyz"
         assert equals ((cb3 box3) "1" "2" "3") "123"
         assert equals (cb3 box3 "p" "q" "r") "pqr"
+        live0 = cmm_live_blocks
+        _ = run closure mem scope "ok"
+        assert equals cmm_live_blocks live0
         echo "=== All parallel & tensor tests passed ==="

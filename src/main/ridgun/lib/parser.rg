@@ -791,21 +791,21 @@ fn :: finish_seq_select RExpr (String, [RToken]) => (RExpr, [RToken])
 -- ── Application & Postfix (`out`, `s(+ _)`, calls) ──────────
 
 fn :: is_record_update_start [RToken] => Bool
-      is_record_update_start (TokWith:(TokIdent _):TokColon:_) = True
-      is_record_update_start (TokWith:TokType:TokColon:_) = True
-      is_record_update_start (TokWith:TokWith:TokColon:_) = True
+      is_record_update_start (TokWith:(TokIdent _):TokEquals:_) = True
+      is_record_update_start (TokWith:TokType:TokEquals:_) = True
+      is_record_update_start (TokWith:TokWith:TokEquals:_) = True
       is_record_update_start _        =  False
 
 fn :: extract_field_name [RToken] => (String, [RToken])
-      extract_field_name ((TokIdent f):TokColon:rest) = (f, rest)
-      extract_field_name (TokType:TokColon:rest) = ("type", rest)
-      extract_field_name (TokWith:TokColon:rest) = ("with", rest)
+      extract_field_name ((TokIdent f):TokEquals:rest) = (f, rest)
+      extract_field_name (TokType:TokEquals:rest) = ("type", rest)
+      extract_field_name (TokWith:TokEquals:rest) = ("with", rest)
       extract_field_name ts       =  ("", ts)
 
 fn :: has_next_record_field [RToken] => Bool
-      has_next_record_field (TokComma:(TokIdent _):TokColon:_) = True
-      has_next_record_field (TokComma:TokType:TokColon:_) = True
-      has_next_record_field (TokComma:TokWith:TokColon:_) = True
+      has_next_record_field (TokComma:(TokIdent _):TokEquals:_) = True
+      has_next_record_field (TokComma:TokType:TokEquals:_) = True
+      has_next_record_field (TokComma:TokWith:TokEquals:_) = True
       has_next_record_field _        =  False
 
 fn :: parse_record_update_pairs [RToken] [RExpr] => ([RExpr], [RToken])
@@ -2249,11 +2249,11 @@ fn :: norm_call_chain_step [RExpr] [RArityEntry] String Int [RExpr] => RExpr
       norm_call_chain_step orig_args arities mangled ar c_ops
         | arity_matches ar (expr_list_count c_ops) = ECall mangled (norm_expr_list c_ops arities)
         | ar > 0 and (expr_list_count c_ops) == 0 = EVar mangled
-        | otherwise = norm_call_chain_fallback (norm_expr_list orig_args arities) arities
+        | otherwise = norm_call_chain_fallback (norm_expr_list orig_args arities) arities mangled ar c_ops
 
-fn :: norm_call_chain_fallback [RExpr] [RArityEntry] => RExpr
-      norm_call_chain_fallback normed  arities       =
-        finish_postfix_stack "__chain__" normed (reduce_postfix_spine normed arities [])
+fn :: norm_call_chain_fallback [RExpr] [RArityEntry] String Int [RExpr] => RExpr
+      norm_call_chain_fallback normed  arities       mangled ar c_ops =
+        finish_postfix_or_partial "__chain__" normed (reduce_postfix_spine normed arities []) mangled ar c_ops arities
 
 fn :: norm_call_mixfix String [RExpr] [RArityEntry] (String, [RExpr]) => RExpr
       norm_call_mixfix orig_name orig_args arities (mangled, operands) =
@@ -2265,15 +2265,19 @@ fn :: norm_call_mixfix_step String [RExpr] [RArityEntry] String Int [RExpr] => R
       norm_call_mixfix_step orig_name orig_args arities mangled ar c_ops
         | arity_matches ar (expr_list_count c_ops) = ECall mangled (norm_expr_list c_ops arities)
         | ar > 0 and (expr_list_count c_ops) == 0 = EVar mangled
-        | otherwise = norm_call_mixfix_fallback orig_name (norm_expr_list orig_args arities) arities
+        | otherwise = norm_call_mixfix_fallback orig_name (norm_expr_list orig_args arities) arities mangled ar c_ops
 
-fn :: norm_call_mixfix_fallback String    [RExpr] [RArityEntry] => RExpr
-      norm_call_mixfix_fallback orig_name normed  arities       =
-        finish_postfix_stack orig_name normed (reduce_postfix_spine ([EVar orig_name] :: normed) arities [])
+fn :: norm_call_mixfix_fallback String    [RExpr] [RArityEntry] String Int [RExpr] => RExpr
+      norm_call_mixfix_fallback orig_name normed  arities       mangled ar c_ops =
+        finish_postfix_or_partial orig_name normed (reduce_postfix_spine ([EVar orig_name] :: normed) arities []) mangled ar c_ops arities
 
-fn :: finish_postfix_stack String    [RExpr]     [RExpr]          => RExpr
-      finish_postfix_stack _         _           ((ECall f a):[]) =  ECall f a
-      finish_postfix_stack orig_name normed_args _                =  ECall orig_name normed_args
+fn :: finish_postfix_or_partial String [RExpr] [RExpr] String Int [RExpr] [RArityEntry] => RExpr
+      finish_postfix_or_partial _ _ ((ECall f a):[]) _ _ _ _ = ECall f a
+      finish_postfix_or_partial _ _ _ mangled ar c_ops arities
+        | ar > 1 and (expr_list_count c_ops) > 0 and (expr_list_count c_ops) < ar =
+          ECall mangled (norm_expr_list c_ops arities)
+      finish_postfix_or_partial orig_name normed_args _ _ _ _ _ =
+        ECall orig_name normed_args
 
 fn :: flatten_mixfix_rhs RExpr [RArityEntry] => [RExpr]
       flatten_mixfix_rhs (ECall "__chain__" args) _ = args

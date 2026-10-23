@@ -773,6 +773,11 @@ fn :: check_call_sig String [RType] [RType] RType String => (RType, [RTypeError]
       check_call_sig callee arg_tys param_tys ret_ty fn_name
         | is_last_variadic param_tys = check_variadic_call callee arg_tys param_tys ret_ty fn_name
         | (rtype_list_len arg_tys) == 1 AND (rtype_list_len param_tys) > 1 = check_tuple_chain_call callee (rtype_at arg_tys 0) arg_tys param_tys ret_ty fn_name
+        | (rtype_list_len arg_tys) > 1 AND (rtype_list_len arg_tys) < (rtype_list_len param_tys) =
+          k = rtype_list_len arg_tys
+          taken_params = take_rtypes param_tys k
+          rem_params = drop_rtypes param_tys k
+          finish_poly_call (TyFun rem_params ret_ty) (check_fixed_args arg_tys taken_params callee fn_name 0 []) (collect_poly_binds_list arg_tys taken_params callee fn_name [])
         | (rtype_list_len arg_tys) != (rtype_list_len param_tys) = (ret_ty, [TypeError fn_name ("function '" + callee + "' called with " + (int_to_str (rtype_list_len arg_tys)) + " argument(s), expected " + (int_to_str (rtype_list_len param_tys)))])
         | otherwise = finish_poly_call ret_ty (check_fixed_args arg_tys param_tys callee fn_name 0 []) (collect_poly_binds_list arg_tys param_tys callee fn_name [])
 
@@ -791,8 +796,13 @@ fn :: check_tuple_chain_call String RType [RType] [RType] RType String => (RType
       check_tuple_chain_call callee (TyTuple elems) _ param_tys ret_ty fn_name
         | (rtype_list_len elems) == (rtype_list_len param_tys) = finish_poly_call ret_ty (check_fixed_args elems param_tys callee fn_name 0 []) (collect_poly_binds_list elems param_tys callee fn_name [])
       check_tuple_chain_call _ (TyVar "_seq") _ _ ret_ty _ = (ret_ty, [])
-      check_tuple_chain_call callee _ arg_tys param_tys ret_ty fn_name =
-        (ret_ty, [TypeError fn_name ("function '" + callee + "' called with " + (int_to_str (rtype_list_len arg_tys)) + " argument(s), expected " + (int_to_str (rtype_list_len param_tys)))])
+      check_tuple_chain_call callee first_arg arg_tys param_tys ret_ty fn_name
+        | types_compatible first_arg (rtype_at param_tys 0) =
+          taken_params = take_rtypes param_tys 1
+          rem_params = drop_rtypes param_tys 1
+          finish_poly_call (TyFun rem_params ret_ty) (check_fixed_args arg_tys taken_params callee fn_name 0 []) (collect_poly_binds_list arg_tys taken_params callee fn_name [])
+        | otherwise =
+          (ret_ty, [TypeError fn_name ("function '" + callee + "' called with " + (int_to_str (rtype_list_len arg_tys)) + " argument(s), expected " + (int_to_str (rtype_list_len param_tys)))])
 
 fn :: check_call_target String [RType] [RTypeError] (Bool, RType) String => (RType, [RTypeError])
       check_call_target callee arg_tys arg_errs (True, (TyFun param_tys ret_ty)) fn_name =

@@ -1498,23 +1498,67 @@ fn :: select_par_collection_builtin RNativeEnv String [RExpr] [String] => Int
         | (fname == "||filter" OR fname == "par_filter") AND (lookup_local bound_locals callee_fn) < 0 AND (env_fn_arity env callee_fn) > 0 AND (NOT (env_fn_is_heavy env callee_fn)) = 55
       select_par_collection_builtin _ fname _ _ = builtin_call_id fname
 
-fn :: lower indirect call slots RNativeEnv Int [RExpr] [String] Int RNativeCode => RNativeCode
-      lower indirect call slots _ fn_slot [] _ sp st =
+fn :: lower plain indirect call RNativeEnv Int [RExpr] [String] Int RNativeCode => RNativeCode
+      lower plain indirect call _ fn_slot [] _ sp st =
         nc_emit st (NCloneSlot fn_slot) sp
-      lower indirect call slots env fn_slot (a1:[]) bound_locals sp st =
+      lower plain indirect call env fn_slot (a1:[]) bound_locals sp st =
         st1 = lower_expr env a1 bound_locals sp st
         st2 = nc_emit st1 (NStoreSlot sp) (sp + 1)
         nc_emit st2 (NCallIndirect1 fn_slot sp) (sp + 1)
-      lower indirect call slots env fn_slot (a1:a2:[]) bound_locals sp st =
+      lower plain indirect call env fn_slot (a1:a2:[]) bound_locals sp st =
         st1 = lower_expr_list_to_slots env [a1, a2] bound_locals sp 0 st
         nc_emit st1 (NCallIndirect2 fn_slot sp) (sp + 2)
-      lower indirect call slots env fn_slot (a1:rest) bound_locals sp st =
+      lower plain indirect call env fn_slot (a1:rest) bound_locals sp st =
         rem_count = rexpr_list_len rest
         st1 = lower_expr env a1 bound_locals sp st
         st2 = nc_emit st1 (NStoreSlot sp) (sp + 1)
         st3 = lower_expr_list_to_slots env rest bound_locals (sp + 1) 0 st2
         st4 = nc_emit_list st3 [NMakeTuple (sp + 1) rem_count, NStoreSlot (sp + 1)] (sp + rem_count + 2)
         nc_emit st4 (NCallIndirect2 fn_slot sp) (sp + rem_count + 2)
+
+fn :: lower indirect call slots RNativeEnv Int [RExpr] [String] Int RNativeCode => RNativeCode
+      lower indirect call slots _ fn_slot [] _ sp st =
+        nc_emit st (NCloneSlot fn_slot) sp
+      lower indirect call slots env fn_slot args bound_locals sp st =
+        count = rexpr_list_len args
+        plain_lbl = nc_lbl st
+        done_lbl = plain_lbl + 1
+        st0 = nc_set_lbl st (plain_lbl + 2)
+        st1 = nc_emit_list st0 [NMatchTuple fn_slot 2, NJumpIfZero plain_lbl, NTupleGet fn_slot 0, NStoreSlot sp, NTupleGet fn_slot 1, NStoreSlot (sp + 1)] (sp + 2)
+        st2 = lower_expr_list_to_slots env args bound_locals (sp + 2) 0 st1
+        ins_clos = [NMakeList (sp + 2) count, NBinOp 14 (sp + 1), NStoreSlot (sp + 1), NListHead (sp + 1), NStoreSlot (sp + 2), NListTail (sp + 1), NStoreSlot (sp + 3), NMoveSlot (sp + 2), NStoreSlot (sp + 1), NMoveSlot (sp + 3), NStoreSlot (sp + 2), NCallIndirect2 sp (sp + 1), NStoreSlot (sp + 1), NClearLocals sp (sp + 1), NMoveSlot (sp + 1), NJump done_lbl, NLabel plain_lbl]
+        st3 = nc_emit_list st2 ins_clos (sp + count + 4)
+        st4 = lower plain indirect call env fn_slot args bound_locals sp st3
+        nc_emit st4 (NLabel done_lbl) (sp + count + 4)
+
+fn :: lower map or closure map RNativeEnv String [RExpr] [String] Int RNativeCode => RNativeCode
+      lower map or closure map env fname (fn_e:list_e:[]) bound_locals sp st =
+        bid = select_par_collection_builtin env fname [fn_e, list_e] bound_locals
+        plain_lbl = nc_lbl st
+        loop_lbl = plain_lbl + 1
+        done_lbl = plain_lbl + 2
+        after_lbl = plain_lbl + 3
+        st0 = nc_set_lbl st (plain_lbl + 4)
+        st1 = lower_expr_list_to_slots env [fn_e, list_e] bound_locals sp 0 st0
+        ins_clos = [NMatchTuple sp 2, NJumpIfZero plain_lbl, NMakeList (sp + 2) 0, NStoreSlot (sp + 2), NLabel loop_lbl, NMatchNonEmpty (sp + 1), NJumpIfZero done_lbl, NTupleGet sp 0, NStoreSlot (sp + 3), NTupleGet sp 1, NStoreSlot (sp + 4), NListHead (sp + 1), NStoreSlot (sp + 5), NMakeList (sp + 5) 1, NBinOp 14 (sp + 4), NStoreSlot (sp + 4), NListHead (sp + 4), NStoreSlot (sp + 5), NListTail (sp + 4), NStoreSlot (sp + 6), NMoveSlot (sp + 5), NStoreSlot (sp + 4), NMoveSlot (sp + 6), NStoreSlot (sp + 5), NCallIndirect2 (sp + 3) (sp + 4), NStoreSlot (sp + 5), NMakeList (sp + 5) 1, NBinOp 14 (sp + 2), NStoreSlot (sp + 2), NListTail (sp + 1), NStoreSlot (sp + 1), NJump loop_lbl, NLabel done_lbl, NClearLocals sp (sp + 2), NClearLocals (sp + 3) (sp + 7), NMoveSlot (sp + 2), NJump after_lbl, NLabel plain_lbl, NCallBuiltin bid sp 2, NLabel after_lbl]
+        nc_emit_list st1 ins_clos (sp + 7)
+      lower map or closure map env fname args bound_locals sp st =
+        count = rexpr_list_len args
+        bid = select_par_collection_builtin env fname args bound_locals
+        st1 = lower_expr_list_to_slots env args bound_locals sp 0 st
+        nc_emit st1 (NCallBuiltin bid sp count) (sp + count + 1)
+
+fn :: lower direct or partial call RNativeEnv String [RExpr] Int Int [String] Int RNativeCode => RNativeCode
+      lower direct or partial call env fname args count fn_ar bound_locals sp st
+        | count > 0 and fn_ar > count =
+          off = env_str_off env fname
+          slen = str_len fname
+          st1 = nc_emit_list st [NLoadStrLit off slen, NStoreSlot sp] (sp + 1)
+          st2 = lower_expr_list_to_slots env args bound_locals (sp + 1) 0 st1
+          nc_emit_list st2 [NMakeList (sp + 1) count, NStoreSlot (sp + 1), NMakeTuple sp 2] (sp + count + 2)
+        | otherwise =
+          st1 = lower_expr_list_to_slots env args bound_locals sp 0 st
+          nc_emit st1 (NCallFn (env_fn_id env fname) sp count) (sp + count + 1)
 
 fn :: lower_call_expr RNativeEnv String [RExpr] [String] Int RNativeCode => RNativeCode
       lower_call_expr env "__chain__" (fn_e:call_args) bound_locals sp st =
@@ -1546,6 +1590,8 @@ fn :: lower_call_expr RNativeEnv String [RExpr] [String] Int RNativeCode => RNat
           off = env_str_off env fname
           slen = str_len fname
           lower_adt_ctor_call env args bound_locals off slen count sp st
+        | fname == "map" or fname == "||map" or fname == "seq_map" or fname == "par_map" =
+          lower map or closure map env fname args bound_locals sp st
         | (builtin_call_id fname) >= 0 =
           count = rexpr_list_len args
           bid = select_par_collection_builtin env fname args bound_locals
@@ -1553,8 +1599,8 @@ fn :: lower_call_expr RNativeEnv String [RExpr] [String] Int RNativeCode => RNat
           nc_emit st1 (NCallBuiltin bid sp count) (sp + count + 1)
         | otherwise =
           count = rexpr_list_len args
-          st1 = lower_expr_list_to_slots env args bound_locals sp 0 st
-          nc_emit st1 (NCallFn (env_fn_id env fname) sp count) (sp + count + 1)
+          fn_ar = env_fn_arity env fname
+          lower direct or partial call env fname args count fn_ar bound_locals sp st
 
 fn :: lower_adt_ctor_call RNativeEnv [RExpr] [String] Int Int Int Int RNativeCode => RNativeCode
       lower_adt_ctor_call _ [] _ off slen 0 sp st =
@@ -1957,7 +2003,7 @@ fn :: lower_tco_arg_expr RNativeEnv RExpr [RExpr] [String] [String] Int RNativeC
         st1 = lower_tco_arg_list_to_slots env elems es bound_locals scope_vars sp 0 st
         nc_emit st1 (NMakeTuple sp count) (sp + count + 1)
       lower_tco_arg_expr env (ECall fname args) es bound_locals scope_vars sp st
-        | (lookup_local bound_locals fname) < 0 AND (NOT (is_upper_ident fname)) AND (builtin_call_id fname) < 0 AND (NOT (is_agent_call_name fname)) AND (NOT (is tensor helper name fname)) AND fname != "sys_os" AND fname != "sys_arch" AND fname != "__record_update__" AND fname != "__unpack2__" AND fname != "__chain__" AND (NOT ((env has field env fname) AND (env_fn_arity env fname) == 1 AND (rexpr_list_len args) > 1)) =
+        | (lookup_local bound_locals fname) < 0 AND (NOT (is_upper_ident fname)) AND (builtin_call_id fname) < 0 AND (NOT (is_agent_call_name fname)) AND (NOT (is tensor helper name fname)) AND fname != "sys_os" AND fname != "sys_arch" AND fname != "__record_update__" AND fname != "__unpack2__" AND fname != "__chain__" AND (rexpr_list_len args) == (env_fn_arity env fname) AND (NOT ((env has field env fname) AND (env_fn_arity env fname) == 1 AND (rexpr_list_len args) > 1)) =
           count = rexpr_list_len args
           st1 = lower_tco_arg_list_to_slots env args es bound_locals scope_vars sp 0 st
           nc_emit st1 (NCallFn (env_fn_id env fname) sp count) (sp + count + 1)
@@ -2503,19 +2549,30 @@ fn :: build call2 unpack tuple Int Int   => [RNativeInstr]
         | otherwise =
           [NTupleGet 2 idx, NStoreSlot (4 + idx)] :: (build call2 unpack tuple (idx + 1) count)
 
+fn :: build call2 unpack list Int Int   => [RNativeInstr]
+      build call2 unpack list idx count
+        | idx >= count = []
+        | otherwise =
+          [NListHead 2, NStoreSlot (4 + idx), NListTail 2, NStoreSlot 2] :: (build call2 unpack list (idx + 1) count)
+
 fn :: build_call2_dispatch_instrs [RFnEntry] [RStrEntry] Int [RNativeInstr] => [RNativeInstr]
       build_call2_dispatch_instrs [] _ _ acc =
         acc :: [NLoadImmRaw 0, NReturn]
       build_call2_dispatch_instrs ((FnEntry name fid arity):rest) str_tbl lbl acc
         | arity == 2 =
           off = lookup_str_off str_tbl name
-          arm = [NMatchStr 0 off (str_len name), NJumpIfZero lbl, NMoveSlot 1, NStoreSlot 3, NMoveSlot 2, NStoreSlot 4, NCallFn fid 3 2, NReturn, NLabel lbl]
-      build_call2_dispatch_instrs rest str_tbl (lbl + 1) (acc :: arm)
+          lbl_plain = lbl + 1
+          lbl_next = lbl + 2
+          arm = [NMatchStr 0 off (str_len name), NJumpIfZero lbl_next, NMoveSlot 1, NStoreSlot 3, NMatchNonEmpty 2, NJumpIfZero lbl_plain, NListHead 2, NStoreSlot 4, NJump lbl, NLabel lbl_plain, NMoveSlot 2, NStoreSlot 4, NLabel lbl, NCallFn fid 3 2, NReturn, NLabel lbl_next]
+      build_call2_dispatch_instrs rest str_tbl (lbl + 3) (acc :: arm)
         | arity >= 3 =
           off = lookup_str_off str_tbl name
-          unpack_ins = build call2 unpack tuple 0 (arity - 1)
-          arm = [NMatchStr 0 off (str_len name), NJumpIfZero lbl, NMoveSlot 1, NStoreSlot 3] :: unpack_ins :: [NCallFn fid 3 arity, NReturn, NLabel lbl]
-      build_call2_dispatch_instrs rest str_tbl (lbl + 1) (acc :: arm)
+          lbl_tuple = lbl + 1
+          lbl_next = lbl + 2
+          unpack_list = build call2 unpack list 0 (arity - 1)
+          unpack_tup = build call2 unpack tuple 0 (arity - 1)
+          arm = [NMatchStr 0 off (str_len name), NJumpIfZero lbl_next, NMoveSlot 1, NStoreSlot 3, NMatchNonEmpty 2, NJumpIfZero lbl_tuple] :: unpack_list :: [NJump lbl, NLabel lbl_tuple] :: unpack_tup :: [NLabel lbl, NCallFn fid 3 arity, NReturn, NLabel lbl_next]
+      build_call2_dispatch_instrs rest str_tbl (lbl + 3) (acc :: arm)
         | otherwise =
           build_call2_dispatch_instrs rest str_tbl lbl acc
 
