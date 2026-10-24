@@ -3,7 +3,7 @@
 --   the tuple is taken apart by a tuple pattern in a parameter (tutorials.md:81-96, FR-COMP-008: (A B) ≡ (A, B))
 -- expect-output:
 --   775
---   55 720
+--   55 3628800
 
 fn :: fib Int => Int
       fib n =

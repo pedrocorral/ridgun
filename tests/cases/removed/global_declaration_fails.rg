@@ -1,5 +1,6 @@
 -- case: `global ::` was removed in 0.9.18 and must not compile
--- source: FR-COMP-009 §5 ("SHALL be removed from the language"); road-map TASK-0023
+-- source: FR-COMP-009 §5 ("SHALL be removed from the language"); road-map TASK-0023. With 0.9.18 (592878f) a use of
+--   `counter` fails, but the declaration alone builds because unknown top-level lines are dropped (see syntax/)
 -- expect-build-error:
 
 global :: counter Int = 0

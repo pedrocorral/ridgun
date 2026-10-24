@@ -51,6 +51,7 @@ fn :: main => ()
 | `literals/`, `logic/` | `-100`, hex, digit separators, `_KB` / `_MB` / `_GB`; truth tables of `and` / `or` / `xor` / `not` | book 03:67, 87-98; spec.md:313-329 |
 | `agents/` | stateless FIFO with one and two arguments; stateful `S M => S` and `S M => S R`; `ask` in both styles; `try receive`, `stop`, `agent alive`; 50 000 messages without memory growth | FR-COMP-009 AC-1–AC-3; FR-COMP-002 ("leak-free"); Solstice register RG-069 |
 | `removed/` | `global ::` and `spawn` / `join` must not compile | FR-COMP-009 §5, AC-4 |
+| `syntax/` | a top-level line that is no known declaration must not build (today it is dropped silently) | spec.md (a file is a sequence of declarations); Solstice register RG-090 |
 | `strict/` | `--strict` refuses `_` in declared names and `(Int, Int)` returns | book 02:193-197; FR-COMP-008 |
 | `runtime/` | `sys_exit n` exits with n and stops there | FR-VM-002:32,45 |
 | `perf/` | building a 20 000-element list at either end in under 1 s. **A proposal**: no document promises it | Solstice register RG-085 |
