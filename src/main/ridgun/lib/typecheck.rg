@@ -70,9 +70,10 @@ fn :: parse paren type inner String => RType
         arrow_idx = find_fat_arrow_idx inner 0 (str_len inner)
         parse_paren_type_split inner arrow_idx
 
-fn :: finish paren tuple type [String]    => RType
-      finish paren tuple type (single:[]) =  parse_type_str single
-      finish paren tuple type parts       =  TyTuple (parse_type_list_strs parts)
+fn :: finish paren tuple type [String]              => RType
+      finish paren tuple type (single:[])           =  parse_type_str single
+      finish paren tuple type ("Option":inner_s:[]) =  make_option_type (parse_type_str inner_s)
+      finish paren tuple type parts                 =  TyTuple (parse_type_list_strs parts)
 
 fn :: parse paren type split String Int => RType
       parse paren type split inner -1 = finish_paren_tuple_type (split_comma_strs inner)
@@ -117,6 +118,8 @@ fn :: rtype to str RType              => String
       rtype to str (TyVariadic inner) =  (rtype_to_str inner) + "..."
       rtype to str (TyFun params ret) =  "(" + (rtype_list_to_str params) + " => " + (rtype_to_str ret) + ")"
       rtype to str (TyVar name)
+        | str_starts_with name "Option " =
+          "Option " + (rtype_to_str (parse_option_inner_ty (str_slice name 7 (str_len name))))
         | str_starts_with name "adt:" =
           raw = str_slice name 4 (str_len name)
           strip_pipe_suffix raw 0 (str_len raw)
@@ -161,10 +164,20 @@ fn :: types list compatible [RType] [RType] => Bool
 
 fn :: is poly type var String => Bool
       is poly type var s
+        | s == "adt:Option" = True
         | str_starts_with s "adt:" = False
         | s == "_empty" OR s == "_any" OR s == "Option" OR s == "_chan_or_agent" = True
         | (str_len s) == 1 = True
         | otherwise = False
+
+fn :: parse option inner ty String => RType
+      parse option inner ty s
+        | str_starts_with s "adt:" = TyVar s
+        | otherwise = parse_type_str s
+
+fn :: make option type RType     => RType
+      make option type (TyVar s) =  TyVar ("Option " + s)
+      make option type other     =  TyVar ("Option " + (rtype_to_str other))
 
 fn :: adt accepts prim String RType    => Bool
       adt accepts prim a      TyInt    =  str_contains a "|prim:Int"
@@ -191,6 +204,9 @@ fn :: types compatible RType              RType              => Bool
       types compatible (TyVar a)          (TyVar b)
         | a == b OR ("adt:" + a) == b OR ("adt:" + b) == a = True
         | (is_poly_type_var a) OR (is_poly_type_var b) = True
+        | (str_starts_with a "Option ") AND (str_starts_with b "Option ") = types_compatible (parse_option_inner_ty (str_slice a 7 (str_len a))) (parse_option_inner_ty (str_slice b 7 (str_len b)))
+        | (str_starts_with a "Option ") AND (str_starts_with b "adt:Option") = True
+        | (str_starts_with a "adt:Option") AND (str_starts_with b "Option ") = True
         | (str_starts_with a "adt:") AND (str_starts_with b "adt:") AND ((str_contains a b) OR (str_contains b a) OR (str_contains a ("adt:" + (rtype_to_str (TyVar b)))) OR (str_contains b ("adt:" + (rtype_to_str (TyVar a))))) = True
         | otherwise = False
       types compatible (TyVar "Agent")    (TyTuple ((TyVar "Agent"):_)) = True
@@ -241,6 +257,7 @@ fn :: lookup declared adt entry [String] String => String
 
 fn :: qualify declared adt [String] RType              => RType
       qualify declared adt tnames   (TyVar s)
+        | str_starts_with s "Option " = make_option_type (qualify_declared_adt tnames (parse_type_str (str_slice s 7 (str_len s))))
         | (lookup_declared_adt_entry tnames s) != "" = TyVar ("adt:" + (lookup_declared_adt_entry tnames s))
         | otherwise = TyVar s
       qualify declared adt tnames   (TyList inner)     =  TyList (qualify_declared_adt tnames inner)
@@ -332,12 +349,16 @@ fn :: register typedef list cont [String] [RTypeDef] ([RTypeBind], [RTypeBind]) 
       register typedef list cont tnames ts (locals1, fns1) =
         register_typedef_list tnames ts locals1 fns1
 
-fn :: register fndef sigs [String] [RFnDef] [RTypeBind] => [RTypeBind]
-      register fndef sigs _ [] fns = fns
-      register fndef sigs tnames ((FnDef name param_strs ret_str _):fs) fns =
+fn :: register fndef sigs acc [String] [RFnDef] [RTypeBind] => [RTypeBind]
+      register fndef sigs acc _ [] acc = acc
+      register fndef sigs acc tnames ((FnDef name param_strs ret_str _):fs) acc =
         param_tys = qualify_declared_adt_list tnames (parse_type_list_strs param_strs)
         ret_ty = qualify_declared_adt tnames (parse_type_str ret_str)
-        register_fndef_sigs tnames fs (put_type_bind fns name (TyFun param_tys ret_ty))
+        register_fndef_sigs_acc tnames fs (acc :: [TypeBind name (TyFun param_tys ret_ty)])
+
+fn :: register fndef sigs [String] [RFnDef] [RTypeBind] => [RTypeBind]
+      register fndef sigs tnames fdefs fns0 =
+        (register_fndef_sigs_acc tnames fdefs []) :: fns0
 
 -- ── Pattern Variable Binding ────────────────────────────────
 
@@ -422,6 +443,9 @@ fn :: bind pattern RPattern RType [RTypeBind] [RTypeBind] => [RTypeBind]
       bind pattern (PatCtor ":tensor-pat:" (t_pat:dim_pats)) expected locals fns =
         locals1 = bind_pattern t_pat (tensor pat expected expected) locals fns
         bind int pats dim_pats locals1 fns
+      bind pattern (PatCtor "Some" (sub_p:[])) (TyVar opt_s) locals fns
+        | str_starts_with opt_s "Option " =
+          bind_pattern sub_p (parse_option_inner_ty (str_slice opt_s 7 (str_len opt_s))) locals fns
       bind pattern (PatCtor ctor_name args) expected locals fns =
         param_tys = ctor_param_types_for fns ctor_name expected (pat_list_arity args)
         bind_tuple_pats args param_tys 0 locals fns
@@ -915,6 +939,8 @@ fn :: check expr RExpr String [RTypeBind] [RTypeBind] => RType [RTypeError]
       check expr (ECall "__record_update__" (base_e:rest_args)) fn_name locals fns =
         b_res = check_expr base_e fn_name locals fns
         check_record_update_fields b_res rest_args fn_name locals fns
+      check expr (ECall "__missing_import__" ((EStr mod_name):_)) _ _ _ =
+        (TyInt, [TypeError "import" ("unresolved import '" + mod_name + "': module not found in project or .stable/deps")])
       check expr (ECall callee args) fn_name locals fns =
         args_res = check_expr_list args fn_name locals fns
         finish_call_check callee args_res fn_name locals fns
@@ -1007,7 +1033,8 @@ fn :: args match params [RType] [RType] => Bool
 fn :: collect matching sigs [RTypeBind] String [RType] => [RType]
       collect matching sigs [] _ _ = []
       collect matching sigs ((TypeBind k (TyFun param_tys ret_ty)):rest) target arg_tys
-        | k == target AND (rtype_list_len param_tys) == (rtype_list_len arg_tys) AND (args_match_params arg_tys param_tys) = [TyFun param_tys ret_ty] :: (collect_matching_sigs rest target arg_tys)
+        | k == target AND (rtype_list_len param_tys) == (rtype_list_len arg_tys) AND (args_match_params arg_tys param_tys) AND (is_upper_ident target) = [TyFun param_tys ret_ty] :: (collect_matching_sigs rest target arg_tys)
+        | k == target AND (rtype_list_len param_tys) == (rtype_list_len arg_tys) AND (args_match_params arg_tys param_tys) = [TyFun param_tys ret_ty]
         | otherwise = collect_matching_sigs rest target arg_tys
       collect matching sigs (_:rest) target arg_tys =
         collect_matching_sigs rest target arg_tys
@@ -1026,6 +1053,7 @@ fn :: resolve callee for args String [RType] [RTypeBind] [RTypeBind] => Bool RTy
 
 fn :: resolve callee local first String [RType] [RTypeBind] [RTypeBind] (Bool, RType) => Bool RType
       resolve callee local first _ _ _ _ (True, (TyFun p r)) = (True, TyFun p r)
+      resolve callee local first _ [] _ _ (True, ty) = (True, TyFun [] ty)
       resolve callee local first callee arg_tys locals fns _ =
         matched = merge_matching_sigs (collect_matching_sigs fns callee arg_tys)
         resolve_callee_args_fallback callee locals fns matched
@@ -1080,6 +1108,8 @@ fn :: specialize hof return String [RType] (RType, [RTypeError]) => RType [RType
       specialize hof return "||filter" (_:list_ty:_) (_, errs) = (list_ty, errs)
       specialize hof return "fold" (_:init_ty:_) (_, errs) = (init_ty, errs)
       specialize hof return "receive_from" ((TyTuple ((TyVar "Agent"):_:out_ty:[])):_) (_, errs) = (out_ty, errs)
+      specialize hof return "try_receive_from" ((TyTuple ((TyVar "Agent"):_:out_ty:[])):_) (_, errs) = (make_option_type out_ty, errs)
+      specialize hof return "Some" (elem_ty:[]) (_, errs) = (make_option_type elem_ty, errs)
       specialize hof return _ _ res = res
 
 fn :: check agent ask [RType] [RTypeError] String => RType [RTypeError]
@@ -1261,12 +1291,16 @@ fn :: check fn cases [RFnCase] String [RType] RType Int [RTypeBind] [RTypeBind] 
       check fn cases (c:cs) fn_name param_tys ret_ty idx locals fns =
         (check_one_case c fn_name param_tys ret_ty idx locals fns) :: (check_fn_cases cs fn_name param_tys ret_ty (idx + 1) locals fns)
 
-fn :: check all functions [String] [RFnDef] [RTypeBind] [RTypeBind] => [RTypeError]
-      check all functions _ [] _ _ = []
-      check all functions tnames ((FnDef name param_strs ret_str cases):fs) locals fns =
+fn :: check all functions acc [String] [RFnDef] [RTypeBind] [RTypeBind] [RTypeError] => [RTypeError]
+      check all functions acc _ [] _ _ acc = acc
+      check all functions acc tnames ((FnDef name param_strs ret_str cases):fs) locals fns acc =
         param_tys = qualify_declared_adt_list tnames (parse_type_list_strs param_strs)
         ret_ty = qualify_declared_adt tnames (parse_type_str ret_str)
-        (check_fn_cases cases name param_tys ret_ty 0 locals fns) :: (check_all_functions tnames fs locals fns)
+        check_all_functions_acc tnames fs locals fns (acc :: (check_fn_cases cases name param_tys ret_ty 0 locals fns))
+
+fn :: check all functions [String] [RFnDef] [RTypeBind] [RTypeBind] => [RTypeError]
+      check all functions tnames fdefs locals fns =
+        check_all_functions_acc tnames fdefs locals fns []
 
 fn :: convert analysis errors [RAnalysisError] => [RTypeError]
       convert analysis errors []               =  []
@@ -1279,7 +1313,7 @@ fn :: convert analysis errors [RAnalysisError] => [RTypeError]
 
 fn :: builtin typedefs => [RTypeDef]
       builtin typedefs =
-        [TypeDef "SysOs" [TypeVariant "Linux" [], TypeVariant "MacOS" [], TypeVariant "Windows" []] [], TypeDef "SysArch" [TypeVariant "X86_64" [], TypeVariant "Arm64" []] []]
+        [TypeDef "SysOs" [TypeVariant "Linux" [], TypeVariant "MacOS" [], TypeVariant "Windows" []] [], TypeDef "SysArch" [TypeVariant "X86_64" [], TypeVariant "Arm64" []] [], TypeDef "Option" [TypeVariant "None" [], TypeVariant "Some" ["A"]] []]
 
 fn :: typecheck program RProgram => [RTypeError]
       typecheck program (Program fdefs tdefs) =
@@ -1288,13 +1322,19 @@ fn :: typecheck program RProgram => [RTypeError]
         env_pair = register_typedef_list tnames all_tdefs builtin_local_types builtin_fn_types
         typecheck_with_typedef_env tnames (Program fdefs tdefs) fdefs env_pair
 
-fn :: check duplicate fndefs [RFnDef] [String] => [RTypeError]
-      check duplicate fndefs []       _        =  []
-      check duplicate fndefs ((FnDef name _ _ _):fs) seen
+fn :: check duplicate fndefs acc [RFnDef] [String] [RTypeError] => [RTypeError]
+      check duplicate fndefs acc []       _    acc =  acc
+      check duplicate fndefs acc ((FnDef "__unresolved_import__" _ _ _):fs) seen acc =
+        check_duplicate_fndefs_acc fs seen acc
+      check duplicate fndefs acc ((FnDef name _ _ _):fs) seen acc
         | str_in_list name seen =
-          [TypeError name ("duplicate function definition '" + name + "'; function is already defined")] :: (check_duplicate_fndefs fs seen)
+          check_duplicate_fndefs_acc fs seen (acc :: [TypeError name ("duplicate function definition '" + name + "'; function is already defined")])
         | otherwise =
-          check_duplicate_fndefs fs ([name] :: seen)
+          check_duplicate_fndefs_acc fs (seen :: [name]) acc
+
+fn :: check duplicate fndefs [RFnDef] [String] => [RTypeError]
+      check duplicate fndefs fdefs    seen     =
+        check_duplicate_fndefs_acc fdefs seen []
 
 fn :: typecheck with typedef env [String] RProgram [RFnDef] ([RTypeBind], [RTypeBind]) => [RTypeError]
       typecheck with typedef env tnames prog fdefs (locals, fns0) =

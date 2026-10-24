@@ -252,6 +252,7 @@ fn :: main => ()
         assert equals (unwrap opt str (try receive from ag_msg)) "empty"
         send "pedido-1" 15 to ag_msg
         send "pedido-2" 30 to ag_msg
+        sys sleep ms 10
         assert equals (unwrap opt str (try receive from ag_msg)) "pedido-1:15ms"
         assert equals (receive from ag_msg) "pedido-2:30ms"
         assert equals (unwrap opt str (try receive from ag_msg)) "empty"

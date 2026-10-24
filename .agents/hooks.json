@@ -1,0 +1,17 @@
+{
+  "block-proc-and-binary-inspection": {
+    "enabled": true,
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/boogie/ridgun/ridgun/.agents/hooks/safety-guard.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

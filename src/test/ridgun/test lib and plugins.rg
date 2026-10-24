@@ -11,7 +11,7 @@
 -- ============================================================
 import test
 import str
-import "/home/boogie/ridgun-libs/target/bundles/io.rglib"
+import "io.rglib"
 
 fn :: byte at [Int]  Int => Int
       byte at []     _   =  -1

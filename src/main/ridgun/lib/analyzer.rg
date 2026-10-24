@@ -325,15 +325,42 @@ fn :: finish fn summary String Int ([RParamEffect], Bool, RCostTier) => RFnSumma
         strat = select_exec_strategy yld final_cost
         FnSummary name effs yld final_cost strat
 
-fn :: compute summaries pass [RFnDef] [RFnSummary]  => [RFnSummary]
-      compute summaries pass []       _             =  []
-      compute summaries pass (f:fs)   cur_summaries =
+fn :: has mut effect [RParamEffect]      => Bool
+      has mut effect []                  =  False
+      has mut effect (EffMutates:_)      =  True
+      has mut effect (_:es)              =  has_mut_effect es
+
+fn :: is nontrivial summary RFnSummary                             => Bool
+      is nontrivial summary (FnSummary _ effs False TierTrivial _) =  has_mut_effect effs
+      is nontrivial summary _                                      =  True
+
+fn :: add nontrivial summary RFnSummary [RFnSummary] => [RFnSummary]
+      add nontrivial summary s          summaries
+        | is_nontrivial_summary s = summaries :: [s]
+        | otherwise = summaries
+
+fn :: filter nontrivial summaries acc [RFnSummary] [RFnSummary] => [RFnSummary]
+      filter nontrivial summaries acc []           acc          =  acc
+      filter nontrivial summaries acc (s:ss)       acc
+        | is_nontrivial_summary s = filter_nontrivial_summaries_acc ss (acc :: [s])
+        | otherwise = filter_nontrivial_summaries_acc ss acc
+
+fn :: filter nontrivial summaries [RFnSummary] => [RFnSummary]
+      filter nontrivial summaries ss           =  filter_nontrivial_summaries_acc ss []
+
+fn :: compute summaries pass acc [RFnDef] [RFnSummary] [RFnSummary] => [RFnSummary]
+      compute summaries pass acc []       _            acc          =  acc
+      compute summaries pass acc (f:fs)   cur_summaries acc         =
         s = compute_one_fn_summary f cur_summaries
-        [s] :: (compute_summaries_pass fs (cur_summaries :: [s]))
+        compute_summaries_pass_acc fs (add_nontrivial_summary s cur_summaries) (acc :: [s])
+
+fn :: compute summaries pass [RFnDef] [RFnSummary]  => [RFnSummary]
+      compute summaries pass fns      cur_summaries =
+        compute_summaries_pass_acc fns cur_summaries []
 
 fn :: infer all summaries RProgram        => [RFnSummary]
       infer all summaries (Program fns _) =
-        pass1 = compute_summaries_pass fns []
+        pass1 = filter_nontrivial_summaries (compute_summaries_pass fns [])
         compute_summaries_pass fns pass1
 
 -- ── Free Variable Extraction & Where-Block DAG / Cycle Check ──
@@ -640,24 +667,31 @@ fn :: check cases safety [RFnCase] String [String] [RFnSummary] => [RAnalysisErr
 fn :: extract analysis errs ([String], [RAnalysisError]) [RAnalysisError] => [RAnalysisError]
       extract analysis errs (_, errs) more = errs :: more
 
+fn :: check all fns safety acc [RFnDef] [RFnSummary] [RAnalysisError] => [RAnalysisError]
+      check all fns safety acc [] _ acc = acc
+      check all fns safety acc ((FnDef name param_types _ cases):fs) summaries acc =
+        check_all_fns_safety_acc fs summaries (acc :: (check_cases_safety cases name param_types summaries))
+
 fn :: check all fns safety [RFnDef] [RFnSummary] => [RAnalysisError]
-      check all fns safety [] _ = []
-      check all fns safety ((FnDef name param_types _ cases):fs) summaries =
-        (check_cases_safety cases name param_types summaries) :: (check_all_fns_safety fs summaries)
+      check all fns safety fns summaries =
+        check_all_fns_safety_acc fns summaries []
 
 fn :: analyze program errors RProgram => [RAnalysisError]
       analyze program errors prog     =
-        summaries = infer_all_summaries prog
+        summaries = filter_nontrivial_summaries (infer_all_summaries prog)
         check_program_with_summaries prog summaries
 
 fn :: check program with summaries RProgram [RFnSummary] => [RAnalysisError]
       check program with summaries (Program fns _) summaries =
         check_all_fns_safety fns summaries
 
+fn :: format summaries acc [RFnSummary] [String] => [String]
+      format summaries acc [] acc = acc
+      format summaries acc ((FnSummary name _ _ _ strat):ss) acc =
+        format_summaries_acc ss (acc :: [name + ":" + (strategy_to_str strat)])
+
 fn :: format summaries [RFnSummary] => [String]
-      format summaries []           =  []
-      format summaries ((FnSummary name _ _ _ strat):ss) =
-        [name + ":" + (strategy_to_str strat)] :: (format_summaries ss)
+      format summaries ss           =  format_summaries_acc ss []
 
 fn :: analyze rprogram RProgram => [String]
       analyze rprogram prog     =  format_summaries (infer_all_summaries prog)

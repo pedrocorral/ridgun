@@ -1123,12 +1123,27 @@ fn :: prepend guard RGuard ([RGuard], [RToken]) => [RGuard] [RToken]
 fn :: finish guard expr ([RGuard], [RToken]) => RExpr [RToken]
       finish guard expr (guards, rest)       =  (EGuard guards, rest)
 
-fn :: line has equals [RToken]       => Bool
-      line has equals []             =  False
-      line has equals (TokEof:_)     =  False
-      line has equals (TokNewline:_) =  False
-      line has equals (TokEquals:_)  =  True
-      line has equals (_:ts)         =  line_has_equals ts
+fn :: line has equals [RToken] => Bool
+      line has equals ts = line_has_equals_depth ts 0
+
+fn :: line has equals depth [RToken] Int => Bool
+      line has equals depth [] _ = False
+      line has equals depth (TokEof:_) _ = False
+      line has equals depth (TokNewline:_) _ = False
+      line has equals depth (TokLParen:ts) d = line_has_equals_depth ts (d + 1)
+      line has equals depth (TokLBracket:ts) d = line_has_equals_depth ts (d + 1)
+      line has equals depth (TokIdxLBracket:ts) d = line_has_equals_depth ts (d + 1)
+      line has equals depth (TokRParen:ts) d
+        | d > 0 = line_has_equals_depth ts (d - 1)
+        | otherwise = line_has_equals_depth ts 0
+      line has equals depth (TokRBracket:ts) d
+        | d > 0 = line_has_equals_depth ts (d - 1)
+        | otherwise = line_has_equals_depth ts 0
+      line has equals depth (TokWith:ts) 0
+        | is_record_update_start ([TokWith] :: ts) = False
+        | otherwise = line_has_equals_depth ts 0
+      line has equals depth (TokEquals:_) 0 = True
+      line has equals depth (_:ts) d = line_has_equals_depth ts d
 
 fn :: is echo expr RExpr            => Bool
       is echo expr (EEcho _)        =  True
@@ -1913,16 +1928,23 @@ fn :: finish record type String ([RField], [RToken]) => RTypeDef [RToken]
 
 type RArityEntry = ArityEntry String Int
 
+fn :: lookup var arity [RArityEntry] String => Int
+      lookup var arity []            _      =  -1
+      lookup var arity ((ArityEntry k v):rest) target
+        | k == target AND v == -2 = -1
+        | k == target = v
+        | otherwise = lookup_var_arity rest target
+
 fn :: lookup arity [RArityEntry] String => Int
       lookup arity []            _      =  -1
       lookup arity ((ArityEntry k v):rest) target
-        | k == target = v
+        | v >= 0 AND k == target = v
         | otherwise = lookup_arity rest target
 
 fn :: has arity prefix loop [RArityEntry] String String => Bool
       has arity prefix loop [] _ _ = False
-      has arity prefix loop ((ArityEntry k _):rest) pref pref_under
-        | k == pref OR (str_starts_with k pref_under) = True
+      has arity prefix loop ((ArityEntry k v):rest) pref pref_under
+        | v >= 0 AND (k == pref OR (str_starts_with k pref_under)) = True
         | otherwise = has_arity_prefix_loop rest pref pref_under
 
 fn :: has arity prefix [RArityEntry] String => Bool
@@ -1932,7 +1954,7 @@ fn :: has arity prefix [RArityEntry] String => Bool
 fn :: filter arity prefix [RArityEntry] String String => [RArityEntry]
       filter arity prefix [] _ _ = []
       filter arity prefix ((ArityEntry k v):rest) pref pref_under
-        | k == pref OR (str_starts_with k pref_under) = [ArityEntry k v] :: (filter_arity_prefix rest pref pref_under)
+        | v >= 0 AND (k == pref OR (str_starts_with k pref_under)) = [ArityEntry k v] :: (filter_arity_prefix rest pref pref_under)
         | otherwise = filter_arity_prefix rest pref pref_under
 
 fn :: has variadic param [String] => Bool
@@ -1954,10 +1976,13 @@ fn :: builtin arity entries => [RArityEntry]
       builtin arity entries =
         [ArityEntry "assert_equals" 2, ArityEntry "assert_true" 1, ArityEntry "send_to" 2, ArityEntry "ask_to" 2, ArityEntry "send_through" 2, ArityEntry "receive_from" 1, ArityEntry "try_receive_from" 1, ArityEntry "receive_from_timeout" 2, ArityEntry "stop" 1, ArityEntry "agent_alive" 1, ArityEntry "new_mailbox" 0, ArityEntry "new_channel" 0, ArityEntry "new_bounded_channel" 1, ArityEntry "chan_send" 2, ArityEntry "chan_recv" 1, ArityEntry "chan_try_recv" 1, ArityEntry "str_len" 1, ArityEntry "str_char_at" 2, ArityEntry "str_slice" 3, ArityEntry "str_contains" 2, ArityEntry "str_starts_with" 2, ArityEntry "str_concat" 2, ArityEntry "int_to_str" 1, ArityEntry "str_to_int" 1, ArityEntry "char_from_code" 1, ArityEntry "trim_str" 1, ArityEntry "read_file" 1, ArityEntry "load_rg_source" 1, ArityEntry "read_bytes" 1, ArityEntry "write_bytes" 2, ArityEntry "write_file" 2, ArityEntry "shell_exec" 1, ArityEntry "list_str_len" 1, ArityEntry "list_dir" 1, ArityEntry "file_lstat" 1, ArityEntry "sha256_file" 1, ArityEntry "sha256_str" 1, ArityEntry "sha256_raw" 1, ArityEntry "sha256_bytes" 1, ArityEntry "sys_os" 0, ArityEntry "sys_arch" 0, ArityEntry "sys_mkdir" 2, ArityEntry "sys_chmod" 2, ArityEntry "sys_exec" 3, ArityEntry "sys_chdir" 1, ArityEntry "sys_getcwd" 0, ArityEntry "sys_getenv" 1, ArityEntry "sys_setenv" 2, ArityEntry "sys_exit" 1, ArityEntry "sys_getuid" 0, ArityEntry "sys_getgid" 0, ArityEntry "sys_getpid" 0, ArityEntry "sys_time_ms" 0, ArityEntry "sys_deadline_ms" 0, ArityEntry "sys_remaining_ms" 0, ArityEntry "sys_sleep_ms" 1, ArityEntry "sys_open_mode" 2, ArityEntry "sys_open" 3, ArityEntry "sys_close" 1, ArityEntry "sys_read_fd" 2, ArityEntry "sys_write_fd" 2, ArityEntry "sys_poll" 3, ArityEntry "sys_terminate" 2, ArityEntry "sys_kill" 2, ArityEntry "sys_call" 7, ArityEntry "sys_username" 1, ArityEntry "sys_user_groups" 1, ArityEntry "sys_lookup_uid_gid" 1, ArityEntry "sys_setresgid" 1, ArityEntry "sys_setgroups" 1, ArityEntry "sys_setresuid" 1, ArityEntry "sys_execve" 3, ArityEntry "sys_read_pass" 1, ArityEntry "cli_args" 0, ArityEntry "cmm_live_blocks" 0, ArityEntry "cmm_cond_spared" 0, ArityEntry "cmm_cond_freed" 0, ArityEntry "cmm_same_ptr" 2, ArityEntry "seq_map" 2, ArityEntry "par_map" 2, ArityEntry "seq_filter" 2, ArityEntry "par_filter" 2]
 
+fn :: collect fn arities acc [RFnDef] [RArityEntry] => [RArityEntry]
+      collect fn arities acc []       acc           =  acc :: builtin_arity_entries
+      collect fn arities acc ((FnDef name params _ _):fs) acc =
+        collect_fn_arities_acc fs (acc :: [ArityEntry name (fn_def_arity params)])
+
 fn :: collect fn arities [RFnDef] => [RArityEntry]
-      collect fn arities []       =  builtin_arity_entries
-      collect fn arities ((FnDef name params _ _):fs) =
-        [ArityEntry name (fn_def_arity params)] :: (collect_fn_arities fs)
+      collect fn arities fns      =  collect_fn_arities_acc fns []
 
 fn :: field list count [RField] => Int
       field list count []       =  0
@@ -2226,6 +2251,13 @@ fn :: norm call with cands String [RExpr] [RArityEntry] [RArityEntry] Int => REx
         | (not (is_std_builtin fn_name)) and (has_arity_prefix cands fn_name) and (can_complete_op cands fn_name args) = norm_call_mixfix fn_name args arities (extract_mixfix_call fn_name args cands [])
         | otherwise = norm_call_mixfix fn_name args arities (extract_mixfix_call "" ([EVar fn_name] :: args) arities [])
 
+fn :: norm call fast or cands String [RExpr] [RArityEntry] Int => RExpr
+      norm call fast or cands fn_name args arities ar
+        | ar >= 0 and (not (has_longer_arity_prefix arities fn_name args)) = ECall fn_name (norm_expr_list (maybe_collapse_args args ar arities) arities)
+        | otherwise =
+          cands = filter_arity_prefix arities fn_name (fn_name + "_")
+          norm_call_with_cands fn_name args arities cands (lookup_arity cands fn_name)
+
 fn :: norm call String  [RExpr] [RArityEntry] => RExpr
       norm call fn_name args    arities
         | fn_name == "agent" and (not (has_longer_arity_prefix arities "agent" args)) = ECall "agent" (norm_expr_list (collapse_fn_ref_args args arities) arities)
@@ -2234,9 +2266,7 @@ fn :: norm call String  [RExpr] [RArityEntry] => RExpr
         | (fn_name == "map" or fn_name == "||map") and (not (has_longer_arity_prefix arities fn_name args)) = norm map call fn_name (collapse_fn_ref_args args arities) arities
         | (is_std_builtin fn_name) and (not (has_longer_arity_prefix arities fn_name args)) = ECall fn_name (norm_expr_list (maybe_collapse_args args (std_builtin_arity fn_name) arities) arities)
         | fn_name == "__chain__" = norm_call_chain args arities (extract_mixfix_call "" args arities [])
-        | otherwise =
-          cands = filter_arity_prefix arities fn_name (fn_name + "_")
-          norm_call_with_cands fn_name args arities cands (lookup_arity cands fn_name)
+        | otherwise = norm_call_fast_or_cands fn_name args arities (lookup_arity arities fn_name)
 
 fn :: norm call chain [RExpr] [RArityEntry] (String, [RExpr]) => RExpr
       norm call chain orig_args arities (mangled, operands) =
@@ -2298,7 +2328,7 @@ fn :: can absorb mixfix verify String [RArityEntry] (String, [RExpr]) => Bool
 
 fn :: norm expr RExpr              [RArityEntry] => RExpr
       norm expr (EVar name)        arities
-        | (lookup_arity arities name) == 0 = ECall name []
+        | (lookup_var_arity arities name) == 0 = ECall name []
         | is_subscript_ident name = EVar (extract fst str (split_subscript name))
         | otherwise = EVar name
       norm expr (ENot inner)       arities       =  ENot (norm_expr inner arities)
@@ -2337,10 +2367,30 @@ fn :: norm expr list [RExpr] [RArityEntry] => [RExpr]
       norm expr list []      _             =  []
       norm expr list (e:es)  arities       =  [norm_expr e arities] :: (norm_expr_list es arities)
 
+fn :: bind pat local arities RPattern [RArityEntry] => [RArityEntry]
+      bind pat local arities (PatVar v) arities = [ArityEntry v (0 - 2)] :: arities
+      bind pat local arities (PatSeqBind v) arities = [ArityEntry v (0 - 2)] :: arities
+      bind pat local arities (PatCons h t) arities = bind_pat_local_arities t (bind_pat_local_arities h arities)
+      bind pat local arities (PatTuple ps) arities = bind_pat_list_local_arities ps arities
+      bind pat local arities (PatCtor _ ps) arities = bind_pat_list_local_arities ps arities
+      bind pat local arities _ arities = arities
+
+fn :: bind pat list local arities [RPattern] [RArityEntry] => [RArityEntry]
+      bind pat list local arities [] arities = arities
+      bind pat list local arities (p:ps) arities = bind_pat_list_local_arities ps (bind_pat_local_arities p arities)
+
+fn :: bind where local arities [RWhereBind] [RArityEntry] => [RArityEntry]
+      bind where local arities [] arities = arities
+      bind where local arities ((WhereBind _ v _):wbs) arities
+        | v != "" = bind_where_local_arities wbs ([ArityEntry v (0 - 2)] :: arities)
+        | otherwise = bind_where_local_arities wbs arities
+
 fn :: norm stmt list [RStmt]            [RArityEntry] => [RStmt]
       norm stmt list []                 _             =  []
-      norm stmt list ((StmtLet v e):ss) arities       =  [StmtLet v (norm_expr e arities)] :: (norm_stmt_list ss arities)
-      norm stmt list ((StmtMut v e):ss) arities       =  [StmtMut v (norm_expr e arities)] :: (norm_stmt_list ss arities)
+      norm stmt list ((StmtLet v e):ss) arities       =
+        [StmtLet v (norm_expr e arities)] :: (norm_stmt_list ss ([ArityEntry v (0 - 2)] :: arities))
+      norm stmt list ((StmtMut v e):ss) arities       =
+        [StmtMut v (norm_expr e arities)] :: (norm_stmt_list ss ([ArityEntry v (0 - 2)] :: arities))
       norm stmt list ((StmtExpr e):ss)  arities       =  [StmtExpr (norm_expr e arities)] :: (norm_stmt_list ss arities)
       norm stmt list ((StmtIndexAssign t idxs e):ss) arities = [StmtIndexAssign t (norm_expr_list idxs arities) (norm_expr e arities)] :: (norm_stmt_list ss arities)
 
@@ -2352,15 +2402,25 @@ fn :: norm guard list [RGuard] [RArityEntry] => [RGuard]
       norm guard list []       _             =  []
       norm guard list ((GuardBranch c b):gs) arities = [GuardBranch (norm_expr c arities) (norm_expr b arities)] :: (norm_guard_list gs arities)
 
+fn :: norm case body RExpr [RArityEntry] => RExpr
+      norm case body (EWhere body binds) arities =
+        ar1 = bind_where_local_arities binds arities
+        EWhere (norm_expr body ar1) (norm_where_list binds ar1)
+      norm case body body arities = norm_expr body arities
+
 fn :: norm case list [RFnCase] [RArityEntry] => [RFnCase]
       norm case list []        _             =  []
       norm case list ((FnCase pats guards body):cs) arities =
-        [FnCase pats (norm_guard_list guards arities) (norm_expr body arities)] :: (norm_case_list cs arities)
+        case_arities = bind_pat_list_local_arities pats arities
+        [FnCase pats (norm_guard_list guards case_arities) (norm_case_body body case_arities)] :: (norm_case_list cs arities)
+
+fn :: norm fndef list acc [RFnDef] [RArityEntry] [RFnDef] => [RFnDef]
+      norm fndef list acc []       _             acc      =  acc
+      norm fndef list acc ((FnDef name params ret_ty cases):fs) arities acc =
+        norm_fndef_list_acc fs arities (acc :: [FnDef name params ret_ty (norm_case_list cases arities)])
 
 fn :: norm fndef list [RFnDef] [RArityEntry] => [RFnDef]
-      norm fndef list []       _             =  []
-      norm fndef list ((FnDef name params ret_ty cases):fs) arities =
-        [FnDef name params ret_ty (norm_case_list cases arities)] :: (norm_fndef_list fs arities)
+      norm fndef list fns      arities       =  norm_fndef_list_acc fns arities []
 
 fn :: normalize program RProgram          => RProgram
       normalize program (Program fns tys) =
@@ -2410,20 +2470,44 @@ fn :: strip quotes String => String
 
 fn :: read local rg module String String => String
       read local rg module pdir spec =
-        try_read_candidate_paths [pdir + "/" + spec + ".rg", pdir + "/../lib/" + spec + ".rg", "src/main/ridgun/lib/" + spec + ".rg", "src/main/ridgun/" + spec + ".rg"]
+        try_read_candidate_paths [pdir + "/" + spec + ".rg", pdir + "/" + spec + "/lib.rg", pdir + "/" + spec + "/mod.rg", pdir + "/../" + spec + ".rg", pdir + "/../lib/" + spec + ".rg", pdir + "/../../main/ridgun/lib/" + spec + ".rg", pdir + "/../../main/ridgun/" + spec + ".rg", "src/main/ridgun/lib/" + spec + ".rg", "src/main/ridgun/" + spec + ".rg", "src/main/ridgun/" + spec + "/lib.rg", spec + ".rg"]
 
 fn :: has local rg module String String => Bool
       has local rg module pdir spec =
         (read_local_rg_module pdir spec) != ""
 
+fn :: dep subdir paths String [String] String => [String]
+      dep subdir paths _ [] _ = []
+      dep subdir paths deps_base (d:ds) spec
+        | str_contains spec ".rglib" =
+          [deps_base + "/" + d + "/target/bundles/" + spec, deps_base + "/" + d + "/target/" + spec, deps_base + "/" + d + "/" + spec] :: (dep_subdir_paths deps_base ds spec)
+        | otherwise =
+          [deps_base + "/" + d + "/target/bundles/" + spec + ".rglib", deps_base + "/" + d + "/target/" + spec + ".rglib", deps_base + "/" + d + "/" + spec + ".rglib", deps_base + "/" + d + "/src/main/ridgun/lib/" + spec + ".rg", deps_base + "/" + d + "/src/main/ridgun/" + spec + ".rg", deps_base + "/" + d + "/src/main/ridgun/" + spec + "/lib.rg"] :: (dep_subdir_paths deps_base ds spec)
+
+fn :: all deps base paths [String] String => [String]
+      all deps base paths [] _ = []
+      all deps base paths (base:bs) spec
+        | str_contains spec ".rglib" =
+          [base + "/" + spec] :: (dep_subdir_paths base (list_dir base) spec) :: (all_deps_base_paths bs spec)
+        | otherwise =
+          [base + "/" + spec + ".rglib", base + "/" + spec + ".rg"] :: (dep_subdir_paths base (list_dir base) spec) :: (all_deps_base_paths bs spec)
+
+fn :: resolve rglib bundle String String => String
+      resolve rglib bundle pdir spec
+        | is_core_compiler_mod spec = ""
+        | str_contains spec ".rglib" =
+          dep_paths = all_deps_base_paths [".stable/deps", pdir + "/.stable/deps", pdir + "/../.stable/deps", pdir + "/../../.stable/deps", pdir + "/../../../.stable/deps", pdir + "/../../../../.stable/deps"] spec
+          try_read_candidate_paths ([spec, pdir + "/" + spec, "target/bundles/" + spec, "build/" + spec, "target/" + spec, "dist/" + spec, "lib/" + spec] :: dep_paths)
+        | otherwise =
+          dep_paths = all_deps_base_paths [".stable/deps", pdir + "/.stable/deps", pdir + "/../.stable/deps", pdir + "/../../.stable/deps", pdir + "/../../../.stable/deps", pdir + "/../../../../.stable/deps"] spec
+          try_read_candidate_paths (dep_paths :: ["target/bundles/" + spec + ".rglib", "build/" + spec + ".rglib", pdir + "/" + spec + ".rglib", pdir + "/lib/" + spec + ".rglib", spec + ".rglib", "target/" + spec + ".rglib", "dist/" + spec + ".rglib", "lib/" + spec + ".rglib", "src/main/ridgun/lib/" + spec + ".rglib"])
+
 fn :: resolve rglib clean String String => String
       resolve rglib clean pdir   spec
         | is_core_compiler_mod spec = ""
-        | str_contains spec ".rglib" =
-          try_read_candidate_paths [spec, pdir + "/" + spec, ".stable/deps/" + spec, "target/bundles/" + spec, "build/" + spec, "target/" + spec, "dist/" + spec, "lib/" + spec, ".stable/deps/ridgun-libs/target/bundles/" + spec, "/home/boogie/ridgun-libs/target/bundles/" + spec, "/home/boogie/ridgun-libs/target/" + spec]
+        | str_contains spec ".rglib" = resolve_rglib_bundle pdir spec
         | has_local_rg_module pdir spec = ""
-        | otherwise =
-          try_read_candidate_paths [".stable/deps/" + spec + ".rglib", ".stable/deps/" + spec + ".rg", ".stable/deps/ridgun-libs/target/bundles/" + spec + ".rglib", ".stable/deps/ridgun-libs/src/main/ridgun/lib/" + spec + ".rg", "target/bundles/" + spec + ".rglib", "build/" + spec + ".rglib", pdir + "/" + spec + ".rglib", pdir + "/lib/" + spec + ".rglib", spec + ".rglib", "target/" + spec + ".rglib", "dist/" + spec + ".rglib", "lib/" + spec + ".rglib", "src/main/ridgun/lib/" + spec + ".rglib", "/home/boogie/ridgun-libs/target/bundles/" + spec + ".rglib", "/home/boogie/ridgun-libs/target/" + spec + ".rglib", "/home/boogie/ridgun-libs/src/main/ridgun/lib/" + spec + ".rg"]
+        | otherwise = resolve_rglib_bundle pdir spec
 
 fn :: rglib trim lead String Int Int => String
       rglib trim lead s pos len
@@ -2473,22 +2557,31 @@ fn :: append rglib after deps String (String, [String]) => String [String]
       append rglib after deps lib_src (acc2, seen2) =
         (append_rglib_resolved acc2 lib_src, seen2)
 
-fn :: append rglib resolved mod String String String [String] => String [String]
-      append rglib resolved mod _ "" acc seen1 = (acc, seen1)
-      append rglib resolved mod pdir lib_src acc seen1 =
+fn :: has same dir rglib String String => Bool
+      has same dir rglib pdir spec
+        | str_contains spec ".rglib" = (read_file (pdir + "/" + spec)) != ""
+        | otherwise = (read_file (pdir + "/" + spec + ".rglib")) != ""
+
+fn :: append rglib resolved mod String String String String [String] => String [String]
+      append rglib resolved mod _ clean_spec "" acc seen1 =
+        (acc + "\nfn :: unresolved import => Int\n      unresolved import = __missing_import__ \"" + clean_spec + "\"\n", seen1)
+      append rglib resolved mod pdir _ lib_src acc seen1 =
         res_deps = scan_rglib_imports_state pdir lib_src 0 (str_len lib_src) 0 acc seen1
         append_rglib_after_deps lib_src res_deps
 
 fn :: append rglib local or ext String String String String [String] => String [String]
       append rglib local or ext pdir clean_spec "" acc seen1 =
-        lib_src = resolve_rglib_clean pdir clean_spec
-        append_rglib_resolved_mod pdir lib_src acc seen1
+        lib_src = resolve_rglib_bundle pdir clean_spec
+        append_rglib_resolved_mod pdir clean_spec lib_src acc seen1
       append rglib local or ext pdir _ local_rg acc seen1 =
         scan_rglib_imports_state pdir local_rg 0 (str_len local_rg) 0 acc seen1
 
 fn :: append rglib if unseen String String String [String] => String [String]
       append rglib if unseen pdir clean_spec acc seen
         | (is_core_compiler_mod clean_spec) OR (str_in_seen_list clean_spec seen) = (acc, seen)
+        | has_same_dir_rglib pdir clean_spec =
+          seen1 = [clean_spec] :: seen
+          append_rglib_resolved_mod pdir clean_spec (resolve_rglib_bundle pdir clean_spec) acc seen1
         | otherwise =
           seen1 = [clean_spec] :: seen
           local_rg = read_local_rg_module pdir clean_spec
@@ -2533,40 +2626,112 @@ fn :: scan rglib imports String String Int Int Int String [String] => String
       scan rglib imports pdir s pos len line_start acc seen =
         fst_str_seen (scan_rglib_imports_state pdir s pos len line_start acc seen)
 
+fn :: append own rg after local String (String, [String]) => String [String]
+      append own rg after local clean_spec (acc2, seen2) =
+        (acc2 + "\n-- import " + clean_spec + "\n", seen2)
+
+fn :: append own rg local String String String String [String] => String [String]
+      append own rg local _ clean_spec "" acc seen1 =
+        (acc + "import " + clean_spec + "\n", seen1)
+      append own rg local pdir clean_spec local_rg acc seen1 =
+        res = scan_own_rg_lines pdir local_rg 0 (str_len local_rg) 0 0 acc seen1
+        append_own_rg_after_local clean_spec res
+
+fn :: append own rg import String String String [String] => String [String]
+      append own rg import pdir clean_spec acc seen
+        | str_in_seen_list clean_spec seen = (acc, seen)
+        | has_same_dir_rglib pdir clean_spec = (acc + "import " + clean_spec + "\n", [clean_spec] :: seen)
+        | otherwise =
+          local_rg = read_local_rg_module pdir clean_spec
+          append_own_rg_local pdir clean_spec local_rg acc ([clean_spec] :: seen)
+
+fn :: scan own rg lines cont String String Int Int (String, [String]) => String [String]
+      scan own rg lines cont pdir s next_pos len (acc2, seen2) =
+        scan_own_rg_lines pdir s next_pos len next_pos next_pos acc2 seen2
+
+fn :: scan own rg lines String String Int Int Int Int String [String] => String [String]
+      scan own rg lines pdir s pos len line_start chunk_start acc seen
+        | pos >= len AND line_start >= len =
+          (acc + (str_slice s chunk_start len), seen)
+        | pos >= len AND (line_starts_with_import s line_start len) =
+          before = acc + (str_slice s chunk_start line_start)
+          line = rglib_trim (str_slice s line_start len)
+          raw_spec = str_slice line 7 (str_len line)
+          clean_spec = strip_quotes (rglib_trim raw_spec)
+          append_own_rg_import pdir clean_spec before seen
+        | pos >= len =
+          (acc + (str_slice s chunk_start len), seen)
+        | (str_char_at s pos) == 10 AND (line_starts_with_import s line_start pos) =
+          before = acc + (str_slice s chunk_start line_start)
+          line = rglib_trim (str_slice s line_start pos)
+          raw_spec = str_slice line 7 (str_len line)
+          clean_spec = strip_quotes (rglib_trim raw_spec)
+          res = append_own_rg_import pdir clean_spec before seen
+          scan_own_rg_lines_cont pdir s (pos + 1) len res
+        | (str_char_at s pos) == 10 =
+          scan_own_rg_lines pdir s (pos + 1) len (pos + 1) chunk_start acc seen
+        | otherwise =
+          scan_own_rg_lines pdir s (pos + 1) len line_start chunk_start acc seen
+
+fn :: load rg own source raw String String => String
+      load rg own source raw _ "" = ""
+      load rg own source raw input_path raw_file =
+        pdir = rglib_dir_of input_path 0 (str_len input_path) (0 - 1)
+        fst_str_seen (scan_own_rg_lines pdir raw_file 0 (str_len raw_file) 0 0 "" [])
+
+fn :: load rg own source String => String
+      load rg own source input_path =
+        raw_file = read_file input_path
+        load_rg_own_source_raw input_path raw_file
+
+fn :: join lib and base String String => String
+      join lib and base ""     base_src =  base_src
+      join lib and base lib_pr base_src =  lib_pr + "\n@__rg_user_src__\n" + base_src
+
 fn :: load rg with libs String     => String
       load rg with libs input_path =
-        base_src = load_rg_source input_path
-        raw_file = read_file input_path
+        base_src = load_rg_own_source input_path
         pdir = rglib_dir_of input_path 0 (str_len input_path) (0 - 1)
-        lib_prefix = scan_rglib_imports pdir raw_file 0 (str_len raw_file) 0 "" []
-        lib_prefix + base_src
+        lib_prefix = scan_rglib_imports pdir base_src 0 (str_len base_src) 0 "" []
+        join_lib_and_base lib_prefix base_src
 
 -- ── Top-Level Program Loop ──────────────────────────────────
 
-fn :: parse items [RToken]           [RFnDef] [RTypeDef] => RProgram
-      parse items []                 fns      tys        =  Program fns tys
-      parse items (TokEof:_)         fns      tys        =  Program fns tys
-      parse items (TokNewline:rest)  fns      tys        =  parse_items rest fns tys
-      parse items (TokAt:rest)       fns      tys        =  parse_items (skip_to_newline rest) fns tys
-      parse items (TokImport:rest)   fns      tys        =  parse_items (skip_to_newline rest) fns tys
-      parse items (TokFn:rest)       fns      tys        =
+fn :: tokens have user src marker [RToken] => Bool
+      tokens have user src marker [] = False
+      tokens have user src marker (TokAt:(TokIdent "__rg_user_src__"):_) = True
+      tokens have user src marker (_:ts) = tokens_have_user_src_marker ts
+
+fn :: parse items scoped [RToken] [RFnDef] [RTypeDef] Bool => RProgram
+      parse items scoped []                 fns      tys        _      =  Program fns tys
+      parse items scoped (TokEof:_)         fns      tys        _      =  Program fns tys
+      parse items scoped (TokNewline:rest)  fns      tys        in_lib =  parse_items_scoped rest fns tys in_lib
+      parse items scoped (TokAt:(TokIdent "__rg_user_src__"):rest) fns tys _ =
+        parse_items_scoped (skip_to_newline rest) fns tys False
+      parse items scoped (TokAt:rest)       fns      tys        in_lib =  parse_items_scoped (skip_to_newline rest) fns tys in_lib
+      parse items scoped (TokImport:rest)   fns      tys        in_lib =  parse_items_scoped (skip_to_newline rest) fns tys in_lib
+      parse items scoped (TokFn:rest)       fns      tys        in_lib =
         f_res = parse_fn_decl ([TokFn] :: rest)
-        parse_items_after_fn f_res fns tys
-      parse items (TokOp:rest)       fns      tys        =
+        parse_items_after_fn_scoped f_res fns tys in_lib
+      parse items scoped (TokOp:rest)       fns      tys        in_lib =
         o_res = parse_op_decl ([TokOp] :: rest)
-        parse_items_after_fn o_res fns tys
-      parse items (TokHardware:rest) fns      tys        =
+        parse_items_after_fn_scoped o_res fns tys in_lib
+      parse items scoped (TokHardware:rest) fns      tys        in_lib =
         hw_res = parse_hardware_decl ([TokHardware] :: rest)
-        parse_items_after_fndefs hw_res fns tys
-      parse items (TokType:(TokIdent name):TokEquals:rest) fns tys =
+        parse_items_after_fndefs_scoped hw_res fns tys in_lib
+      parse items scoped (TokType:(TokIdent name):TokEquals:rest) fns tys in_lib =
         t_res = parse_type_decl ([TokType, TokIdent name, TokEquals] :: rest)
-        parse_items_after_type t_res fns tys
-      parse items ((TokIdent "expand"):TokType:(TokIdent name):TokEquals:rest) fns tys =
+        parse_items_after_type_scoped t_res fns tys in_lib
+      parse items scoped ((TokIdent "expand"):TokType:(TokIdent name):TokEquals:rest) fns tys in_lib =
         t_res = parse_type_decl ([TokType, TokIdent name, TokEquals] :: rest)
-        parse_items_after_type t_res fns tys
-      parse items ts                 fns      tys
-        | line_has_fat_arrow ts = parse_items_after_fn (parse_bare_decl ts) fns tys
-        | otherwise = parse_items (skip_to_newline (tok_tail ts)) fns tys
+        parse_items_after_type_scoped t_res fns tys in_lib
+      parse items scoped ts                 fns      tys        in_lib
+        | line_has_fat_arrow ts = parse_items_after_fn_scoped (parse_bare_decl ts) fns tys in_lib
+        | otherwise = parse_items_scoped (skip_to_newline (tok_tail ts)) fns tys in_lib
+
+fn :: parse items [RToken] [RFnDef] [RTypeDef] => RProgram
+      parse items toks     fns      tys        =
+        parse_items_scoped toks fns tys (tokens_have_user_src_marker toks)
 
 fn :: is catchall pat RPattern   => Bool
       is catchall pat PatWild    =  True
@@ -2674,10 +2839,26 @@ fn :: update fn def [RFnDef] RFnDef => [RFnDef]
         | k == target = [FnDef k old_ps old_ret (merge_fn_cases old_cs new_cs)] :: (update_fn_def fs (FnDef target new_ps new_ret new_cs))
         | otherwise = [FnDef k old_ps old_ret old_cs] :: (update_fn_def fs (FnDef target new_ps new_ret new_cs))
 
-fn :: merge fn def [RFnDef] RFnDef => [RFnDef]
-      merge fn def fns      (FnDef name ps ret cs)
-        | has_extensible_fn_def fns (FnDef name ps ret cs) = update_fn_def fns (FnDef name ps ret cs)
+fn :: cases have any adt ctor [RFnCase] => Bool
+      cases have any adt ctor [] = False
+      cases have any adt ctor ((FnCase pats _ _):cs)
+        | (pat_list_adt_ctor pats) != "" = True
+        | otherwise = cases_have_any_adt_ctor cs
+
+fn :: has fn def name [RFnDef] String => Bool
+      has fn def name [] _ = False
+      has fn def name ((FnDef k _ _ _):fs) target
+        | k == target = True
+        | otherwise = has_fn_def_name fs target
+
+fn :: merge fn def scoped [RFnDef] RFnDef Bool => [RFnDef]
+      merge fn def scoped fns (FnDef name ps ret cs) in_lib
+        | (cases_have_any_adt_ctor cs) AND (has_extensible_fn_def fns (FnDef name ps ret cs)) = update_fn_def fns (FnDef name ps ret cs)
+        | in_lib AND (name != "__unresolved_import__") AND (has_fn_def_name fns name) = fns
         | otherwise = fns :: [FnDef name ps ret cs]
+
+fn :: merge fn def [RFnDef] RFnDef => [RFnDef]
+      merge fn def fns      fdef   =  merge_fn_def_scoped fns fdef False
 
 fn :: has type def [RTypeDef] String => Bool
       has type def []         _      =  False
@@ -2696,17 +2877,17 @@ fn :: merge type def [RTypeDef] RTypeDef => [RTypeDef]
         | has_type_def tys name = update_type_def tys (TypeDef name vs fs)
         | otherwise = tys :: [TypeDef name vs fs]
 
-fn :: parse items after fn (RFnDef, [RToken]) [RFnDef] [RTypeDef] => RProgram
-      parse items after fn (fdef, rest) fns tys =
-        parse_items rest (merge_fn_def fns fdef) tys
+fn :: parse items after fn scoped (RFnDef, [RToken]) [RFnDef] [RTypeDef] Bool => RProgram
+      parse items after fn scoped (fdef, rest) fns tys in_lib =
+        parse_items_scoped rest (merge_fn_def_scoped fns fdef in_lib) tys in_lib
 
-fn :: parse items after fndefs ([RFnDef], [RToken]) [RFnDef] [RTypeDef] => RProgram
-      parse items after fndefs (new_fns, rest) fns tys =
-        parse_items rest (fns :: new_fns) tys
+fn :: parse items after fndefs scoped ([RFnDef], [RToken]) [RFnDef] [RTypeDef] Bool => RProgram
+      parse items after fndefs scoped (new_fns, rest) fns tys in_lib =
+        parse_items_scoped rest (fns :: new_fns) tys in_lib
 
-fn :: parse items after type (RTypeDef, [RToken]) [RFnDef] [RTypeDef] => RProgram
-      parse items after type (tdef, rest) fns tys =
-        parse_items rest fns (merge_type_def tys tdef)
+fn :: parse items after type scoped (RTypeDef, [RToken]) [RFnDef] [RTypeDef] Bool => RProgram
+      parse items after type scoped (tdef, rest) fns tys in_lib =
+        parse_items_scoped rest fns (merge_type_def tys tdef) in_lib
 
 fn :: parse tokens [RToken] => RProgram
       parse tokens toks     =  normalize_program (parse_items toks [] [])

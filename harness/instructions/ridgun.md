@@ -31,7 +31,7 @@ Read and follow the `implement-code-ridgun` skill before editing any `.rg` file.
 - **Immutable (`x = ...`) vs Mutable (`mut x = ...`) Local Variables**:
   - Local bindings `x = expr` are immutable by default; rebinding `x = ...` in the same scope without a prior `mut` is a compile-time error (`ErrImmutableReassign`).
   - Declare mutable variables with `mut x = expr` and update them in the same scope with `x = new_expr` (under `RMM2`, `new_expr` gets `+1` before the old `x` gets `-1`).
-- **Record Updates (`with`)**: Update immutable product records via `record_expr with field1: val1, field2: val2`.
+- **Record Updates (`with`)**: Update immutable product records via `record_expr with field1 = val1, field2 = val2`.
 - **Shared ADT Constructors, Type-Name Variants, `expand type`, and Automatic `fn ::` Clause Merging (`FR-COMP-005`)**:
   - Multiple `type` declarations may reuse the same constructor names (e.g., `Error`, `Var`, `Lit`, `None`); typechecking disambiguates via expected column types and argument arity/types.
   - Bare type names in sum ADTs (`type Something = String | Int | MyStruct Float Int`) include values of those types directly without redundant `Int Int` / `String String` wrappers; callers may pass bare `"hej"` / `42` or `String "hej"` / `Int 42`, and patterns match both literals and `(String s)` / `(Int n)`.

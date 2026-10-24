@@ -1,26 +1,17 @@
 ---
-updated: 2026-10-24T15:01
+updated: 2026-10-24T21:21
 active_task: none
 agent_runtime: gemini
 ---
 # Session state — read this first when resuming
 
 ## Where we are (3 lines max)
-- Branch `main`: Working on `TASK-0023` (removing `global ::`, `context ::`, `shared ::`, `atomic`, and user `with <ctx> = <val> do` across the compiler, tests, and books).
+- Branch `main`: Completed `TASK-0024` (resolved all 11 Solstice open issues: `RG-048`, `RG-063`, `RG-068`, `RG-069`, `RG-071`, `RG-072`, `RG-073`, `RG-074`, `RG-075`, `RG-079`, and record update harness docs; installed `PreToolUse` security guard hook).
 ## Files to load for the active task (nothing else)
-- `docs/road-map/going-on/TASK-0023-remove-global-context-shared-and-atomic-from-ridgu.md`
-- `docs/requirements/functional/compiler/FR-COMP-009-native-agent-model-and-message-passing.md`
-- `src/main/ridgun/lib/ast.rg`
-- `src/main/ridgun/lib/lexer.rg`
-- `src/main/ridgun/lib/parser.rg`
-- `src/main/ridgun/lib/analyzer.rg`
-- `src/main/ridgun/lib/typecheck.rg`
-- `src/main/ridgun/lib/compiler.rg`
-- `src/main/ridgun/lib/formatter.rg`
-- `src/test/ridgun/test parallel and tensors.rg`
+- `docs/road-map/completed/2026-10/TASK-0024-fix-solstice-open-issues-rg-048-rg-063-rg-068-rg-0.md`
 ## Last verified facts (tests green? migrations applied? env?)
-- Committed `37c1bd5` (`v0.9.17`).
+- 3-stage self-hosted `ridgunc` (`sha256sum`: `6d89cf91cbd074cf4d5e62a54f200f2de7ee1684c904acf9201bdc80603d7647`) and `stable`; `./bin/stable check` (13/13 modules, 0 errors) and `./bin/stable test` (5/5 test suites green).
 ## Immediate next action
-- Remove `global ::`, `context ::`, `shared ::`, and `atomic` from `src/main/ridgun/lib/*.rg`, tests, and books, and verify `v0.9.18`.
+- Pick next roadmap task when requested.
 ## Blockers / questions for the user
 - None.

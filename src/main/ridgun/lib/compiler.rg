@@ -378,16 +378,44 @@ fn :: infer fndef arity [String] [RFnCase] => Int
       infer fndef arity _        ((FnCase pats _ _):_) = pat_list_len pats
       infer fndef arity params   []        =  list_str_len params
 
+fn :: build cg sigs acc [RFnDef] [RCgSig] => [RCgSig]
+      build cg sigs acc []       acc      =  acc
+      build cg sigs acc ((FnDef name params _ cases):fs) acc =
+        build_cg_sigs_acc fs (acc :: [CgSig name (infer_fndef_arity params cases) (params_has_variadic params)])
+
 fn :: build cg sigs [RFnDef] => [RCgSig]
-      build cg sigs []       =  []
-      build cg sigs ((FnDef name params _ cases):fs) =
-        [CgSig name (infer_fndef_arity params cases) (params_has_variadic params)] :: (build_cg_sigs fs)
+      build cg sigs fns      =  build_cg_sigs_acc fns []
+
+fn :: lookup var cg sig [RCgSig] String => Bool Int Bool
+      lookup var cg sig []       _      =  (False, 0, False)
+      lookup var cg sig ((CgSig name arity is_var):rest) target
+        | name == target AND arity < 0 = (False, 0, False)
+        | name == target = (True, arity, is_var)
+        | otherwise = lookup_var_cg_sig rest target
 
 fn :: lookup cg sig [RCgSig] String => Bool Int Bool
       lookup cg sig []       _      =  (False, 0, False)
       lookup cg sig ((CgSig name arity is_var):rest) target
-        | name == target = (True, arity, is_var)
+        | arity >= 0 AND name == target = (True, arity, is_var)
         | otherwise = lookup_cg_sig rest target
+
+fn :: bind pat cg sigs RPattern [RCgSig] => [RCgSig]
+      bind pat cg sigs (PatVar v) sigs = [CgSig v (0 - 2) False] :: sigs
+      bind pat cg sigs (PatSeqBind v) sigs = [CgSig v (0 - 2) False] :: sigs
+      bind pat cg sigs (PatCons h t) sigs = bind_pat_cg_sigs t (bind_pat_cg_sigs h sigs)
+      bind pat cg sigs (PatTuple ps) sigs = bind_pat_list_cg_sigs ps sigs
+      bind pat cg sigs (PatCtor _ ps) sigs = bind_pat_list_cg_sigs ps sigs
+      bind pat cg sigs _ sigs = sigs
+
+fn :: bind pat list cg sigs [RPattern] [RCgSig] => [RCgSig]
+      bind pat list cg sigs [] sigs = sigs
+      bind pat list cg sigs (p:ps) sigs = bind_pat_list_cg_sigs ps (bind_pat_cg_sigs p sigs)
+
+fn :: bind where cg sigs [RWhereBind] [RCgSig] => [RCgSig]
+      bind where cg sigs [] sigs = sigs
+      bind where cg sigs ((WhereBind _ v _):wbs) sigs
+        | v != "" = bind_where_cg_sigs wbs ([CgSig v (0 - 2) False] :: sigs)
+        | otherwise = bind_where_cg_sigs wbs sigs
 
 fn :: prep expr RExpr              [RCgSig] => RExpr
       prep expr (ENot inner)       sigs     =  ENot (prep_expr inner sigs)
@@ -408,11 +436,13 @@ fn :: prep expr RExpr              [RCgSig] => RExpr
       prep expr (ESeqSelect b m)   sigs     =  ESeqSelect (prep_expr b sigs) m
       prep expr (EBlock stmts)     sigs     =  EBlock (prep_stmt_list stmts sigs)
       prep expr (EGuard guards)    sigs     =  EGuard (prep_guard_list guards sigs)
-      prep expr (EWhere body binds) sigs    =  EWhere (prep_expr body sigs) (prep_where_list binds sigs)
+      prep expr (EWhere body binds) sigs    =
+        sigs1 = bind_where_cg_sigs binds sigs
+        EWhere (prep_expr body sigs1) (prep_where_list binds sigs1)
       prep expr (EParPipe branches) sigs    =  EParPipe (prep_expr_list branches sigs)
       prep expr (EWithCtx c v b)   sigs     =  EWithCtx c (prep_expr v sigs) (prep_expr b sigs)
       prep expr (EWithRegion q b)  sigs     =  EWithRegion q (prep_expr b sigs)
-      prep expr (EVar v)           sigs     =  prep_var v (lookup_cg_sig sigs v)
+      prep expr (EVar v)           sigs     =  prep_var v (lookup_var_cg_sig sigs v)
       prep expr e                  _        =  e
 
 fn :: prep var String (Bool, Int, Bool) => RExpr
@@ -433,8 +463,10 @@ fn :: prep expr list [RExpr] [RCgSig] => [RExpr]
 
 fn :: prep stmt list [RStmt]            [RCgSig] => [RStmt]
       prep stmt list []                 _        =  []
-      prep stmt list ((StmtLet v e):ss) sigs     =  [StmtLet v (prep_expr e sigs)] :: (prep_stmt_list ss sigs)
-      prep stmt list ((StmtMut v e):ss) sigs     =  [StmtMut v (prep_expr e sigs)] :: (prep_stmt_list ss sigs)
+      prep stmt list ((StmtLet v e):ss) sigs     =
+        [StmtLet v (prep_expr e sigs)] :: (prep_stmt_list ss ([CgSig v (0 - 2) False] :: sigs))
+      prep stmt list ((StmtMut v e):ss) sigs     =
+        [StmtMut v (prep_expr e sigs)] :: (prep_stmt_list ss ([CgSig v (0 - 2) False] :: sigs))
       prep stmt list ((StmtExpr e):ss)  sigs     =  [StmtExpr (prep_expr e sigs)] :: (prep_stmt_list ss sigs)
       prep stmt list ((StmtIndexAssign t idxs e):ss) sigs = [StmtIndexAssign t (prep_expr_list idxs sigs) (prep_expr e sigs)] :: (prep_stmt_list ss sigs)
 
@@ -449,12 +481,16 @@ fn :: prep guard list [RGuard] [RCgSig] => [RGuard]
 fn :: prep case list [RFnCase] [RCgSig] => [RFnCase]
       prep case list []        _        =  []
       prep case list ((FnCase pats guards body):cs) sigs =
-        [FnCase pats (prep_guard_list guards sigs) (prep_expr body sigs)] :: (prep_case_list cs sigs)
+        case_sigs = bind_pat_list_cg_sigs pats sigs
+        [FnCase pats (prep_guard_list guards case_sigs) (prep_expr body case_sigs)] :: (prep_case_list cs sigs)
+
+fn :: prep fndef list acc [RFnDef] [RCgSig] [RFnDef] => [RFnDef]
+      prep fndef list acc []       _        acc      =  acc
+      prep fndef list acc ((FnDef name params ret_ty cases):fs) sigs acc =
+        prep_fndef_list_acc fs sigs (acc :: [FnDef name params ret_ty (prep_case_list cases sigs)])
 
 fn :: prep fndef list [RFnDef] [RCgSig] => [RFnDef]
-      prep fndef list []       _        =  []
-      prep fndef list ((FnDef name params ret_ty cases):fs) sigs =
-        [FnDef name params ret_ty (prep_case_list cases sigs)] :: (prep_fndef_list fs sigs)
+      prep fndef list fns      sigs     =  prep_fndef_list_acc fns sigs []
 
 -- ── Pure-Ridgun AST Inlining & Tuple Escape Elimination ──────
 
@@ -1661,13 +1697,13 @@ fn :: is agent call name String             => Bool
 fn :: lower agent call RNativeEnv String [RExpr] [String] Int RNativeCode => RNativeCode
       lower agent call env "agent" (fn_e:[]) bound_locals sp st =
         st1 = lower_expr env fn_e bound_locals sp st
-        ins = [NStoreSlot sp, NCallBuiltin 1 (sp + 1) 0, NStoreSlot (sp + 1), NCallBuiltin 1 (sp + 2) 0, NStoreSlot (sp + 2), NLoadImmInt 3, NStoreSlot (sp + 3), NMakeList (sp + 4) 0, NStoreSlot (sp + 4), NMakeTuple (sp + 3) 2, NStoreSlot (sp + 3), NCloneSlot (sp + 1), NStoreSlot (sp + 4), NCallBuiltin 50 (sp + 3) 2, NMakeTuple sp 3]
+        ins = [NStoreSlot sp, NCallBuiltin 1 (sp + 1) 0, NStoreSlot (sp + 1), NCallBuiltin 1 (sp + 2) 0, NStoreSlot (sp + 2), NLoadImmInt 3, NStoreSlot (sp + 3), NMakeList (sp + 4) 0, NStoreSlot (sp + 4), NMakeTuple (sp + 3) 2, NStoreSlot (sp + 3), NCloneSlot (sp + 1), NStoreSlot (sp + 4), NCallBuiltin 50 (sp + 3) 2, NDropVal, NMakeTuple sp 3]
         nc_emit_list st1 ins (sp + 5)
       lower agent call env "agent" (fn_e:init_e:[]) bound_locals sp st =
         st1 = lower_expr env fn_e bound_locals sp st
         st2 = nc_emit st1 (NStoreSlot sp) (sp + 1)
         st3 = lower_expr env init_e bound_locals (sp + 4) st2
-        ins = [NStoreSlot (sp + 4), NLoadImmInt 0, NStoreSlot (sp + 5), NMakeTuple (sp + 4) 2, NStoreSlot (sp + 4), NCallBuiltin 1 (sp + 1) 0, NStoreSlot (sp + 1), NCallBuiltin 1 (sp + 2) 0, NStoreSlot (sp + 2), NLoadImmInt 2, NStoreSlot (sp + 3), NMakeTuple (sp + 3) 2, NStoreSlot (sp + 3), NCloneSlot (sp + 1), NStoreSlot (sp + 4), NCallBuiltin 50 (sp + 3) 2, NMakeTuple sp 3]
+        ins = [NStoreSlot (sp + 4), NLoadImmInt 0, NStoreSlot (sp + 5), NMakeTuple (sp + 4) 2, NStoreSlot (sp + 4), NCallBuiltin 1 (sp + 1) 0, NStoreSlot (sp + 1), NCallBuiltin 1 (sp + 2) 0, NStoreSlot (sp + 2), NLoadImmInt 2, NStoreSlot (sp + 3), NMakeTuple (sp + 3) 2, NStoreSlot (sp + 3), NCloneSlot (sp + 1), NStoreSlot (sp + 4), NCallBuiltin 50 (sp + 3) 2, NDropVal, NMakeTuple sp 3]
         nc_emit_list st3 ins (sp + 6)
       lower agent call env "send_to" (msg_e:ag_e:[]) bound_locals sp st =
         st1 = lower_expr env msg_e bound_locals sp st
@@ -1685,10 +1721,10 @@ fn :: lower agent call RNativeEnv String [RExpr] [String] Int RNativeCode => RNa
         spawn_stateful_lbl = stopped_lbl + 8
         st5 = nc_set_lbl st4 (stopped_lbl + 9)
         ins_unpack = [NTupleGet (sp + 1) 0, NStoreSlot (sp + 2), NTupleGet (sp + 1) 1, NStoreSlot (sp + 3), NTupleGet (sp + 1) 2, NStoreSlot (sp + 4), NCloneSlot (sp + 3), NStoreSlot (sp + 5), NCallBuiltin 32 (sp + 5) 1, NStoreSlot (sp + 5), NTupleGet (sp + 5) 0, NStoreSlot (sp + 6), NTupleGet (sp + 5) 1, NStoreSlot (sp + 7)]
-        ins_stateless = [NMatchInt (sp + 6) 1, NJumpIfZero stateful_lbl, NCloneSlot sp, NStoreSlot (sp + 8), NCallIndirect1 (sp + 2) (sp + 8), NStoreSlot (sp + 8), NCloneSlot (sp + 5), NStoreSlot (sp + 9), NCloneSlot (sp + 3), NStoreSlot (sp + 10), NCallBuiltin 50 (sp + 9) 2, NCloneSlot (sp + 8), NStoreSlot (sp + 9), NCloneSlot (sp + 4), NStoreSlot (sp + 10), NCallBuiltin 50 (sp + 9) 2, NJump done_lbl]
-        ins_stateful = [NLabel stateful_lbl, NMatchInt (sp + 6) 2, NJumpIfZero heavy_lbl, NTupleGet (sp + 7) 0, NStoreSlot (sp + 8), NTupleGet (sp + 7) 1, NStoreSlot (sp + 9), NMatchInt (sp + 9) 0, NJumpIfZero flush_prev_lbl, NJump spawn_stateful_lbl, NLabel flush_prev_lbl, NCallBuiltin 59 (sp + 9) 1, NStoreSlot (sp + 10), NMatchTuple (sp + 10) 2, NJumpIfZero same_res_lbl, NMatchTuple (sp + 8) 2, NJumpIfZero split_pair_lbl, NLabel same_res_lbl, NCloneSlot (sp + 10), NStoreSlot (sp + 8), NCloneSlot (sp + 10), NStoreSlot (sp + 11), NJump store_state_lbl, NLabel split_pair_lbl, NTupleGet (sp + 10) 0, NStoreSlot (sp + 8), NTupleGet (sp + 10) 1, NStoreSlot (sp + 11), NLabel store_state_lbl, NCloneSlot (sp + 4), NStoreSlot (sp + 12), NCallBuiltin 50 (sp + 11) 2, NLabel spawn_stateful_lbl, NCloneSlot (sp + 8), NStoreSlot (sp + 10), NCloneSlot sp, NStoreSlot (sp + 11), NMakeTuple (sp + 10) 2, NStoreSlot (sp + 10), NCloneSlot (sp + 2), NStoreSlot (sp + 9), NCallBuiltin 57 (sp + 9) 2, NStoreSlot (sp + 9), NMakeTuple (sp + 8) 2, NStoreSlot (sp + 9), NLoadImmInt 2, NStoreSlot (sp + 8), NMakeTuple (sp + 8) 2, NStoreSlot (sp + 8), NCloneSlot (sp + 3), NStoreSlot (sp + 9), NCallBuiltin 50 (sp + 8) 2, NJump done_lbl]
-        ins_heavy = [NLabel heavy_lbl, NMatchInt (sp + 6) 3, NJumpIfZero stopped_lbl, NCloneSlot (sp + 2), NStoreSlot (sp + 8), NCloneSlot sp, NStoreSlot (sp + 9), NCallBuiltin 57 (sp + 8) 2, NStoreSlot (sp + 9), NMoveSlot (sp + 7), NStoreSlot (sp + 8), NMakeList (sp + 9) 1, NBinOp 14 (sp + 8), NStoreSlot (sp + 9), NLoadImmInt 3, NStoreSlot (sp + 8), NMakeTuple (sp + 8) 2, NStoreSlot (sp + 9), NCloneSlot (sp + 3), NStoreSlot (sp + 10), NCallBuiltin 50 (sp + 9) 2, NJump done_lbl]
-        ins_stopped = [NLabel stopped_lbl, NCloneSlot (sp + 5), NStoreSlot (sp + 9), NCloneSlot (sp + 3), NStoreSlot (sp + 10), NCallBuiltin 50 (sp + 9) 2, NLabel done_lbl, NClearLocals sp (sp + 13), NLoadImmRaw 0]
+        ins_stateless = [NMatchInt (sp + 6) 1, NJumpIfZero stateful_lbl, NCloneSlot sp, NStoreSlot (sp + 8), NCallIndirect1 (sp + 2) (sp + 8), NStoreSlot (sp + 8), NCloneSlot (sp + 5), NStoreSlot (sp + 9), NCloneSlot (sp + 3), NStoreSlot (sp + 10), NCallBuiltin 50 (sp + 9) 2, NDropVal, NCloneSlot (sp + 8), NStoreSlot (sp + 9), NCloneSlot (sp + 4), NStoreSlot (sp + 10), NCallBuiltin 50 (sp + 9) 2, NDropVal, NJump done_lbl]
+        ins_stateful = [NLabel stateful_lbl, NMatchInt (sp + 6) 2, NJumpIfZero heavy_lbl, NTupleGet (sp + 7) 0, NStoreSlot (sp + 8), NTupleGet (sp + 7) 1, NStoreSlot (sp + 9), NMatchInt (sp + 9) 0, NJumpIfZero flush_prev_lbl, NJump spawn_stateful_lbl, NLabel flush_prev_lbl, NCallBuiltin 59 (sp + 9) 1, NStoreSlot (sp + 10), NMatchTuple (sp + 10) 2, NJumpIfZero same_res_lbl, NMatchTuple (sp + 8) 2, NJumpIfZero split_pair_lbl, NLabel same_res_lbl, NCloneSlot (sp + 10), NStoreSlot (sp + 8), NCloneSlot (sp + 10), NStoreSlot (sp + 11), NJump store_state_lbl, NLabel split_pair_lbl, NTupleGet (sp + 10) 0, NStoreSlot (sp + 8), NTupleGet (sp + 10) 1, NStoreSlot (sp + 11), NLabel store_state_lbl, NCloneSlot (sp + 4), NStoreSlot (sp + 12), NCallBuiltin 50 (sp + 11) 2, NDropVal, NLabel spawn_stateful_lbl, NCloneSlot (sp + 8), NStoreSlot (sp + 10), NCloneSlot sp, NStoreSlot (sp + 11), NMakeTuple (sp + 10) 2, NStoreSlot (sp + 10), NCloneSlot (sp + 2), NStoreSlot (sp + 9), NCallBuiltin 57 (sp + 9) 2, NStoreSlot (sp + 9), NMakeTuple (sp + 8) 2, NStoreSlot (sp + 9), NLoadImmInt 2, NStoreSlot (sp + 8), NMakeTuple (sp + 8) 2, NStoreSlot (sp + 8), NCloneSlot (sp + 3), NStoreSlot (sp + 9), NCallBuiltin 50 (sp + 8) 2, NDropVal, NJump done_lbl]
+        ins_heavy = [NLabel heavy_lbl, NMatchInt (sp + 6) 3, NJumpIfZero stopped_lbl, NCloneSlot (sp + 2), NStoreSlot (sp + 8), NCloneSlot sp, NStoreSlot (sp + 9), NCallBuiltin 57 (sp + 8) 2, NStoreSlot (sp + 9), NMoveSlot (sp + 7), NStoreSlot (sp + 8), NMakeList (sp + 9) 1, NBinOp 14 (sp + 8), NStoreSlot (sp + 9), NLoadImmInt 3, NStoreSlot (sp + 8), NMakeTuple (sp + 8) 2, NStoreSlot (sp + 9), NCloneSlot (sp + 3), NStoreSlot (sp + 10), NCallBuiltin 50 (sp + 9) 2, NDropVal, NJump done_lbl]
+        ins_stopped = [NLabel stopped_lbl, NCloneSlot (sp + 5), NStoreSlot (sp + 9), NCloneSlot (sp + 3), NStoreSlot (sp + 10), NCallBuiltin 50 (sp + 9) 2, NDropVal, NLabel done_lbl, NClearLocals sp (sp + 13), NLoadImmRaw 0]
         nc_emit_list st5 (ins_unpack :: ins_stateless :: ins_stateful :: ins_heavy :: ins_stopped) (sp + 13)
       lower agent call env "ask_to" (msg_e:ag_e:[]) bound_locals sp st =
         st1 = lower_agent_call env "send_to" [msg_e, ag_e] bound_locals sp st
@@ -1709,9 +1745,9 @@ fn :: lower agent call RNativeEnv String [RExpr] [String] Int RNativeCode => RNa
         st3 = nc_set_lbl st2 (not_ag_lbl + 9)
         ok_off = env_str_off env "Ok"
         ins_check = [NMatchTuple sp 3, NJumpIfZero not_ag_lbl, NTupleGet sp 1, NStoreSlot (sp + 1), NTupleGet sp 2, NStoreSlot sp, NCloneSlot (sp + 1), NStoreSlot (sp + 2), NCallBuiltin 32 (sp + 2) 1, NStoreSlot (sp + 2), NTupleGet (sp + 2) 0, NStoreSlot (sp + 3), NTupleGet (sp + 2) 1, NStoreSlot (sp + 4), NMatchInt (sp + 3) 3, NJumpIfZero check_st_lbl, NMatchNonEmpty (sp + 4), NJumpIfZero no_job_lbl]
-        ins_pop = [NListHead (sp + 4), NStoreSlot (sp + 5), NListTail (sp + 4), NStoreSlot (sp + 6), NLoadImmInt 3, NStoreSlot (sp + 7), NMoveSlot (sp + 6), NStoreSlot (sp + 8), NMakeTuple (sp + 7) 2, NStoreSlot (sp + 7), NCloneSlot (sp + 1), NStoreSlot (sp + 8), NCallBuiltin 50 (sp + 7) 2, NClearLocals sp (sp + 5), NCallBuiltin 59 (sp + 5) 1, NJump done_lbl]
-        ins_st = [NLabel check_st_lbl, NMatchInt (sp + 3) 2, NJumpIfZero no_job_lbl, NCloneSlot sp, NStoreSlot (sp + 5), NCallBuiltin 33 (sp + 5) 1, NStoreSlot (sp + 5), NMatchAdt (sp + 5) ok_off 2 1, NJumpIfZero st_await_lbl, NMoveSlot (sp + 2), NStoreSlot (sp + 7), NCloneSlot (sp + 1), NStoreSlot (sp + 8), NCallBuiltin 50 (sp + 7) 2, NAdtField (sp + 5) 0, NStoreSlot (sp + 6), NClearLocals sp (sp + 6), NMoveSlot (sp + 6), NJump done_lbl, NLabel st_await_lbl, NTupleGet (sp + 4) 0, NStoreSlot (sp + 5), NTupleGet (sp + 4) 1, NStoreSlot (sp + 6), NMatchInt (sp + 6) 0, NJumpIfZero st_has_job_lbl, NJump no_job_lbl, NLabel st_has_job_lbl, NCallBuiltin 59 (sp + 6) 1, NStoreSlot (sp + 7), NMatchTuple (sp + 7) 2, NJumpIfZero st_same_lbl, NMatchTuple (sp + 5) 2, NJumpIfZero st_split_lbl, NLabel st_same_lbl, NCloneSlot (sp + 7), NStoreSlot (sp + 8), NCloneSlot (sp + 7), NStoreSlot (sp + 9), NJump st_save_lbl, NLabel st_split_lbl, NTupleGet (sp + 7) 0, NStoreSlot (sp + 8), NTupleGet (sp + 7) 1, NStoreSlot (sp + 9), NLabel st_save_lbl, NLoadImmInt 0, NStoreSlot (sp + 10), NMoveSlot (sp + 8), NStoreSlot (sp + 11), NMoveSlot (sp + 10), NStoreSlot (sp + 12), NMakeTuple (sp + 11) 2, NStoreSlot (sp + 11), NLoadImmInt 2, NStoreSlot (sp + 10), NMakeTuple (sp + 10) 2, NStoreSlot (sp + 10), NCloneSlot (sp + 1), NStoreSlot (sp + 11), NCallBuiltin 50 (sp + 10) 2, NClearLocals sp (sp + 9), NMoveSlot (sp + 9), NJump done_lbl]
-        ins_no_job = [NLabel no_job_lbl, NMoveSlot (sp + 2), NStoreSlot (sp + 7), NCloneSlot (sp + 1), NStoreSlot (sp + 8), NCallBuiltin 50 (sp + 7) 2, NClearLocals (sp + 1) (sp + 13), NLabel not_ag_lbl, NCallBuiltin 32 sp 1, NLabel done_lbl]
+        ins_pop = [NListHead (sp + 4), NStoreSlot (sp + 5), NListTail (sp + 4), NStoreSlot (sp + 6), NLoadImmInt 3, NStoreSlot (sp + 7), NMoveSlot (sp + 6), NStoreSlot (sp + 8), NMakeTuple (sp + 7) 2, NStoreSlot (sp + 7), NCloneSlot (sp + 1), NStoreSlot (sp + 8), NCallBuiltin 50 (sp + 7) 2, NDropVal, NClearLocals sp (sp + 5), NCallBuiltin 59 (sp + 5) 1, NJump done_lbl]
+        ins_st = [NLabel check_st_lbl, NMatchInt (sp + 3) 2, NJumpIfZero no_job_lbl, NCloneSlot sp, NStoreSlot (sp + 5), NCallBuiltin 33 (sp + 5) 1, NStoreSlot (sp + 5), NMatchAdt (sp + 5) ok_off 2 1, NJumpIfZero st_await_lbl, NMoveSlot (sp + 2), NStoreSlot (sp + 7), NCloneSlot (sp + 1), NStoreSlot (sp + 8), NCallBuiltin 50 (sp + 7) 2, NDropVal, NAdtField (sp + 5) 0, NStoreSlot (sp + 6), NClearLocals sp (sp + 6), NMoveSlot (sp + 6), NJump done_lbl, NLabel st_await_lbl, NTupleGet (sp + 4) 0, NStoreSlot (sp + 5), NTupleGet (sp + 4) 1, NStoreSlot (sp + 6), NMatchInt (sp + 6) 0, NJumpIfZero st_has_job_lbl, NJump no_job_lbl, NLabel st_has_job_lbl, NCallBuiltin 59 (sp + 6) 1, NStoreSlot (sp + 7), NMatchTuple (sp + 7) 2, NJumpIfZero st_same_lbl, NMatchTuple (sp + 5) 2, NJumpIfZero st_split_lbl, NLabel st_same_lbl, NCloneSlot (sp + 7), NStoreSlot (sp + 8), NCloneSlot (sp + 7), NStoreSlot (sp + 9), NJump st_save_lbl, NLabel st_split_lbl, NTupleGet (sp + 7) 0, NStoreSlot (sp + 8), NTupleGet (sp + 7) 1, NStoreSlot (sp + 9), NLabel st_save_lbl, NLoadImmInt 0, NStoreSlot (sp + 10), NMoveSlot (sp + 8), NStoreSlot (sp + 11), NMoveSlot (sp + 10), NStoreSlot (sp + 12), NMakeTuple (sp + 11) 2, NStoreSlot (sp + 11), NLoadImmInt 2, NStoreSlot (sp + 10), NMakeTuple (sp + 10) 2, NStoreSlot (sp + 10), NCloneSlot (sp + 1), NStoreSlot (sp + 11), NCallBuiltin 50 (sp + 10) 2, NDropVal, NClearLocals sp (sp + 9), NMoveSlot (sp + 9), NJump done_lbl]
+        ins_no_job = [NLabel no_job_lbl, NMoveSlot (sp + 2), NStoreSlot (sp + 7), NCloneSlot (sp + 1), NStoreSlot (sp + 8), NCallBuiltin 50 (sp + 7) 2, NDropVal, NClearLocals (sp + 1) (sp + 13), NLabel not_ag_lbl, NCallBuiltin 32 sp 1, NLabel done_lbl]
         nc_emit_list st3 (ins_check :: ins_pop :: ins_st :: ins_no_job) (sp + 13)
       lower agent call env "try_receive_from" (target_e:[]) bound_locals sp st =
         st1 = lower_expr env target_e bound_locals sp st
@@ -1732,10 +1768,10 @@ fn :: lower agent call RNativeEnv String [RExpr] [String] Int RNativeCode => RNa
         some_off = env_str_off env "Some"
         none_off = env_str_off env "None"
         ins_check = [NMatchTuple sp 3, NJumpIfZero not_ag_lbl, NTupleGet sp 1, NStoreSlot (sp + 1), NTupleGet sp 2, NStoreSlot sp, NCloneSlot (sp + 1), NStoreSlot (sp + 2), NCallBuiltin 32 (sp + 2) 1, NStoreSlot (sp + 2), NTupleGet (sp + 2) 0, NStoreSlot (sp + 3), NTupleGet (sp + 2) 1, NStoreSlot (sp + 4), NMatchInt (sp + 3) 3, NJumpIfZero try_st_lbl, NMatchNonEmpty (sp + 4), NJumpIfZero no_job_lbl, NListHead (sp + 4), NStoreSlot (sp + 5), NCloneSlot (sp + 5), NStoreSlot (sp + 6), NCallBuiltin 58 (sp + 6) 1, NAsBool, NJumpIfZero not_ready_lbl]
-        ins_ready = [NListTail (sp + 4), NStoreSlot (sp + 6), NLoadImmInt 3, NStoreSlot (sp + 7), NMoveSlot (sp + 6), NStoreSlot (sp + 8), NMakeTuple (sp + 7) 2, NStoreSlot (sp + 7), NCloneSlot (sp + 1), NStoreSlot (sp + 8), NCallBuiltin 50 (sp + 7) 2, NCallBuiltin 59 (sp + 5) 1, NStoreSlot (sp + 5), NMakeAdt some_off 4 (sp + 5) 1, NStoreSlot (sp + 5), NClearLocals sp (sp + 5), NMoveSlot (sp + 5), NJump done_lbl]
-        ins_try_st = [NLabel try_st_lbl, NMatchInt (sp + 3) 2, NJumpIfZero no_job_lbl, NCloneSlot sp, NStoreSlot (sp + 5), NCallBuiltin 33 (sp + 5) 1, NStoreSlot (sp + 5), NMatchAdt (sp + 5) ok_off 2 1, NJumpIfZero try_st_poll_lbl, NMoveSlot (sp + 2), NStoreSlot (sp + 7), NCloneSlot (sp + 1), NStoreSlot (sp + 8), NCallBuiltin 50 (sp + 7) 2, NAdtField (sp + 5) 0, NStoreSlot (sp + 6), NMakeAdt some_off 4 (sp + 6) 1, NStoreSlot (sp + 6), NClearLocals sp (sp + 6), NMoveSlot (sp + 6), NJump done_lbl, NLabel try_st_poll_lbl, NTupleGet (sp + 4) 0, NStoreSlot (sp + 5), NTupleGet (sp + 4) 1, NStoreSlot (sp + 6), NMatchInt (sp + 6) 0, NJumpIfZero try_st_has_job_lbl, NJump not_ready_lbl, NLabel try_st_has_job_lbl, NCloneSlot (sp + 6), NStoreSlot (sp + 7), NCallBuiltin 58 (sp + 7) 1, NAsBool, NJumpIfZero not_ready_lbl, NCallBuiltin 59 (sp + 6) 1, NStoreSlot (sp + 7), NMatchTuple (sp + 7) 2, NJumpIfZero try_st_same_lbl, NMatchTuple (sp + 5) 2, NJumpIfZero try_st_split_lbl, NLabel try_st_same_lbl, NCloneSlot (sp + 7), NStoreSlot (sp + 8), NCloneSlot (sp + 7), NStoreSlot (sp + 9), NJump try_st_save_lbl, NLabel try_st_split_lbl, NTupleGet (sp + 7) 0, NStoreSlot (sp + 8), NTupleGet (sp + 7) 1, NStoreSlot (sp + 9), NLabel try_st_save_lbl, NLoadImmInt 0, NStoreSlot (sp + 10), NMoveSlot (sp + 8), NStoreSlot (sp + 11), NMoveSlot (sp + 10), NStoreSlot (sp + 12), NMakeTuple (sp + 11) 2, NStoreSlot (sp + 11), NLoadImmInt 2, NStoreSlot (sp + 10), NMakeTuple (sp + 10) 2, NStoreSlot (sp + 10), NCloneSlot (sp + 1), NStoreSlot (sp + 11), NCallBuiltin 50 (sp + 10) 2, NMakeAdt some_off 4 (sp + 9) 1, NStoreSlot (sp + 9), NClearLocals sp (sp + 9), NMoveSlot (sp + 9), NJump done_lbl]
-        ins_not_ready = [NLabel not_ready_lbl, NMoveSlot (sp + 2), NStoreSlot (sp + 7), NCloneSlot (sp + 1), NStoreSlot (sp + 8), NCallBuiltin 50 (sp + 7) 2, NClearLocals sp (sp + 13), NLoadAdt0 none_off 4, NJump done_lbl]
-        ins_chan = [NLabel no_job_lbl, NMoveSlot (sp + 2), NStoreSlot (sp + 7), NCloneSlot (sp + 1), NStoreSlot (sp + 8), NCallBuiltin 50 (sp + 7) 2, NClearLocals (sp + 1) (sp + 13), NLabel not_ag_lbl, NCallBuiltin 33 sp 1, NStoreSlot sp, NMatchAdt sp ok_off 2 1, NJumpIfZero chan_none_lbl, NAdtField sp 0, NStoreSlot (sp + 1), NMakeAdt some_off 4 (sp + 1) 1, NStoreSlot (sp + 1), NClearLocals sp (sp + 1), NMoveSlot (sp + 1), NJump done_lbl, NLabel chan_none_lbl, NClearLocals sp (sp + 2), NLoadAdt0 none_off 4, NLabel done_lbl]
+        ins_ready = [NListTail (sp + 4), NStoreSlot (sp + 6), NLoadImmInt 3, NStoreSlot (sp + 7), NMoveSlot (sp + 6), NStoreSlot (sp + 8), NMakeTuple (sp + 7) 2, NStoreSlot (sp + 7), NCloneSlot (sp + 1), NStoreSlot (sp + 8), NCallBuiltin 50 (sp + 7) 2, NDropVal, NCallBuiltin 59 (sp + 5) 1, NStoreSlot (sp + 5), NMakeAdt some_off 4 (sp + 5) 1, NStoreSlot (sp + 5), NClearLocals sp (sp + 5), NMoveSlot (sp + 5), NJump done_lbl]
+        ins_try_st = [NLabel try_st_lbl, NMatchInt (sp + 3) 2, NJumpIfZero no_job_lbl, NCloneSlot sp, NStoreSlot (sp + 5), NCallBuiltin 33 (sp + 5) 1, NStoreSlot (sp + 5), NMatchAdt (sp + 5) ok_off 2 1, NJumpIfZero try_st_poll_lbl, NMoveSlot (sp + 2), NStoreSlot (sp + 7), NCloneSlot (sp + 1), NStoreSlot (sp + 8), NCallBuiltin 50 (sp + 7) 2, NDropVal, NAdtField (sp + 5) 0, NStoreSlot (sp + 6), NMakeAdt some_off 4 (sp + 6) 1, NStoreSlot (sp + 6), NClearLocals sp (sp + 6), NMoveSlot (sp + 6), NJump done_lbl, NLabel try_st_poll_lbl, NTupleGet (sp + 4) 0, NStoreSlot (sp + 5), NTupleGet (sp + 4) 1, NStoreSlot (sp + 6), NMatchInt (sp + 6) 0, NJumpIfZero try_st_has_job_lbl, NJump not_ready_lbl, NLabel try_st_has_job_lbl, NCloneSlot (sp + 6), NStoreSlot (sp + 7), NCallBuiltin 58 (sp + 7) 1, NAsBool, NJumpIfZero not_ready_lbl, NCallBuiltin 59 (sp + 6) 1, NStoreSlot (sp + 7), NMatchTuple (sp + 7) 2, NJumpIfZero try_st_same_lbl, NMatchTuple (sp + 5) 2, NJumpIfZero try_st_split_lbl, NLabel try_st_same_lbl, NCloneSlot (sp + 7), NStoreSlot (sp + 8), NCloneSlot (sp + 7), NStoreSlot (sp + 9), NJump try_st_save_lbl, NLabel try_st_split_lbl, NTupleGet (sp + 7) 0, NStoreSlot (sp + 8), NTupleGet (sp + 7) 1, NStoreSlot (sp + 9), NLabel try_st_save_lbl, NLoadImmInt 0, NStoreSlot (sp + 10), NMoveSlot (sp + 8), NStoreSlot (sp + 11), NMoveSlot (sp + 10), NStoreSlot (sp + 12), NMakeTuple (sp + 11) 2, NStoreSlot (sp + 11), NLoadImmInt 2, NStoreSlot (sp + 10), NMakeTuple (sp + 10) 2, NStoreSlot (sp + 10), NCloneSlot (sp + 1), NStoreSlot (sp + 11), NCallBuiltin 50 (sp + 10) 2, NDropVal, NMakeAdt some_off 4 (sp + 9) 1, NStoreSlot (sp + 9), NClearLocals sp (sp + 9), NMoveSlot (sp + 9), NJump done_lbl]
+        ins_not_ready = [NLabel not_ready_lbl, NMoveSlot (sp + 2), NStoreSlot (sp + 7), NCloneSlot (sp + 1), NStoreSlot (sp + 8), NCallBuiltin 50 (sp + 7) 2, NDropVal, NClearLocals sp (sp + 13), NLoadAdt0 none_off 4, NJump done_lbl]
+        ins_chan = [NLabel no_job_lbl, NMoveSlot (sp + 2), NStoreSlot (sp + 7), NCloneSlot (sp + 1), NStoreSlot (sp + 8), NCallBuiltin 50 (sp + 7) 2, NDropVal, NClearLocals (sp + 1) (sp + 13), NLabel not_ag_lbl, NCallBuiltin 33 sp 1, NStoreSlot sp, NMatchAdt sp ok_off 2 1, NJumpIfZero chan_none_lbl, NAdtField sp 0, NStoreSlot (sp + 1), NMakeAdt some_off 4 (sp + 1) 1, NStoreSlot (sp + 1), NClearLocals sp (sp + 1), NMoveSlot (sp + 1), NJump done_lbl, NLabel chan_none_lbl, NClearLocals sp (sp + 2), NLoadAdt0 none_off 4, NLabel done_lbl]
         nc_emit_list st3 (ins_check :: ins_ready :: ins_try_st :: ins_not_ready :: ins_chan) (sp + 13)
       lower agent call env "stop" (ag_e:[]) bound_locals sp st =
         st1 = lower_expr env ag_e bound_locals sp st
@@ -1748,14 +1784,14 @@ fn :: lower agent call RNativeEnv String [RExpr] [String] Int RNativeCode => RNa
         ins_open = [NTupleGet sp 1, NStoreSlot (sp + 1), NCloneSlot (sp + 1), NStoreSlot (sp + 2), NCallBuiltin 32 (sp + 2) 1, NStoreSlot (sp + 2), NTupleGet (sp + 2) 0, NStoreSlot (sp + 3), NTupleGet (sp + 2) 1, NStoreSlot (sp + 4), NMatchInt (sp + 3) 3, NJumpIfZero st_stop_lbl]
         ins_loop = [NLabel loop_lbl, NMatchNonEmpty (sp + 4), NJumpIfZero no_jobs_lbl, NListHead (sp + 4), NStoreSlot (sp + 5), NListTail (sp + 4), NStoreSlot (sp + 4), NCallBuiltin 59 (sp + 5) 1, NDropVal, NJump loop_lbl]
         ins_st_stop = [NLabel st_stop_lbl, NMatchInt (sp + 3) 2, NJumpIfZero no_jobs_lbl, NTupleGet (sp + 4) 1, NStoreSlot (sp + 5), NMatchInt (sp + 5) 0, NJumpIfZero st_stop_await_lbl, NJump no_jobs_lbl, NLabel st_stop_await_lbl, NCallBuiltin 59 (sp + 5) 1, NDropVal]
-        ins_close = [NLabel no_jobs_lbl, NLoadImmInt 0, NStoreSlot (sp + 2), NLoadImmInt 0, NStoreSlot (sp + 3), NMakeTuple (sp + 2) 2, NStoreSlot (sp + 2), NCloneSlot (sp + 1), NStoreSlot (sp + 3), NCallBuiltin 50 (sp + 2) 2, NClearLocals sp (sp + 6), NLoadImmRaw 0]
+        ins_close = [NLabel no_jobs_lbl, NLoadImmInt 0, NStoreSlot (sp + 2), NLoadImmInt 0, NStoreSlot (sp + 3), NMakeTuple (sp + 2) 2, NStoreSlot (sp + 2), NCloneSlot (sp + 1), NStoreSlot (sp + 3), NCallBuiltin 50 (sp + 2) 2, NDropVal, NClearLocals sp (sp + 6), NLoadImmRaw 0]
         nc_emit_list st3 (ins_open :: ins_loop :: ins_st_stop :: ins_close) (sp + 6)
       lower agent call env "agent_alive" (ag_e:[]) bound_locals sp st =
         alive_lbl = nc_lbl st
         done_lbl = alive_lbl + 1
         st1 = nc_set_lbl st (alive_lbl + 2)
         st2 = lower_expr env ag_e bound_locals sp st1
-        ins = [NStoreSlot sp, NTupleGet sp 1, NStoreSlot (sp + 1), NCloneSlot (sp + 1), NStoreSlot (sp + 2), NCallBuiltin 32 (sp + 2) 1, NStoreSlot (sp + 2), NTupleGet (sp + 2) 0, NStoreSlot (sp + 3), NCloneSlot (sp + 2), NStoreSlot (sp + 4), NCloneSlot (sp + 1), NStoreSlot (sp + 5), NCallBuiltin 50 (sp + 4) 2, NMatchInt (sp + 3) 0, NJumpIfZero alive_lbl, NClearLocals sp (sp + 6), NLoadImmRaw 2, NJump done_lbl, NLabel alive_lbl, NClearLocals sp (sp + 6), NLoadImmRaw 6, NLabel done_lbl]
+        ins = [NStoreSlot sp, NTupleGet sp 1, NStoreSlot (sp + 1), NCloneSlot (sp + 1), NStoreSlot (sp + 2), NCallBuiltin 32 (sp + 2) 1, NStoreSlot (sp + 2), NTupleGet (sp + 2) 0, NStoreSlot (sp + 3), NCloneSlot (sp + 2), NStoreSlot (sp + 4), NCloneSlot (sp + 1), NStoreSlot (sp + 5), NCallBuiltin 50 (sp + 4) 2, NDropVal, NMatchInt (sp + 3) 0, NJumpIfZero alive_lbl, NClearLocals sp (sp + 6), NLoadImmRaw 2, NJump done_lbl, NLabel alive_lbl, NClearLocals sp (sp + 6), NLoadImmRaw 6, NLabel done_lbl]
         nc_emit_list st2 ins (sp + 6)
       lower agent call _ _ _ _ _ st = st
 
@@ -2921,18 +2957,19 @@ fn :: emit rglib payload RProgram String  => String
 
 fn :: emit rglib file String     String      => Int
       emit rglib file input_path output_path =
-        raw_src = load_rg_with_libs input_path
-        emit_rglib_file_loaded input_path output_path raw_src
+        own_src = load_rg_own_source input_path
+        full_src = load_rg_with_libs input_path
+        emit_rglib_file_loaded input_path output_path own_src full_src
 
-fn :: emit rglib file loaded String String String => Int
-      emit rglib file loaded input_path _ "" =
+fn :: emit rglib file loaded String String String String => Int
+      emit rglib file loaded input_path _ "" _ =
         _ = echo "[ridgunc build --lib] Error: empty or missing source file: {input_path}"
         1
-      emit rglib file loaded _ output_path raw_src =
-        toks = tokenize_src raw_src
-        prog = parse_tokens toks
-        errs = typecheck_program prog
-        emit_rglib_after_check prog raw_src output_path errs
+      emit rglib file loaded _ output_path own_src full_src =
+        full_prog = parse_tokens (tokenize_src full_src)
+        errs = typecheck_program full_prog
+        own_prog = parse_tokens (tokenize_src own_src)
+        emit_rglib_after_check own_prog own_src output_path errs
 
 fn :: emit rglib after check RProgram String String [RTypeError] => Int
       emit rglib after check prog raw_src output_path []

@@ -154,7 +154,7 @@ Every `=` (in `fn ::`, `op ::`, local bindings `x =` / `mut x =`, and guard bran
   type Config = debug: Bool, threads: Int, name: String
 
   fn :: tune config Config => Config
-        tune config cfg    =  cfg with debug: True, threads: 16
+        tune config cfg    =  cfg with debug = True, threads = 16
   ```
    Auto-generated field accessors: `debug cfg`, `threads cfg`, `name cfg`.
 - **Natural-Language Mixfix Operators (`op ::`)**:

@@ -230,7 +230,7 @@ op :: invoke ridgunc build String     into String  => Int
         rg_bin = resolve ridgunc binary
         sflag = load strict flag from "build.rg"
         _ = shell_exec ('rm -f "' + out_bin + '"')
-        st = shell_exec ('"' + rg_bin + '" build ' + sflag + '"' + entry_path + '" -o "' + out_bin + '" >/dev/null 2>&1')
+        st = shell_exec ('"' + rg_bin + '" build ' + sflag + '"' + entry_path + '" -o "' + out_bin + '"')
         verify artifact built st at out_bin
 
 op :: invoke ridgunc rglib String     into String    => Int
@@ -238,7 +238,7 @@ op :: invoke ridgunc rglib String     into String    => Int
         rg_bin = resolve ridgunc binary
         sflag = load strict flag from "build.rg"
         _ = shell_exec ('rm -f "' + out_rglib + '"')
-        st = shell_exec ('"' + rg_bin + '" build --lib ' + sflag + '"' + entry_path + '" -o "' + out_rglib + '" >/dev/null 2>&1')
+        st = shell_exec ('"' + rg_bin + '" build --lib ' + sflag + '"' + entry_path + '" -o "' + out_rglib + '"')
         verify artifact built st at out_rglib
 
 op :: invoke ridgunc so String     into String => Int
@@ -246,7 +246,7 @@ op :: invoke ridgunc so String     into String => Int
         rg_bin = resolve ridgunc binary
         sflag = load strict flag from "build.rg"
         _ = shell_exec ('rm -f "' + out_so + '"')
-        st = shell_exec ('"' + rg_bin + '" build --so ' + sflag + '"' + entry_path + '" -o "' + out_so + '" >/dev/null 2>&1')
+        st = shell_exec ('"' + rg_bin + '" build --so ' + sflag + '"' + entry_path + '" -o "' + out_so + '"')
         verify artifact built st at out_so
 
 op :: extract quoted strings String at Int len Int in quote Bool cur String into [String] => [String]
@@ -424,7 +424,7 @@ fn :: compile single module (String, String) => Int
         out_rgc = out_dir + "/" + (rgc artifact name for path base bname)
         rg_bin = resolve ridgunc binary
         sflag = load strict flag from "build.rg"
-        _ = shell_exec ('"' + rg_bin + '" compile ' + sflag + '"' + path + '" -o "' + out_rgc + '" >/dev/null 2>&1')
+        _ = shell_exec ('"' + rg_bin + '" compile ' + sflag + '"' + path + '" -o "' + out_rgc + '"')
         _ = log step "rgc" "{path} -> {out_rgc}"
         1
 

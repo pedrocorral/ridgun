@@ -27,7 +27,7 @@ fn :: target dir => String
       target dir =  "target"
 
 fn :: dependencies => [String]
-      dependencies =  ["/home/boogie/ridgun-libs"]
+      dependencies =  ["/home/boogie/ridgun/libs"]
 
 fn :: task check all => String
       task check all =  "./bin/stable check"
