@@ -35,9 +35,9 @@ The Ridgun language and `ridgunc` / `stable` toolchain SHALL replace legacy unst
    - `stop <agent>` (usable as a standalone statement or expression) SHALL terminate `<agent>`, close its mailboxes, and deterministically release its held state and queued values via `RMM1`/`RMM2`.
    - `agent alive <agent>` SHALL return `True` (`Bool`) while the agent is active and `False` after `stop <agent>`.
 
-5. **Type Representation (`Agent`) & Retirement of `spawn`/`join`**:
+5. **Type Representation (`Agent`) & Retirement of `spawn`/`join`, `global ::`, `context ::`, `shared ::`, and `atomic`**:
    - Type signatures SHALL support `Agent` (both unparameterized `Agent` and parameterized `Agent In Out` / `(Agent In Out)`).
-   - Legacy unstructured `spawn` and `join` built-ins SHALL be removed from the language, documentation, harnesses, and books in favor of `||` / `||map` / `||filter` (for structured dataflow parallelism) and `agent` (for decoupled stateful/service processes).
+   - Legacy unstructured `spawn` and `join` built-ins, as well as global/scoped state constructs (`global ::`, `context ::`, `shared ::`, `atomic`, and user `with <ctx> = <val> do`), SHALL be removed from the language, documentation, harnesses, and books in favor of explicit parameters, `||` / `||map` / `||filter` (for structured dataflow parallelism), and `agent` (for decoupled stateful/service processes).
 
 6. **True Background Concurrent Execution (`b_id 57` `async_spawn`, `b_id 58` `async_poll`, `b_id 59` `async_await`) & Smart Compile-Time Strategy Selection**:
    - Both **stateless (`agent fn`, status `3`)** and **stateful (`agent fn init_state`, status `2`)** agents SHALL dispatch their handlers asynchronously in the background via `b_id 57` (`async_spawn`) immediately when `send ... to ag` is called, returning in ~0 ms without blocking the sender even when the handler sleeps (`sys sleep ms`) or executes heavy CPU work.

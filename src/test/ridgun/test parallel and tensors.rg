@@ -5,12 +5,6 @@
 
 import test
 
-context :: active_tag => String
-active_tag =  "default-tag"
-
-shared :: visit_count => Int
-visit_count =  10
-
 fn :: fib Int => Int
       fib 0   =  0
       fib 1   =  1
@@ -62,20 +56,14 @@ fn :: compute in arena => Result
           xs = [10, 20, 30]
           xs[1] + xs[2]
 
-fn :: read active tag => String
-      read active tag =  active_tag
-
-fn :: compute in ctx => String
-      compute in ctx =
-        with active_tag = "phase3-region" do
-          read active tag
+fn :: sumfreed keywords Int    Int     Int    Int    => Int
+      sumfreed keywords global context shared atomic =  global + context + shared + atomic
 
 fn :: scoped arena calc => Int String
       scoped arena calc =
         reg_val = unwrap arena (compute in arena)
-        ctx_val = compute in ctx
-        atomic visit_count = visit_count + 5
-        (reg_val + visit_count, ctx_val)
+        kw_sum = sumfreed keywords 3 4 5 3
+        (reg_val + kw_sum, "phase3-region")
 
 fn :: triple val Int => Int
       triple val x   =  x * 3
@@ -249,16 +237,14 @@ fn :: bench sha256 raw loop String Int => String
 
 fn :: main => ()
       main =
-        echo "=== Parallel || DAG, Tensors, Einsum, Masks, Region, Context & Shared (Slots 38..55) ==="
+        echo "=== Parallel || DAG, Tensors, Einsum, Masks & Region ==="
         assert equals (parallel dag calc) 775
         assert equals (tensor slice calc) 53
         ta = Tensor [[1, 2], [3, 4]]
         tb = Tensor [[2, 0], [1, 2]]
         assert equals (tensor einsum hadamard ta tb) (12, 9)
         assert equals (middle seq mask 10 42 99) 42
-        assert equals (read active tag) "default-tag"
         assert equals (scoped arena calc) (65, "phase3-region")
-        assert equals (read active tag) "default-tag"
         assert equals (apply hof triple val sum pair [2, 4, 6, 8]) ([12, 18, 24], 54)
         assert equals (channel roundtrip "phase4-channel-ok") "phase4-channel-ok"
         echo "=== FR-COMP-009: Native Agent Model (agent, send to, receive from, try receive from, stop) ==="

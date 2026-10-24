@@ -899,13 +899,6 @@ fn :: check expr RExpr String [RTypeBind] [RTypeBind] => RType [RTypeError]
       check expr (EWithRegion _ body) fn_name locals fns =
         b_res = check_expr body fn_name locals fns
         prepend_type_errs (snd_errs b_res) (TyVar "Result", [])
-      check expr (EAtomicUpdate _ val_e) fn_name locals fns =
-        v_res = check_expr val_e fn_name locals fns
-        prepend_type_errs (snd_errs v_res) (TyUnit, [])
-      check expr (ELoadContext _ def_e) fn_name locals fns =
-        check_expr def_e fn_name locals fns
-      check expr (ELoadShared _ def_e) fn_name locals fns =
-        check_expr def_e fn_name locals fns
       check expr (EEinsum es subs) fn_name locals fns =
         e_res = check_einsum_terms es subs fn_name locals fns []
         finish_einsum_check e_res
@@ -1184,9 +1177,6 @@ fn :: check block stmts scoped [RStmt] RType String [RTypeBind] [RTypeBind] [Str
       check block stmts scoped ((StmtExpr e):ss) _ fn_name locals fns immuts muts =
         e_res = check_expr e fn_name locals fns
         check_block_after_expr ss fn_name locals fns immuts muts e_res
-      check block stmts scoped ((StmtAtomic _ val_e):ss) _ fn_name locals fns immuts muts =
-        v_res = check_expr val_e fn_name locals fns
-        check_block_after_expr ss fn_name locals fns immuts muts (TyUnit, snd_errs v_res)
       check block stmts scoped ((StmtIndexAssign _ idxs val_e):ss) _ fn_name locals fns immuts muts =
         i_res = check_expr_list idxs fn_name locals fns
         v_res = check_expr val_e fn_name locals fns

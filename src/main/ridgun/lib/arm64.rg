@@ -125,16 +125,8 @@ fn :: arm64 instr size RNativeInstr       => Int
       arm64 instr size (NSeqSelect _ _)   =  36
       arm64 instr size (NEinsum _ _ _ _)  =  56
       arm64 instr size (NHadamard _ _ _ _) = 60
-      arm64 instr size (NPushCtx _ _)     =  40
-      arm64 instr size (NPopCtx _ _)      =  40
-      arm64 instr size (NHasCtx _ _)      =  36
-      arm64 instr size (NGetCtx _ _)      =  36
       arm64 instr size NEnterRegion       =  4
       arm64 instr size (NExitRegion _)    =  24
-      arm64 instr size (NHasShared _ _)   =  36
-      arm64 instr size (NGetShared _ _)   =  36
-      arm64 instr size (NInitShared _ _)  =  40
-      arm64 instr size (NStoreShared _ _) =  40
       arm64 instr size (NCallFn _ _ _)    =  8
       arm64 instr size (NCallBuiltin _ _ _) = 40
       arm64 instr size (NCallIndirect1 _ _) = 12
@@ -270,26 +262,10 @@ fn :: arm64 encode instr RNativeInstr Int Int Int Int [RLabelEntry] [RLabelEntry
         (arm64 lea slot 0 start_slot) :: (arm64 mov imm64 1 count) :: (arm64 mov imm64 2 (rodata_vaddr + spec_off)) :: (arm64 mov imm64 3 spec_len) :: (arm64 bl rt 41 (cur_vaddr + 52))
       arm64 encode instr (NHadamard op_id lhs_slot subs_off subs_len) cur_vaddr _ _ rodata_vaddr _ _ =
         (arm64 mov reg 2 0) :: (arm64 mov imm64 0 op_id) :: (arm64 lea slot 1 lhs_slot) :: (arm64 mov imm64 3 (rodata_vaddr + subs_off)) :: (arm64 mov imm64 4 subs_len) :: (arm64 bl rt 42 (cur_vaddr + 56))
-      arm64 encode instr (NPushCtx key_off key_len) cur_vaddr _ _ rodata_vaddr _ _ =
-        (arm64 mov reg 2 0) :: (arm64 mov imm64 0 (rodata_vaddr + key_off)) :: (arm64 mov imm64 1 key_len) :: (arm64 bl rt 43 (cur_vaddr + 36))
-      arm64 encode instr (NPopCtx key_off key_len) cur_vaddr _ _ rodata_vaddr _ _ =
-        (arm64 mov reg 2 0) :: (arm64 mov imm64 0 (rodata_vaddr + key_off)) :: (arm64 mov imm64 1 key_len) :: (arm64 bl rt 44 (cur_vaddr + 36))
-      arm64 encode instr (NHasCtx key_off key_len) cur_vaddr _ _ rodata_vaddr _ _ =
-        (arm64 mov imm64 0 (rodata_vaddr + key_off)) :: (arm64 mov imm64 1 key_len) :: (arm64 bl rt 45 (cur_vaddr + 32))
-      arm64 encode instr (NGetCtx key_off key_len) cur_vaddr _ _ rodata_vaddr _ _ =
-        (arm64 mov imm64 0 (rodata_vaddr + key_off)) :: (arm64 mov imm64 1 key_len) :: (arm64 bl rt 46 (cur_vaddr + 32))
       arm64 encode instr NEnterRegion cur_vaddr _ _ _ _ _ =
         arm64 bl rt 47 cur_vaddr
       arm64 encode instr (NExitRegion quota) cur_vaddr _ _ _ _ _ =
         (arm64 mov reg 1 0) :: (arm64 mov imm64 0 quota) :: (arm64 bl rt 48 (cur_vaddr + 20))
-      arm64 encode instr (NHasShared key_off key_len) cur_vaddr _ _ rodata_vaddr _ _ =
-        (arm64 mov imm64 0 (rodata_vaddr + key_off)) :: (arm64 mov imm64 1 key_len) :: (arm64 bl rt 49 (cur_vaddr + 32))
-      arm64 encode instr (NGetShared key_off key_len) cur_vaddr _ _ rodata_vaddr _ _ =
-        (arm64 mov imm64 0 (rodata_vaddr + key_off)) :: (arm64 mov imm64 1 key_len) :: (arm64 bl rt 50 (cur_vaddr + 32))
-      arm64 encode instr (NInitShared key_off key_len) cur_vaddr _ _ rodata_vaddr _ _ =
-        (arm64 mov reg 2 0) :: (arm64 mov imm64 0 (rodata_vaddr + key_off)) :: (arm64 mov imm64 1 key_len) :: (arm64 bl rt 51 (cur_vaddr + 36))
-      arm64 encode instr (NStoreShared key_off key_len) cur_vaddr _ _ rodata_vaddr _ _ =
-        (arm64 mov reg 2 0) :: (arm64 mov imm64 0 (rodata_vaddr + key_off)) :: (arm64 mov imm64 1 key_len) :: (arm64 bl rt 52 (cur_vaddr + 36))
       arm64 encode instr (NCallFn fid start_slot _) cur_vaddr _ _ _ _ fn_table =
         target_fn = lookup label offset fn_table fid
         (arm64 lea slot 0 start_slot) :: (arm64 bl target_fn (cur_vaddr + 4))

@@ -101,37 +101,7 @@ Lägg märke till två spektakulära detaljer:
 
 ---
 
-## 8.4. Kontextvariabler (`context ::`) och atomärt delat tillstånd (`shared ::`)
-
-I 99 % av din kod skickar du data som parametrar. Men för den sista procenten där du behöver miljökonfiguration eller en global räknare mellan trådar utan att förorena 40 mellanliggande signaturer erbjuder Ridgun två uttryckliga och säkra mekanismer:
-
-### 1. `context ::` — Dynamisk räckvidd isolerad per uppgift (`with ... = ... do`)
-```ridgun
-context :: logg_sokvag : String = "/var/log/app.log"
-
-logga_handelse String => ()
-logga_handelse msg    =  echo "[{logg_sokvag}] {msg}"
-
-main => ()
-main =
-  logga_handelse "Normal start"
-  with logg_sokvag = "/tmp/test.log" do
-    logga_handelse "Inuti det isolerade testet"
-```
-
-### 2. `shared ::` och `atomic` — Samtidigt tillstånd med atomärt lås per rad
-```ridgun
-shared :: totala_anrop : Int = 0
-
-registrera_besok => Int
-registrera_besok =
-  atomic totala_anrop = totala_anrop + 1
-  totala_anrop
-```
-
----
-
-## 8.5. Hårdvaruåtkomst (`hardware ::`) och POSIX-systemprimitiver
+## 8.4. Hårdvaruåtkomst (`hardware ::`) och POSIX-systemprimitiver
 
 Själva kompilatorn `ridgunc`, bygghanteraren `stable` och Unix-systemverktyg är skrivna i Ridgun. För detta innehåller språket minnesmappade registerblock (`hardware ::`) och direkta POSIX-primitiver:
 
@@ -158,7 +128,7 @@ Och för att arbeta med operativsystemet:
 
 ---
 
-## 8.6. Ekosystemet av standardbibliotek (`ridgun-libs`)
+## 8.5. Ekosystemet av standardbibliotek (`ridgun-libs`)
 
 Utöver kompilatorns primitiver innehåller Ridguns officiella ekosystem **32 rena bibliotek (`.rglib`)** skrivna helt i Ridgun som du kan importera med `import <namn>` i vilket projekt som helst:
 
@@ -171,7 +141,7 @@ Utöver kompilatorns primitiver innehåller Ridguns officiella ekosystem **32 re
 
 ---
 
-## 8.7. Verklig fallstudie: Vi bygger `rg-wc`, ett parallellt Unix-verktyg
+## 8.6. Verklig fallstudie: Vi bygger `rg-wc`, ett parallellt Unix-verktyg
 
 Låt oss knyta ihop allt vi har lärt oss från Kapitel 01 fram till hit i ett riktigt systemprogram: en parallell version av Unix-verktyget `wc` (rad- och byteräknare för flera filer) skriven i ren Ridgun:
 
@@ -229,7 +199,7 @@ Stanna upp en sekund och titta på dessa ~40 rader kod:
 
 ---
 
-## 8.8. Slutlig färdplan: Ridgun-programmerarens 10 gyllene regler
+## 8.7. Slutlig färdplan: Ridgun-programmerarens 10 gyllene regler
 
 1. **Skriv alltid kontraktet (`=>`) först och ekvationerna (`=`) sedan:** att tänka på typerna först får kompilatorn att arbeta åt dig.
 2. **Låt `stable format` formge dina tabeller:** skriv med ett mellanslag och låt verktyget rada upp kolumner, `=>`, `=` och `->`.

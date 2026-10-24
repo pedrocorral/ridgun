@@ -12,10 +12,9 @@
 ;;
 ;; Features:
 ;; - Full syntax highlighting for Ridgun v2.0:
-;;   * Declarations (`fn ::', `op ::', `type ::', `global ::', `context ::',
-;;     `shared ::', `hardware ::')
+;;   * Declarations (`fn ::', `op ::', `type ::', `hardware ::')
 ;;   * Attributes (`@packed', `@repr(C)')
-;;   * Keywords (`where', `otherwise', `with', `do', `atomic', `region', `limit')
+;;   * Keywords (`otherwise', `with', `do', `region', `limit')
 ;;   * Concurrency & actor primitives (`spawn', `channel', `send', `receive',
 ;;     `timeout', `||')
 ;;   * Word-based logical operators (`AND', `OR', `XOR', `NOT')
@@ -147,9 +146,9 @@
     ;; 1. Hardware & memory layout attributes: @packed, @repr(C)
     ("@\\(?:packed\\|repr([^)\n]+)\\)" . font-lock-preprocessor-face)
 
-    ;; 2. Function, operator, type, and state declarations:
-    ;;    fn :: name, type Name =, global :: name, context :: name, shared :: name, hardware :: name
-    ("\\_<\\(fn\\|global\\|context\\|shared\\|hardware\\)[ \t]*\\(::\\)[ \t]*\\([a-z_][A-Za-z0-9_]*\\)"
+    ;; 2. Function, operator, type, and hardware declarations:
+    ;;    fn :: name, type Name =, hardware :: name
+    ("\\_<\\(fn\\|hardware\\)[ \t]*\\(::\\)[ \t]*\\([a-z_][A-Za-z0-9_]*\\)"
      (1 font-lock-keyword-face)
      (2 font-lock-builtin-face)
      (3 font-lock-function-name-face))

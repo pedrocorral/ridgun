@@ -101,37 +101,7 @@ Erreparatu bi xehetasun ikusgarri hauei:
 
 ---
 
-## 8.4. Testuinguru-Aldagaiak (`context ::`) eta Egoera Partekatu Atomikoa (`shared ::`)
-
-Zure kodearen % 99an datuak parametro bidez pasatuko dituzu. Baina tarteko 40 sinadura kutsatu gabe ingurune-konfigurazioa edo harien arteko kontagailu global bat behar duzun % 1 horretarako, Ridgunek bi mekanismo esplizitu eta seguru eskaintzen ditu:
-
-### 1. `context ::` — Ataza bakoitzeko isolatutako esparru dinamikoa (`with ... = ... do`)
-```ridgun
-context :: log_bidea : String = "/var/log/app.log"
-
-erregistratu_gertaera String => ()
-erregistratu_gertaera msg    =  echo "[{log_bidea}] {msg}"
-
-main => ()
-main =
-  erregistratu_gertaera "Abio normala"
-  with log_bidea = "/tmp/test.log" do
-    erregistratu_gertaera "Test isolatuaren barruan"
-```
-
-### 2. `shared ::` eta `atomic` — Egoera konkurrentea lerro bakoitzeko blokeo atomikoarekin
-```ridgun
-shared :: eskaerak_guztira : Int = 0
-
-zenbatu_bisita => Int
-zenbatu_bisita =
-  atomic eskaerak_guztira = eskaerak_guztira + 1
-  eskaerak_guztira
-```
-
----
-
-## 8.5. Hardwarerako Sarbidea (`hardware ::`) eta Sistemen POSIX Primitibak
+## 8.4. Hardwarerako Sarbidea (`hardware ::`) eta Sistemen POSIX Primitibak
 
 `ridgunc` konpiladorea bera, `stable` kudeatzailea eta Unix sistemetako tresnak Ridgunen idatzita daude. Horretarako, lengoaiak memorian mapatutako erregistro-blokeak (`hardware ::`) eta POSIX primitiba zuzenak barne hartzen ditu:
 
@@ -158,7 +128,7 @@ Eta sistema eragilearekin lan egiteko:
 
 ---
 
-## 8.6. Liburutegi Estandarren Ekosistema (`ridgun-libs`)
+## 8.5. Liburutegi Estandarren Ekosistema (`ridgun-libs`)
 
 Konpiladorearen primitibez gain, Ridgunen ekosistema ofizialak Ridgunen bertan osorik idatzitako **32 liburutegi puru (`.rglib`)** biltzen ditu, edozein proiektutan `import <izena>` bidez inporta ditzakezunak:
 
@@ -171,7 +141,7 @@ Konpiladorearen primitibez gain, Ridgunen ekosistema ofizialak Ridgunen bertan o
 
 ---
 
-## 8.7. Benetako Kasu-Azterketa: `rg-wc` eraikitzen, Unix tresna paralelo bat
+## 8.6. Benetako Kasu-Azterketa: `rg-wc` eraikitzen, Unix tresna paralelo bat
 
 Lotu dezagun 01. kapitulutik honaino ikasitako guztia sistemetako benetako programa batean: Unixeko `wc` tresnaren bertsio paralelo bat (fitxategi anitzetarako lerro- eta byte-kontagailua) Ridgun puruan idatzia:
 
@@ -229,7 +199,7 @@ Gelditu segundo batez ~40 kode-lerro horiei begiratzeko:
 
 ---
 
-## 8.8. Azken Ibilbide-Orria: Ridgun Programatzailearen Urrezko 10 Arauak
+## 8.7. Azken Ibilbide-Orria: Ridgun Programatzailearen Urrezko 10 Arauak
 
 1. **Idatzi beti lehenengo kontratua (`=>`) eta ondoren ekuazioak (`=`):** motetan lehenengo pentsatzeak konpiladorea zure alde lan egitera bultzatzen du.
 2. **Utzi `stable format`-i zure taulak maketatzen:** idatzi zuriune batekin eta utzi tresnari zutabeak, `=>`, `=` eta `->` lerrokatzen.

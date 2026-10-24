@@ -119,9 +119,6 @@ fn :: count expr self calls String RExpr => Int
       count expr self calls fn_name (EParPipe branches) = count_expr_list_calls fn_name branches
       count expr self calls fn_name (EWithCtx _ v b) = (count_expr_self_calls fn_name v) + (count_expr_self_calls fn_name b)
       count expr self calls fn_name (EWithRegion _ b) = count_expr_self_calls fn_name b
-      count expr self calls fn_name (EAtomicUpdate _ b) = count_expr_self_calls fn_name b
-      count expr self calls fn_name (ELoadContext _ b) = count_expr_self_calls fn_name b
-      count expr self calls fn_name (ELoadShared _ b) = count_expr_self_calls fn_name b
       count expr self calls _ _ = 0
 
 fn :: count expr list calls String [RExpr] => Int
@@ -133,7 +130,6 @@ fn :: count stmt list calls String [RStmt] => Int
       count stmt list calls fn_name ((StmtLet _ e):ss) = (count_expr_self_calls fn_name e) + (count_stmt_list_calls fn_name ss)
       count stmt list calls fn_name ((StmtMut _ e):ss) = (count_expr_self_calls fn_name e) + (count_stmt_list_calls fn_name ss)
       count stmt list calls fn_name ((StmtExpr e):ss) = (count_expr_self_calls fn_name e) + (count_stmt_list_calls fn_name ss)
-      count stmt list calls fn_name ((StmtAtomic _ e):ss) = (count_expr_self_calls fn_name e) + (count_stmt_list_calls fn_name ss)
       count stmt list calls fn_name ((StmtIndexAssign _ idxs e):ss) = (count_expr_list_calls fn_name idxs) + (count_expr_self_calls fn_name e) + (count_stmt_list_calls fn_name ss)
 
 fn :: count where calls String  [RWhereBind] => Int
@@ -185,12 +181,6 @@ fn :: collect expr effects RExpr String [RFnSummary] [String] Bool RCostTier => 
         collect_expr_effects inner cur_fn summaries muts yld cost
       collect expr effects (EWithRegion _ inner) cur_fn summaries muts yld cost =
         collect_expr_effects inner cur_fn summaries muts yld cost
-      collect expr effects (EAtomicUpdate _ inner) cur_fn summaries muts yld cost =
-        collect_expr_effects inner cur_fn summaries muts yld cost
-      collect expr effects (ELoadContext _ inner) cur_fn summaries muts yld cost =
-        collect_expr_effects inner cur_fn summaries muts yld cost
-      collect expr effects (ELoadShared _ inner) cur_fn summaries muts yld cost =
-        collect_expr_effects inner cur_fn summaries muts yld cost
       collect expr effects (EWithCtx _ v b) cur_fn summaries muts yld cost =
         r1 = collect_expr_effects v cur_fn summaries muts yld cost
         collect_expr_effects_tuple b cur_fn summaries r1
@@ -234,9 +224,6 @@ fn :: collect stmt list effects [RStmt] String [RFnSummary] [String] Bool RCostT
         r1 = collect_expr_effects e cur_fn summaries muts yld cost
         collect_stmt_list_effects_tuple ss cur_fn summaries r1
       collect stmt list effects ((StmtExpr e):ss) cur_fn summaries muts yld cost =
-        r1 = collect_expr_effects e cur_fn summaries muts yld cost
-        collect_stmt_list_effects_tuple ss cur_fn summaries r1
-      collect stmt list effects ((StmtAtomic _ e):ss) cur_fn summaries muts yld cost =
         r1 = collect_expr_effects e cur_fn summaries muts yld cost
         collect_stmt_list_effects_tuple ss cur_fn summaries r1
       collect stmt list effects ((StmtIndexAssign target idxs e):ss) cur_fn summaries muts yld cost =
@@ -369,9 +356,6 @@ fn :: collect free vars RExpr              [String] => [String]
       collect free vars (ESeqSelect b _)   acc      =  collect_free_vars b acc
       collect free vars (EWithCtx _ v b)   acc      =  collect_free_vars b (collect_free_vars v acc)
       collect free vars (EWithRegion _ b)  acc      =  collect_free_vars b acc
-      collect free vars (EAtomicUpdate _ b) acc     =  collect_free_vars b acc
-      collect free vars (ELoadContext _ b) acc      =  collect_free_vars b acc
-      collect free vars (ELoadShared _ b)  acc      =  collect_free_vars b acc
       collect free vars _                  acc      =  acc
 
 fn :: collect free vars list [RExpr] [String] => [String]
@@ -576,12 +560,6 @@ fn :: check expr safety RExpr String [String] [RFnSummary] [String] => [String] 
         check_expr_safety inner fn_name mut_vars summaries moved
       check expr safety (EWithRegion _ inner) fn_name mut_vars summaries moved =
         check_expr_safety inner fn_name mut_vars summaries moved
-      check expr safety (EAtomicUpdate _ inner) fn_name mut_vars summaries moved =
-        check_expr_safety inner fn_name mut_vars summaries moved
-      check expr safety (ELoadContext _ inner) fn_name mut_vars summaries moved =
-        check_expr_safety inner fn_name mut_vars summaries moved
-      check expr safety (ELoadShared _ inner) fn_name mut_vars summaries moved =
-        check_expr_safety inner fn_name mut_vars summaries moved
       check expr safety (EWithCtx _ v b) fn_name mut_vars summaries moved =
         r1 = check_expr_safety v fn_name mut_vars summaries moved
         check_expr_safety_tuple b fn_name mut_vars summaries r1
@@ -633,9 +611,6 @@ fn :: check stmt list safety [RStmt] String [String] [RFnSummary] [String] => [S
       check stmt list safety ((StmtMut v val_e):ss) fn_name mut_vars summaries moved =
         check_stmt_list_safety_tuple ss fn_name (add_unique_str v mut_vars) summaries (check_expr_safety val_e fn_name (add_unique_str v mut_vars) summaries moved)
       check stmt list safety ((StmtExpr e):ss) fn_name mut_vars summaries moved =
-        r1 = check_expr_safety e fn_name mut_vars summaries moved
-        check_stmt_list_safety_tuple ss fn_name mut_vars summaries r1
-      check stmt list safety ((StmtAtomic _ e):ss) fn_name mut_vars summaries moved =
         r1 = check_expr_safety e fn_name mut_vars summaries moved
         check_stmt_list_safety_tuple ss fn_name mut_vars summaries r1
       check stmt list safety ((StmtIndexAssign _ idxs e):ss) fn_name mut_vars summaries moved =

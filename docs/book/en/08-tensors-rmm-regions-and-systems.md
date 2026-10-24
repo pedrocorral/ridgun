@@ -107,37 +107,7 @@ Notice three standout details:
 
 ---
 
-## 8.4. Context Variables (`context ::`) and Atomic Shared State (`shared ::`)
-
-In 99% of your code you will pass data as function parameters. But for that 1% where you need environment configuration or a global cross-thread counter without polluting 40 intermediate function signatures, Ridgun provides two explicit, safe mechanisms:
-
-### 1. `context ::` — Task-isolated dynamic scope (`with ... = ... do`)
-```ridgun
-context :: log_path : String = "/var/log/app.log"
-
-log_event String => ()
-log_event msg    =  echo "[{log_path}] {msg}"
-
-main => ()
-main =
-  log_event "Normal startup"
-  with log_path = "/tmp/test.log" do
-    log_event "Inside isolated test"
-```
-
-### 2. `shared ::` and `atomic` — Concurrent state with per-line atomic locking
-```ridgun
-shared :: total_requests : Int = 0
-
-record_visit => Int
-record_visit =
-  atomic total_requests = total_requests + 1
-  total_requests
-```
-
----
-
-## 8.5. Hardware Access (`hardware ::`) and POSIX Systems Primitives
+## 8.4. Hardware Access (`hardware ::`) and POSIX Systems Primitives
 
 The `ridgunc` compiler itself, the `stable` build manager, and Unix systems utilities are written in Ridgun. To make that possible, the language includes memory-mapped register blocks (`hardware ::`) and direct POSIX primitives:
 
@@ -165,7 +135,7 @@ And for interacting with the operating system:
 
 ---
 
-## 8.6. Real-World Case Study: Building `rg-wc`, a Parallel Unix Utility
+## 8.5. Real-World Case Study: Building `rg-wc`, a Parallel Unix Utility
 
 Let's bring together everything we have learned from Chapter 01 to Chapter 08 in a real systems program: a parallel version of the Unix `wc` utility (line and byte counter across multiple files) written in pure Ridgun:
 
@@ -223,7 +193,7 @@ Pause for a second and look at those ~40 lines of code:
 
 ---
 
-## 8.7. Final Roadmap: The 10 Golden Rules of the Ridgun Programmer
+## 8.6. Final Roadmap: The 10 Golden Rules of the Ridgun Programmer
 
 1. **Always write the contract (`=>`) first and the equations (`=`) second:** thinking about types first makes the compiler work for you.
 2. **Let `stable format` typeset your tables:** type with single spaces and let the tool align columns, `=>`, `=`, and `->`.

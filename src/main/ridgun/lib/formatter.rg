@@ -228,7 +228,7 @@ fn :: fmt parse sig tokens Int String String [FmtToken] => FmtSig
       fmt parse sig tokens _ clean cmt ((FmtTok kind _):(FmtTok "::" _):rest)
         | kind == "fn" OR kind == "op" = fmt_finish_sig_parse clean cmt kind (fmt_split_sig_arrow rest [])
       fmt parse sig tokens 0 clean cmt ((FmtTok w col):rest)
-        | w == "type" OR w == "expand" OR w == "import" OR w == "global" OR w == "context" OR w == "shared" OR w == "hardware" OR (str_starts_with w "@") OR (str_starts_with w "--") OR (str_starts_with w "|") = NoSig
+        | w == "type" OR w == "expand" OR w == "import" OR w == "hardware" OR (str_starts_with w "@") OR (str_starts_with w "--") OR (str_starts_with w "|") = NoSig
         | otherwise = fmt_finish_bare_sig_parse clean cmt (fmt_split_sig_arrow ([FmtTok w col] :: rest) [])
       fmt parse sig tokens _ _ _ _ = NoSig
 
@@ -271,7 +271,7 @@ fn :: fmt is top decl toks Int String [FmtToken] => Bool
       fmt is top decl toks _ tr _
         | str_starts_with tr "@" = True
       fmt is top decl toks ind _ ((FmtTok w col):rest)
-        | w == "fn" OR w == "op" OR w == "type" OR w == "expand" OR w == "import" OR w == "global" OR w == "context" OR w == "shared" OR w == "hardware" = True
+        | w == "fn" OR w == "op" OR w == "type" OR w == "expand" OR w == "import" OR w == "hardware" = True
         | ind == 0 AND (NOT (str_starts_with w "--")) AND (NOT (str_starts_with w "|")) = fmt_has_fat_arrow ([FmtTok w col] :: rest)
         | otherwise = False
       fmt is top decl toks _ _ [] = False

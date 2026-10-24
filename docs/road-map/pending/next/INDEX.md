@@ -3,4 +3,4 @@ Ordered by priority (top first).
 
 | Task | Title | Requirements |
 |---|---|---|
-| `TASK-0001-bootstrap-project.md` | Bootstrap: vision, glossary, ADR-0001, project layout | — |
+| `TASK-0023-remove-global-context-shared-and-atomic-from-ridgu.md` | Remove `global ::`, `context ::`, `shared ::`, and `atomic` from Ridgun compiler and docs | `FR-COMP-009` |

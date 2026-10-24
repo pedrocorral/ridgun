@@ -178,15 +178,6 @@ fn :: compile rexpr RExpr              [String] => [RInstr] [String]
       compile rexpr (EWithRegion quota body) locals =
         b_res = compile_rexpr body locals
         wrap_region_bc quota b_res
-      compile rexpr (EAtomicUpdate var_name val_e) locals =
-        v_res = compile_rexpr val_e locals
-        append_instr (BAtomicStore var_name) v_res
-      compile rexpr (ELoadContext ctx_name def_e) locals =
-        d_res = compile_rexpr def_e locals
-        append_instr (BLoadCtx ctx_name) d_res
-      compile rexpr (ELoadShared var_name def_e) locals =
-        d_res = compile_rexpr def_e locals
-        append_instr (BLoadShared var_name) d_res
 
 fn :: compile rexpr after RExpr ([RInstr], [String]) => [RInstr] [String]
       compile rexpr after e     (c1, locals1)        =
@@ -263,9 +254,6 @@ fn :: compile rblock [RStmt]           [String] => [RInstr] [String]
       compile rblock ((StmtMut v e):rest) locals =
         e_res = compile_rexpr e locals
         compile_rblock_after_let v rest e_res
-      compile rblock ((StmtAtomic v e):rest) locals =
-        e_res = compile_rexpr (EAtomicUpdate v e) locals
-        compile_rblock_after_expr rest e_res
       compile rblock ((StmtIndexAssign t idxs e):rest) locals =
         e_res = compile_rexpr (EIndexAssign t idxs e) locals
         compile_rblock_after_expr rest e_res
@@ -424,9 +412,6 @@ fn :: prep expr RExpr              [RCgSig] => RExpr
       prep expr (EParPipe branches) sigs    =  EParPipe (prep_expr_list branches sigs)
       prep expr (EWithCtx c v b)   sigs     =  EWithCtx c (prep_expr v sigs) (prep_expr b sigs)
       prep expr (EWithRegion q b)  sigs     =  EWithRegion q (prep_expr b sigs)
-      prep expr (EAtomicUpdate v e) sigs    =  EAtomicUpdate v (prep_expr e sigs)
-      prep expr (ELoadContext c e) sigs     =  ELoadContext c (prep_expr e sigs)
-      prep expr (ELoadShared v e)  sigs     =  ELoadShared v (prep_expr e sigs)
       prep expr (EVar v)           sigs     =  prep_var v (lookup_cg_sig sigs v)
       prep expr e                  _        =  e
 
@@ -451,7 +436,6 @@ fn :: prep stmt list [RStmt]            [RCgSig] => [RStmt]
       prep stmt list ((StmtLet v e):ss) sigs     =  [StmtLet v (prep_expr e sigs)] :: (prep_stmt_list ss sigs)
       prep stmt list ((StmtMut v e):ss) sigs     =  [StmtMut v (prep_expr e sigs)] :: (prep_stmt_list ss sigs)
       prep stmt list ((StmtExpr e):ss)  sigs     =  [StmtExpr (prep_expr e sigs)] :: (prep_stmt_list ss sigs)
-      prep stmt list ((StmtAtomic v e):ss) sigs  =  [StmtAtomic v (prep_expr e sigs)] :: (prep_stmt_list ss sigs)
       prep stmt list ((StmtIndexAssign t idxs e):ss) sigs = [StmtIndexAssign t (prep_expr_list idxs sigs) (prep_expr e sigs)] :: (prep_stmt_list ss sigs)
 
 fn :: prep where list [RWhereBind] [RCgSig] => [RWhereBind]
@@ -595,7 +579,6 @@ fn :: inline leaf stmt list [RStmt] [RInlineExprEntry] => [RStmt]
       inline leaf stmt list ((StmtLet v e):ss) tbl = [StmtLet v (inline leaf expr e tbl)] :: (inline leaf stmt list ss tbl)
       inline leaf stmt list ((StmtMut v e):ss) tbl = [StmtMut v (inline leaf expr e tbl)] :: (inline leaf stmt list ss tbl)
       inline leaf stmt list ((StmtExpr e):ss) tbl = [StmtExpr (inline leaf expr e tbl)] :: (inline leaf stmt list ss tbl)
-      inline leaf stmt list ((StmtAtomic v e):ss) tbl = [StmtAtomic v (inline leaf expr e tbl)] :: (inline leaf stmt list ss tbl)
       inline leaf stmt list ((StmtIndexAssign t is e):ss) tbl = [StmtIndexAssign t (inline leaf expr list is tbl) (inline leaf expr e tbl)] :: (inline leaf stmt list ss tbl)
 
 fn :: inline leaf where list [RWhereBind] [RInlineExprEntry] => [RWhereBind]
@@ -846,9 +829,6 @@ fn :: collect expr strs RExpr              [String] => [String]
       collect expr strs (EParPipe branches) acc     =  collect_expr_list_strs branches acc
       collect expr strs (EWithCtx c v b)   acc      =  collect_expr_strs b (collect_expr_strs v (add_unique_str c acc))
       collect expr strs (EWithRegion _ b)  acc      =  collect_expr_strs b acc
-      collect expr strs (EAtomicUpdate v e) acc     =  collect_expr_strs e (add_unique_str v acc)
-      collect expr strs (ELoadContext c e) acc      =  collect_expr_strs e (add_unique_str c acc)
-      collect expr strs (ELoadShared v e)  acc      =  collect_expr_strs e (add_unique_str v acc)
       collect expr strs _                  acc      =  acc
 
 fn :: collect expr list strs [RExpr] [String] => [String]
@@ -860,7 +840,6 @@ fn :: collect stmt list strs [RStmt] [String] => [String]
       collect stmt list strs ((StmtLet _ e):ss) acc = collect_stmt_list_strs ss (collect_expr_strs e acc)
       collect stmt list strs ((StmtMut _ e):ss) acc = collect_stmt_list_strs ss (collect_expr_strs e acc)
       collect stmt list strs ((StmtExpr e):ss) acc = collect_stmt_list_strs ss (collect_expr_strs e acc)
-      collect stmt list strs ((StmtAtomic v e):ss) acc = collect_stmt_list_strs ss (collect_expr_strs e (add_unique_str v acc))
       collect stmt list strs ((StmtIndexAssign _ idxs e):ss) acc =
         collect_stmt_list_strs ss (collect_expr_strs e (collect_expr_list_strs idxs acc))
 
@@ -1100,9 +1079,6 @@ fn :: collect expr bound vars RExpr [String] => [String]
       collect expr bound vars (EParPipe branches) acc = collect_expr_list_bound_vars branches acc
       collect expr bound vars (EWithCtx _ v b) acc = collect_expr_bound_vars b (collect_expr_bound_vars v acc)
       collect expr bound vars (EWithRegion _ b) acc = collect_expr_bound_vars b acc
-      collect expr bound vars (EAtomicUpdate _ e) acc = collect_expr_bound_vars e acc
-      collect expr bound vars (ELoadContext _ e) acc = collect_expr_bound_vars e acc
-      collect expr bound vars (ELoadShared _ e) acc = collect_expr_bound_vars e acc
       collect expr bound vars _ acc = acc
 
 fn :: collect expr list bound vars [RExpr] [String] => [String]
@@ -1116,8 +1092,6 @@ fn :: collect stmt list bound vars [RStmt] [String] => [String]
       collect stmt list bound vars ((StmtMut v e):ss) acc =
         collect_stmt_list_bound_vars ss (add_bound_var v (collect_expr_bound_vars e acc))
       collect stmt list bound vars ((StmtExpr e):ss) acc =
-        collect_stmt_list_bound_vars ss (collect_expr_bound_vars e acc)
-      collect stmt list bound vars ((StmtAtomic _ e):ss) acc =
         collect_stmt_list_bound_vars ss (collect_expr_bound_vars e acc)
       collect stmt list bound vars ((StmtIndexAssign t idxs e):ss) acc =
         collect_stmt_list_bound_vars ss (collect_expr_bound_vars e (collect_expr_list_bound_vars idxs (add_bound_var t acc)))
@@ -1165,9 +1139,6 @@ fn :: cmm expr vars RExpr              [String] => [String]
       cmm expr vars (EParPipe branches) acc     =  cmm_expr_list_vars branches acc
       cmm expr vars (EWithCtx _ v b)   acc      =  cmm_expr_vars b (cmm_expr_vars v acc)
       cmm expr vars (EWithRegion _ b)  acc      =  cmm_expr_vars b acc
-      cmm expr vars (EAtomicUpdate _ e) acc     =  cmm_expr_vars e acc
-      cmm expr vars (ELoadContext _ e) acc      =  cmm_expr_vars e acc
-      cmm expr vars (ELoadShared _ e)  acc      =  cmm_expr_vars e acc
       cmm expr vars _                  acc      =  acc
 
 fn :: cmm guards vars [RGuard] [String] => [String]
@@ -1184,7 +1155,6 @@ fn :: cmm stmts vars [RStmt]            [String] => [String]
       cmm stmts vars ((StmtLet _ e):ss) acc      =  cmm_stmts_vars ss (cmm_expr_vars e acc)
       cmm stmts vars ((StmtMut _ e):ss) acc      =  cmm_stmts_vars ss (cmm_expr_vars e acc)
       cmm stmts vars ((StmtExpr e):ss)  acc      =  cmm_stmts_vars ss (cmm_expr_vars e acc)
-      cmm stmts vars ((StmtAtomic _ e):ss) acc   =  cmm_stmts_vars ss (cmm_expr_vars e acc)
       cmm stmts vars ((StmtIndexAssign t idxs e):ss) acc =
         cmm_stmts_vars ss (cmm_expr_vars e (cmm_expr_list_vars idxs (add_unique_str t acc)))
 
@@ -2020,45 +1990,15 @@ fn :: lower expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
           count = rexpr_list_len branches
           st1 = lower_expr_list_to_slots env branches bound_locals sp 0 st
           nc_emit st1 (NMakeTuple sp count) (sp + count + 1)
-      lower expr env (EWithCtx "__rg_timeout_ms__" val_e body) bound_locals sp st =
+      lower expr env (EWithCtx _ val_e body) bound_locals sp st =
         st1 = lower_expr env val_e bound_locals sp st
         st2 = nc_emit_list st1 [NStoreSlot sp, NCallBuiltin 84 sp 1] (sp + 1)
         st3 = lower_expr env body bound_locals sp st2
         nc_emit_list st3 [NStoreSlot sp, NCallBuiltin 85 sp 1] (sp + 1)
-      lower expr env (EWithCtx ctx_name val_e body) bound_locals sp st =
-        off = env_str_off env ctx_name
-        klen = str_len ctx_name
-        st1 = lower_expr env val_e bound_locals sp st
-        st2 = nc_emit st1 (NPushCtx off klen) sp
-        st3 = lower_expr env body bound_locals sp st2
-        nc_emit st3 (NPopCtx off klen) sp
       lower expr env (EWithRegion quota body) bound_locals sp st =
         st1 = nc_emit st NEnterRegion sp
         st2 = lower_expr env body bound_locals sp st1
         nc_emit st2 (NExitRegion quota) sp
-      lower expr env (EAtomicUpdate var_name val_e) bound_locals sp st =
-        off = env_str_off env var_name
-        klen = str_len var_name
-        st1 = lower_expr env val_e bound_locals sp st
-        nc_emit st1 (NStoreShared off klen) sp
-      lower expr env (ELoadContext ctx_name def_e) bound_locals sp st =
-        off = env_str_off env ctx_name
-        klen = str_len ctx_name
-        else_lbl = nc_lbl st
-        end_lbl = else_lbl + 1
-        st1 = nc_set_lbl st (else_lbl + 2)
-        st2 = nc_emit_list st1 [NHasCtx off klen, NJumpIfZero else_lbl, NGetCtx off klen, NJump end_lbl, NLabel else_lbl] sp
-        st3 = lower_expr env def_e bound_locals sp st2
-        nc_emit st3 (NLabel end_lbl) sp
-      lower expr env (ELoadShared var_name def_e) bound_locals sp st =
-        off = env_str_off env var_name
-        klen = str_len var_name
-        else_lbl = nc_lbl st
-        end_lbl = else_lbl + 1
-        st1 = nc_set_lbl st (else_lbl + 2)
-        st2 = nc_emit_list st1 [NHasShared off klen, NJumpIfZero else_lbl, NGetShared off klen, NJump end_lbl, NLabel else_lbl] sp
-        st3 = lower_expr env def_e bound_locals sp st2
-        nc_emit_list st3 [NInitShared off klen, NLabel end_lbl] sp
 
 fn :: lower expr guards RNativeEnv [RGuard] [String] Int Int RNativeCode => RNativeCode
       lower expr guards _ [] _ end_lbl sp st =
@@ -2102,13 +2042,6 @@ fn :: lower stmts cmm RNativeEnv [RStmt] [String] [String] Int RNativeCode => RN
       lower stmts cmm env ((StmtExpr e):[]) bound_locals scope_vars sp st =
         used = cmm_filter_in_list (cmm_expr_vars e []) scope_vars
         lower_final_block_expr env e bound_locals used sp st
-      lower stmts cmm env ((StmtAtomic v e):[]) bound_locals scope_vars sp st =
-        used = cmm_filter_in_list (cmm_expr_vars e []) scope_vars
-        off = env_str_off env v
-        st1 = lower_expr env e bound_locals sp st
-        st2 = nc_emit st1 (NStoreShared off (str_len v)) sp
-        st3 = lower_cmm_drops env used sp st2
-        nc_emit st3 (NLoadImmRaw 0) sp
       lower stmts cmm env ((StmtIndexAssign t idxs e):[]) bound_locals scope_vars sp st =
         count = rexpr_list_len idxs
         tslot = env_var_slot env t
@@ -2145,15 +2078,6 @@ fn :: lower stmts cmm RNativeEnv [RStmt] [String] [String] Int RNativeCode => RN
           lower_let_binding_stmt env v e bound_locals scope_vars rest sp st
       lower stmts cmm env ((StmtMut v e):rest) bound_locals scope_vars sp st =
         lower_let_binding_stmt env v e bound_locals scope_vars rest sp st
-      lower stmts cmm env ((StmtAtomic v e):rest) bound_locals scope_vars sp st =
-        used_in_e = cmm_filter_in_list (cmm_expr_vars e []) scope_vars
-        live_after = cmm_stmts_vars rest []
-        dead_now = cmm_filter_not_in_list used_in_e live_after
-        off = env_str_off env v
-        st1 = lower_expr env e bound_locals sp st
-        st2 = nc_emit st1 (NStoreShared off (str_len v)) sp
-        st3 = lower_cmm_drops env dead_now sp st2
-        lower_stmts_cmm env rest bound_locals scope_vars sp st3
       lower stmts cmm env ((StmtIndexAssign t idxs e):rest) bound_locals scope_vars sp st =
         used_in_e = cmm_filter_in_list (cmm_expr_vars e (cmm_expr_list_vars idxs [])) scope_vars
         live_after = add_unique_str t (cmm_stmts_vars rest [])
@@ -2402,15 +2326,6 @@ fn :: lower tail stmts cmm RNativeEnv [RStmt] [String] [String] Int RNativeCode 
           lower_tail_let_stmt env v e bound_locals scope_vars rest sp st
       lower tail stmts cmm env ((StmtMut v e):rest) bound_locals scope_vars sp st =
         lower_tail_let_stmt env v e bound_locals scope_vars rest sp st
-      lower tail stmts cmm env ((StmtAtomic v e):rest) bound_locals scope_vars sp st =
-        used_in_e = cmm_filter_in_list (cmm_expr_vars e []) scope_vars
-        live_after = cmm_stmts_vars rest []
-        dead_now = cmm_filter_not_in_list used_in_e live_after
-        off = env_str_off env v
-        st1 = lower_expr env e bound_locals sp st
-        st2 = nc_emit st1 (NStoreShared off (str_len v)) sp
-        st3 = lower_cmm_drops env dead_now sp st2
-        lower_tail_stmts_cmm env rest bound_locals scope_vars sp st3
       lower tail stmts cmm env ((StmtIndexAssign t idxs e):[]) bound_locals scope_vars sp st =
         count = rexpr_list_len idxs
         tslot = env_var_slot env t
@@ -2756,9 +2671,6 @@ fn :: collect refs expr RExpr              [String] => [String]
       collect refs expr (EParPipe branches) acc     =  collect_refs_expr_list branches acc
       collect refs expr (EWithCtx _ v b)   acc      =  collect_refs_expr b (collect_refs_expr v acc)
       collect refs expr (EWithRegion _ b)  acc      =  collect_refs_expr b acc
-      collect refs expr (EAtomicUpdate _ e) acc     =  collect_refs_expr e acc
-      collect refs expr (ELoadContext _ e) acc      =  collect_refs_expr e acc
-      collect refs expr (ELoadShared _ e)  acc      =  collect_refs_expr e acc
       collect refs expr _                  acc      =  acc
 
 fn :: collect refs expr list [RExpr] [String] => [String]
@@ -2770,7 +2682,6 @@ fn :: collect refs stmts [RStmt]            [String] => [String]
       collect refs stmts ((StmtLet _ e):ss) acc      =  collect_refs_stmts ss (collect_refs_expr e acc)
       collect refs stmts ((StmtMut _ e):ss) acc      =  collect_refs_stmts ss (collect_refs_expr e acc)
       collect refs stmts ((StmtExpr e):ss)  acc      =  collect_refs_stmts ss (collect_refs_expr e acc)
-      collect refs stmts ((StmtAtomic _ e):ss) acc   =  collect_refs_stmts ss (collect_refs_expr e acc)
       collect refs stmts ((StmtIndexAssign _ idxs e):ss) acc =
         collect_refs_stmts ss (collect_refs_expr e (collect_refs_expr_list idxs acc))
 

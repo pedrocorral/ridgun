@@ -107,37 +107,7 @@ Fíjate en dos detalles espectaculares:
 
 ---
 
-## 8.4. Variables de Contexto (`context ::`) y Estado Compartido Atómico (`shared ::`)
-
-En el 99% de tu código pasarás datos por parámetro. Pero para ese 1% donde necesitas configuración de entorno o un contador global entre hilos sin contaminar 40 firmas intermedias, Ridgun ofrece dos mecanismos explícitos y seguros:
-
-### 1. `context ::` — Ámbito dinámico aislado por tarea (`with ... = ... do`)
-```ridgun
-context :: ruta_log : String = "/var/log/app.log"
-
-registrar_evento String => ()
-registrar_evento msg    =  echo "[{ruta_log}] {msg}"
-
-main => ()
-main =
-  registrar_evento "Arranque normal"
-  with ruta_log = "/tmp/test.log" do
-    registrar_evento "Dentro del test aislado"
-```
-
-### 2. `shared ::` y `atomic` — Estado concurrente con bloqueo atómico por línea
-```ridgun
-shared :: peticiones_totales : Int = 0
-
-contabilizar_visita => Int
-contabilizar_visita =
-  atomic peticiones_totales = peticiones_totales + 1
-  peticiones_totales
-```
-
----
-
-## 8.5. Acceso a Hardware (`hardware ::`) y Primitivas POSIX de Sistemas
+## 8.4. Acceso a Hardware (`hardware ::`) y Primitivas POSIX de Sistemas
 
 El propio compilador `ridgunc`, el gestor `stable` y utilidades de sistemas Unix están escritos en Ridgun. Para ello, el lenguaje incluye bloques de registros mapeados en memoria (`hardware ::`) y primitivas POSIX directas:
 
@@ -166,7 +136,7 @@ Y para trabajar con el sistema operativo:
 
 ---
 
-## 8.6. Caso de Estudio Real: Construyendo `rg-wc`, una utilidad Unix paralela
+## 8.5. Caso de Estudio Real: Construyendo `rg-wc`, una utilidad Unix paralela
 
 Vamos a unir todo lo aprendido desde el Capítulo 01 hasta aquí en un programa real de sistemas: una versión paralela de la herramienta Unix `wc` (contador de líneas y bytes para múltiples archivos) escrita en Ridgun puro:
 
@@ -224,7 +194,7 @@ Párate un segundo a mirar esas ~40 líneas de código:
 
 ---
 
-## 8.7. Hoja de Ruta Final: Las 10 Reglas de Oro del Programador Ridgun
+## 8.6. Hoja de Ruta Final: Las 10 Reglas de Oro del Programador Ridgun
 
 1. **Escribe siempre primero el contrato (`=>`) y después las ecuaciones (`=`):** pensar en los tipos primero hace que el compilador trabaje para ti.
 2. **Deja que `stable format` maquete tus tablas:** escribe con un espacio y deja que la herramienta alinee columnas, `=>`, `=` y `->`.

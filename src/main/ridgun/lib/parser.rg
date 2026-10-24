@@ -40,9 +40,6 @@ fn :: is top keyword RToken      => Bool
       is top keyword TokOp       =  True
       is top keyword TokType     =  True
       is top keyword TokImport   =  True
-      is top keyword TokGlobal   =  True
-      is top keyword TokContext  =  True
-      is top keyword TokShared   =  True
       is top keyword TokHardware =  True
       is top keyword TokAt       =  True
       is top keyword TokEof      =  True
@@ -53,12 +50,6 @@ fn :: is top decl start [RToken]        => Bool
       is top decl start (TokFn:_)       =  False
       is top decl start (TokOp:TokColonColon:_) = True
       is top decl start (TokOp:_)       =  False
-      is top decl start (TokGlobal:TokColonColon:_) = True
-      is top decl start (TokGlobal:_)   =  False
-      is top decl start (TokContext:TokColonColon:_) = True
-      is top decl start (TokContext:_)  =  False
-      is top decl start (TokShared:TokColonColon:_) = True
-      is top decl start (TokShared:_)   =  False
       is top decl start (TokHardware:TokColonColon:_) = True
       is top decl start (TokHardware:_) =  False
       is top decl start (TokType:(TokIdent name):TokEquals:_) = is_upper_ident name
@@ -538,15 +529,11 @@ fn :: is atom tok RToken        => Bool
       is atom tok TokFn         =  True
       is atom tok TokOp         =  True
       is atom tok TokImport     =  True
-      is atom tok TokAtomic     =  True
       is atom tok TokHardware   =  True
       is atom tok TokOtherwise  =  True
       is atom tok TokMut        =  True
       is atom tok TokType       =  True
       is atom tok TokWith       =  True
-      is atom tok TokShared     =  True
-      is atom tok TokGlobal     =  True
-      is atom tok TokContext    =  True
       is atom tok TokNot        =  True
       is atom tok TokLParen     =  True
       is atom tok TokLBracket   =  True
@@ -555,19 +542,12 @@ fn :: is atom tok RToken        => Bool
 fn :: is with block start [RToken] => Bool
       is with block start (TokWith:(TokIdent s):_)
         | s == "region" OR s == "timeout" = True
-      is with block start (TokWith:(TokIdent _):TokEquals:_) = True
       is with block start _        =  False
 
 fn :: parse expr [RToken] => RExpr [RToken]
-      parse expr (TokAtomic:(TokIdent var_name):TokEquals:rest) =
-        v_res = parse_expr rest
-        wrap_atomic_update var_name v_res
       parse expr ts
         | is_with_block_start ts = parse_with_expr ts
         | otherwise = parse_logic_expr ts
-
-fn :: wrap atomic update String   (RExpr, [RToken]) => RExpr [RToken]
-      wrap atomic update var_name (val_e, rest)     =  (EAtomicUpdate var_name val_e, rest)
 
 fn :: skip do token [RToken]     => [RToken]
       skip do token (TokDo:rest) =  rest
@@ -600,9 +580,6 @@ fn :: parse with expr [RToken] => RExpr [RToken]
         | r_kw == "region" = parse_with_region_after quota rest
       parse with expr (TokWith:(TokIdent t_kw):rest)
         | t_kw == "timeout" = parse_with_timeout_after (parse_logic_expr rest)
-      parse with expr (TokWith:(TokIdent ctx_name):TokEquals:rest) =
-        v_res = parse_logic_expr rest
-        parse_with_ctx_body ctx_name v_res
       parse with expr (_:rest) =  parse_logic_expr rest
       parse with expr []       =  (EUnit, [])
 
@@ -925,15 +902,11 @@ fn :: parse atom base [RToken]           => RExpr [RToken]
       parse atom base (TokFn:rest)       =  (EVar "fn", rest)
       parse atom base (TokOp:rest)       =  (EVar "op", rest)
       parse atom base (TokImport:rest)   =  (EVar "import", rest)
-      parse atom base (TokAtomic:rest)   =  (EVar "atomic", rest)
       parse atom base (TokHardware:rest) =  (EVar "hardware", rest)
       parse atom base (TokOtherwise:rest) = (EVar "otherwise", rest)
       parse atom base (TokMut:rest)      =  (EVar "mut", rest)
       parse atom base (TokType:rest)     =  (EVar "type", rest)
       parse atom base (TokWith:rest)     =  (EVar "with", rest)
-      parse atom base (TokShared:rest)   =  (EVar "shared", rest)
-      parse atom base (TokGlobal:rest)   =  (EVar "global", rest)
-      parse atom base (TokContext:rest)  =  (EVar "context", rest)
       parse atom base (TokNot:rest)      =  (EVar "not", rest)
       parse atom base ((TokIdent s):TokLBracket:(TokIdent elem_ty):TokStar:after_star)
         | (s == "Tensor" or s == "Tensor_GPU") and (is_upper_ident elem_ty) = finish tensor alloc elem_ty (parse tensor alloc dims ([TokStar] :: after_star))
@@ -1510,9 +1483,6 @@ fn :: parse block safe dispatch [RToken]          => [RStmt] [RToken]
       parse block safe dispatch (TokMut:(TokIdent name):TokEquals:rest) =
         e_res = parse_let_rhs rest
         finish_mut_stmt name e_res
-      parse block safe dispatch (TokAtomic:(TokIdent var_name):TokEquals:rest) =
-        e_res = parse_expr rest
-        finish_atomic_stmt var_name e_res
       parse block safe dispatch ((TokIdent name):rest) = parse_block_line_ident name rest
       parse block safe dispatch (TokFn:rest)
         | is_top_decl_start ([TokFn] :: rest) = ([], [TokFn] :: rest)
@@ -1529,11 +1499,6 @@ fn :: parse block safe dispatch [RToken]          => [RStmt] [RToken]
       parse block safe dispatch ts
         | (is_top_decl_start ts) OR (line_has_fat_arrow ts) = ([], ts)
         | otherwise = finish_expr_stmt (parse_expr ts)
-
-fn :: finish atomic stmt String   (RExpr, [RToken]) => [RStmt] [RToken]
-      finish atomic stmt var_name (val_e, rest)     =
-        more = parse_block_stmts_safe rest
-        prepend_stmt (StmtAtomic var_name val_e) more
 
 fn :: prepend stmt RStmt ([RStmt], [RToken]) => [RStmt] [RToken]
       prepend stmt s     (ss, rest)          =  ([s] :: ss, rest)
@@ -1670,8 +1635,6 @@ fn :: scan op header [RToken] [String] [String] [Bool] => [String] [String] [Boo
         scan_op_header rest (words :: ["import"]) params (tmpl :: [False])
       scan op header (TokDo:rest) words params tmpl =
         scan_op_header rest (words :: ["do"]) params (tmpl :: [False])
-      scan op header (TokAtomic:rest) words params tmpl =
-        scan_op_header rest (words :: ["atomic"]) params (tmpl :: [False])
       scan op header (TokHardware:rest) words params tmpl =
         scan_op_header rest (words :: ["hardware"]) params (tmpl :: [False])
       scan op header (TokOtherwise:rest) words params tmpl =
@@ -1682,12 +1645,6 @@ fn :: scan op header [RToken] [String] [String] [Bool] => [String] [String] [Boo
         scan_op_header rest (words :: ["type"]) params (tmpl :: [False])
       scan op header (TokWith:rest) words params tmpl =
         scan_op_header rest (words :: ["with"]) params (tmpl :: [False])
-      scan op header (TokShared:rest) words params tmpl =
-        scan_op_header rest (words :: ["shared"]) params (tmpl :: [False])
-      scan op header (TokGlobal:rest) words params tmpl =
-        scan_op_header rest (words :: ["global"]) params (tmpl :: [False])
-      scan op header (TokContext:rest) words params tmpl =
-        scan_op_header rest (words :: ["context"]) params (tmpl :: [False])
       scan op header (TokAnd:rest) words params tmpl =
         scan_op_header rest (words :: ["and"]) params (tmpl :: [False])
       scan op header (TokOr:rest) words params tmpl =
@@ -1723,15 +1680,11 @@ fn :: match op keyword RToken       String => Bool
       match op keyword TokOp        kw     =  kw == "op"
       match op keyword TokImport    kw     =  kw == "import"
       match op keyword TokDo        kw     =  kw == "do"
-      match op keyword TokAtomic    kw     =  kw == "atomic"
       match op keyword TokHardware  kw     =  kw == "hardware"
       match op keyword TokOtherwise kw     =  kw == "otherwise"
       match op keyword TokMut       kw     =  kw == "mut"
       match op keyword TokType      kw     =  kw == "type"
       match op keyword TokWith      kw     =  kw == "with"
-      match op keyword TokShared    kw     =  kw == "shared"
-      match op keyword TokGlobal    kw     =  kw == "global"
-      match op keyword TokContext   kw     =  kw == "context"
       match op keyword TokAnd       kw     =  kw == "and"
       match op keyword TokOr        kw     =  kw == "or"
       match op keyword TokXor       kw     =  kw == "xor"
@@ -1820,42 +1773,6 @@ fn :: finish op decl String [String] [String] [Bool] (String, [RToken]) => RFnDe
       finish op decl mangled words params tmpl (ret_ty, rest) =
         cs_res = parse_op_cases tmpl words rest
         finish_fn_def mangled params ret_ty cs_res
-
--- ── Scoped Globals (`global ::`, `context ::`, `shared ::`) ─
-
-fn :: wrap scoped init Int String RExpr => RExpr
-      wrap scoped init 1 name init_e = ELoadContext name init_e
-      wrap scoped init 2 name init_e = ELoadShared name init_e
-      wrap scoped init _ _ init_e = init_e
-
-fn :: strip optional arrow [RToken]           => [RToken]
-      strip optional arrow (TokFatArrow:rest) =  rest
-      strip optional arrow (TokArrow:rest)    =  rest
-      strip optional arrow (TokColon:rest)    =  rest
-      strip optional arrow ts                 =  ts
-
-fn :: parse scoped global Int  [RToken] => RFnDef [RToken]
-      parse scoped global kind (_:TokColonColon:(TokIdent name):rest) =
-        rt_res = parse_return_types (strip_optional_arrow rest)
-        parse scoped global init kind name rt_res
-      parse scoped global _    (_:rest) =  (FnDef "unknown" [] "Int" [], skip_to_newline rest)
-      parse scoped global _    []       =  (FnDef "unknown" [] "Int" [], [])
-
-fn :: parse scoped global init Int String (String, [RToken]) => RFnDef [RToken]
-      parse scoped global init kind name (ret_ty, rest) =
-        clean = skip_newlines rest
-        parse scoped global body kind name ret_ty clean
-
-fn :: parse scoped global body Int String String [RToken] => RFnDef [RToken]
-      parse scoped global body kind name ret_ty ((TokIdent s):TokEquals:rest)
-        | s == name = finish_scoped_global kind name ret_ty (parse_expr rest)
-      parse scoped global body _ name ret_ty ts =
-        (FnDef name [] ret_ty [FnCase [] [] (EInt 0)], ts)
-
-fn :: finish scoped global Int String String (RExpr, [RToken]) => RFnDef [RToken]
-      finish scoped global kind name ret_ty (init_e, rest) =
-        body = wrap_scoped_init kind name init_e
-        (FnDef name [] ret_ty [FnCase [] [] body], rest)
 
 -- ── Hardware MMIO Blocks (`hardware :: Name @ 0x...`) ───────
 
@@ -2414,9 +2331,6 @@ fn :: norm expr RExpr              [RArityEntry] => RExpr
       norm expr (EParPipe branches) arities      =  EParPipe (norm_expr_list branches arities)
       norm expr (EWithCtx c v b)   arities       =  EWithCtx c (norm_expr v arities) (norm_expr b arities)
       norm expr (EWithRegion q b)  arities       =  EWithRegion q (norm_expr b arities)
-      norm expr (EAtomicUpdate v e) arities      =  EAtomicUpdate v (norm_expr e arities)
-      norm expr (ELoadContext c e) arities       =  ELoadContext c (norm_expr e arities)
-      norm expr (ELoadShared v e)  arities       =  ELoadShared v (norm_expr e arities)
       norm expr e                  _             =  e
 
 fn :: norm expr list [RExpr] [RArityEntry] => [RExpr]
@@ -2428,7 +2342,6 @@ fn :: norm stmt list [RStmt]            [RArityEntry] => [RStmt]
       norm stmt list ((StmtLet v e):ss) arities       =  [StmtLet v (norm_expr e arities)] :: (norm_stmt_list ss arities)
       norm stmt list ((StmtMut v e):ss) arities       =  [StmtMut v (norm_expr e arities)] :: (norm_stmt_list ss arities)
       norm stmt list ((StmtExpr e):ss)  arities       =  [StmtExpr (norm_expr e arities)] :: (norm_stmt_list ss arities)
-      norm stmt list ((StmtAtomic v e):ss) arities    =  [StmtAtomic v (norm_expr e arities)] :: (norm_stmt_list ss arities)
       norm stmt list ((StmtIndexAssign t idxs e):ss) arities = [StmtIndexAssign t (norm_expr_list idxs arities) (norm_expr e arities)] :: (norm_stmt_list ss arities)
 
 fn :: norm where list [RWhereBind] [RArityEntry] => [RWhereBind]
@@ -2642,15 +2555,6 @@ fn :: parse items [RToken]           [RFnDef] [RTypeDef] => RProgram
       parse items (TokOp:rest)       fns      tys        =
         o_res = parse_op_decl ([TokOp] :: rest)
         parse_items_after_fn o_res fns tys
-      parse items (TokGlobal:rest)   fns      tys        =
-        g_res = parse_scoped_global 0 ([TokGlobal] :: rest)
-        parse_items_after_fn g_res fns tys
-      parse items (TokContext:rest)  fns      tys        =
-        c_res = parse_scoped_global 1 ([TokContext] :: rest)
-        parse_items_after_fn c_res fns tys
-      parse items (TokShared:rest)   fns      tys        =
-        s_res = parse_scoped_global 2 ([TokShared] :: rest)
-        parse_items_after_fn s_res fns tys
       parse items (TokHardware:rest) fns      tys        =
         hw_res = parse_hardware_decl ([TokHardware] :: rest)
         parse_items_after_fndefs hw_res fns tys

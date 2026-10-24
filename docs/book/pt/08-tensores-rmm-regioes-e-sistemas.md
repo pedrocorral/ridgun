@@ -101,37 +101,7 @@ Repare em dois detalhes espetaculares:
 
 ---
 
-## 8.4. Variáveis de Contexto (`context ::`) e Estado Partilhado Atómico (`shared ::`)
-
-Em 99% do seu código passará dados por parâmetro. Mas para esse 1% onde precisa de configuração de ambiente ou de um contador global entre threads sem contaminar 40 assinaturas intermédias, o Ridgun oferece dois mecanismos explícitos e seguros:
-
-### 1. `context ::` — Âmbito dinâmico isolado por tarefa (`with ... = ... do`)
-```ridgun
-context :: caminho_log : String = "/var/log/app.log"
-
-registar_evento String => ()
-registar_evento msg    =  echo "[{caminho_log}] {msg}"
-
-main => ()
-main =
-  registar_evento "Arranque normal"
-  with caminho_log = "/tmp/test.log" do
-    registar_evento "Dentro do teste isolado"
-```
-
-### 2. `shared ::` e `atomic` — Estado concorrente com bloqueio atómico por linha
-```ridgun
-shared :: pedidos_totais : Int = 0
-
-contabilizar_visita => Int
-contabilizar_visita =
-  atomic pedidos_totais = pedidos_totais + 1
-  pedidos_totais
-```
-
----
-
-## 8.5. Acesso a Hardware (`hardware ::`) e Primitivas POSIX de Sistemas
+## 8.4. Acesso a Hardware (`hardware ::`) e Primitivas POSIX de Sistemas
 
 O próprio compilador `ridgunc`, o gestor `stable` e utilitários de sistemas Unix estão escritos em Ridgun. Para tal, a linguagem inclui blocos de registos mapeados em memória (`hardware ::`) e primitivas POSIX diretas:
 
@@ -158,7 +128,7 @@ E para trabalhar com o sistema operativo:
 
 ---
 
-## 8.6. O Ecossistema de Bibliotecas Padrão (`ridgun-libs`)
+## 8.5. O Ecossistema de Bibliotecas Padrão (`ridgun-libs`)
 
 Além das primitivas do compilador, o ecossistema oficial do Ridgun inclui **32 bibliotecas puras (`.rglib`)** escritas inteiramente em Ridgun que pode importar com `import <nome>` em qualquer projeto:
 
@@ -171,7 +141,7 @@ Além das primitivas do compilador, o ecossistema oficial do Ridgun inclui **32 
 
 ---
 
-## 8.7. Caso de Estudo Real: Construindo `rg-wc`, um utilitário Unix paralelo
+## 8.6. Caso de Estudo Real: Construindo `rg-wc`, um utilitário Unix paralelo
 
 Vamos unir tudo o que aprendemos desde o Capítulo 01 até aqui num programa real de sistemas: uma versão paralela da ferramenta Unix `wc` (contador de linhas e bytes para múltiplos ficheiros) escrita em Ridgun puro:
 
@@ -229,7 +199,7 @@ Pare um segundo para olhar para essas ~40 linhas de código:
 
 ---
 
-## 8.8. Roteiro Final: As 10 Regras de Ouro do Programador Ridgun
+## 8.7. Roteiro Final: As 10 Regras de Ouro do Programador Ridgun
 
 1. **Escreva sempre primeiro o contrato (`=>`) e depois as equações (`=`):** pensar nos tipos primeiro faz com que o compilador trabalhe para si.
 2. **Deixe que o `stable format` pagine as suas tabelas:** escreva com um espaço e deixe que a ferramenta alinhe colunas, `=>`, `=` e `->`.

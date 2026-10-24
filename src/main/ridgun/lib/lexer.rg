@@ -76,12 +76,8 @@ fn :: classify word String => RToken
         | w == "op" = TokOp
         | w == "type" = TokType
         | w == "import" = TokImport
-        | w == "global" = TokGlobal
-        | w == "context" = TokContext
-        | w == "shared" = TokShared
         | w == "with" = TokWith
         | w == "do" = TokDo
-        | w == "atomic" = TokAtomic
         | w == "hardware" = TokHardware
         | w == "otherwise" = TokOtherwise
         | w == "mut" = TokMut

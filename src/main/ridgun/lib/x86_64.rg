@@ -105,16 +105,8 @@ fn :: x8664 instr size RNativeInstr       => Int
       x8664 instr size (NSeqSelect _ _)   =  28
       x8664 instr size (NEinsum _ _ _ _)  =  43
       x8664 instr size (NHadamard _ _ _ _) = 46
-      x8664 instr size (NPushCtx _ _)     =  28
-      x8664 instr size (NPopCtx _ _)      =  28
-      x8664 instr size (NHasCtx _ _)      =  25
-      x8664 instr size (NGetCtx _ _)      =  25
       x8664 instr size NEnterRegion       =  5
       x8664 instr size (NExitRegion _)    =  18
-      x8664 instr size (NHasShared _ _)   =  25
-      x8664 instr size (NGetShared _ _)   =  25
-      x8664 instr size (NInitShared _ _)  =  28
-      x8664 instr size (NStoreShared _ _) =  28
       x8664 instr size (NCallFn _ _ _)    =  13
       x8664 instr size (NCallBuiltin 36 _ _) = 101
       x8664 instr size (NCallBuiltin _ _ _) = 33
@@ -260,26 +252,10 @@ fn :: x8664 encode instr RNativeInstr Int Int Int Int [RLabelEntry] [RLabelEntry
         (x86 lea slot rdi start_slot) :: (x86 mov imm64 rsi count) :: (x86 mov imm64 rdx (rodata_vaddr + spec_off)) :: (x86 mov imm64 rcx spec_len) :: (x86 call rt 41 (cur_vaddr + 43))
       x8664 encode instr (NHadamard op_id lhs_slot subs_off subs_len) cur_vaddr _ _ rodata_vaddr _ _ =
         (x86 mov imm64 rdi op_id) :: (x86 lea slot rsi lhs_slot) :: [72, 137, 194] :: (x86 mov imm64 rcx (rodata_vaddr + subs_off)) :: (x86 mov imm64 r8 subs_len) :: (x86 call rt 42 (cur_vaddr + 46))
-      x8664 encode instr (NPushCtx key_off key_len) cur_vaddr _ _ rodata_vaddr _ _ =
-        (x86 mov imm64 rdi (rodata_vaddr + key_off)) :: (x86 mov imm64 rsi key_len) :: [72, 137, 194] :: (x86 call rt 43 (cur_vaddr + 28))
-      x8664 encode instr (NPopCtx key_off key_len) cur_vaddr _ _ rodata_vaddr _ _ =
-        (x86 mov imm64 rdi (rodata_vaddr + key_off)) :: (x86 mov imm64 rsi key_len) :: [72, 137, 194] :: (x86 call rt 44 (cur_vaddr + 28))
-      x8664 encode instr (NHasCtx key_off key_len) cur_vaddr _ _ rodata_vaddr _ _ =
-        (x86 mov imm64 rdi (rodata_vaddr + key_off)) :: (x86 mov imm64 rsi key_len) :: (x86 call rt 45 (cur_vaddr + 25))
-      x8664 encode instr (NGetCtx key_off key_len) cur_vaddr _ _ rodata_vaddr _ _ =
-        (x86 mov imm64 rdi (rodata_vaddr + key_off)) :: (x86 mov imm64 rsi key_len) :: (x86 call rt 46 (cur_vaddr + 25))
       x8664 encode instr NEnterRegion cur_vaddr _ _ _ _ _ =
         x86 call rt 47 (cur_vaddr + 5)
       x8664 encode instr (NExitRegion quota) cur_vaddr _ _ _ _ _ =
         (x86 mov imm64 rdi quota) :: [72, 137, 198] :: (x86 call rt 48 (cur_vaddr + 18))
-      x8664 encode instr (NHasShared key_off key_len) cur_vaddr _ _ rodata_vaddr _ _ =
-        (x86 mov imm64 rdi (rodata_vaddr + key_off)) :: (x86 mov imm64 rsi key_len) :: (x86 call rt 49 (cur_vaddr + 25))
-      x8664 encode instr (NGetShared key_off key_len) cur_vaddr _ _ rodata_vaddr _ _ =
-        (x86 mov imm64 rdi (rodata_vaddr + key_off)) :: (x86 mov imm64 rsi key_len) :: (x86 call rt 50 (cur_vaddr + 25))
-      x8664 encode instr (NInitShared key_off key_len) cur_vaddr _ _ rodata_vaddr _ _ =
-        (x86 mov imm64 rdi (rodata_vaddr + key_off)) :: (x86 mov imm64 rsi key_len) :: [72, 137, 194] :: (x86 call rt 51 (cur_vaddr + 28))
-      x8664 encode instr (NStoreShared key_off key_len) cur_vaddr _ _ rodata_vaddr _ _ =
-        (x86 mov imm64 rdi (rodata_vaddr + key_off)) :: (x86 mov imm64 rsi key_len) :: [72, 137, 194] :: (x86 call rt 52 (cur_vaddr + 28))
       x8664 encode instr (NCallFn fid start_slot _) cur_vaddr _ _ _ _ fn_table =
         target_fn = lookup label offset fn_table fid
         (x86 lea slot rdi start_slot) :: (x86 call rel target_fn (cur_vaddr + 13))
