@@ -14,7 +14,7 @@ python3 tests/run.py --no-toolchain   # cases only
 - `RIDGUNC=/path/to/ridgunc` tests another build. The default is `bin/ridgunc`.
 - Work folders go to `~/.cache/ridgun-compiler-tests/work`. They never go to `/tmp`, which is a tmpfs with limited inodes, and never inside a repository.
 - Builds and runs are capped at 4 GB of address space and a time limit.
-- The run ends with a list of what failed and exits with 1 if anything did.
+- The run ends with the promised behaviours that failed, then the proposals not met. It exits with 1 only if a promised behaviour failed.
 
 ## A case
 ```ridgun
@@ -26,6 +26,8 @@ python3 tests/run.py --no-toolchain   # cases only
 -- expect-exit: 3              (optional; 0 by default)
 -- max-ms: 1000                (optional: wall-time limit for the run)
 -- max-rss-mb: 16              (optional: peak resident memory limit for the run)
+-- max-cpu-ms: 150             (optional: user + system CPU limit for the run; a busy wait shows here)
+-- kind: proposal               (optional: no document promises it; reported apart, doesn't fail the run)
 
 fn :: main => ()
       main =  …
@@ -49,12 +51,14 @@ fn :: main => ()
 | `records/` | `r with f = v, g = w` copies, also as the last line of a block | current syntax (see below); Solstice register RG-068 |
 | `strings/` | interpolation and brace escapes; raw `'…'` strings; `str_char_at` out of range is -1; cutting at any index and joining gives the text back | spec.md:28-56; book 03:129-130 |
 | `literals/`, `logic/` | `-100`, hex, digit separators, `_KB` / `_MB` / `_GB`; truth tables of `and` / `or` / `xor` / `not` | book 03:67, 87-98; spec.md:313-329 |
-| `agents/` | stateless FIFO with one and two arguments; stateful `S M => S` and `S M => S R`; `ask` in both styles; `try receive`, `stop`, `agent alive`; 50 000 messages without memory growth | FR-COMP-009 AC-1–AC-3; FR-COMP-002 ("leak-free"); Solstice register RG-069 |
+| `agents/` | stateless FIFO with one and two arguments; stateful `S M => S` and `S M => S R`; `ask` in both styles; `try receive`, `stop`, `agent alive`; `try receive` of a record; polling while the agent sleeps costs almost no CPU; 50 000 messages without memory growth | FR-COMP-009 AC-1–AC-3, §3, §6; FR-COMP-002 ("leak-free"); Solstice register RG-063, RG-069, RG-072 |
+| `names/` | a parameter or local binding named like a top-level 0-argument function means the parameter or binding | lexical scoping (spec.md:105-123, 674-695); the compiler team's TASK-0024 (RG-073) |
+| `files/` | `read_file` gives back exactly what `write_file` wrote, for every byte value | consistency; Solstice register RG-089 |
 | `removed/` | `global ::` and `spawn` / `join` must not compile | FR-COMP-009 §5, AC-4 |
 | `syntax/` | a top-level line that is no known declaration must not build (today it is dropped silently) | spec.md (a file is a sequence of declarations); Solstice register RG-090 |
 | `strict/` | `--strict` refuses `_` in declared names and `(Int, Int)` returns | book 02:193-197; FR-COMP-008 |
 | `runtime/` | `sys_exit n` exits with n and stops there | FR-VM-002:32,45 |
-| `perf/` | building a 20 000-element list at either end in under 1 s. **A proposal**: no document promises it | Solstice register RG-085 |
+| `perf/` | **Proposals** (`-- kind: proposal`): building a 20 000-element list at either end in under 1 s; 8 agents on 8 equal jobs at once take no longer than one thread doing them in turn | Solstice register RG-085, RG-079 |
 
 ## Decisions pending
 The documents leave these points open, or say different things in different places. No case tests them. Each needs a decision, written in spec.md, and then a case.

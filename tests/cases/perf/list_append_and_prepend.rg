@@ -4,6 +4,7 @@
 -- expect-output:
 --   20000 20000
 -- max-ms: 1000
+-- kind: proposal
 
 fn :: at end Int [Int] => [Int]
       at end n acc =

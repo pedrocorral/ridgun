@@ -13,6 +13,8 @@ Each case is a Ridgun program under tests/cases/<area>/ whose header says what m
   -- expect-exit: N            the program must exit with N (default 0 when there is expected output)
   -- max-ms: N                 the run must take at most N ms of wall time
   -- max-rss-mb: N             the run's peak resident memory must stay under N MB
+  -- max-cpu-ms: N             the run's user + system CPU time must stay under N ms (a busy wait shows here)
+  -- kind: proposal            nothing in the documents promises this: reported apart, doesn't fail the run
   -- uses-libs                 copy ridgun-libs bundles next to the case (only when the case imports a library)
 Every build is `ridgunc build --strict`: cases are written in the canonical style (spaced names in declarations).
 Builds and runs are capped at 4 GB of address space and a time limit. The work folder is
@@ -46,13 +48,17 @@ def sh(cmd, cwd, timeout):
         timer.cancel()
     p.returncode = os.waitstatus_to_exitcode(status)
     ms = (time.monotonic() - t0) * 1000
+    CPU_MS[0] = (usage.ru_utime + usage.ru_stime) * 1000
     if ms >= timeout * 1000:
         return -1, f"timed out after {timeout} s", ms, usage.ru_maxrss
     return p.returncode, out.decode("utf-8", "replace"), ms, usage.ru_maxrss
 
 
+CPU_MS = [0.0]
+
+
 def header(path):
-    h = {"output": None, "build_error": None, "exit": None, "max_ms": None, "max_rss_mb": None, "libs": False, "case": "", "source": ""}
+    h = {"output": None, "build_error": None, "exit": None, "max_ms": None, "max_rss_mb": None, "max_cpu_ms": None, "libs": False, "case": "", "source": "", "proposal": False}
     lines = open(path, encoding="utf-8").read().split("\n")
     i = 0
     while i < len(lines) and lines[i].startswith("--"):
@@ -68,11 +74,13 @@ def header(path):
         for key, name in [("-- case:", "case"), ("-- source:", "source"), ("-- expect-build-error:", "build_error")]:
             if l.startswith(key):
                 h[name] = l[len(key):].strip()
-        for key, name in [("-- expect-exit:", "exit"), ("-- max-ms:", "max_ms"), ("-- max-rss-mb:", "max_rss_mb")]:
+        for key, name in [("-- expect-exit:", "exit"), ("-- max-ms:", "max_ms"), ("-- max-rss-mb:", "max_rss_mb"), ("-- max-cpu-ms:", "max_cpu_ms")]:
             if l.startswith(key):
                 h[name] = int(l[len(key):].strip())
         if l.strip() == "-- uses-libs":
             h["libs"] = True
+        if l.strip() == "-- kind: proposal":
+            h["proposal"] = True
         i += 1
     return h
 
@@ -113,7 +121,13 @@ def run_case(path):
         problems.append(f"took {ms:.0f} ms, limit {h['max_ms']} ms")
     if h["max_rss_mb"] is not None and rss_kb > h["max_rss_mb"] * 1024:
         problems.append(f"peak memory {rss_kb / 1024:.1f} MB, limit {h['max_rss_mb']} MB")
+    if h["max_cpu_ms"] is not None and CPU_MS[0] > h["max_cpu_ms"]:
+        problems.append(f"used {CPU_MS[0]:.0f} ms of CPU in {ms:.0f} ms of wall time, limit {h['max_cpu_ms']} ms")
+    PROPOSAL[rel] = h["proposal"]
     return rel, not problems, "\n       ".join(problems)
+
+
+PROPOSAL = {}
 
 
 def diff(want, got):
@@ -180,13 +194,18 @@ def main():
     for c in cases:
         r = run_case(c)
         rows.append(r)
-        print(("ok   " if r[1] else "FAIL ") + r[0] + ("" if r[1] else "\n       " + r[2]), flush=True)
+        tag = "ok   " if r[1] else ("UNMET" if PROPOSAL.get(r[0]) else "FAIL ")
+        print(tag + " " * (5 - len(tag)) + r[0] + ("" if r[1] else "\n       " + r[2]), flush=True)
     if "--no-toolchain" not in sys.argv and not args:
         for r in toolchain():
             rows.append(r)
             print(("ok   " if r[1] else "FAIL ") + r[0] + ("" if r[1] else "\n       " + r[2]), flush=True)
-    failed = [r[0] for r in rows if not r[1]]
-    print(f"\n{len(rows) - len(failed)} of {len(rows)} passed" + (":\n  " + "\n  ".join(failed) if failed else ""))
+    failed = [r[0] for r in rows if not r[1] and not PROPOSAL.get(r[0])]
+    unmet = [r[0] for r in rows if not r[1] and PROPOSAL.get(r[0])]
+    promised = [r for r in rows if not PROPOSAL.get(r[0])]
+    print(f"\n{len(promised) - len(failed)} of {len(promised)} promised behaviours passed" + (":\n  " + "\n  ".join(failed) if failed else ""))
+    if unmet:
+        print(f"{len(unmet)} proposal(s) not met (no document promises them; they don't fail the run):\n  " + "\n  ".join(unmet))
     sys.exit(1 if failed else 0)
 
 
