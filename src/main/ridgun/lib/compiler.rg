@@ -1307,6 +1307,7 @@ fn :: builtin zero arg id String             => Int
       builtin zero arg id "sys_time_ms"      =  71
       builtin zero arg id "sys_deadline_ms"  =  72
       builtin zero arg id "sys_remaining_ms" =  73
+      builtin zero arg id "sys_pipe"         =  86
       builtin zero arg id "cmm_live_blocks"  =  5
       builtin zero arg id "cmm_cond_spared"  =  6
       builtin zero arg id "cmm_cond_freed"   =  7
@@ -1392,6 +1393,8 @@ fn :: builtin call id String             => Int
       builtin call id "sys_terminate"    =  81
       builtin call id "sys_kill"         =  82
       builtin call id "sys_call"         =  83
+      builtin call id "sys_pipe"         =  86
+      builtin call id "sys_waitpid"      =  87
       builtin call id _                  =  -1
 
 -- ── Expression & Statement Lowering to Native IR ─────────────
@@ -2258,12 +2261,11 @@ fn :: lower tco arg expr RNativeEnv RExpr [RExpr] [String] [String] Int RNativeC
       lower tco arg expr env (EVar v) es bound_locals scope_vars sp st
         | can_move_param_var v bound_locals scope_vars (cmm_expr_list_vars es []) =
           nc_emit st (NMoveSlot (env_var_slot env v)) sp
-      lower tco arg expr env (EBin OpConcat (EVar v) rhs) es bound_locals scope_vars sp st
-        | can_move_param_var v bound_locals scope_vars (cmm_expr_vars rhs (cmm_expr_list_vars es [])) =
-          vslot = env_var_slot env v
-          st1 = nc_emit_list st [NMoveSlot vslot, NStoreSlot sp] (sp + 1)
-          st2 = lower_expr env rhs bound_locals (sp + 1) st1
-          nc_emit st2 (NBinOp 14 sp) (sp + 1)
+      lower tco arg expr env (EBin OpConcat l r) es bound_locals scope_vars sp st =
+        st1 = lower_tco_arg_expr env l ([r] :: es) bound_locals scope_vars sp st
+        st2 = nc_emit st1 (NStoreSlot sp) (sp + 1)
+        st3 = lower_tco_arg_expr env r es bound_locals scope_vars (sp + 1) st2
+        nc_emit st3 (NBinOp 14 sp) (sp + 1)
       lower tco arg expr env (ETuple elems) es bound_locals scope_vars sp st =
         count = rexpr_list_len elems
         st1 = lower_tco_arg_list_to_slots env elems es bound_locals scope_vars sp 0 st

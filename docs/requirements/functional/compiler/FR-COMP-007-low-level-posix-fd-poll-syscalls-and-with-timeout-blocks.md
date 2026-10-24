@@ -26,7 +26,9 @@ The Ridgun compiler (`ridgunc`), its native runtime kernels (`x86_64.rg` and `ar
    - `sys write fd Int String => Int` (`fd`, `data` -> bytes written or `-errno`).
    - `sys poll Int Int Int => Int` (`fd`, Ridgun PAL normalized `events` (`1` = readable/`POLLIN`, `4` = writable/`POLLOUT`, `8` = error/`POLLERR`, `16` = hangup/`POLLHUP`), `timeout_ms` -> `> 0` ready event mask, `0` on timeout, `< 0` on error; when `timeout_ms < 0` inside an active `with timeout` block, automatically uses `sys remaining ms`).
    - `sys terminate Int Bool => Int` (`pid`, `force` -> cross-platform graceful/forced process termination: `SIGTERM`/`SIGKILL` on POSIX, `TerminateProcess` on Windows) and `sys kill Int Int => Int` (`pid`, normalized signal `0`/`2`/`9`/`15` -> `0` or `-errno`).
-   - `sys call Int Int Int Int Int Int Int => Int` (`nr`, `a1..a6` -> low-level target-OS ABI syscall escape hatch for platform-specific drivers).
+   - `sys pipe => Int Int` (`=> (Int, Int)` returning `(read_fd, write_fd)` via `__NR_pipe`, or `(-1, -1)` on error).
+   - `sys waitpid Int Int => Int Int` (`pid`, `options` (`0` = blocking wait, `1` = `WNOHANG`) -> `(ret_pid, exit_status)` via `__NR_wait4`, where `exit_status` is decoded with `WIFEXITED`/`WEXITSTATUS` (`0..255`) or `WIFSIGNALED` (`128 + WTERMSIG`), `0` when `WNOHANG` returns `0`, or `-1` on error).
+   - `sys call Int Int Int Int Int Int Int => Int` (`nr`, `a1..a6` -> low-level target-OS ABI syscall escape hatch for platform-specific drivers, e.g., `fork` = `57` and `dup2` = `33` on Linux `x86_64`).
 2. **Layer 2 (Declarative `with timeout <duration> do` Execution Quota)**:
    - Duration literals in the lexer (`_ms`, `_s`, `_min`, e.g. `500_ms` -> `500`, `5_s` -> `5000`, `2_min` -> `120000`).
    - `with timeout <ms_expr> do <body>` (and combined `with region <bytes>, timeout <ms> do <body>`) syntax in the parser, formatter, typechecker, analyzer, and compiler.

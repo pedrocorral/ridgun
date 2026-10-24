@@ -149,8 +149,12 @@ fn :: build elf64 shared image Int Int Int Int Int [Int] Int [Int] Int String =>
       build elf64 shared image machine main_vaddr spawn_vaddr call2_vaddr binop_vaddr rt_bytes rt_len code_bytes code_len rodata_str =
         build elf64 image kind 3 machine main_vaddr spawn_vaddr call2_vaddr binop_vaddr rt_bytes rt_len code_bytes code_len rodata_str
 
+fn :: check chmod status Int => Int
+      check chmod status 0   =  0
+      check chmod status _   =  1
+
 fn :: write elf64 executable String     [Int]     => Int
       write elf64 executable output_bin elf_bytes =
         _ = write bytes output_bin elf_bytes
-        _ = sys chmod output_bin 493
-        0
+        rc = sys chmod output_bin 493
+        check chmod status rc

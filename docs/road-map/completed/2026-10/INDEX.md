@@ -9,3 +9,4 @@ Tasks completed this month, newest last.
 | `TASK-0012-implement-low-level-linux-fd-poll-syscall-primitiv.md` | Implement cross-platform PAL I/O, polling, process & syscall primitives and declarative `with timeout` blocks | `FR-COMP-007` |
 | `TASK-0014-refactor-stable-to-consume-standard-libraries-str-.md` | Refactor `stable` to consume standard libraries (`str`, `posix`, `io`, `list`, `cli`) from `ridgun-libs` | `FR-TOOL-002`, `FR-TOOL-003`, `FR-COMP-006` |
 | `TASK-0022-implement-first-class-typed-tensor-subscript-views.md` | Implement first-class typed `Tensor[...]`, subscript views, `map f in m_(i,)`, and native bitwise operations | `FR-COMP-010`, `ADR-0001` |
+| `TASK-0025-fix-acceptance-suite-issues-rg-081-rg-085-rg-087-r.md` | Fix acceptance suite issues (`RG-081`, `RG-085`, `RG-087`, `RG-089`, `RG-090`) and add `sys_pipe` / `sys_waitpid` PAL built-ins | `FR-COMP-007`, `FR-COMP-009`, `FR-VM-001` |

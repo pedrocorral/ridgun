@@ -76,6 +76,8 @@ fn :: null device for SysOs   => String
 | `sys getpid` | `=> Int` | Current process ID (`> 0`). |
 | `sys terminate` | `Int Bool => Int` | Cross-platform process termination: `force = False` sends graceful termination (`SIGTERM` on POSIX), `force = True` forces immediate termination (`SIGKILL` on POSIX, `TerminateProcess` on Windows). Returns `0` or `-errno`. |
 | `sys kill` | `Int Int => Int` | Sends normalized signal (`0` = existence probe, `2` = `SIGINT`, `9` = `SIGKILL`, `15` = `SIGTERM`) to `pid` (or process group when `pid < 0`). Returns `0` or `-errno`. |
+| `sys pipe` | `=> Int Int` | Creates an OS pipe (`__NR_pipe = 22`) and returns `(read_fd, write_fd)` (or `(-1, -1)` on error). |
+| `sys waitpid` | `Int Int => Int Int` | Waits for child process `pid` with `options` (`0` = blocking, `1` = `WNOHANG`) via `__NR_wait4 = 61` and returns `(ret_pid, exit_status)` decoded via `WIFEXITED`/`WEXITSTATUS` (`0..255`) and `WIFSIGNALED` (`128 + WTERMSIG`). |
 | `sys call` | `Int Int Int Int Int Int Int => Int` | Low-level target-ABI raw syscall (`nr`, `a1..a6`) for OS-specific drivers. Guard with `sys os` / `sys arch` when used. |
 
 ---

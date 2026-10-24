@@ -1974,7 +1974,7 @@ fn :: arity matches Int Int    => Bool
 
 fn :: builtin arity entries => [RArityEntry]
       builtin arity entries =
-        [ArityEntry "assert_equals" 2, ArityEntry "assert_true" 1, ArityEntry "send_to" 2, ArityEntry "ask_to" 2, ArityEntry "send_through" 2, ArityEntry "receive_from" 1, ArityEntry "try_receive_from" 1, ArityEntry "receive_from_timeout" 2, ArityEntry "stop" 1, ArityEntry "agent_alive" 1, ArityEntry "new_mailbox" 0, ArityEntry "new_channel" 0, ArityEntry "new_bounded_channel" 1, ArityEntry "chan_send" 2, ArityEntry "chan_recv" 1, ArityEntry "chan_try_recv" 1, ArityEntry "str_len" 1, ArityEntry "str_char_at" 2, ArityEntry "str_slice" 3, ArityEntry "str_contains" 2, ArityEntry "str_starts_with" 2, ArityEntry "str_concat" 2, ArityEntry "int_to_str" 1, ArityEntry "str_to_int" 1, ArityEntry "char_from_code" 1, ArityEntry "trim_str" 1, ArityEntry "read_file" 1, ArityEntry "load_rg_source" 1, ArityEntry "read_bytes" 1, ArityEntry "write_bytes" 2, ArityEntry "write_file" 2, ArityEntry "shell_exec" 1, ArityEntry "list_str_len" 1, ArityEntry "list_dir" 1, ArityEntry "file_lstat" 1, ArityEntry "sha256_file" 1, ArityEntry "sha256_str" 1, ArityEntry "sha256_raw" 1, ArityEntry "sha256_bytes" 1, ArityEntry "sys_os" 0, ArityEntry "sys_arch" 0, ArityEntry "sys_mkdir" 2, ArityEntry "sys_chmod" 2, ArityEntry "sys_exec" 3, ArityEntry "sys_chdir" 1, ArityEntry "sys_getcwd" 0, ArityEntry "sys_getenv" 1, ArityEntry "sys_setenv" 2, ArityEntry "sys_exit" 1, ArityEntry "sys_getuid" 0, ArityEntry "sys_getgid" 0, ArityEntry "sys_getpid" 0, ArityEntry "sys_time_ms" 0, ArityEntry "sys_deadline_ms" 0, ArityEntry "sys_remaining_ms" 0, ArityEntry "sys_sleep_ms" 1, ArityEntry "sys_open_mode" 2, ArityEntry "sys_open" 3, ArityEntry "sys_close" 1, ArityEntry "sys_read_fd" 2, ArityEntry "sys_write_fd" 2, ArityEntry "sys_poll" 3, ArityEntry "sys_terminate" 2, ArityEntry "sys_kill" 2, ArityEntry "sys_call" 7, ArityEntry "sys_username" 1, ArityEntry "sys_user_groups" 1, ArityEntry "sys_lookup_uid_gid" 1, ArityEntry "sys_setresgid" 1, ArityEntry "sys_setgroups" 1, ArityEntry "sys_setresuid" 1, ArityEntry "sys_execve" 3, ArityEntry "sys_read_pass" 1, ArityEntry "cli_args" 0, ArityEntry "cmm_live_blocks" 0, ArityEntry "cmm_cond_spared" 0, ArityEntry "cmm_cond_freed" 0, ArityEntry "cmm_same_ptr" 2, ArityEntry "seq_map" 2, ArityEntry "par_map" 2, ArityEntry "seq_filter" 2, ArityEntry "par_filter" 2]
+        [ArityEntry "assert_equals" 2, ArityEntry "assert_true" 1, ArityEntry "send_to" 2, ArityEntry "ask_to" 2, ArityEntry "send_through" 2, ArityEntry "receive_from" 1, ArityEntry "try_receive_from" 1, ArityEntry "receive_from_timeout" 2, ArityEntry "stop" 1, ArityEntry "agent_alive" 1, ArityEntry "new_mailbox" 0, ArityEntry "new_channel" 0, ArityEntry "new_bounded_channel" 1, ArityEntry "chan_send" 2, ArityEntry "chan_recv" 1, ArityEntry "chan_try_recv" 1, ArityEntry "str_len" 1, ArityEntry "str_char_at" 2, ArityEntry "str_slice" 3, ArityEntry "str_contains" 2, ArityEntry "str_starts_with" 2, ArityEntry "str_concat" 2, ArityEntry "int_to_str" 1, ArityEntry "str_to_int" 1, ArityEntry "char_from_code" 1, ArityEntry "trim_str" 1, ArityEntry "read_file" 1, ArityEntry "load_rg_source" 1, ArityEntry "read_bytes" 1, ArityEntry "write_bytes" 2, ArityEntry "write_file" 2, ArityEntry "shell_exec" 1, ArityEntry "list_str_len" 1, ArityEntry "list_dir" 1, ArityEntry "file_lstat" 1, ArityEntry "sha256_file" 1, ArityEntry "sha256_str" 1, ArityEntry "sha256_raw" 1, ArityEntry "sha256_bytes" 1, ArityEntry "sys_os" 0, ArityEntry "sys_arch" 0, ArityEntry "sys_mkdir" 2, ArityEntry "sys_chmod" 2, ArityEntry "sys_exec" 3, ArityEntry "sys_chdir" 1, ArityEntry "sys_getcwd" 0, ArityEntry "sys_getenv" 1, ArityEntry "sys_setenv" 2, ArityEntry "sys_exit" 1, ArityEntry "sys_getuid" 0, ArityEntry "sys_getgid" 0, ArityEntry "sys_getpid" 0, ArityEntry "sys_time_ms" 0, ArityEntry "sys_deadline_ms" 0, ArityEntry "sys_remaining_ms" 0, ArityEntry "sys_sleep_ms" 1, ArityEntry "sys_open_mode" 2, ArityEntry "sys_open" 3, ArityEntry "sys_close" 1, ArityEntry "sys_read_fd" 2, ArityEntry "sys_write_fd" 2, ArityEntry "sys_poll" 3, ArityEntry "sys_terminate" 2, ArityEntry "sys_kill" 2, ArityEntry "sys_call" 7, ArityEntry "sys_pipe" 0, ArityEntry "sys_waitpid" 2, ArityEntry "sys_username" 1, ArityEntry "sys_user_groups" 1, ArityEntry "sys_lookup_uid_gid" 1, ArityEntry "sys_setresgid" 1, ArityEntry "sys_setgroups" 1, ArityEntry "sys_setresuid" 1, ArityEntry "sys_execve" 3, ArityEntry "sys_read_pass" 1, ArityEntry "cli_args" 0, ArityEntry "cmm_live_blocks" 0, ArityEntry "cmm_cond_spared" 0, ArityEntry "cmm_cond_freed" 0, ArityEntry "cmm_same_ptr" 2, ArityEntry "seq_map" 2, ArityEntry "par_map" 2, ArityEntry "seq_filter" 2, ArityEntry "par_filter" 2]
 
 fn :: collect fn arities acc [RFnDef] [RArityEntry] => [RArityEntry]
       collect fn arities acc []       acc           =  acc :: builtin_arity_entries
@@ -2131,6 +2131,8 @@ fn :: is std builtin String             => Bool
       is std builtin "sys_terminate"    =  True
       is std builtin "sys_kill"         =  True
       is std builtin "sys_call"         =  True
+      is std builtin "sys_pipe"         =  True
+      is std builtin "sys_waitpid"      =  True
       is std builtin "sys_username"     =  True
       is std builtin "sys_user_groups"  =  True
       is std builtin "sys_lookup_uid_gid" = True
@@ -2632,7 +2634,7 @@ fn :: append own rg after local String (String, [String]) => String [String]
 
 fn :: append own rg local String String String String [String] => String [String]
       append own rg local _ clean_spec "" acc seen1 =
-        (acc + "import " + clean_spec + "\n", seen1)
+        (acc + "import \"" + clean_spec + "\"\n", seen1)
       append own rg local pdir clean_spec local_rg acc seen1 =
         res = scan_own_rg_lines pdir local_rg 0 (str_len local_rg) 0 0 acc seen1
         append_own_rg_after_local clean_spec res
@@ -2640,7 +2642,7 @@ fn :: append own rg local String String String String [String] => String [String
 fn :: append own rg import String String String [String] => String [String]
       append own rg import pdir clean_spec acc seen
         | str_in_seen_list clean_spec seen = (acc, seen)
-        | has_same_dir_rglib pdir clean_spec = (acc + "import " + clean_spec + "\n", [clean_spec] :: seen)
+        | has_same_dir_rglib pdir clean_spec = (acc + "import \"" + clean_spec + "\"\n", [clean_spec] :: seen)
         | otherwise =
           local_rg = read_local_rg_module pdir clean_spec
           append_own_rg_local pdir clean_spec local_rg acc ([clean_spec] :: seen)
@@ -2702,6 +2704,13 @@ fn :: tokens have user src marker [RToken] => Bool
       tokens have user src marker (TokAt:(TokIdent "__rg_user_src__"):_) = True
       tokens have user src marker (_:ts) = tokens_have_user_src_marker ts
 
+fn :: line has colon colon [RToken]          => Bool
+      line has colon colon []                =  False
+      line has colon colon (TokEof:_)        =  False
+      line has colon colon (TokNewline:_)    =  False
+      line has colon colon (TokColonColon:_) =  True
+      line has colon colon (_:ts)            =  line_has_colon_colon ts
+
 fn :: parse items scoped [RToken] [RFnDef] [RTypeDef] Bool => RProgram
       parse items scoped []                 fns      tys        _      =  Program fns tys
       parse items scoped (TokEof:_)         fns      tys        _      =  Program fns tys
@@ -2709,6 +2718,7 @@ fn :: parse items scoped [RToken] [RFnDef] [RTypeDef] Bool => RProgram
       parse items scoped (TokAt:(TokIdent "__rg_user_src__"):rest) fns tys _ =
         parse_items_scoped (skip_to_newline rest) fns tys False
       parse items scoped (TokAt:rest)       fns      tys        in_lib =  parse_items_scoped (skip_to_newline rest) fns tys in_lib
+      parse items scoped ((TokIdent "RGC1"):rest) fns tys      in_lib =  parse_items_scoped (skip_to_newline rest) fns tys in_lib
       parse items scoped (TokImport:rest)   fns      tys        in_lib =  parse_items_scoped (skip_to_newline rest) fns tys in_lib
       parse items scoped (TokFn:rest)       fns      tys        in_lib =
         f_res = parse_fn_decl ([TokFn] :: rest)
@@ -2726,8 +2736,10 @@ fn :: parse items scoped [RToken] [RFnDef] [RTypeDef] Bool => RProgram
         t_res = parse_type_decl ([TokType, TokIdent name, TokEquals] :: rest)
         parse_items_after_type_scoped t_res fns tys in_lib
       parse items scoped ts                 fns      tys        in_lib
-        | line_has_fat_arrow ts = parse_items_after_fn_scoped (parse_bare_decl ts) fns tys in_lib
-        | otherwise = parse_items_scoped (skip_to_newline (tok_tail ts)) fns tys in_lib
+        | (NOT (line_has_colon_colon ts)) AND (line_has_fat_arrow ts) = parse_items_after_fn_scoped (parse_bare_decl ts) fns tys in_lib
+        | otherwise =
+          err_fn = FnDef "__syntax_error__" [] "Int" [FnCase [] [] (ECall "__syntax_error__" [EStr "unknown or invalid top-level declaration"])]
+          parse_items_scoped (skip_to_newline (tok_tail ts)) (merge_fn_def_scoped fns err_fn in_lib) tys in_lib
 
 fn :: parse items [RToken] [RFnDef] [RTypeDef] => RProgram
       parse items toks     fns      tys        =
@@ -2854,7 +2866,7 @@ fn :: has fn def name [RFnDef] String => Bool
 fn :: merge fn def scoped [RFnDef] RFnDef Bool => [RFnDef]
       merge fn def scoped fns (FnDef name ps ret cs) in_lib
         | (cases_have_any_adt_ctor cs) AND (has_extensible_fn_def fns (FnDef name ps ret cs)) = update_fn_def fns (FnDef name ps ret cs)
-        | in_lib AND (name != "__unresolved_import__") AND (has_fn_def_name fns name) = fns
+        | in_lib AND (name != "__unresolved_import__") AND (name != "__syntax_error__") AND (has_fn_def_name fns name) = fns
         | otherwise = fns :: [FnDef name ps ret cs]
 
 fn :: merge fn def [RFnDef] RFnDef => [RFnDef]

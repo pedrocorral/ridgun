@@ -39,6 +39,18 @@ fn :: resolve ridgunc bin => String
         | is file "target/ridgunc"           = "target/ridgunc"
         | otherwise                          = "bin/ridgunc"
 
+fn :: tuple fst (Int Int) => Int
+      tuple fst (a, _)    =  a
+
+fn :: tuple snd (Int Int) => Int
+      tuple snd (_, b)    =  b
+
+fn :: wait child exit Int => Int Int
+      wait child exit 0 =
+        _ = sys exit 42
+        (0, 0)
+      wait child exit pid =  sys waitpid pid 0
+
 fn :: run pal timeout block String   => Int
       run pal timeout block pal_file =
         with timeout 500_ms do
@@ -362,6 +374,21 @@ fn :: main => ()
         assert equals (sys kill my_pid 0) 0
         -- Invalid negative pid returns negative errno
         assert true ((sys terminate (0 - 999999) False) < 0)
+        -- 4b. `sys pipe` (`=> (Int, Int)`) and `sys waitpid` (`Int Int => (Int, Int)`) with `fork` (`sys call 57 ...`)
+        pfds = sys pipe
+        pipe_rfd = tuple fst pfds
+        pipe_wfd = tuple snd pfds
+        assert true (pipe_rfd >= 0)
+        assert true (pipe_wfd >= 0)
+        _ = sys write fd pipe_wfd "pipe-msg"
+        assert equals (sys close pipe_wfd) 0
+        pipe_out = sys read fd pipe_rfd 32
+        assert equals pipe_out "pipe-msg"
+        assert equals (sys close pipe_rfd) 0
+        child_pid = sys call 57 0 0 0 0 0 0
+        wres = wait child exit child_pid
+        assert equals (tuple fst wres) child_pid
+        assert equals (tuple snd wres) 42
         -- 5. `with timeout`, `sys deadline ms`, `sys remaining ms`, nested clamping & `sys poll`
         assert equals (sys deadline ms) 0
         assert equals (sys remaining ms) (0 - 1)
