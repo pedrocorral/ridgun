@@ -23,18 +23,18 @@ fn :: reverse [Int]  => [Int]
       reverse (x:xs) =  reverse xs :: [x]
 
 -- Length of a list
-fn :: list_length [Int]  => Int
-      list_length []     =  0
-      list_length (_:xs) =  1 + list_length xs
+fn :: list length [Int]  => Int
+      list length []     =  0
+      list length (_:xs) =  1 + list_length xs
 
 -- Sequence selector: extract first element via seq binding
-fn :: first_of_seq Int Int => Int
-      first_of_seq (s)     =  s(+ _)
+fn :: first of seq Int Int => Int
+      first of seq (s)     =  s(+ _)
 
 -- Sequence selector: extract endpoInts from a 4-seq
 fn :: endpoints Int Int Int Int => Int
       endpoints (s)             =  s(+ _ _ _)
 
 -- Sequence index selector: extract by position
-fn :: extreme_points Int Int Int Int => Int
-      extreme_points (s)             =  s(0 3)
+fn :: extreme points Int Int Int Int => Int
+      extreme points (s)             =  s(0 3)

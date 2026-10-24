@@ -190,4 +190,23 @@ All functions, operators, and types from `geometry` become available immediately
 - **In `build.rg`**: declare any `fn :: task <words...> => String` (e.g., `fn :: task serve web => String`) and run it via `stable serve web`.
 - **In `plugins/*.rg` or `.stable/plugins/*.rg`**: drop `.rg` plugin modules that contribute `fn :: task ...` commands or their own `fn :: main => ()` entrypoint, or extend `expand type StableCommand`. Inspect active extensions anytime with `stable tasks` and `stable plugins`.
 
+### 4. Opt-in Strict Mode (`--strict` and `strict mode = True`)
+By default, neither `ridgunc` nor new projects scaffolded with `stable new` or `stable init` enable strict mode. However, when you want to enforce 100% canonical space-separated Ridgun style across a project, pass `--strict` to `ridgunc` (`ridgunc check --strict`, `ridgunc build --strict`) or set `fn :: strict mode => Bool` (`strict mode = True`) in `build.rg`. Strict mode rejects with a **compilation error**:
+1. Any underscore `_` inside a `fn ::` or `op ::` declaration name (write `fn :: compute total`, never `fn :: compute_total`; local variable names and record field names may still use `_`).
+2. Any parenthesized or comma-separated multi-value return type after `=>` (write `=> Int Int` or `=> RToken [RToken]`, never `=> (Int, Int)`).
+
+---
+
+## 2.6. The Standard and Cryptographic Library Ecosystem (`ridgun-libs`)
+
+Ridgun ships with an official suite of **32 pure-Ridgun libraries** (`ridgun-libs`), compiled as `.rglib` bundles and ELF64 `.so` shared libraries ready to import via `import <name>`:
+
+| Family | Libraries (`import ...`) | What They Provide |
+|---|---|---|
+| **1. Text, Formats & Templates** | `str`, `fmt`, `regex`, `diff`, `template`, `json`, `csv`, `ini`, `codec` | String processing, tabular formatting, Thompson NFA regular expressions (`regex`), Myers diff (`diff`), logic-less templates (`template`), `json`/`csv`/`ini` parsers and serializers, and hex/Base64 encoding (`codec`). |
+| **2. Collections, Math & Tensor Algebra** | `list`, `btree`, `math`, `tensor`, `linalg` | Functional list algorithms, ordered in-memory B-trees (`btree`), numerical routines (`math`), typed tensor views/builders (`tensor`), and linear algebra decompositions (`linalg`). |
+| **3. OS, Filesystem & CLI** | `posix`, `io`, `path`, `glob`, `cli`, `time`, `log`, `uuid`, `test` | POSIX descriptors and signals (`posix`), deadline-aware I/O (`io`), path/glob matching (`path`, `glob`), typed CLI flags (`cli`), monotonic clocks (`time`), structured logging (`log`), RFC 4122 `uuid`, and test assertions (`test`). |
+| **4. Cryptography & Security** | `crypto`, `argon2id`, `jwt` | Raw 32-byte binary SHA-256 (`sha256 raw` / `sha256 bytes`), HMAC-SHA-256, PBKDF2-HMAC-SHA-256, HKDF, ChaCha20-Poly1305 AEAD (`crypto`), RFC 9106 `argon2id` password hashing over `Tensor[U64 * 8 * 16]` with zero-allocation BlaMka permutations (`argon2id`), and signed tokens (`jwt`). |
+| **5. Networking, Protocols & Agents** | `socket`, `http`, `ws`, `agent`, `pool`, `net_agent` | POSIX TCP/UDP sockets (`socket`), HTTP/1.1 client/server (`http`), RFC 6455 WebSockets (`ws`), agent supervisors (`agent`), worker pools (`pool`), and reactive agent-driven network servers (`net_agent`). |
+
 Now that you have the toolbox and libraries under control, let's move on to **Chapter 03** to master functions, types, blocks, and string tricks.

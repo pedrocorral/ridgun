@@ -86,6 +86,10 @@ fn :: project version => String
 fn :: project kind => String
       project kind =  "both"
 
+-- Opcional: modo estricto (prohíbe '_' en nombres fn/op y exige retornos '=> Int Int')
+fn :: strict mode => Bool
+      strict mode =  True
+
 fn :: main entry => String
       main entry =  "src/main/ridgun/app/main.rg"
 
@@ -194,5 +198,24 @@ Y listo: todas las funciones, operadores y tipos de `geometria` están disponibl
 ¿Quieres añadir comandos propios para tu framework web, tus migraciones de base de datos o tu flujo de despliegue?
 - **En `build.rg`**: declara cualquier función `fn :: task <palabras...> => String` (por ejemplo, `fn :: task levantar servidor => String`) y ejecútala con `stable levantar servidor`.
 - **En `plugins/*.rg` o `.stable/plugins/*.rg`**: coloca módulos `.rg` que definan tareas `fn :: task ...` o su propio `fn :: main => ()`, o extiende el tipo abierto `expand type StableCommand` de `stable`. Ejecuta `stable tasks` y `stable plugins` para inspeccionarlos en cualquier momento.
+
+### 4. El modo estricto opcional (`--strict` y `strict mode = True`)
+Por defecto, ni `ridgunc` ni los proyectos nuevos creados con `stable new` o `stable init` activan el modo estricto. Sin embargo, cuando quieras garantizar en tu propio proyecto que todo el equipo siga al 100% la convención canónica de espacios naturales de Ridgun, puedes pasar `--strict` a `ridgunc` (`ridgunc check --strict`, `ridgunc build --strict`) o declarar `strict mode = True` en tu `build.rg`. El modo estricto convierte en **error de compilación**:
+1. Cualquier guion bajo `_` dentro del nombre de una declaración `fn ::` u `op ::` (debiendo escribirse `fn :: calcular total`, nunca `fn :: calcular_total`; las variables locales y campos de registros sí pueden usar `_`).
+2. Cualquier tipo de salida múltiple escrito con paréntesis o comas tras `=>` (debiendo escribirse `=> Int Int` o `=> RToken [RToken]`, nunca `=> (Int, Int)`).
+
+---
+
+## 2.6. El Ecosistema de Librerías Estándar y Criptográficas (`ridgun-libs`)
+
+Ridgun cuenta con una suite oficial de **32 librerías puras** (`ridgun-libs`), compiladas como paquetes `.rglib` y bibliotecas dinámicas `.so` ELF64 listas para importar con `import <nombre>`:
+
+| Familia | Librerías (`import ...`) | Qué aportan a tus proyectos |
+|---|---|---|
+| **1. Texto, Formatos y Plantillas** | `str`, `fmt`, `regex`, `diff`, `template`, `json`, `csv`, `ini`, `codec` | Manipulación avanzada de cadenas, formateo tabular, expresiones regulares Thompson NFA, diferencias Myers (`diff`), plantillas sin lógica, parsers/serializadores `json`/`csv`/`ini` y codificación hexadecimal/Base64 (`codec`). |
+| **2. Colecciones, Matemáticas y Álgebra Tensorial** | `list`, `btree`, `math`, `tensor`, `linalg` | Operaciones funcionales sobre listas, árboles B ordenados en memoria (`btree`), aritmética avanzada (`math`), vistas y constructores de tensores tipados (`tensor`) y descomposición/álgebra lineal (`linalg`). |
+| **3. Sistema Operativo, Archivos y CLI** | `posix`, `io`, `path`, `glob`, `cli`, `time`, `log`, `uuid`, `test` | Descriptores y señales POSIX (`posix`), E/S con `with timeout` (`io`), rutas y patrones (`path`, `glob`), argumentos CLI tipados (`cli`), relojes monotónicos (`time`), logging estructurado (`log`), RFC 4122 `uuid` y aserciones (`test`). |
+| **4. Criptografía y Seguridad** | `crypto`, `argon2id`, `jwt` | SHA-256 binario directo (`sha256 raw` / `sha256 bytes` en 32 bytes crudos), HMAC-SHA-256, PBKDF2-HMAC-SHA-256, HKDF, ChaCha20-Poly1305 AEAD (`crypto`), hashing de contraseñas RFC 9106 `argon2id` sobre `Tensor[U64 * 8 * 16]` con permutación BlaMka sin alojar tuplas en el heap (`argon2id`), y tokens firmados (`jwt`). |
+| **5. Redes, Protocolos y Agentes** | `socket`, `http`, `ws`, `agent`, `pool`, `net_agent` | Sockets TCP/UDP POSIX (`socket`), cliente/servidor HTTP/1.1 (`http`), WebSockets RFC 6455 (`ws`), supervisores de agentes (`agent`), pools de trabajadores (`pool`) y servidores reactivos orientados a agentes (`net_agent`). |
 
 Ahora que tienes la caja de herramientas y las librerías controladas, pasemos al **Capítulo 03** para dominar las funciones con espacios naturales, las firmas de tipos y los bloques.

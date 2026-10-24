@@ -27,8 +27,8 @@ quoted     = "she said \"hello\""       -- escaped quote
 fn :: greet String => ()
       greet name   =  echo "Hello, {name}!"
 
-fn :: show_pair String String => ()
-      show_pair a      b      =  echo "{a} and {b}"
+fn :: show pair String String => ()
+      show pair a      b      =  echo "{a} and {b}"
 
 fn :: main => ()
       main =

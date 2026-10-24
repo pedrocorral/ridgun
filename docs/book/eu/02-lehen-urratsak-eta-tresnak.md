@@ -88,9 +88,18 @@ test dir =  "src/test/ridgun"
 
 target dir => String
 target dir =  "target"
+
+-- Aukerakoa: aktibatu sinadura eta izenen modu zorrotza (lehenespenez desaktibatuta)
+strict mode => Bool
+strict mode =  True
 ```
 
 Eremu bat idaztean huts egiten baduzu, konpiladoreak berak abisatzen dizu. Ezustekorik gabe.
+
+### Modu zorrotza (`--strict` / `strict mode = True`)
+Lehenespenez, bai `ridgunc`-ek bai `stable new` edo `stable init`-ekin sortutako proiektu berriek modu zorrotza **desaktibatuta** dute askatasun osoz prototipatu ahal izan dezazun. Proiektu baten estilo kanonikoa blindatu nahi duzunean (Ridgunen konpiladorean bertan egiten dugun bezala), `--strict` pasa diezaiokezu `ridgunc`-i edo `strict mode = True` gehitu zure `build.rg` fitxategian. Modu zorrotzak bi dotorezia-arau eskatzen ditu:
+1. **`fn ::` eta `op ::` izenak zuriune naturalekin, `_` gabe**: deklarazioek zuriuneak erabili behar dituzte (`fn :: kalkulatu zerga`, inoiz ez `fn :: kalkulatu_zerga`).
+2. **Balio anitzeko itzulerak zuriunez bereizita `=>` ondoren**: funtzio edo eragile batek hainbat balio itzultzen dituenean, bere irteera-sinadura `=> Int Int` edo `=> Egoera Int` idazten da (inoiz ez `=> (Int, Int)` parentesiekin edo komekin).
 
 ---
 

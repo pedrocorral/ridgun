@@ -18,12 +18,12 @@ fn :: multi => ()
       multi =  echo "hello" "world" "!"
 
 -- String interpolation in echo
-fn :: show_sum Int Int => ()
-      show_sum a   b   =  echo "sum: {a + b}"
+fn :: show sum Int Int => ()
+      show sum a   b   =  echo "sum: {a + b}"
 
 -- Chaining with out
-fn :: log_and_process String => String
-      log_and_process s      =  process (s out) and report
+fn :: log and process String => String
+      log and process s      =  process (s out) and report
 
 -- Echo with escape sequences
 fn :: formatted => ()

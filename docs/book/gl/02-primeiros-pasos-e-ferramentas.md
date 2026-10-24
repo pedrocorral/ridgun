@@ -88,9 +88,18 @@ test dir =  "src/test/ridgun"
 
 target dir => String
 target dir =  "target"
+
+-- Opcional: activa o modo estrito de sinaturas e nomes (desactivado por defecto)
+strict mode => Bool
+strict mode =  True
 ```
 
 Se te trabucas ao escribir un campo, o propio compilador avísate. Sen sorpresas.
+
+### O modo estrito (`--strict` / `strict mode = True`)
+Por defecto, tanto `ridgunc` como os novos proxectos creados con `stable new` ou `stable init` teñen o modo estrito **desactivado** para que poidas prototipar con total liberdade. Cando queiras blindar o estilo canónico dun proxecto (como facemos no propio compilador de Ridgun), podes pasar `--strict` a `ridgunc` ou engadir `strict mode = True` ao teu `build.rg`. O modo estrito esixe dúas regras de elegancia:
+1. **Nomes de `fn ::` e `op ::` con espazos naturais, sen `_`**: as declaracións deben usar espazos (`fn :: calcular imposto`, nunca `fn :: calcular_imposto`).
+2. **Retornos múltiples separados por espazos tras `=>`**: cando unha función ou operador devolve varios valores, a súa sinatura de saída escríbese `=> Int Int` ou `=> Estado Int` (nunca `=> (Int, Int)` con parénteses nin comas).
 
 ---
 

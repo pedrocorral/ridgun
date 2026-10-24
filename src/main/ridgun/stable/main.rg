@@ -1,6 +1,6 @@
 -- ============================================================
 -- src/main/ridgun/stable/main.rg
--- `stable` v0.9.16 — The Interactive Build Tool for Ridgun (100% Ridgun)
+-- `stable` v0.9.17 — The Interactive Build Tool for Ridgun (100% Ridgun)
 -- Written in Ridgun's natural-language mixfix operator style (`op :: ...`).
 -- Decoupled from `ridgunc` internals per ADR-0001: delegates `check`,
 -- `compile`, `build`, `build lib`, and test/plugin compilation to the
@@ -152,19 +152,21 @@ fn :: log fail String => ()
 fn :: log section String => ()
       log section title  =  echo "=== {title} ==="
 
-op :: read prompt line with String     => (Bool, String)
+op :: read prompt line with String     => Bool String
       read prompt line with prompt_str =
-        cmd = 'mkdir -p target && printf "%s" "' + prompt_str + '" && IFS= read -r _stable_ln && printf "%s" "$_stable_ln" > target/.stable_line.txt'
+        pid = int_to_str sys_getpid
+        tmp_ln = "/tmp/.stable_line_" + pid + ".txt"
+        cmd = 'printf "%s" "' + prompt_str + '" && IFS= read -r _stable_ln && printf "%s" "$_stable_ln" > "' + tmp_ln + '"'
         st_code = shell_exec cmd
-        decode prompt status st_code
+        decode prompt status st_code file tmp_ln
 
-op :: decode prompt status Int => (Bool, String)
-      decode prompt status 0   =
-        line = read_file "target/.stable_line.txt"
-        _ = shell_exec "rm -f target/.stable_line.txt"
+op :: decode prompt status Int file String => Bool String
+      decode prompt status 0   file tmp_ln =
+        line = read_file tmp_ln
+        _ = shell_exec ('rm -f "' + tmp_ln + '"')
         (True, str trim line)
-      decode prompt status _   =
-        _ = shell_exec "rm -f target/.stable_line.txt"
+      decode prompt status _   file tmp_ln =
+        _ = shell_exec ('rm -f "' + tmp_ln + '"')
         (False, "")
 
 -- ── `build.rg` Declarative Configuration & `ridgunc` CLI Bridge ──
@@ -226,53 +228,56 @@ op :: verify artifact built Int at String   => Int
 op :: invoke ridgunc build String     into String  => Int
       invoke ridgunc build entry_path into out_bin =
         rg_bin = resolve ridgunc binary
+        sflag = load strict flag from "build.rg"
         _ = shell_exec ('rm -f "' + out_bin + '"')
-        st = shell_exec ('"' + rg_bin + '" build "' + entry_path + '" -o "' + out_bin + '" >/dev/null 2>&1')
+        st = shell_exec ('"' + rg_bin + '" build ' + sflag + '"' + entry_path + '" -o "' + out_bin + '" >/dev/null 2>&1')
         verify artifact built st at out_bin
 
 op :: invoke ridgunc rglib String     into String    => Int
       invoke ridgunc rglib entry_path into out_rglib =
         rg_bin = resolve ridgunc binary
+        sflag = load strict flag from "build.rg"
         _ = shell_exec ('rm -f "' + out_rglib + '"')
-        st = shell_exec ('"' + rg_bin + '" build --lib "' + entry_path + '" -o "' + out_rglib + '" >/dev/null 2>&1')
+        st = shell_exec ('"' + rg_bin + '" build --lib ' + sflag + '"' + entry_path + '" -o "' + out_rglib + '" >/dev/null 2>&1')
         verify artifact built st at out_rglib
 
 op :: invoke ridgunc so String     into String => Int
       invoke ridgunc so entry_path into out_so =
         rg_bin = resolve ridgunc binary
+        sflag = load strict flag from "build.rg"
         _ = shell_exec ('rm -f "' + out_so + '"')
-        st = shell_exec ('"' + rg_bin + '" build --so "' + entry_path + '" -o "' + out_so + '" >/dev/null 2>&1')
+        st = shell_exec ('"' + rg_bin + '" build --so ' + sflag + '"' + entry_path + '" -o "' + out_so + '" >/dev/null 2>&1')
         verify artifact built st at out_so
 
-op :: extract quoted strings String at Int len Int in_quote Bool cur String into [String] => [String]
-      extract quoted strings s      at pos len n   in_quote False cur _     into acc
+op :: extract quoted strings String at Int len Int in quote Bool cur String into [String] => [String]
+      extract quoted strings s at pos len n in quote False cur _ into acc
         | pos >= n = acc
-        | (str_char_at s pos) == 34 = extract quoted strings s at (pos + 1) len n in_quote True cur "" into acc
-        | otherwise = extract quoted strings s at (pos + 1) len n in_quote False cur "" into acc
-      extract quoted strings s      at pos len n   in_quote True  cur buf   into acc
+        | (str_char_at s pos) == 34 = extract quoted strings s at (pos + 1) len n in quote True cur "" into acc
+        | otherwise = extract quoted strings s at (pos + 1) len n in quote False cur "" into acc
+      extract quoted strings s at pos len n in quote True cur buf into acc
         | pos >= n = acc :: [buf]
         | ((str_char_at s pos) == 92) AND ((pos + 1) < n) =
           esc_ch = str_slice s (pos + 1) (pos + 2)
-          extract quoted strings s at (pos + 2) len n in_quote True cur (buf + esc_ch) into acc
+      extract quoted strings s at (pos + 2) len n in quote True cur (buf + esc_ch) into acc
         | (str_char_at s pos) == 34 =
-          extract quoted strings s at (pos + 1) len n in_quote False cur "" into (acc :: [buf])
+      extract quoted strings s at (pos + 1) len n in quote False cur "" into (acc :: [buf])
         | otherwise =
           ch = str_slice s pos (pos + 1)
-          extract quoted strings s at (pos + 1) len n in_quote True cur (buf + ch) into acc
+          extract quoted strings s at (pos + 1) len n in quote True cur (buf + ch) into acc
 
 op :: quoted strings in String => [String]
-      quoted strings in s      =  extract quoted strings s at 0 len (str_len s) in_quote False cur "" into []
+      quoted strings in s      =  extract quoted strings s at 0 len (str_len s) in quote False cur "" into []
 
 op :: is declaration header line String => Bool
       is declaration header line l      =
         (str_starts_with l "--") OR (str_starts_with l "fn ") OR (str_starts_with l "fn::") OR (str_starts_with l "op ") OR (str_starts_with l "op::") OR (str_starts_with l "type ") OR (str_starts_with l "expand ") OR (str_starts_with l "import ") OR (str_starts_with l "|")
 
-op :: parse clause key and rhs String => (String, String)
+op :: parse clause key and rhs String => String String
       parse clause key and rhs line
         | is declaration header line line = ("", "")
         | otherwise = split clause at equals line idx (str index of line "=")
 
-op :: split clause at equals String idx Int    => (String, String)
+op :: split clause at equals String idx Int    => String String
       split clause at equals line   idx eq_idx
         | eq_idx <= 0 = ("", "")
         | otherwise =
@@ -286,28 +291,54 @@ op :: first string or default [String] default String      => String
       first string or default (s:_)    default _           =  s
 
 op :: extract function body from [String] named String default String => String
-      extract function body from []       named _      default default_val = default_val
-      extract function body from (l:ls)   named target default default_val =
+      extract function body from [] named _ default default_val = default_val
+      extract function body from (l:ls) named target default default_val =
         pair = parse clause key and rhs l
         match function clause pair rest ls named target default default_val
 
 op :: match function clause (String, String) rest [String] named String default String => String
-      match function clause (k, rhs)         rest ls       named target default default_val
+      match function clause (k, rhs) rest ls named target default default_val
         | (k == target) AND (str_starts_with rhs "\"") =
           first string or default (quoted strings in rhs) default default_val
         | otherwise = extract function body from ls named target default default_val
 
+op :: extract bool body from [String] named String default Bool        => Bool
+      extract bool body from []       named _      default default_val =  default_val
+      extract bool body from (l:ls)   named target default default_val =
+        pair = parse clause key and rhs l
+        match bool clause pair rest ls named target default default_val
+
+op :: match bool clause (String, String) rest [String] named String default Bool => Bool
+      match bool clause (k, rhs) rest _ named target default _
+        | (k == target) AND ((rhs == "True") OR (rhs == "\"true\"")) = True
+        | (k == target) AND ((rhs == "False") OR (rhs == "\"false\"")) = False
+      match bool clause _ rest ls named target default default_val =
+        extract bool body from ls named target default default_val
+
+op :: strict flag for Bool  => String
+      strict flag for True  =  "--strict "
+      strict flag for False =  ""
+
+op :: load strict flag from String     => String
+      load strict flag from build_path
+        | NOT (file build_path exists) = ""
+        | otherwise =
+          lines = split lines of (read_file build_path)
+          strict flag for (extract bool body from lines named "strict_mode" default False)
+
 op :: load build config from String     => StableConfig
       load build config from build_path
-        | NOT (file build_path exists) = ProjectConfig "ridgunc" "0.9.14" "src/main/ridgun/ridgunc/main.rg" "src/main/ridgun" "src/test/ridgun" "target"
+        | NOT (file build_path exists) = ProjectConfig "" "0.1.0" "" "src/main/ridgun" "src/test/ridgun" "target"
         | otherwise = parse build config source (read_file build_path)
 
 op :: parse build config source String => StableConfig
       parse build config source src    =
+        cwd = sys_getcwd
+        def_name = base filename of cwd at 0 len (str_len cwd) slash (0 - 1)
         lines = split lines of src
-        name_str = extract function body from lines named "project_name" default "ridgunc"
-        ver = extract function body from lines named "project_version" default "0.9.14"
-        main_ep = extract function body from lines named "main_entry" default "src/main/ridgun/ridgunc/main.rg"
+        name_str = extract function body from lines named "project_name" default def_name
+        ver = extract function body from lines named "project_version" default "0.1.0"
+        main_ep = extract function body from lines named "main_entry" default ("src/main/ridgun/" + name_str + "/main.rg")
         sdir = extract function body from lines named "source_dir" default "src/main/ridgun"
         tdir = extract function body from lines named "test_dir" default "src/test/ridgun"
         out_dir = extract function body from lines named "target_dir" default "target"
@@ -316,19 +347,25 @@ op :: parse build config source String => StableConfig
 op :: project name of StableConfig => String
       project name of (ProjectConfig name_str _ _ _ _ _) = name_str
 
+op :: no project loaded error => Int
+      no project loaded error =
+        _ = log error "No project found in current directory (missing build.rg). Run 'stable init' or 'stable new <name>'."
+        1
+
 -- ── Task 1: `check` (Typecheck & Static Analysis of Project) ─
 
-fn :: check_single_module String => (Int, Int)
-      check_single_module path   =
+fn :: check single module String => Int Int
+      check single module path   =
         rg_bin = resolve ridgunc binary
+        sflag = load strict flag from "build.rg"
         _ = shell_exec "mkdir -p target"
         chk_file = "target/.stable_chk_out.txt"
-        _ = shell_exec ('"' + rg_bin + '" check "' + path + '" > "' + chk_file + '" 2>&1')
+        _ = shell_exec ('"' + rg_bin + '" check ' + sflag + '"' + path + '" > "' + chk_file + '" 2>&1')
         out_txt = read_file chk_file
         _ = shell_exec ('rm -f "' + chk_file + '"')
         report check module path output out_txt
 
-op :: report check module String output String  => (Int, Int)
+op :: report check module String output String  => Int Int
       report check module path   output out_txt
         | str_contains out_txt "0 error(s)." =
           _ = log ok "{path}"
@@ -338,12 +375,12 @@ op :: report check module String output String  => (Int, Int)
           _ = print error lines (split lines of out_txt)
           (0, 1)
 
-op :: sum check results [(Int, Int)] ok Int  err Int   => (Int, Int)
+op :: sum check results [(Int, Int)] ok Int  err Int   => Int Int
       sum check results []           ok ok_c err err_c =  (ok_c, err_c)
       sum check results ((o, e):rem_results) ok ok_c err err_c =
         sum check results rem_results ok (ok_c + o) err (err_c + e)
 
-op :: check modules [String] ok Int  err Int   => (Int, Int)
+op :: check modules [String] ok Int  err Int   => Int Int
       check modules files    ok ok_c err err_c =
         results = map check_single_module files
         sum check results results ok ok_c err err_c
@@ -355,6 +392,8 @@ op :: print error lines [String] => ()
         print error lines ls
 
 op :: run task check on StableConfig => Int
+      run task check on (ProjectConfig "" _ _ _ _ _) =
+        no project loaded error
       run task check on (ProjectConfig name_str ver _ sdir _ _) =
         files = list rg files in sdir
         _ = log info "Checking project '{name_str}' v{ver} in {sdir}/ ..."
@@ -379,12 +418,13 @@ op :: pair paths [String]         with dir String  => [(String, String)]
       pair paths (path:rem_files) with dir out_dir =
         [(out_dir, path)] :: (pair paths rem_files with dir out_dir)
 
-fn :: compile_single_module (String, String) => Int
-      compile_single_module (out_dir, path)  =
+fn :: compile single module (String, String) => Int
+      compile single module (out_dir, path)  =
         bname = base filename of path at 0 len (str_len path) slash (0 - 1)
         out_rgc = out_dir + "/" + (rgc artifact name for path base bname)
         rg_bin = resolve ridgunc binary
-        _ = shell_exec ('"' + rg_bin + '" compile "' + path + '" -o "' + out_rgc + '" >/dev/null 2>&1')
+        sflag = load strict flag from "build.rg"
+        _ = shell_exec ('"' + rg_bin + '" compile ' + sflag + '"' + path + '" -o "' + out_rgc + '" >/dev/null 2>&1')
         _ = log step "rgc" "{path} -> {out_rgc}"
         1
 
@@ -450,6 +490,8 @@ op :: report library build of String    so String status1 Int status2 Int => Int
         1
 
 op :: run task build lib on StableConfig args [String]  => Int
+      run task build lib on (ProjectConfig "" _ _ _ _ _) args _ =
+        no project loaded error
       run task build lib on (ProjectConfig name_str ver main_ep sdir _ out_dir) args [] =
         lib_ep = resolve lib entry for name_str in sdir default main_ep
         build library artifacts from lib_ep into out_dir named name_str version ver
@@ -458,18 +500,22 @@ op :: run task build lib on StableConfig args [String]  => Int
         build library artifacts from lib_ep into out_dir named tname version ver
 
 op :: build target from String     into String  version String => Int
-      build target from entry_path into out_bin version ver    =
-        _ = log info "Building native executable '{out_bin}' from {entry_path} (v{ver}) ..."
-        st_code = invoke ridgunc build entry_path into out_bin
-        report build of out_bin status st_code
+      build target from entry_path into out_bin version ver
+        | NOT (file entry_path exists) =
+          _ = log error "Entry point not found: {entry_path}"
+          1
+        | otherwise =
+          _ = log info "Building native executable '{out_bin}' from {entry_path} (v{ver}) ..."
+          st_code = invoke ridgunc build entry_path into out_bin
+          report build of out_bin status st_code
 
 op :: pair entries [String] with dir String version String => [(String, String, String)]
       pair entries [] with dir _ version _ = []
       pair entries (epath:rem_paths) with dir out_dir version ver =
         [(out_dir, ver, epath)] :: (pair entries rem_paths with dir out_dir version ver)
 
-fn :: build_single_entry (String, String, String) => Int
-      build_single_entry (out_dir, ver, epath)    =
+fn :: build single entry (String, String, String) => Int
+      build single entry (out_dir, ver, epath)    =
         tname = target name from entry epath
         out_bin = out_dir + "/" + tname
         build target from epath into out_bin version ver
@@ -481,6 +527,8 @@ op :: build entry list [String] into String version String errors Int => Int
         sum ints codes acc err_acc
 
 op :: run task build on StableConfig args [String]       => Int
+      run task build on (ProjectConfig "" _ _ _ _ _) args _ =
+        no project loaded error
       run task build on cfg          args ("lib":rest)   =
         run task build lib on cfg args rest
       run task build on cfg          args ("--lib":rest) =
@@ -515,6 +563,8 @@ op :: report build of String  status Int  => Int
 -- ── Task 4: `run` (Build if Needed & Run Native Binary) ─────
 
 op :: run task run on StableConfig args [String] => Int
+      run task run on (ProjectConfig "" _ _ _ _ _) args _ =
+        no project loaded error
       run task run on (ProjectConfig name_str ver main_ep sdir tdir out_dir) args (first_arg:rest_args)
         | file (sdir + "/" + first_arg + "/main.rg") exists = run specific target first_arg from (sdir + "/" + first_arg + "/main.rg") version ver in out_dir args rest_args
         | otherwise = run default target for (ProjectConfig name_str ver main_ep sdir tdir out_dir) args ([first_arg] :: rest_args)
@@ -547,15 +597,15 @@ op :: exec binary if built Int  path String  args [String]   => Int
 
 -- ── Task 5: `test` (Discover, Check, Build & Run Tests) ─────
 
-fn :: run_single_test_suite String => (Int, Int)
-      run_single_test_suite tpath  =
+fn :: run single test suite String => Int Int
+      run single test suite tpath  =
         _ = log info "Compiling & running test suite: {tpath}"
         bname = base filename of tpath at 0 len (str_len tpath) slash (0 - 1)
         bin_path = "target/.stable_test_" + bname + "_bin"
         st_code = invoke ridgunc build tpath into bin_path
         run built test binary st_code suite tpath binary bin_path
 
-op :: run built test binary Int suite String binary String   => (Int, Int)
+op :: run built test binary Int suite String binary String   => Int Int
       run built test binary 0   suite tpath  binary bin_path =
         run_st = shell_exec ('"./' + bin_path + '"; _st=$?; rm -f "' + bin_path + '"; exit $_st')
         record single test outcome run_st suite tpath
@@ -563,7 +613,7 @@ op :: run built test binary Int suite String binary String   => (Int, Int)
         _ = log fail "{tpath} (compilation/typecheck failed)"
         (0, 1)
 
-op :: record single test outcome Int suite String => (Int, Int)
+op :: record single test outcome Int suite String => Int Int
       record single test outcome 0   suite tpath  =
         _ = log pass "{tpath}"
         (1, 0)
@@ -571,13 +621,15 @@ op :: record single test outcome Int suite String => (Int, Int)
         _ = log fail "{tpath} (non-zero exit status)"
         (0, 1)
 
-op :: execute test suites [String] passed Int    failed Int    => (Int, Int)
+op :: execute test suites [String] passed Int    failed Int    => Int Int
       execute test suites suites   passed pass_c failed fail_c =
         _ = shell_exec "mkdir -p target"
         results = map run_single_test_suite suites
         sum check results results ok pass_c err fail_c
 
 op :: run task test on StableConfig => Int
+      run task test on (ProjectConfig "" _ _ _ _ _) =
+        no project loaded error
       run task test on (ProjectConfig name_str _ _ _ tdir _) =
         suites = list test files in tdir
         _ = log info "Running test suites for '{name_str}' in {tdir}/ ..."
@@ -619,10 +671,10 @@ op :: format file at String => Int
         formatted_src = format ridgun source raw
         apply formatted content path orig raw formatted formatted_src
 
-fn :: format_single_file String => Int
-      format_single_file path   =  format file at path
+fn :: format single file String => Int
+      format single file path   =  format file at path
 
-op :: format file list [String] changed Int   total Int   => (Int, Int)
+op :: format file list [String] changed Int   total Int   => Int Int
       format file list paths    changed chg_c total tot_c =
         deltas = map format_single_file paths
         (sum ints deltas acc chg_c, tot_c + (list_str_len paths))
@@ -638,6 +690,8 @@ op :: finish task format with (Int, Int)     => Int
         0
 
 op :: run task format on StableConfig args [String]     => Int
+      run task format on (ProjectConfig "" _ _ _ _ _) args [] =
+        no project loaded error
       run task format on (ProjectConfig name_str _ _ sdir tdir _) args [] =
         b_files = include build file if present
         s_files = list rg files in sdir
@@ -652,6 +706,8 @@ op :: run task format on StableConfig args [String]     => Int
 -- ── Task 7: `clean` & `info` & `help` ───────────────────────
 
 op :: run task clean on StableConfig => Int
+      run task clean on (ProjectConfig "" _ _ _ _ _) =
+        no project loaded error
       run task clean on (ProjectConfig _ _ _ _ _ out_dir) =
         _ = shell_exec ('rm -f "' + out_dir + '"/*.rgc "' + out_dir + '"/*.rglib "' + out_dir + '"/*.so "' + out_dir + '"/.stable_* "' + out_dir + '"/.ridgunc_*')
         _ = log success "Cleaned bytecode and library artifacts in {out_dir}/."
@@ -662,6 +718,8 @@ op :: collect target names of [String]     => [String]
       collect target names of (ep:rem_eps) =  [target name from entry ep] :: (collect target names of rem_eps)
 
 op :: run task info on StableConfig => Int
+      run task info on (ProjectConfig "" _ _ _ _ _) =
+        no project loaded error
       run task info on (ProjectConfig name_str ver main_ep sdir tdir out_dir) =
         pkind = load project kind from "build.rg"
         src_files = list rg files in sdir
@@ -691,7 +749,7 @@ op :: extract list function body from [String] named String => [String]
         match list function clause pair rest ls named target
 
 op :: match list function clause (String, String) rest [String] named String => [String]
-      match list function clause (k, rhs)         rest ls       named target
+      match list function clause (k, rhs) rest ls named target
         | (k == target) AND (str_starts_with rhs "[") = quoted strings in rhs
         | (k == target) AND (str_starts_with rhs "\"") =
           split words of (first string or default (quoted strings in rhs) default "")
@@ -850,8 +908,8 @@ op :: extract tasks from lines [String] origin String     => [StableTask]
         pair = parse clause key and rhs l
         match task clause pair rest ls origin orig_label
 
-op :: match task clause (String, String) rest [String] origin String     => [StableTask]
-      match task clause (k, rhs)         rest ls       origin orig_label
+op :: match task clause (String, String) rest [String] origin String => [StableTask]
+      match task clause (k, rhs) rest ls origin orig_label
         | (str_starts_with k "task_") AND ((str_len k) > 5) AND (str_starts_with rhs "\"") =
           raw_key = str_slice k 5 (str_len k)
           disp = task display name of raw_key
@@ -921,27 +979,27 @@ op :: words [String] start with [String] => Bool
         | a == b = words as start with bs
         | otherwise = False
 
-op :: match task entry StableTask against [String] => (Bool, Int, String, String, [String])
+op :: match task entry StableTask against [String] => Bool Int String String [String]
       match task entry (TaskEntry key disp cmd _) against args_list =
         t_words = split words of disp
         t_len = list_str_len t_words
         match task words key disp cmd t_words t_len against args_list
 
-op :: match task words String String String [String] Int against [String] => (Bool, Int, String, String, [String])
+op :: match task words String String String [String] Int against [String] => Bool Int String String [String]
       match task words _ _ _ _ _ against [] = (False, 0, "", "", [])
       match task words key disp cmd t_words t_len against (first_w:rest_w)
         | first_w == key = (True, 1, disp, cmd, rest_w)
         | words ([first_w] :: rest_w) start with t_words = (True, t_len, disp, cmd, list str drop ([first_w] :: rest_w) t_len)
         | otherwise = (False, 0, "", "", [])
 
-op :: pick longer task match (Bool, Int, String, String, [String]) and (Bool, Int, String, String, [String]) => (Bool, Int, String, String, [String])
+op :: pick longer task match (Bool, Int, String, String, [String]) and (Bool, Int, String, String, [String]) => Bool Int String String [String]
       pick longer task match (False, _, _, _, _) and m2 = m2
       pick longer task match m1 and (False, _, _, _, _) = m1
       pick longer task match (True, len1, d1, c1, e1) and (True, len2, d2, c2, e2)
         | len2 > len1 = (True, len2, d2, c2, e2)
         | otherwise = (True, len1, d1, c1, e1)
 
-op :: find matching custom task in [StableTask] for [String] => (Bool, Int, String, String, [String])
+op :: find matching custom task in [StableTask] for [String] => Bool Int String String [String]
       find matching custom task in [] for _ = (False, 0, "", "", [])
       find matching custom task in (t:rem_ts) for args_list =
         m1 = match task entry t against args_list
@@ -1048,7 +1106,7 @@ op :: run task help => Int
 
 -- ── Command Parser & Extensible `StableCommand` Dispatcher ───
 
-op :: parse stable command [String]          => (Bool, StableCommand, String)
+op :: parse stable command [String]          => Bool StableCommand String
       parse stable command []                =  (True, CmdNoop, "")
       parse stable command ("exit":_)        =  (True, CmdExit, "")
       parse stable command ("quit":_)        =  (True, CmdExit, "")
@@ -1086,7 +1144,7 @@ op :: parse stable command [String]          => (Bool, StableCommand, String)
         t_match = find matching custom task in custom_ts for args_list
         resolve extension command args_list match t_match
 
-op :: resolve extension command [String] match (Bool, Int, String, String, [String]) => (Bool, StableCommand, String)
+op :: resolve extension command [String] match (Bool, Int, String, String, [String]) => Bool StableCommand String
       resolve extension command _ match (True, _, disp, cmd, extra) =
         (True, CmdCustomTask disp cmd extra, "")
       resolve extension command (first_w:rest_w) match (False, _, _, _, _) =
@@ -1095,30 +1153,32 @@ op :: resolve extension command [String] match (Bool, Int, String, String, [Stri
       resolve extension command [] match (False, _, _, _, _) =
         (True, CmdNoop, "")
 
-op :: resolve plugin exec command String [String] path String => (Bool, StableCommand, String)
+op :: resolve plugin exec command String [String] path String => Bool StableCommand String
       resolve plugin exec command first_w _ path "" =
         (False, CmdNoop, first_w)
       resolve plugin exec command _ rest_w path ppath =
         (True, CmdPluginExec ppath rest_w, "")
 
 -- Core `StableCommand` dispatch clauses
-op :: dispatch command StableCommand on StableConfig => (Bool, StableConfig, Int)
+op :: dispatch command StableCommand on StableConfig => Bool StableConfig Int
       dispatch command CmdNoop on cfg = (True, cfg, 0)
       dispatch command CmdExit on cfg = (False, cfg, 0)
       dispatch command CmdHelp on cfg = (True, cfg, run task help)
       dispatch command CmdVersion on cfg =
-        _ = echo "stable 0.9.16 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
+        _ = echo "stable 0.9.17 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
         (True, cfg, 0)
       dispatch command CmdInfo on cfg = (True, cfg, run task info on cfg)
       dispatch command CmdReload on _ =
-        new_cfg = load build config from "build.rg"
-        pname = project name of new_cfg
-        _ = log info "Reloaded build.rg — current project is '{pname}'"
-        (True, new_cfg, 0)
+        reload project config from "build.rg"
       dispatch command CmdCheck on cfg = (True, cfg, run task check on cfg)
       dispatch command (CmdNew extra) on cfg = (True, cfg, run task new args extra)
-      dispatch command (CmdInit extra) on cfg = (True, cfg, run task init args extra)
-      dispatch command CmdDeps on cfg = (True, cfg, run task deps)
+      dispatch command (CmdInit extra) on _ =
+        init_st = run task init args extra
+        new_cfg = load build config from "build.rg"
+        (True, new_cfg, init_st)
+      dispatch command CmdDeps on cfg
+        | (project name of cfg) == "" = (True, cfg, no project loaded error)
+        | otherwise = (True, cfg, run task deps)
       dispatch command (CmdAdd extra) on cfg = (True, cfg, run task add args extra)
       dispatch command (CmdInstall extra) on cfg = (True, cfg, run task install on cfg args extra)
       dispatch command (CmdFormat extra) on cfg = (True, cfg, run task format on cfg args extra)
@@ -1132,18 +1192,18 @@ op :: dispatch command StableCommand on StableConfig => (Bool, StableConfig, Int
       dispatch command CmdPlugins on cfg = (True, cfg, run task plugins)
 
 -- Extension `StableCommand` dispatch clauses (merged automatically for `expand type StableCommand`)
-op :: dispatch command StableCommand on StableConfig => (Bool, StableConfig, Int)
+op :: dispatch command StableCommand on StableConfig => Bool StableConfig Int
       dispatch command (CmdCustomTask disp cmd extra) on cfg =
         (True, cfg, run custom shell task disp command cmd extra extra)
       dispatch command (CmdPluginExec ppath extra) on cfg =
         (True, cfg, run executable plugin ppath args extra)
 
-op :: execute command [String] on StableConfig => (Bool, StableConfig, Int)
+op :: execute command [String] on StableConfig => Bool StableConfig Int
       execute command words    on cfg          =
         parsed = parse stable command words
         execute parsed command parsed on cfg
 
-op :: execute parsed command (Bool, StableCommand, String) on StableConfig => (Bool, StableConfig, Int)
+op :: execute parsed command (Bool, StableCommand, String) on StableConfig => Bool StableConfig Int
       execute parsed command (True, cmd, _) on cfg =
         dispatch command cmd on cfg
       execute parsed command (False, _, unknown) on cfg =
@@ -1171,9 +1231,28 @@ op :: repl continue with (Bool, StableConfig, Int) => ()
       repl continue with (True, next_cfg, _)       =
         repl loop for next_cfg
 
+op :: reload project config from String     => Bool StableConfig Int
+      reload project config from build_path =
+        new_cfg = load build config from build_path
+        pname = project name of new_cfg
+        report reload config new_cfg name pname
+
+op :: report reload config StableConfig name String => Bool StableConfig Int
+      report reload config new_cfg      name ""     =
+        _ = log error "No build.rg found in current directory."
+        (True, new_cfg, 1)
+      report reload config new_cfg      name pname  =
+        _ = log info "Reloaded build.rg — current project is '{pname}'"
+        (True, new_cfg, 0)
+
 op :: start interactive shell for StableConfig => ()
+      start interactive shell for (ProjectConfig "" ver main_ep sdir tdir out_dir) =
+        _ = log info "Welcome to stable 0.9.17 (Ridgun Build Tool — 100% Ridgun)"
+        _ = log info "No build.rg found in current directory. Run 'init' or 'new <name>' to create a project."
+        _ = log info "Commands: 'new', 'init', 'help', 'exit'"
+        repl loop for (ProjectConfig "" ver main_ep sdir tdir out_dir)
       start interactive shell for (ProjectConfig name_str ver main_ep sdir tdir out_dir) =
-        _ = log info "Welcome to stable 0.9.16 (Ridgun Build Tool — 100% Ridgun)"
+        _ = log info "Welcome to stable 0.9.17 (Ridgun Build Tool — 100% Ridgun)"
         _ = log info "Loading project definition from build.rg ..."
         _ = log info "Set current project to '{name_str}' v{ver} (main: {main_ep})"
         _ = log info "Commands: 'built' (or 'build'), 'run', 'test', 'check', 'compile', 'clean', 'info', 'exit'"

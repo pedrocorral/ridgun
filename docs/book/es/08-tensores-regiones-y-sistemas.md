@@ -89,13 +89,20 @@ Fíjate en dos detalles espectaculares:
 2. **Notación de subíndices de Einstein (`a_ik @ b_kj`) y Hadamard (`a_ij * b_j`)**:
    - Con **`@`**, los subíndices repetidos en todos los operandos (`k`) se contraen (se suman) y los únicos (`i`, `j`) sobreviven en el tensor resultado.
    - Con **`+`, `-`, `*`, `/`**, los subíndices alinean dimensiones y hacen *broadcasting* automático (`a_ij * b_j` multiplica cada fila `i` de `a` por el vector `b_j` sin necesidad de escribir `unsqueeze` ni `reshape`).
-3. **Mutación *in-place* para algoritmos numéricos**:
+3. **Tensores tipados (`Tensor[T * d1 * d2]`), subíndices matemáticos `t_(i, j)`, vistas `t_(i,)` y mapeo *in-place* (`in`)**:
+   Puedes declarar tensores multidimensionales con tipo escalar explícito (`U64`, `Int`, `Float`, `Byte`) inicializados a cero en una sola línea, indexarlos con subíndices matemáticos `t_(i, j)`, extraer vistas de fila `t_(i,)` o columna `t_(,j)` sin copiar memoria, desestructurar retornos múltiples directamente sobre celdas del tensor sin alojar tuplas en el heap, y aplicar funciones *in-place* sobre un eje con `map ... in` o `||map ... in`:
    ```ridgun
-   crear_matriz_identidad => Tensor
-   crear_matriz_identidad =
-     m = Tensor [[1.0, 0.0], [0.0, 1.0]]
-     m[0, 1] = 0.5
-     m
+   fn :: blamka p16 Tensor[U64 * 16] => ()
+         blamka p16 v                =
+           v_(0), v_(4), v_(8), v_(12) = blamka g v_(0) v_(4) v_(8) v_(12)
+
+   fn :: comprimir bloque Tensor[U64 * 8 * 16] Tensor[U64 * 8 * 16] => Tensor[U64 * 8 * 16]
+         comprimir bloque x                    y                    =
+           r_ij = x_ij xor y_ij
+           z_ij = r_ij
+           ||map blamka p16 in z_(i,)
+           ||map blamka p16 in z_(,j)
+           z_ij xor r_ij
    ```
 
 ---
@@ -148,7 +155,8 @@ Y para trabajar con el sistema operativo:
 | `read file` / `write file` | `String => String` / `String String => ()` | Lectura y escritura íntegra de archivos en disco. |
 | `read bytes` / `write bytes` | `String => [Int]` / `String [Int] => ()` | Lectura y escritura binaria exacta byte a byte (`0..255`). |
 | `list dir` / `file lstat` | `String => [String]` / `String => ...` | Listado de directorios e inspección de metadatos POSIX (`lstat`). |
-| `sha256 file` / `sha256 str` | `String => String` | Hash criptográfico SHA-256 nativo. |
+| `sha256 file` / `sha256 str` | `String => String` | Hash criptográfico SHA-256 nativo en hexadecimal (64 caracteres). |
+| `sha256 raw` / `sha256 bytes` | `String => String` | Digest SHA-256 binario crudo de 32 bytes (con soporte completo para bytes `0x00` intermedios y cero conversiones hex). |
 | `sys exec` / `shell exec` | `... => Int` | Ejecución de procesos del sistema operativo. |
 | `sys getcwd` / `sys chdir` | `=> String` / `String => Int` | Consultar o cambiar el directorio de trabajo. |
 | `sys getenv` / `sys setenv` | `String => String` / `String String => Int` | Variables de entorno del proceso. |

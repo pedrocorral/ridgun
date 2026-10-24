@@ -68,11 +68,23 @@ Los tipos escalares de Ridgun son directos y sin sorpresas:
 | Tipo | Qué es en realidad | Ejemplos |
 |---|---|---|
 | `Int` | Entero de 64 bits con signo (`i64`) | `0`, `42`, `-100`, `0xFF00`, `1_000_000` |
-| `Real` | Decimal de doble precisión (`f64`) | `3.14159`, `0.001`, `-2.5` |
-| `String` | Cadena de texto inmutable | `"Hola"`, `'ruta\cruda'` |
+| `U64` | Entero de 64 bits sin signo (`u64`) para criptografía y sistemas | `0xdeadbeefcafe0001`, `a xor b`, `x rotr 24` |
+| `Byte` | Octeto sin signo (`0..255`) en tensores y buffers binarios | `Tensor[Byte * 64]` |
+| `Real` / `Float` | Decimal de doble precisión (`f64`) | `3.14159`, `0.001`, `-2.5` |
+| `String` | Cadena de texto o buffer binario inmutable con longitud explícita | `"Hola"`, `'ruta\cruda'`, `sha256 raw "abc"` |
 | `Char` | Código de carácter | Devuelto por `str char at` |
 | `Bool` | Booleano de toda la vida | `True`, `False` |
 | `()` | Vacío (*Unit*, cuando solo imprimes o haces I/O) | `()` |
+
+### Operadores a nivel de bit de 1 ciclo y flexibilidad léxica (`fn`, `op`, `where`)
+Para criptografía, protocolos binarios y sistemas de alto rendimiento, `Int` y `U64` cuentan con operadores nativos a nivel de bit y rotación compilados a una sola instrucción máquina:
+- **Lógicos y bit a bit**: `and`, `or`, `xor`, `not`
+- **Desplazamientos y rotaciones de 64 bits**: `shl` (izquierda), `shr` (derecha lógica sin signo), `rotl` (rotación izquierda), `rotr` (rotación derecha)
+
+Además, el vocabulario de Ridgun es deliberadamente mínimo y ortogonal:
+- **`where` no es una palabra reservada**: los grafos paralelos se expresan exclusivamente con `||`, por lo que `where` es un identificador normal que puedes usar como nombre de variable o función.
+- **`fn` y `op` pueden formar parte de los nombres**: después de `fn ::` u `op ::`, las propias palabras `fn` y `op` pueden aparecer como parte del nombre de tu función u operador (`fn :: op Int => Int`, `op :: Int fn Int => Int`, `op :: A op B => A`).
+- **Retornos múltiples separados por espacios (`=> Int Int`)**: cuando una función devuelve varios valores, su salida se escribe separando los tipos con espacios (`fn :: dividir Int Int => Int Int`), y en la llamada puedes desestructurarla directamente sin alojar tuplas en el heap (`cociente, resto = dividir 17 5`).
 
 ### ¿Cansado de escribir `65536` o `1048576` y rezar para no haberte comido un dígito?
 En Ridgun los literales numéricos aceptan directamente los sufijos de memoria **`_KB`**, **`_MB`** y **`_GB`** y los sufijos de tiempo **`_ms`**, **`_s`** y **`_min`**, además de separadores numéricos:

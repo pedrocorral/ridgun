@@ -65,11 +65,23 @@ Ridgun's scalar types are direct and surprise-free:
 | Type | What It Actually Is | Examples |
 |---|---|---|
 | `Int` | Signed 64-bit integer (`i64`) | `0`, `42`, `-100`, `0xFF00`, `1_000_000` |
-| `Real` | Double-precision float (`f64`) | `3.14159`, `0.001`, `-2.5` |
-| `String` | Immutable text string | `"Hello"`, `'raw\path'` |
-| `Char` | Character code point | Returned by `str_char_at` |
+| `U64` | Unsigned 64-bit integer (`u64`) for cryptography and systems | `0xdeadbeefcafe0001`, `a xor b`, `x rotr 24` |
+| `Byte` | Unsigned octet (`0..255`) in tensors and binary buffers | `Tensor[Byte * 64]` |
+| `Real` / `Float` | Double-precision float (`f64`) | `3.14159`, `0.001`, `-2.5` |
+| `String` | Immutable text or length-delimited binary buffer | `"Hello"`, `'raw\path'`, `sha256 raw "abc"` |
+| `Char` | Character code point | Returned by `str char at` |
 | `Bool` | Classic boolean | `True`, `False` |
 | `()` | Empty (*Unit*, when you only print or perform I/O) | `()` |
+
+### 1-Cycle Bitwise Operators and Lexical Flexibility (`fn`, `op`, `where`)
+For cryptography, binary protocols, and high-performance systems code, `Int` and `U64` provide native 1-cycle bitwise, shift, and rotation operators:
+- **Logical & bitwise**: `and`, `or`, `xor`, `not`
+- **64-bit shifts & rotations**: `shl` (shift left), `shr` (unsigned logical shift right), `rotl` (rotate left), `rotr` (rotate right)
+
+Ridgun's vocabulary is also deliberately minimal and orthogonal:
+- **`where` is not a reserved keyword**: parallel DAG bindings are written exclusively with `||`, so `where` has no special meaning and can be used as a normal identifier.
+- **`fn` and `op` can be part of function and operator names**: after `fn ::` or `op ::`, the words `fn` and `op` can appear freely inside the name (`fn :: op Int => Int`, `op :: Int fn Int => Int`, `op :: A op B => A`).
+- **Space-separated multi-value outputs (`=> Int Int`)**: functions returning multiple values write their output types separated by spaces (`fn :: divmod Int Int => Int Int`), and callers can destructure them without heap-allocating intermediate tuples (`q, r = divmod 17 5`).
 
 ### Tired of writing `65536` or `1048576` and praying you didn't drop a digit?
 In Ridgun, numeric literals directly accept the **`_KB`**, **`_MB`**, and **`_GB`** suffixes, as well as underscores `_` to separate digit groups:

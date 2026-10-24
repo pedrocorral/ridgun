@@ -88,9 +88,18 @@ test dir =  "src/test/ridgun"
 
 target dir => String
 target dir =  "target"
+
+-- Opcional: activa el mode estricte de signatures i noms (desactivat per defecte)
+strict mode => Bool
+strict mode =  True
 ```
 
 Si t'equivoques en escriure un camp, el mateix compilador t'avisa. Sense sorpreses.
+
+### El mode estricte (`--strict` / `strict mode = True`)
+Per defecte, tant `ridgunc` com els nous projectes creats amb `stable new` o `stable init` tenen el mode estricte **desactivat** perquè puguis prototipar amb total llibertat. Quan vulguis blindar l'estil canònic d'un projecte (com fem al propi compilador de Ridgun), pots passar `--strict` a `ridgunc` o afegir `strict mode = True` al teu `build.rg`. El mode estricte exigeix dues regles d'elegància:
+1. **Noms de `fn ::` i `op ::` amb espais naturals, sense `_`**: les declaracions han de fer servir espais (`fn :: calcular impost`, mai `fn :: calcular_impost`).
+2. **Retorns múltiples separats per espais després de `=>`**: quan una funció o operador retorna diversos valors, la seva signatura de sortida s'escriu `=> Int Int` o `=> Estat Int` (mai `=> (Int, Int)` amb parèntesis ni comes).
 
 ---
 

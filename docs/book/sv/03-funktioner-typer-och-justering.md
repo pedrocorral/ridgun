@@ -33,7 +33,7 @@ Därför att smaken är som baken:
 - Vissa föredrar att funktioner börjar ända ute i vänstermarginalen utan att behöva skriva `fn ::` varje gång (pilen `=>` ropar trots allt redan ut över hela rummet att den raden är en typsignatur).
 - Andra föredrar att ha en vänsterkolumn vigd åt etiketterna (`fn ::`, `op ::`, `type`, `import`) för att snabbt kunna överblicka filen visuellt.
 
-Kompilatorn och `stable format` förstår båda två till fullo.
+Kompilatorn och `stable format` förstår båda två till fullo. Dessutom kan orden `fn` och `op` användas fritt som en del av namnet på vilken funktion eller operator som helst (till exempel `fn :: op`, `op :: fn` eller `op :: op`), och om en funktion returnerar flera värden skrivs returtyperna i kanoniskt/strikt läge åtskilda med mellanslag efter `=>` (`dividera_med_rest Int Int => Int Int`).
 
 ---
 
@@ -65,7 +65,8 @@ De skalära typerna i Ridgun är raka och utan överraskningar:
 | Typ | Vad det egentligen är | Exempel |
 |---|---|---|
 | `Int` | 64-bitars heltal med tecken (`i64`) | `0`, `42`, `-100`, `0xFF00`, `1_000_000` |
-| `Real` | Decimaltal med dubbel precision (`f64`) | `3.14159`, `0.001`, `-2.5` |
+| `U64` | 64-bitars heltal utan tecken (`u64`) med inbyggd modulär och bitvis aritmetik | `u64 0`, `u64 0x6a09e667f3bcc908`, `a ^ b`, `a << u64 13` |
+| `Float` / `Real` | Decimaltal med dubbel precision (`f64`) | `3.14159`, `0.001`, `-2.5` |
 | `String` | Oföränderlig textsträng | `"Hej"`, `'ra\sokvag'` |
 | `Char` | Teckenkod | Returneras av `str_char_at` |
 | `Bool` | Klassisk boolesk typ | `True`, `False` |

@@ -33,7 +33,7 @@ Gustuak askotarikoak direlako:
 - Bada nahiago duena funtzioak ezkerreko marjinari itsatsita hastea aldi bakoitzean `fn ::` idatzi gabe (azken finean, `=>` geziak lau haizeetara oihukatzen du lerro hori mota-sinadura bat dela).
 - Eta bada nahiago duena ezkerreko zutabe bat etiketei (`fn ::`, `op ::`, `type`, `import`) eskainita edukitzea fitxategia bisualki eskaneatzeko.
 
-Konpiladoreak eta `stable format`-ek biak ezin hobeto ulertzen dituzte.
+Konpiladoreak eta `stable format`-ek biak ezin hobeto ulertzen dituzte. Gainera, `fn` eta `op` hitzak askatasunez erabil daitezke edozein funtzio edo eragileren izenaren parte gisa (adibidez `fn :: op`, `op :: fn` edo `op :: op`), eta funtzio batek balio anitz itzultzen baditu, modu kanoniko/zorrotzean irteera-motak zuriunez bereizita idazten dira `=>` ondoren (`zatitu_hondarrarekin Int Int => Int Int`).
 
 ---
 
@@ -65,7 +65,8 @@ Ridgunen mota eskalarrak zuzenak eta ezustekorik gabeak dira:
 | Mota | Zer den benetan | Adibideak |
 |---|---|---|
 | `Int` | Zeinudun 64 biteko osokoa (`i64`) | `0`, `42`, `-100`, `0xFF00`, `1_000_000` |
-| `Real` | Doitasun bikoitzeko hamartarra (`f64`) | `3.14159`, `0.001`, `-2.5` |
+| `U64` | Zeinurik gabeko 64 biteko osokoa (`u64`) aritmetika modular eta bit-eragiketa natiboekin | `u64 0`, `u64 0x6a09e667f3bcc908`, `a ^ b`, `a << u64 13` |
+| `Float` / `Real` | Doitasun bikoitzeko hamartarra (`f64`) | `3.14159`, `0.001`, `-2.5` |
 | `String` | Testu-kate aldaezina | `"Kaixo"`, `'bide\gordina'` |
 | `Char` | Karaktere-kodea | `str_char_at`-ek itzulia |
 | `Bool` | Betiko boolearra | `True`, `False` |

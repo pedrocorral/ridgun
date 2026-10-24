@@ -89,12 +89,13 @@ Erreparatu bi xehetasun ikusgarri hauei:
 2. **Einsteinen azpiindizeen notazioa (`a_ik @ b_kj`) eta Hadamard (`a_ij * b_j`)**:
    - **`@`**-rekin, eragile guztietan errepikatzen diren azpiindizeak (`k`) uzkurtu egiten dira (batu egiten dira) eta bakarrak direnak (`i`, `j`) emaitza-tentsorean bizirik ateratzen dira.
    - **`+`, `-`, `*`, `/`**-rekin, azpiindizeek dimentsioak lerrokatzen dituzte eta *broadcasting* automatikoa egiten dute (`a_ij * b_j`-k `a`-ren `i` errenkada bakoitza `b_j` bektorearekin biderkatzen du `unsqueeze` edo `reshape` idatzi beharrik gabe).
-3. ***In-place* mutazioa zenbakizko algoritmoetarako**:
+3. **Errendimendu handiko tentsore tipatuak (`Tensor[U64 * N]`) eta *in-place* mutazioa `t_(i, j)`-rekin**:
+   Sistema kriptografikoetan, simulazio fisikoetan edo aljebra linealean zeinurik gabeko 64 biteko osokoen bloke jarraitu baten gaineko tentsore lauak deklara ditzakezu (`Tensor[U64 * 4]`, `Tensor[U64 * 8 * 16]`), paraleloan eragin `^`-rekin (blokeko XOR natiboa) eta elementuak $O(1)$ denboran irakurri edo idatzi `t_(i)` edo `t_(i, j)` azpiindize esplizituaren sintaxiarekin:
    ```ridgun
-   sortu_identitate_matrizea => Tensor
-   sortu_identitate_matrizea =
-     m = Tensor [[1.0, 0.0], [0.0, 1.0]]
-     m[0, 1] = 0.5
+   sortu_egoera_blokea => Tensor[U64 * 2 * 2]
+   sortu_egoera_blokea =
+     mut m = tensor fill [2, 2] (u64 0)
+     m_(0, 1) = u64 0x6a09e667f3bcc908
      m
    ```
 
@@ -148,7 +149,7 @@ Eta sistema eragilearekin lan egiteko:
 | `read_file` / `write_file` | `String => String` / `String String => ()` | Diskoko fitxategien irakurketa eta idazketa osoa. |
 | `read_bytes` / `write_bytes` | `String => [Int]` / `String [Int] => ()` | Bytez byteko (`0..255`) irakurketa eta idazketa bitar zehatza. |
 | `list_dir` / `file_lstat` | `String => [String]` / `String => ...` | Direktorioen zerrendatzea eta POSIX metadatuen ikuskapena (`lstat`). |
-| `sha256_file` / `sha256_str` | `String => String` | SHA-256 hash kriptografiko natiboa. |
+| `sha256_file` / `sha256_str` / `sha256_raw` | `String => String` | SHA-256 hash kriptografiko natiboa (64 karaktereko hamaseitarrean edo 32 byteko laburpen bitar gordinean `sha256 raw` / `sha256 bytes`-ekin). |
 | `sys_exec` / `shell_exec` | `... => Int` | Sistema eragileko prozesuen exekuzioa. |
 | `sys_getcwd` / `sys_chdir` | `=> String` / `String => Int` | Laneko direktorioa kontsultatu edo aldatu. |
 | `sys_getenv` / `sys_setenv` | `String => String` / `String String => Int` | Prozesuaren ingurune-aldagaiak. |
@@ -157,7 +158,20 @@ Eta sistema eragilearekin lan egiteko:
 
 ---
 
-## 8.6. Benetako Kasu-Azterketa: `rg-wc` eraikitzen, Unix tresna paralelo bat
+## 8.6. Liburutegi Estandarren Ekosistema (`ridgun-libs`)
+
+Konpiladorearen primitibez gain, Ridgunen ekosistema ofizialak Ridgunen bertan osorik idatzitako **32 liburutegi puru (`.rglib`)** biltzen ditu, edozein proiektutan `import <izena>` bidez inporta ditzakezunak:
+
+| Kategoria | Eskuragarri dauden liburutegiak | Zer eskaintzen duten |
+|---|---|---|
+| **Bildumak, Testua eta Datuak** | `collections`, `set`, `string`, `regex`, `utf8`, `fmt`, `csv`, `json`, `toml`, `yaml`, `xml`, `html`, `markdown`, `base64`, `hex`, `compress`, `sql` | Mapak, multzoak, adierazpen erregularrak, egituratutako analizatzaile/serializatzaileak, kodetzea eta kontsulta-motorrak. |
+| **Matematika, Denbora eta Ausazkotasuna** | `math`, `random`, `datetime`, `uuid`, `log`, `cli`, `bench`, `test` | Funtzio matematikoak, PRNG determinista eta sistemakoa, ISO-8601 datak, UUIDak, test-markoak eta `clock_gettime` bidezko erreferentzia-probak. |
+| **Sistemak, Sarea eta Weba** | `fs`, `path`, `process`, `env`, `net`, `http`, `uri` | Goi-mailako fitxategi-sistema, bideen manipulazioa, azpiprozesuak, TCP/UDP socketak eta HTTP bezero/zerbitzaria. |
+| **Kriptografia eta Segurtasuna (`crypto`)** | `crypto` (`sha256`, `hmac`, `hkdf`, `pbkdf2`, `argon2id`, `chacha20`, `aes`, `x25519`, `ed25519`, `csprng`) | RFC/NIST bektore ofizialekin egiaztatutako suite kriptografikoa, `U64`, `Tensor[U64 * ...]` eta `sha256 raw` gainean inplementatua, heap-ean erreserbarik egiten ez duen tuplen inlining optimizazioarekin. |
+
+---
+
+## 8.7. Benetako Kasu-Azterketa: `rg-wc` eraikitzen, Unix tresna paralelo bat
 
 Lotu dezagun 01. kapitulutik honaino ikasitako guztia sistemetako benetako programa batean: Unixeko `wc` tresnaren bertsio paralelo bat (fitxategi anitzetarako lerro- eta byte-kontagailua) Ridgun puruan idatzia:
 
@@ -215,7 +229,7 @@ Gelditu segundo batez ~40 kode-lerro horiei begiratzeko:
 
 ---
 
-## 8.7. Azken Ibilbide-Orria: Ridgun Programatzailearen Urrezko 10 Arauak
+## 8.8. Azken Ibilbide-Orria: Ridgun Programatzailearen Urrezko 10 Arauak
 
 1. **Idatzi beti lehenengo kontratua (`=>`) eta ondoren ekuazioak (`=`):** motetan lehenengo pentsatzeak konpiladorea zure alde lan egitera bultzatzen du.
 2. **Utzi `stable format`-i zure taulak maketatzen:** idatzi zuriune batekin eta utzi tresnari zutabeak, `=>`, `=` eta `->` lerrokatzen.

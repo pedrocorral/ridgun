@@ -1,6 +1,6 @@
 -- ============================================================
 -- src/main/ridgun/ridgunc/main.rg
--- Self-Hosted Ridgun Compiler CLI Driver (ridgunc v0.9.16)
+-- Self-Hosted Ridgun Compiler CLI Driver (ridgunc v0.9.17)
 -- Shared Library (`src/main/ridgun/lib/`): ast.rg, lexer.rg,
 -- parser.rg, analyzer.rg, typecheck.rg, compiler.rg, vm.rg,
 -- elf64.rg, x86_64.rg, arm64.rg
@@ -15,72 +15,124 @@ import typecheck
 import compiler
 import vm
 
-fn :: strip_runner_args [String] => [String]
-      strip_runner_args []       =  []
-      strip_runner_args (_:rest) =  strip_script_prefix rest
+fn :: strip runner args [String] => [String]
+      strip runner args []       =  []
+      strip runner args (_:rest) =  strip_script_prefix rest
 
-fn :: strip_script_prefix [String]     => [String]
-      strip_script_prefix []           =  []
-      strip_script_prefix ("run":script:rest)
+fn :: strip script prefix [String]     => [String]
+      strip script prefix []           =  []
+      strip script prefix ("run":script:rest)
         | (str_contains script "ridgunc.rg") OR (str_contains script "ridgunc/main.rg") = rest
         | otherwise = ["run", script] :: rest
-      strip_script_prefix (first:rest)
+      strip script prefix (first:rest)
         | (str_contains first "ridgunc.rg") OR (str_contains first "ridgunc/main.rg") = rest
         | otherwise = [first] :: rest
 
-fn :: print_error_lines [String]    => ()
-      print_error_lines []          =  ()
-      print_error_lines (line:rest) =
+fn :: print error lines [String]    => ()
+      print error lines []          =  ()
+      print error lines (line:rest) =
         _ = echo line
         print_error_lines rest
 
-fn :: run_cli_check String     => ()
-      run_cli_check input_path =
+fn :: has strict flag [String]       => Bool
+      has strict flag []             =  False
+      has strict flag ("--strict":_) =  True
+      has strict flag (_:rest)       =  has strict flag rest
+
+fn :: strip strict flag [String]          => [String]
+      strip strict flag []                =  []
+      strip strict flag ("--strict":rest) =  strip strict flag rest
+      strip strict flag (x:rest)          =  [x] :: (strip strict flag rest)
+
+fn :: verify strict source String     [RTypeError] => ()
+      verify strict source _          []           =  ()
+      verify strict source input_path s_errs       =
+        err_c = type_err_count s_errs
+        _ = print_error_lines (format_type_errors s_errs)
+        _ = echo "[ridgunc --strict] {input_path}: {err_c} strict mode error(s) found."
+        sys_exit 1
+
+fn :: verify strict if enabled Bool String => ()
+      verify strict if enabled False _ = ()
+      verify strict if enabled True input_path =
         raw_src = load_rg_with_libs input_path
         toks = tokenize_src raw_src
+        verify strict source input_path (check strict tokens toks)
+
+fn :: run cli check Bool        String     => ()
+      run cli check strict_mode input_path =
+        raw_src = load_rg_with_libs input_path
+        run_cli_check_loaded strict_mode input_path raw_src
+
+fn :: strict check errors Bool  [RToken] => [RTypeError]
+      strict check errors False _        =  []
+      strict check errors True  toks     =  check strict tokens toks
+
+fn :: run cli check loaded Bool String String => ()
+      run cli check loaded _ input_path "" =
+        _ = echo "[ridgunc check] Error: empty or missing source file: {input_path}"
+        sys_exit 1
+      run cli check loaded strict_mode input_path raw_src =
+        toks = tokenize_src raw_src
         prog = parse_tokens toks
-        errs = typecheck_program prog
+        errs = (typecheck_program prog) :: (strict check errors strict_mode toks)
         report_check_result input_path prog errs
 
-fn :: report_check_result String     RProgram [RTypeError] => ()
-      report_check_result input_path prog     []           =
-        fn_c = count_fn_defs prog
-        ty_c = count_type_defs prog
-        summaries = analyze_rprogram prog
-        echo "[ridgunc check] {input_path}: {fn_c} function(s), {ty_c} type(s)"
-        echo "[ridgunc check] Type checking & static analysis passed — 0 error(s)."
-        echo "[ridgunc check] Static strategies:" summaries
-      report_check_result input_path _        errs         =
+fn :: report check result String RProgram [RTypeError] => ()
+      report check result input_path prog []
+        | ((count_fn_defs prog) == 0) AND ((count_type_defs prog) == 0) =
+          _ = echo "[ridgunc check] {input_path}: Error: 0 function(s), 0 type(s) found."
+          sys_exit 1
+        | otherwise =
+          fn_c = count_fn_defs prog
+          ty_c = count_type_defs prog
+          summaries = analyze_rprogram prog
+          echo "[ridgunc check] {input_path}: {fn_c} function(s), {ty_c} type(s)"
+          echo "[ridgunc check] Type checking & static analysis passed — 0 error(s)."
+          echo "[ridgunc check] Static strategies:" summaries
+      report check result input_path _ errs =
         err_c = type_err_count errs
         _ = print_error_lines (format_type_errors errs)
         _ = echo "[ridgunc check] {input_path}: {err_c} error(s) found."
         sys_exit 1
 
-fn :: run_cli_compile String     String     => ()
-      run_cli_compile input_path output_rgc =
+fn :: run cli compile Bool String String => ()
+      run cli compile strict_mode input_path output_rgc =
+        _ = verify strict if enabled strict_mode input_path
         fn_c = emit_rgc_file input_path output_rgc
-        echo "[ridgunc compile] {input_path} -> {output_rgc} ({fn_c} functions)"
+        report_compile_status input_path output_rgc fn_c
 
-fn :: str_ends_with_suffix String String => Bool
-      str_ends_with_suffix s      suf    =
+fn :: report compile status String String Int => ()
+      report compile status input_path output_rgc fn_c
+        | fn_c >= 0 =
+          echo "[ridgunc compile] {input_path} -> {output_rgc} ({fn_c} functions)"
+        | otherwise =
+          _ = echo "[ridgunc compile] Failed to compile {input_path}"
+          sys_exit 1
+
+fn :: str ends with suffix String String => Bool
+      str ends with suffix s suf =
         slen = str_len s
         suflen = str_len suf
         slen >= suflen AND (str_slice s (slen - suflen) slen) == suf
 
-fn :: strip_rg_ext String => String
-      strip_rg_ext path
+fn :: strip rg ext String => String
+      strip rg ext path
         | str_ends_with_suffix path ".rg" = str_slice path 0 ((str_len path) - 3)
         | otherwise = path
 
-fn :: run_cli_build_lib String     String     String      => ()
-      run_cli_build_lib input_path output_out target_arch
+fn :: run cli build lib Bool String String String => ()
+      run cli build lib strict_mode input_path output_out target_arch
         | str_ends_with_suffix output_out ".so" =
+          _ = verify strict if enabled strict_mode input_path
           st = build native target so library input_path output_out target_arch
           report_so_status input_path output_out st
         | str_ends_with_suffix output_out ".rglib" =
+          _ = verify strict if enabled strict_mode input_path
           st = emit_rglib_file input_path output_out
           report_rglib_status input_path output_out st
         | otherwise =
+          _ = verify strict if enabled strict_mode input_path
           rglib_out = output_out + ".rglib"
           so_out = output_out + ".so"
           st1 = emit_rglib_file input_path rglib_out
@@ -88,56 +140,60 @@ fn :: run_cli_build_lib String     String     String      => ()
           _ = report_rglib_status input_path rglib_out st1
           report_so_status input_path so_out st2
 
-fn :: run_cli_build_so String     String    String      => ()
-      run_cli_build_so input_path output_so target_arch =
+fn :: run cli build so Bool String String String => ()
+      run cli build so strict_mode input_path output_so target_arch =
+        _ = verify strict if enabled strict_mode input_path
         status = build native target so library input_path output_so target_arch
         report_so_status input_path output_so status
 
-fn :: report_rglib_status String     String     Int  => ()
-      report_rglib_status input_path output_lib 0    =
+fn :: report rglib status String String Int => ()
+      report rglib status input_path output_lib 0 =
         echo "[ridgunc build --lib] Ridgun library bundle created: {input_path} -> {output_lib}"
-      report_rglib_status _          output_lib code =
+      report rglib status _ output_lib code =
         _ = echo "[ridgunc build --lib] Failed to build {output_lib} (exit code {code})"
         sys_exit 1
 
-fn :: report_so_status String     String    Int  => ()
-      report_so_status input_path output_so 0    =
+fn :: report so status String String Int => ()
+      report so status input_path output_so 0 =
         echo "[ridgunc build --so] Native ELF64 shared library (.so) created: {input_path} -> {output_so}"
-      report_so_status _          output_so code =
+      report so status _ output_so code =
         _ = echo "[ridgunc build --so] Failed to build {output_so} (exit code {code})"
         sys_exit 1
 
-fn :: run_cli_build String     String     => ()
-      run_cli_build input_path output_bin =
+fn :: run cli build Bool String String => ()
+      run cli build strict_mode input_path output_bin =
+        _ = verify strict if enabled strict_mode input_path
         status = build native executable input_path output_bin
         report_build_status input_path output_bin status
 
-fn :: run_cli_build_target String     String     String      => ()
-      run_cli_build_target input_path output_bin target_arch =
+fn :: run cli build target Bool String String String => ()
+      run cli build target strict_mode input_path output_bin target_arch =
+        _ = verify strict if enabled strict_mode input_path
         status = build native target executable input_path output_bin target_arch
         report_build_status input_path output_bin status
 
-fn :: report_build_status String     String     Int  => ()
-      report_build_status input_path output_bin 0    =
+fn :: report build status String String Int => ()
+      report build status input_path output_bin 0 =
         echo "[ridgunc build] Native ELF executable created: {input_path} -> {output_bin}"
-      report_build_status _          output_bin code =
+      report build status _ output_bin code =
         _ = echo "[ridgunc build] Failed to build {output_bin} (exit code {code})"
         sys_exit 1
 
-fn :: run_cli_run String     => ()
-      run_cli_run input_path =
+fn :: run cli run Bool        String     => ()
+      run cli run strict_mode input_path =
+        _ = verify strict if enabled strict_mode input_path
         _ = sys_mkdir "target" 493
         status = build native fast executable input_path "target/.ridgunc_run_bin"
         exec_built_run status
 
-fn :: exec_built_run Int => ()
-      exec_built_run 0   =
+fn :: exec built run Int => ()
+      exec built run 0   =
         _ = shell_exec "./target/.ridgunc_run_bin; _st=$?; rm -f target/.ridgunc_run_bin; exit $_st"
         ()
-      exec_built_run _   =  sys_exit 1
+      exec built run _   =  sys_exit 1
 
-fn :: run_self_hosted_pipeline_demo => ()
-      run_self_hosted_pipeline_demo =
+fn :: run self hosted pipeline demo => ()
+      run self hosted pipeline demo =
         sample_src = "fn :: fact Int => Int\nfact 0 = 1\nfact n = n * (fact (n - 1))\n\nfn :: fib Int => Int\nfib 0 = 0\nfib 1 = 1\nfib n = (fib (n - 1)) + (fib (n - 2))\n\nfn :: compute Int => Int\ncompute x =\n  a = fact x\n  b = fib 10\n  a + b\n"
         toks = tokenize_src sample_src
         prog = parse_tokens toks
@@ -155,12 +211,12 @@ fn :: run_self_hosted_pipeline_demo => ()
         echo "VM eval fib(10)     =>" r_fib10
         echo "VM eval compute(5)  =>" r_comp5
 
-fn :: run_cli_version => ()
-      run_cli_version =
-        echo "ridgunc 0.9.16 (self-hosted Ridgun compiler, x86_64-unknown-linux-gnu)"
+fn :: run cli version => ()
+      run cli version =
+        echo "ridgunc 0.9.17 (self-hosted Ridgun compiler, x86_64-unknown-linux-gnu)"
 
-fn :: run_cli_help => ()
-      run_cli_help =
+fn :: run cli help => ()
+      run cli help =
         echo "Usage: ridgunc <command> [options] <file.rg>"
         echo ""
         echo "Commands:"
@@ -173,41 +229,43 @@ fn :: run_cli_help => ()
         echo "  version | -v | --version                       Show compiler version"
         echo "  help    | -h | --help                          Show this help message"
 
-fn :: dispatch_cli [String]        => ()
-      dispatch_cli []              =  run_self_hosted_pipeline_demo
-      dispatch_cli ("version":_)   =  run_cli_version
-      dispatch_cli ("-v":_)        =  run_cli_version
-      dispatch_cli ("--version":_) =  run_cli_version
-      dispatch_cli ("help":_)      =  run_cli_help
-      dispatch_cli ("-h":_)        =  run_cli_help
-      dispatch_cli ("--help":_)    =  run_cli_help
-      dispatch_cli ("run":input_path:_) = run_cli_run input_path
-      dispatch_cli ("check":input_path:_) = run_cli_check input_path
-      dispatch_cli ("compile":input_path:"-o":output_rgc:_) = run_cli_compile input_path output_rgc
-      dispatch_cli ("compile":input_path:_) = run_cli_compile input_path "{input_path}c"
-      dispatch_cli ("build":"--lib":"--target":target_arch:input_path:"-o":output_out:_) = run_cli_build_lib input_path output_out target_arch
-      dispatch_cli ("build":"--lib":input_path:"-o":output_out:"--target":target_arch:_) = run_cli_build_lib input_path output_out target_arch
-      dispatch_cli ("build":"--lib":input_path:"-o":output_out:_) = run_cli_build_lib input_path output_out "x86_64-linux"
-      dispatch_cli ("build":"--lib":input_path:_) = run_cli_build_lib input_path (strip_rg_ext input_path) "x86_64-linux"
-      dispatch_cli ("build":input_path:"--lib":"-o":output_out:_) = run_cli_build_lib input_path output_out "x86_64-linux"
-      dispatch_cli ("build":input_path:"--lib":_) = run_cli_build_lib input_path (strip_rg_ext input_path) "x86_64-linux"
-      dispatch_cli ("build":"--so":"--target":target_arch:input_path:"-o":output_so:_) = run_cli_build_so input_path output_so target_arch
-      dispatch_cli ("build":"--so":input_path:"-o":output_so:"--target":target_arch:_) = run_cli_build_so input_path output_so target_arch
-      dispatch_cli ("build":"--so":input_path:"-o":output_so:_) = run_cli_build_so input_path output_so "x86_64-linux"
-      dispatch_cli ("build":"--so":input_path:_) = run_cli_build_so input_path ((strip_rg_ext input_path) + ".so") "x86_64-linux"
-      dispatch_cli ("build":input_path:"--so":"-o":output_so:"--target":target_arch:_) = run_cli_build_so input_path output_so target_arch
-      dispatch_cli ("build":input_path:"--so":"-o":output_so:_) = run_cli_build_so input_path output_so "x86_64-linux"
-      dispatch_cli ("build":input_path:"--so":_) = run_cli_build_so input_path ((strip_rg_ext input_path) + ".so") "x86_64-linux"
-      dispatch_cli ("build":"--target":target_arch:input_path:"-o":output_bin:_) = run_cli_build_target input_path output_bin target_arch
-      dispatch_cli ("build":"--target":target_arch:input_path:_) = run_cli_build_target input_path "a.out" target_arch
-      dispatch_cli ("build":input_path:"-o":output_bin:"--target":target_arch:_) = run_cli_build_target input_path output_bin target_arch
-      dispatch_cli ("build":input_path:"--target":target_arch:"-o":output_bin:_) = run_cli_build_target input_path output_bin target_arch
-      dispatch_cli ("build":input_path:"--target":target_arch:_) = run_cli_build_target input_path "a.out" target_arch
-      dispatch_cli ("build":input_path:"-o":output_bin:_) = run_cli_build input_path output_bin
-      dispatch_cli ("build":input_path:_) = run_cli_build input_path "a.out"
-      dispatch_cli _               =  run_self_hosted_pipeline_demo
+fn :: dispatch cli Bool        [String]        => ()
+      dispatch cli _           []              =  run_self_hosted_pipeline_demo
+      dispatch cli _           ("version":_)   =  run_cli_version
+      dispatch cli _           ("-v":_)        =  run_cli_version
+      dispatch cli _           ("--version":_) =  run_cli_version
+      dispatch cli _           ("help":_)      =  run_cli_help
+      dispatch cli _           ("-h":_)        =  run_cli_help
+      dispatch cli _           ("--help":_)    =  run_cli_help
+      dispatch cli strict_mode ("run":input_path:_) = run_cli_run strict_mode input_path
+      dispatch cli strict_mode ("check":input_path:_) = run_cli_check strict_mode input_path
+      dispatch cli strict_mode ("compile":input_path:"-o":output_rgc:_) = run_cli_compile strict_mode input_path output_rgc
+      dispatch cli strict_mode ("compile":input_path:_) = run_cli_compile strict_mode input_path "{input_path}c"
+      dispatch cli strict_mode ("build":"--lib":"--target":target_arch:input_path:"-o":output_out:_) = run_cli_build_lib strict_mode input_path output_out target_arch
+      dispatch cli strict_mode ("build":"--lib":input_path:"-o":output_out:"--target":target_arch:_) = run_cli_build_lib strict_mode input_path output_out target_arch
+      dispatch cli strict_mode ("build":"--lib":input_path:"-o":output_out:_) = run_cli_build_lib strict_mode input_path output_out "x86_64-linux"
+      dispatch cli strict_mode ("build":"--lib":input_path:_) = run_cli_build_lib strict_mode input_path (strip_rg_ext input_path) "x86_64-linux"
+      dispatch cli strict_mode ("build":input_path:"--lib":"-o":output_out:_) = run_cli_build_lib strict_mode input_path output_out "x86_64-linux"
+      dispatch cli strict_mode ("build":input_path:"--lib":_) = run_cli_build_lib strict_mode input_path (strip_rg_ext input_path) "x86_64-linux"
+      dispatch cli strict_mode ("build":"--so":"--target":target_arch:input_path:"-o":output_so:_) = run_cli_build_so strict_mode input_path output_so target_arch
+      dispatch cli strict_mode ("build":"--so":input_path:"-o":output_so:"--target":target_arch:_) = run_cli_build_so strict_mode input_path output_so target_arch
+      dispatch cli strict_mode ("build":"--so":input_path:"-o":output_so:_) = run_cli_build_so strict_mode input_path output_so "x86_64-linux"
+      dispatch cli strict_mode ("build":"--so":input_path:_) = run_cli_build_so strict_mode input_path ((strip_rg_ext input_path) + ".so") "x86_64-linux"
+      dispatch cli strict_mode ("build":input_path:"--so":"-o":output_so:"--target":target_arch:_) = run_cli_build_so strict_mode input_path output_so target_arch
+      dispatch cli strict_mode ("build":input_path:"--so":"-o":output_so:_) = run_cli_build_so strict_mode input_path output_so "x86_64-linux"
+      dispatch cli strict_mode ("build":input_path:"--so":_) = run_cli_build_so strict_mode input_path ((strip_rg_ext input_path) + ".so") "x86_64-linux"
+      dispatch cli strict_mode ("build":"--target":target_arch:input_path:"-o":output_bin:_) = run_cli_build_target strict_mode input_path output_bin target_arch
+      dispatch cli strict_mode ("build":"--target":target_arch:input_path:_) = run_cli_build_target strict_mode input_path "a.out" target_arch
+      dispatch cli strict_mode ("build":input_path:"-o":output_bin:"--target":target_arch:_) = run_cli_build_target strict_mode input_path output_bin target_arch
+      dispatch cli strict_mode ("build":input_path:"--target":target_arch:"-o":output_bin:_) = run_cli_build_target strict_mode input_path output_bin target_arch
+      dispatch cli strict_mode ("build":input_path:"--target":target_arch:_) = run_cli_build_target strict_mode input_path "a.out" target_arch
+      dispatch cli strict_mode ("build":input_path:"-o":output_bin:_) = run_cli_build strict_mode input_path output_bin
+      dispatch cli strict_mode ("build":input_path:_) = run_cli_build strict_mode input_path "a.out"
+      dispatch cli _           _               =  run_self_hosted_pipeline_demo
 
 fn :: main => ()
       main =
         args = strip_runner_args cli_args
-        dispatch_cli args
+        strict_mode = has strict flag args
+        clean_args = strip strict flag args
+        dispatch_cli strict_mode clean_args

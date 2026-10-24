@@ -33,7 +33,7 @@ Perquè per a gustos, els colors:
 - Hi ha qui prefereix que les funcions comencin enganxades al marge esquerre sense escriure `fn ::` cada vegada (al cap i a la fi, la fletxa `=>` ja crida als quatre vents que aquella línia és una signatura de tipus).
 - I hi ha qui prefereix tenir una columna esquerra dedicada a les etiquetes (`fn ::`, `op ::`, `type`, `import`) per escanejar el fitxer visualment.
 
-El compilador i `stable format` entenen totes dues a la perfecció.
+El compilador i `stable format` entenen totes dues a la perfecció. A més, les paraules `fn` i `op` es poden fer servir lliurement com a part del nom de qualsevol funció o operador (per exemple `fn :: op`, `op :: fn` o `op :: op`), i si una funció retorna múltiples valors, en mode canònic/estricte els tipus de sortida s'escriuen separats per espais després de `=>` (`dividir_amb_residu Int Int => Int Int`).
 
 ---
 
@@ -65,7 +65,8 @@ Els tipus escalars de Ridgun són directes i sense sorpreses:
 | Tipus | Què és en realitat | Exemples |
 |---|---|---|
 | `Int` | Enter de 64 bits amb signe (`i64`) | `0`, `42`, `-100`, `0xFF00`, `1_000_000` |
-| `Real` | Decimal de doble precisió (`f64`) | `3.14159`, `0.001`, `-2.5` |
+| `U64` | Enter de 64 bits sense signe (`u64`) amb aritmètica modular i bit a bit nativa | `u64 0`, `u64 0x6a09e667f3bcc908`, `a ^ b`, `a << u64 13` |
+| `Float` / `Real` | Decimal de doble precisió (`f64`) | `3.14159`, `0.001`, `-2.5` |
 | `String` | Cadena de text immutable | `"Hola"`, `'ruta\crua'` |
 | `Char` | Codi de caràcter | Retornat per `str_char_at` |
 | `Bool` | Booleà de tota la vida | `True`, `False` |

@@ -33,7 +33,7 @@ Porque gostos não se discutem:
 - Há quem prefira que as funções comecem encostadas à margem esquerda sem escrever `fn ::` de cada vez (afinal de contas, a seta `=>` já grita aos quatro ventos que essa linha é uma assinatura de tipos).
 - E há quem prefira ter uma coluna esquerda dedicada às etiquetas (`fn ::`, `op ::`, `type`, `import`) para percorrer o ficheiro visualmente.
 
-O compilador e o `stable format` entendem ambas na perfeição.
+O compilador e o `stable format` entendem ambas na perfeição. Além disso, as palavras `fn` e `op` podem ser usadas livremente como parte do nome de qualquer função ou operador (por exemplo `fn :: op`, `op :: fn` ou `op :: op`), e se uma função devolver múltiplos valores, em modo canónico/estrito os tipos de saída escrevem-se separados por espaços após `=>` (`dividir_com_resto Int Int => Int Int`).
 
 ---
 
@@ -65,7 +65,8 @@ Os tipos escalares do Ridgun são diretos e sem surpresas:
 | Tipo | O que é na realidade | Exemplos |
 |---|---|---|
 | `Int` | Inteiro de 64 bits com sinal (`i64`) | `0`, `42`, `-100`, `0xFF00`, `1_000_000` |
-| `Real` | Decimal de precisão dupla (`f64`) | `3.14159`, `0.001`, `-2.5` |
+| `U64` | Inteiro de 64 bits sem sinal (`u64`) com aritmética modular e bit a bit nativa | `u64 0`, `u64 0x6a09e667f3bcc908`, `a ^ b`, `a << u64 13` |
+| `Float` / `Real` | Decimal de precisão dupla (`f64`) | `3.14159`, `0.001`, `-2.5` |
 | `String` | Cadeia de texto imutável | `"Olá"`, `'caminho\bruto'` |
 | `Char` | Código de carácter | Devolvido por `str_char_at` |
 | `Bool` | Booleano clássico | `True`, `False` |

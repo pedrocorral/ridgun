@@ -5,7 +5,7 @@
 -- ============================================================
 
 -- 1. Lexical Tokens produced by lexer.rg
-type RToken = TokFn | TokOp | TokType | TokImport | TokGlobal | TokContext | TokShared | TokWith | TokDo | TokAtomic | TokHardware | TokWhere | TokOtherwise | TokMut | TokTrue | TokFalse | TokAnd | TokOr | TokXor | TokNot | TokIdent String | TokInt Int | TokReal String | TokStr String | TokRawStr String | TokColonColon | TokColon | TokFatArrow | TokArrow | TokEquals | TokEqEq | TokNeq | TokGt | TokLt | TokGtEq | TokLtEq | TokPlus | TokMinus | TokStar | TokSlash | TokPercent | TokAt | TokPipe | TokPipeDot | TokDoublePipe | TokDoublePipeDot | TokLParen | TokRParen | TokLBracket | TokIdxLBracket | TokRBracket | TokComma | TokEllipsis | TokNewline | TokEof
+type RToken = TokFn | TokOp | TokType | TokImport | TokGlobal | TokContext | TokShared | TokWith | TokDo | TokAtomic | TokHardware | TokOtherwise | TokMut | TokTrue | TokFalse | TokAnd | TokOr | TokXor | TokNot | TokIdent String | TokInt Int | TokReal String | TokStr String | TokRawStr String | TokColonColon | TokColon | TokFatArrow | TokArrow | TokEquals | TokEqEq | TokNeq | TokGt | TokLt | TokGtEq | TokLtEq | TokPlus | TokMinus | TokStar | TokSlash | TokPercent | TokAt | TokPipe | TokPipeDot | TokDoublePipe | TokDoublePipeDot | TokLParen | TokRParen | TokLBracket | TokIdxLBracket | TokRBracket | TokComma | TokEllipsis | TokNewline | TokEof
 
 -- 2. Patterns in Function & Operator Cases
 type RPattern = PatInt Int | PatReal String | PatStr String | PatBool Bool | PatVar String | PatWild | PatEmpty | PatCons RPattern RPattern | PatTuple [RPattern] | PatCtor String [RPattern] | PatSeqBind String

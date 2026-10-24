@@ -37,11 +37,11 @@ g = Tensor_GPU [[1, 2], [3, 4]]
 result = g_ij * g_jk                     -- GPU-accelerated matmul
 
 -- Functions over tensors
-fn :: dot_product [Real] [Real] => Real
-      dot_product (a)    (b)    =  a_i * b_i      -- Einstein sum over i
+fn :: dot product [Real] [Real] => Real
+      dot product (a)    (b)    =  a_i * b_i      -- Einstein sum over i
 
-fn :: matrix_mul [[Real]] [[Real]] => [[Real]]
-      matrix_mul (A)      (B)      =  A_ij * B_jk  -- result shape (i, k)
+fn :: matrix mul [[Real]] [[Real]] => [[Real]]
+      matrix mul (A)      (B)      =  A_ij * B_jk  -- result shape (i, k)
 
 fn :: scale Real [[Real]] => [[Real]]
       scale c    (M)      =  c * M_ij          -- scalar broadcast

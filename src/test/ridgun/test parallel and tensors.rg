@@ -146,10 +146,10 @@ fn :: consultar contador (Agent Int Int) Int => Int
         send n to ag
         receive from ag
 
-fn :: tensor shape sum Tensor[Byte]               => Int
-      tensor shape sum (Tensor[Byte * f * c] m)   =  f * 100 + c + m_(0, 0)
-      tensor shape sum (Tensor[Byte * n] v)       =  n * 10 + v_(0)
-      tensor shape sum _                          =  0 - 1
+fn :: tensor shape sum Tensor[Byte] => Int
+      tensor shape sum (Tensor[Byte * f * c] m) = f * 100 + c + m_(0, 0)
+      tensor shape sum (Tensor[Byte * n] v) = n * 10 + v_(0)
+      tensor shape sum _            =  0 - 1
 
 fn :: inc vec elem Tensor[U64 * _] => Tensor[U64 * _]
       inc vec elem v               =
@@ -163,7 +163,7 @@ fn :: f blamka U64 U64 => U64
       f blamka x   y   =  x + y + 2 * ((x and 0xFFFFFFFF) * (y and 0xFFFFFFFF))
 
 fn :: blamka g U64 U64 U64 U64 => U64 U64 U64 U64
-      blamka g a   b   c   d   =
+      blamka g a b c d =
         mut a = f blamka a b
         mut d = (d xor a) rotr 32
         mut c = f blamka c d
@@ -186,7 +186,7 @@ fn :: blamka p16 Tensor[U64 * 16] => ()
         v_(3), v_(4), v_(9),  v_(14) = blamka g v_(3) v_(4) v_(9)  v_(14)
 
 fn :: compress block Tensor[U64 * 8 * 16] Tensor[U64 * 8 * 16] => Tensor[U64 * 8 * 16]
-      compress block x                    y                    =
+      compress block x y =
         r_ij = x_ij xor y_ij
         z_ij = r_ij
         ||map blamka p16 in z_(i,)
@@ -202,24 +202,24 @@ fn :: join4 String String String String => String
       join4 a0     a1     a2     a3     =  a0 + a1 + a2 + a3
 
 fn :: join6 String String String String String String => String
-      join6 a0     a1     a2     a3     a4     a5     =  a0 + a1 + a2 + a3 + a4 + a5
+      join6 a0 a1 a2 a3 a4 a5 = a0 + a1 + a2 + a3 + a4 + a5
 
 fn :: call3 (String String String => String) String String String => String
       call3 g                                a0     a1     a2     =  g a0 a1 a2
 
 fn :: call4 (String String String String => String) String String String String => String
-      call4 g                                       a0     a1     a2     a3     =  g a0 a1 a2 a3
+      call4 g a0 a1 a2 a3 = g a0 a1 a2 a3
 
 fn :: call6 (String String String String String String => String) String String String String String String => String
-      call6 g                                                     a0     a1     a2     a3     a4     a5     =  g a0 a1 a2 a3 a4 a5
+      call6 g a0 a1 a2 a3 a4 a5 = g a0 a1 a2 a3 a4 a5
 
 fn :: call box3 FnBox3 String String String => String
-      call box3 b      a0     a1     a2     =
+      call box3 b a0 a1 a2 =
         f = cb3 b
         f a0 a1 a2
 
-fn :: scale add Int Int Int => Int
-      scale add base factor x = base + (factor * x)
+fn :: scale add Int  Int    Int => Int
+      scale add base factor x   =  base + (factor * x)
 
 fn :: make scaler Int Int => (Int => Int)
       make scaler b   f   =  scale add b f
@@ -234,6 +234,18 @@ fn :: run closure mem scope String => ()
         nums = map esc [1, 2, 3]
         assert equals (s1 + "|" + s2) "pre-ok:uno!|pre-ok:dos?"
         assert equals nums [110, 120, 130]
+
+fn :: bench blamka loop Tensor[U64 * 1 * 16] Int => Tensor[U64 * 1 * 16]
+      bench blamka loop v                    rem
+        | rem <= 0  = v
+        | otherwise =
+          map blamka p16 in v_(i,)
+          bench blamka loop v (rem - 1)
+
+fn :: bench sha256 raw loop String Int => String
+      bench sha256 raw loop cur rem
+        | rem <= 0  = cur
+        | otherwise = bench sha256 raw loop (sha256 raw cur) (rem - 1)
 
 fn :: main => ()
       main =
@@ -370,4 +382,32 @@ fn :: main => ()
         live0 = cmm_live_blocks
         _ = run closure mem scope "ok"
         assert equals cmm_live_blocks live0
+        echo "=== Speed & Zero-Leak Benchmarks: sha256 raw & BlaMka Tensor Permutations ==="
+        raw_empty = sha256 raw ""
+        bytes_empty = sha256 bytes ""
+        assert equals (str len raw_empty) 32
+        assert equals raw_empty bytes_empty
+        assert equals (str char at raw_empty 0) 227
+        assert equals (str char at raw_empty 1) 176
+        assert equals (str char at raw_empty 31) 85
+        tb0 = sys time ms
+        live_sha0 = cmm_live_blocks
+        final_digest = bench sha256 raw loop "ridgun-bench-seed" 10000
+        assert equals (str len final_digest) 32
+        tb1 = sys time ms
+        sha_ms = tb1 - tb0
+        echo "  [bench] 10,000 x sha256 raw iterations:" sha_ms "ms"
+        assert true (sha_ms < 500)
+        mut bv = Tensor[U64 * 1 * 16]
+        bv_(0, 0) = 1
+        bv_(0, 1) = 2
+        live_bl0 = cmm_live_blocks
+        tb2 = sys time ms
+        bv = bench blamka loop bv 2000
+        tb3 = sys time ms
+        bl_ms = tb3 - tb2
+        assert equals cmm_live_blocks live_bl0
+        assert true (bv_(0, 0) != 1)
+        echo "  [bench] 2,000 x blamka p16 (16,000 x blamka g 4-tuple unpacks):" bl_ms "ms (0 heap leaks)"
+        assert true (bl_ms < 500)
         echo "=== All parallel & tensor tests passed ==="

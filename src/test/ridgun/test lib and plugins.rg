@@ -317,7 +317,7 @@ fn :: main => ()
         st_repl = shell exec ("cd target/test_lib_work/multi_app && \"" + stable_bin + "\" < repl_in.txt > repl_out.txt")
         assert int equals st_repl 0 "interactive REPL session exits cleanly with 0"
         repl_out = read file "target/test_lib_work/multi_app/repl_out.txt"
-        assert ok (str contains repl_out "Welcome to stable 0.9.16")
+        assert ok (str contains repl_out "Welcome to stable 0.9.17")
         assert ok (str contains repl_out "Reloaded build.rg — current project is 'alpha'")
         assert ok (str contains repl_out "Exiting stable.")
         echo "=== FR-COMP-007: Cross-Platform PAL Descriptor/Poll/Process Primitives & with timeout ==="
@@ -374,5 +374,20 @@ fn :: main => ()
         -- After exiting `with timeout`, deadline is restored to 0 / -1
         assert equals (sys deadline ms) 0
         assert equals (sys remaining ms) (0 - 1)
+        -- 6. Verify `--strict` mode rejects `_` in `fn ::` / `op ::` names and `(Int, Int)` outputs, and accepts `fn`/`op`/`where` and `=> Int Int`
+        strict_bad = "target/test_lib_work/strict_bad.rg"
+        _ = write file strict_bad "fn :: bad_fn_name Int => Int\n      bad_fn_name x = x + 1\n"
+        rc_non_strict = shell exec ("\"" + ridgunc_bin + "\" check " + strict_bad + " >/dev/null 2>&1")
+        assert equals rc_non_strict 0
+        rc_strict_bad = shell exec ("\"" + ridgunc_bin + "\" check --strict " + strict_bad + " >/dev/null 2>&1")
+        assert true (rc_strict_bad != 0)
+        strict_bad_ret = "target/test_lib_work/strict_bad_ret.rg"
+        _ = write file strict_bad_ret "fn :: pair up Int => (Int, Int)\n      pair up x = (x, x + 1)\n"
+        rc_strict_bad_ret = shell exec ("\"" + ridgunc_bin + "\" check --strict " + strict_bad_ret + " >/dev/null 2>&1")
+        assert true (rc_strict_bad_ret != 0)
+        strict_good = "target/test_lib_work/strict_good.rg"
+        _ = write file strict_good "fn :: op Int => Int Int\n      op where = (where, where + 1)\nop :: Int fn Int => Int\n      a fn b = a + b\n"
+        rc_strict_good = shell exec ("\"" + ridgunc_bin + "\" check --strict " + strict_good + " >/dev/null 2>&1")
+        assert equals rc_strict_good 0
         _ = shell exec "rm -rf target/test_lib_work"
         echo "=== All library compilation, stable plugin & PAL timeout tests passed ==="

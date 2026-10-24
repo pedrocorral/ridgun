@@ -75,7 +75,7 @@ fn :: elegir Bool [Int] [Int] => [Int]
         | otherwise = b
 
 -- @tests FR-COMP-002
-fn :: cmm trace elegir Bool => (Int, Int, Int, Int, Int, Int)
+fn :: cmm trace elegir Bool => Int Int Int Int Int Int
       cmm trace elegir cond =
         base_live = cmm_live_blocks
         base_freed = cmm_cond_freed
@@ -93,7 +93,7 @@ fn :: cmm trace elegir Bool => (Int, Int, Int, Int, Int, Int)
         delta_spared = cmm_cond_spared - base_spared
         (vivos_ab, vivos_tras_elegir, vivos_tras_usar_a, vivos_tras_usar_c, delta_freed, delta_spared)
 
-fn :: cmm check ptr identity Bool => (Bool, Bool)
+fn :: cmm check ptr identity Bool => Bool Bool
       cmm check ptr identity cond =
         a = [1, 2, 3]
         b = [4, 5, 6]
@@ -102,7 +102,7 @@ fn :: cmm check ptr identity Bool => (Bool, Bool)
         same_b = cmm same ptr b c
         (same_a, same_b)
 
-fn :: cmm trace cascada Bool Bool => (Int, Int, Int)
+fn :: cmm trace cascada Bool Bool => Int Int Int
       cmm trace cascada c1   c2   =
         base = cmm_live_blocks
         a = [1, 2]
@@ -117,7 +117,7 @@ fn :: cmm trace cascada Bool Bool => (Int, Int, Int)
         vivos_tras_e = cmm_live_blocks - base
         (vivos_tras_cascada, vivos_tras_a, vivos_tras_e)
 
-fn :: rmm2 trace nested => (Int, Int, Int)
+fn :: rmm2 trace nested => Int Int Int
       rmm2 trace nested =
         base = cmm_live_blocks
         a = [10, 20]
@@ -185,7 +185,7 @@ fn :: parallel dag bottom Int Int => Int
         || a - b -> diff
 
 -- 4. Mutable local variables (`mut x = ...`) with `RMM2` heap rebinding
-fn :: accum and rebind Int => (Int, Int, Int)
+fn :: accum and rebind Int => Int Int Int
       accum and rebind n   =
         base = cmm_live_blocks
         mut acc = n
@@ -199,7 +199,7 @@ fn :: accum and rebind Int => (Int, Int, Int)
         (total, live_before_rebind, live_after_rebind)
 
 -- 5. Lowercase logical operators (`and`, `or`, `xor`, `not`)
-fn :: eval logic ops Bool Bool => (Bool, Bool, Bool, Bool)
+fn :: eval logic ops Bool Bool => Bool Bool Bool Bool
       eval logic ops a    b    =
         (a and b, a or b, a xor b, not a)
 
@@ -286,7 +286,7 @@ fn :: tco list accum Int [Int] => [Int]
       tco list accum 0   acc   =  acc
       tco list accum n   acc   =  tco list accum (n - 1) ([n] :: acc)
 
-fn :: rmm2 rebind self trace => (Int, Int)
+fn :: rmm2 rebind self trace => Int Int
       rmm2 rebind self trace =
         base = cmm_live_blocks
         mut xs = [100, 200, 300]

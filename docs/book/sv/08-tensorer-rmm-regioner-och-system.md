@@ -89,12 +89,13 @@ Lägg märke till två spektakulära detaljer:
 2. **Einsteins indexnotation (`a_ik @ b_kj`) och Hadamard (`a_ij * b_j`)**:
    - Med **`@`** kontraheras (summeras) de index som upprepas i alla operander (`k`), medan de unika (`i`, `j`) överlever i resultattensorn.
    - Med **`+`, `-`, `*`, `/`** justerar indexen dimensionerna och utför automatisk *broadcasting* (`a_ij * b_j` multiplicerar varje rad `i` i `a` med vektorn `b_j` utan att du behöver skriva `unsqueeze` eller `reshape`).
-3. **Mutering *in-place* för numeriska algoritmer**:
+3. **Högpresterande typade tensorer (`Tensor[U64 * N]`) och mutering *in-place* med `t_(i, j)`**:
+   I kryptografiska system, fysiksimuleringar eller linjär algebra kan du deklarera platta tensorer över ett sammanhängande block av teckenlösa 64-bitars heltal (`Tensor[U64 * 4]`, `Tensor[U64 * 8 * 16]`), operera parallellt med `^` (inbyggd block-XOR) och läsa eller skriva element på $O(1)$-tid med den uttryckliga indexsyntaxen `t_(i)` eller `t_(i, j)`:
    ```ridgun
-   skapa_enhetsmatris => Tensor
-   skapa_enhetsmatris =
-     m = Tensor [[1.0, 0.0], [0.0, 1.0]]
-     m[0, 1] = 0.5
+   skapa_tillstandsblock => Tensor[U64 * 2 * 2]
+   skapa_tillstandsblock =
+     mut m = tensor fill [2, 2] (u64 0)
+     m_(0, 1) = u64 0x6a09e667f3bcc908
      m
    ```
 
@@ -148,7 +149,7 @@ Och för att arbeta med operativsystemet:
 | `read_file` / `write_file` | `String => String` / `String String => ()` | Läsning och skrivning av hela filer på disk. |
 | `read_bytes` / `write_bytes` | `String => [Int]` / `String [Int] => ()` | Exakt binär läsning och skrivning byte för byte (`0..255`). |
 | `list_dir` / `file_lstat` | `String => [String]` / `String => ...` | Listning av kataloger och inspektion av POSIX-metadata (`lstat`). |
-| `sha256_file` / `sha256_str` | `String => String` | Inbyggd kryptografisk SHA-256-hash. |
+| `sha256_file` / `sha256_str` / `sha256_raw` | `String => String` | Inbyggd kryptografisk SHA-256-hash (64 tecken hexadecimalt eller rått 32-bytes binärt sammandrag med `sha256 raw` / `sha256 bytes`). |
 | `sys_exec` / `shell_exec` | `... => Int` | Körning av operativsystemprocesser. |
 | `sys_getcwd` / `sys_chdir` | `=> String` / `String => Int` | Fråga efter eller byt aktuell arbetskatalog. |
 | `sys_getenv` / `sys_setenv` | `String => String` / `String String => Int` | Processens miljövariabler. |
@@ -157,7 +158,20 @@ Och för att arbeta med operativsystemet:
 
 ---
 
-## 8.6. Verklig fallstudie: Vi bygger `rg-wc`, ett parallellt Unix-verktyg
+## 8.6. Ekosystemet av standardbibliotek (`ridgun-libs`)
+
+Utöver kompilatorns primitiver innehåller Ridguns officiella ekosystem **32 rena bibliotek (`.rglib`)** skrivna helt i Ridgun som du kan importera med `import <namn>` i vilket projekt som helst:
+
+| Kategori | Tillgängliga bibliotek | Vad de tillhandahåller |
+|---|---|---|
+| **Samlingar, text och data** | `collections`, `set`, `string`, `regex`, `utf8`, `fmt`, `csv`, `json`, `toml`, `yaml`, `xml`, `html`, `markdown`, `base64`, `hex`, `compress`, `sql` | Avbildningar, mängder, reguljära uttryck, strukturerade tolkar/serialiserare, kodning och frågemotorer. |
+| **Matematik, tid och slumptal** | `math`, `random`, `datetime`, `uuid`, `log`, `cli`, `bench`, `test` | Matematiska funktioner, deterministisk och systembaserad PRNG, ISO-8601-datum, UUID, testramverk och prestandamätningar med `clock_gettime`. |
+| **System, nätverk och webb** | `fs`, `path`, `process`, `env`, `net`, `http`, `uri` | Högnivåfilsystem, sökvägshantering, underprocesser, TCP/UDP-uttag samt HTTP-klient och -server. |
+| **Kryptografi och säkerhet (`crypto`)** | `crypto` (`sha256`, `hmac`, `hkdf`, `pbkdf2`, `argon2id`, `chacha20`, `aes`, `x25519`, `ed25519`, `csprng`) | Kryptografisk svit verifierad mot officiella RFC/NIST-vektorer, implementerad över `U64`, `Tensor[U64 * ...]` och `sha256 raw` med tupel-inlining utan heap-allokeringar. |
+
+---
+
+## 8.7. Verklig fallstudie: Vi bygger `rg-wc`, ett parallellt Unix-verktyg
 
 Låt oss knyta ihop allt vi har lärt oss från Kapitel 01 fram till hit i ett riktigt systemprogram: en parallell version av Unix-verktyget `wc` (rad- och byteräknare för flera filer) skriven i ren Ridgun:
 
@@ -215,7 +229,7 @@ Stanna upp en sekund och titta på dessa ~40 rader kod:
 
 ---
 
-## 8.7. Slutlig färdplan: Ridgun-programmerarens 10 gyllene regler
+## 8.8. Slutlig färdplan: Ridgun-programmerarens 10 gyllene regler
 
 1. **Skriv alltid kontraktet (`=>`) först och ekvationerna (`=`) sedan:** att tänka på typerna först får kompilatorn att arbeta åt dig.
 2. **Låt `stable format` formge dina tabeller:** skriv med ett mellanslag och låt verktyget rada upp kolumner, `=>`, `=` och `->`.

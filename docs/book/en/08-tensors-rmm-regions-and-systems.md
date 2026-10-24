@@ -89,13 +89,20 @@ Notice three standout details:
 2. **Einstein index notation (`a_ik @ b_kj`) and Hadamard broadcasting (`a_ij * b_j`)**:
    - With **`@`**, indices repeated across all operands (`k`) are contracted (summed over) while unique indices (`i`, `j`) survive in the output tensor.
    - With **`+`, `-`, `*`, `/`**, indices align dimensions and perform automatic *broadcasting* (`a_ij * b_j` multiplies each row `i` of `a` by vector `b_j` without needing `unsqueeze` or `reshape`).
-3. ***In-place* mutation for numerical algorithms**:
+3. **Typed Tensors (`Tensor[T * d1 * d2]`), Mathematical Subscripts `t_(i, j)`, Slice Views `t_(i,)`, and *In-Place* Axis Mapping (`in`)**:
+   You can allocate zero-initialized tensors with explicit element types (`U64`, `Int`, `Float`, `Byte`), index them with mathematical subscripts `t_(i, j)`, take zero-copy row (`t_(i,)`) or column (`t_(,j)`) views, destructure multi-return calls directly into tensor elements with zero heap allocations, and map functions in-place along an axis using `map ... in` or `||map ... in`:
    ```ridgun
-   make_identity_matrix => Tensor
-   make_identity_matrix =
-     m = Tensor [[1.0, 0.0], [0.0, 1.0]]
-     m[0, 1] = 0.5
-     m
+   fn :: blamka p16 Tensor[U64 * 16] => ()
+         blamka p16 v                =
+           v_(0), v_(4), v_(8), v_(12) = blamka g v_(0) v_(4) v_(8) v_(12)
+
+   fn :: compress block Tensor[U64 * 8 * 16] Tensor[U64 * 8 * 16] => Tensor[U64 * 8 * 16]
+         compress block x                    y                    =
+           r_ij = x_ij xor y_ij
+           z_ij = r_ij
+           ||map blamka p16 in z_(i,)
+           ||map blamka p16 in z_(,j)
+           z_ij xor r_ij
    ```
 
 ---
@@ -148,7 +155,8 @@ And for interacting with the operating system:
 | `read_file` / `write_file` | `String => String` / `String String => ()` | Full file reading and writing on disk. |
 | `read_bytes` / `write_bytes` | `String => [Int]` / `String [Int] => ()` | Exact byte-by-byte binary reading and writing (`0..255`). |
 | `list_dir` / `file_lstat` | `String => [String]` / `String => ...` | Directory listing and POSIX metadata inspection (`lstat`). |
-| `sha256_file` / `sha256_str` | `String => String` | Native SHA-256 cryptographic hash. |
+| `sha256_file` / `sha256_str` | `String => String` | Native 64-character hex SHA-256 cryptographic hash. |
+| `sha256 raw` / `sha256 bytes` | `String => String` | Raw 32-byte binary SHA-256 digest (supports embedded `0x00` bytes with zero hex conversion overhead). |
 | `sys_exec` / `shell_exec` | `... => Int` | Operating system process execution. |
 | `sys_getcwd` / `sys_chdir` | `=> String` / `String => Int` | Query or change the current working directory. |
 | `sys_getenv` / `sys_setenv` | `String => String` / `String String => Int` | Process environment variables. |

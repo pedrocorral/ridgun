@@ -89,12 +89,13 @@ Repare em dois detalhes espetaculares:
 2. **Notação de subscritos de Einstein (`a_ik @ b_kj`) e Hadamard (`a_ij * b_j`)**:
    - Com **`@`**, os subscritos repetidos em todos os operandos (`k`) contraem-se (somam-se) e os únicos (`i`, `j`) sobrevivem no tensor resultado.
    - Com **`+`, `-`, `*`, `/`**, os subscritos alinham dimensões e fazem *broadcasting* automático (`a_ij * b_j` multiplica cada linha `i` de `a` pelo vetor `b_j` sem necessidade de escrever `unsqueeze` nem `reshape`).
-3. **Mutação *in-place* para algoritmos numéricos**:
+3. **Tensores tipados de alto desempenho (`Tensor[U64 * N]`) e mutação *in-place* com `t_(i, j)`**:
+   Em sistemas criptográficos, simulações físicas ou álgebra linear pode declarar tensores planos sobre um bloco contíguo de inteiros sem sinal de 64 bits (`Tensor[U64 * 4]`, `Tensor[U64 * 8 * 16]`), operar em paralelo com `^` (XOR nativo de bloco) e ler ou escrever elementos em tempo $O(1)$ com a sintaxe de subscrito explícito `t_(i)` ou `t_(i, j)`:
    ```ridgun
-   criar_matriz_identidade => Tensor
-   criar_matriz_identidade =
-     m = Tensor [[1.0, 0.0], [0.0, 1.0]]
-     m[0, 1] = 0.5
+   criar_bloco_estado => Tensor[U64 * 2 * 2]
+   criar_bloco_estado =
+     mut m = tensor fill [2, 2] (u64 0)
+     m_(0, 1) = u64 0x6a09e667f3bcc908
      m
    ```
 
@@ -148,7 +149,7 @@ E para trabalhar com o sistema operativo:
 | `read_file` / `write_file` | `String => String` / `String String => ()` | Leitura e escrita integral de ficheiros em disco. |
 | `read_bytes` / `write_bytes` | `String => [Int]` / `String [Int] => ()` | Leitura e escrita binária exata byte a byte (`0..255`). |
 | `list_dir` / `file_lstat` | `String => [String]` / `String => ...` | Listagem de diretórios e inspeção de metadados POSIX (`lstat`). |
-| `sha256_file` / `sha256_str` | `String => String` | Hash criptográfico SHA-256 nativo. |
+| `sha256_file` / `sha256_str` / `sha256_raw` | `String => String` | Hash criptográfico SHA-256 nativo (em hexadecimal de 64 caracteres ou resumo binário bruto de 32 bytes com `sha256 raw` / `sha256 bytes`). |
 | `sys_exec` / `shell_exec` | `... => Int` | Execução de processos do sistema operativo. |
 | `sys_getcwd` / `sys_chdir` | `=> String` / `String => Int` | Consultar ou alterar o diretório de trabalho. |
 | `sys_getenv` / `sys_setenv` | `String => String` / `String String => Int` | Variáveis de ambiente do processo. |
@@ -157,7 +158,20 @@ E para trabalhar com o sistema operativo:
 
 ---
 
-## 8.6. Caso de Estudo Real: Construindo `rg-wc`, um utilitário Unix paralelo
+## 8.6. O Ecossistema de Bibliotecas Padrão (`ridgun-libs`)
+
+Além das primitivas do compilador, o ecossistema oficial do Ridgun inclui **32 bibliotecas puras (`.rglib`)** escritas inteiramente em Ridgun que pode importar com `import <nome>` em qualquer projeto:
+
+| Categoria | Bibliotecas disponíveis | O que oferecem |
+|---|---|---|
+| **Coleções, Texto e Dados** | `collections`, `set`, `string`, `regex`, `utf8`, `fmt`, `csv`, `json`, `toml`, `yaml`, `xml`, `html`, `markdown`, `base64`, `hex`, `compress`, `sql` | Mapas, conjuntos, expressões regulares, parsers/serializadores estruturados, codificação e motores de consultas. |
+| **Matemática, Tempo e Aleatoriedade** | `math`, `random`, `datetime`, `uuid`, `log`, `cli`, `bench`, `test` | Funções matemáticas, PRNG determinístico e de sistema, datas ISO-8601, UUIDs, frameworks de testes e benchmarks com `clock_gettime`. |
+| **Sistemas, Rede e Web** | `fs`, `path`, `process`, `env`, `net`, `http`, `uri` | Sistema de ficheiros de alto nível, manipulação de caminhos, subprocessos, sockets TCP/UDP e cliente/servidor HTTP. |
+| **Criptografia e Segurança (`crypto`)** | `crypto` (`sha256`, `hmac`, `hkdf`, `pbkdf2`, `argon2id`, `chacha20`, `aes`, `x25519`, `ed25519`, `csprng`) | Suite criptográfica verificada com vetores oficiais RFC/NIST, implementada sobre `U64`, `Tensor[U64 * ...]` e `sha256 raw` com otimização de inlining de tuplos sem alocações no heap. |
+
+---
+
+## 8.7. Caso de Estudo Real: Construindo `rg-wc`, um utilitário Unix paralelo
 
 Vamos unir tudo o que aprendemos desde o Capítulo 01 até aqui num programa real de sistemas: uma versão paralela da ferramenta Unix `wc` (contador de linhas e bytes para múltiplos ficheiros) escrita em Ridgun puro:
 
@@ -215,7 +229,7 @@ Pare um segundo para olhar para essas ~40 linhas de código:
 
 ---
 
-## 8.7. Roteiro Final: As 10 Regras de Ouro do Programador Ridgun
+## 8.8. Roteiro Final: As 10 Regras de Ouro do Programador Ridgun
 
 1. **Escreva sempre primeiro o contrato (`=>`) e depois as equações (`=`):** pensar nos tipos primeiro faz com que o compilador trabalhe para si.
 2. **Deixe que o `stable format` pagine as suas tabelas:** escreva com um espaço e deixe que a ferramenta alinhe colunas, `=>`, `=` e `->`.

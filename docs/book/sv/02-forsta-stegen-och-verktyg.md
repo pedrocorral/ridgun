@@ -88,9 +88,18 @@ test dir =  "src/test/ridgun"
 
 target dir => String
 target dir =  "target"
+
+-- Valfritt: aktivera strikt läge för signaturer och namn (inaktiverat som standard)
+strict mode => Bool
+strict mode =  True
 ```
 
 Om du stavar fel på ett fält varnar kompilatorn själv. Inga överraskningar.
+
+### Strikt läge (`--strict` / `strict mode = True`)
+Som standard är strikt läge **inaktiverat** i både `ridgunc` och nya projekt som skapas med `stable new` eller `stable init`, så att du kan bygga prototyper i full frihet. När du vill låsa den kanoniska stilen i ett projekt (som vi gör i Ridguns egen kompilator) kan du skicka `--strict` till `ridgunc` eller lägga till `strict mode = True` i din `build.rg`. Strikt läge kräver två elegansregler:
+1. **Namn på `fn ::` och `op ::` med naturliga mellanslag, utan `_`**: deklarationer måste använda mellanslag (`fn :: berakna skatt`, aldrig `fn :: berakna_skatt`).
+2. **Flertalsreturer åtskilda med mellanslag efter `=>`**: när en funktion eller operator returnerar flera värden skrivs dess utdatasignatur som `=> Int Int` eller `=> Tillstand Int` (aldrig `=> (Int, Int)` med parenteser eller kommatecken).
 
 ---
 

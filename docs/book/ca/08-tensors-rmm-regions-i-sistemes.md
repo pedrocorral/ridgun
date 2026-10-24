@@ -89,12 +89,13 @@ Fixa't en tres detalls espectaculars:
 2. **Notació de subíndexs d'Einstein (`a_ik @ b_kj`) i Hadamard (`a_ij * b_j`)**:
    - Amb **`@`**, els subíndexs repetits en tots els operands (`k`) es contrauen (es sumen) i els únics (`i`, `j`) sobreviuen al tensor resultat.
    - Amb **`+`, `-`, `*`, `/`**, els subíndexs alineen dimensions i fan *broadcasting* automàtic (`a_ij * b_j` multiplica cada fila `i` d'`a` pel vector `b_j` sense necessitat d'escriure `unsqueeze` ni `reshape`).
-3. **Mutació *in-place* per a algorismes numèrics**:
+3. **Tensors tipats d'alt rendiment (`Tensor[U64 * N]`) i mutació *in-place* amb `t_(i, j)`**:
+   En sistemes criptogràfics, simulacions físiques o àlgebra lineal pots declarar tensors plans sobre un bloc contigu d'enters sense signe de 64 bits (`Tensor[U64 * 4]`, `Tensor[U64 * 8 * 16]`), operar en paral·lel amb `^` (XOR natiu de bloc) i llegir o escriure elements en temps $O(1)$ amb la sintaxi de subíndex explícit `t_(i)` o `t_(i, j)`:
    ```ridgun
-   crear_matriu_identitat => Tensor
-   crear_matriu_identitat =
-     m = Tensor [[1.0, 0.0], [0.0, 1.0]]
-     m[0, 1] = 0.5
+   crear_bloc_estat => Tensor[U64 * 2 * 2]
+   crear_bloc_estat =
+     mut m = tensor fill [2, 2] (u64 0)
+     m_(0, 1) = u64 0x6a09e667f3bcc908
      m
    ```
 
@@ -148,7 +149,7 @@ I per treballar amb el sistema operatiu:
 | `read_file` / `write_file` | `String => String` / `String String => ()` | Lectura i escriptura íntegra de fitxers en disc. |
 | `read_bytes` / `write_bytes` | `String => [Int]` / `String [Int] => ()` | Lectura i escriptura binària exacta byte a byte (`0..255`). |
 | `list_dir` / `file_lstat` | `String => [String]` / `String => ...` | Llistat de directoris i inspecció de metadades POSIX (`lstat`). |
-| `sha256_file` / `sha256_str` | `String => String` | Resum criptogràfic SHA-256 natiu. |
+| `sha256_file` / `sha256_str` / `sha256_raw` | `String => String` | Resum criptogràfic SHA-256 natiu (en hexadecimal de 64 caràcters o digest binari cru de 32 bytes amb `sha256 raw` / `sha256 bytes`). |
 | `sys_exec` / `shell_exec` | `... => Int` | Execució de processos del sistema operatiu. |
 | `sys_getcwd` / `sys_chdir` | `=> String` / `String => Int` | Consultar o canviar el directori de treball. |
 | `sys_getenv` / `sys_setenv` | `String => String` / `String String => Int` | Variables d'entorn del procés. |
@@ -157,7 +158,20 @@ I per treballar amb el sistema operatiu:
 
 ---
 
-## 8.6. Cas d'Estudi Real: Construint `rg-wc`, una utilitat Unix paral·lela
+## 8.6. L'Ecosistema de Llibreries Estàndard (`ridgun-libs`)
+
+A més de les primitives del compilador, l'ecosistema oficial de Ridgun inclou **32 llibreries pures (`.rglib`)** escrites íntegrament en Ridgun que pots importar amb `import <nom>` en qualsevol projecte:
+
+| Categoria | Llibreries disponibles | Què aporten |
+|---|---|---|
+| **Col·leccions, Text i Dades** | `collections`, `set`, `string`, `regex`, `utf8`, `fmt`, `csv`, `json`, `toml`, `yaml`, `xml`, `html`, `markdown`, `base64`, `hex`, `compress`, `sql` | Mapes, conjunts, expressions regulars, parsers/serialitzadors estructurats, codificació i motors de consultes. |
+| **Matemàtiques, Temps i Aleatorietat** | `math`, `random`, `datetime`, `uuid`, `log`, `cli`, `bench`, `test` | Funcions matemàtiques, PRNG determinista i de sistema, dates ISO-8601, UUIDs, marcs de tests i benchmarks amb `clock_gettime`. |
+| **Sistemes, Xarxa i Web** | `fs`, `path`, `process`, `env`, `net`, `http`, `uri` | Sistema de fitxers d'alt nivell, manipulació de rutes, sub-processos, sockets TCP/UDP i client/servidor HTTP. |
+| **Criptografia i Seguretat (`crypto`)** | `crypto` (`sha256`, `hmac`, `hkdf`, `pbkdf2`, `argon2id`, `chacha20`, `aes`, `x25519`, `ed25519`, `csprng`) | Suite criptogràfica verificada amb vectors oficials RFC/NIST, implementada sobre `U64`, `Tensor[U64 * ...]` i `sha256 raw` amb optimització d'inlining de tuples sense reserves al heap. |
+
+---
+
+## 8.7. Cas d'Estudi Real: Construint `rg-wc`, una utilitat Unix paral·lela
 
 Unirem tot el que hem après des del Capítol 01 fins aquí en un programa real de sistemes: una versió paral·lela de l'eina Unix `wc` (comptador de línies i bytes per a múltiples fitxers) escrita en Ridgun pur:
 
@@ -215,7 +229,7 @@ Atura't un segon a mirar aquestes ~40 línies de codi:
 
 ---
 
-## 8.7. Full de Ruta Final: Les 10 Regles d'Or del Programador Ridgun
+## 8.8. Full de Ruta Final: Les 10 Regles d'Or del Programador Ridgun
 
 1. **Escriu sempre primer el contracte (`=>`) i després les equacions (`=`):** pensar en els tipus primer fa que el compilador treballi per a tu.
 2. **Deixa que `stable format` maqueti les teves taules:** escriu amb un espai i deixa que l'eina alineï columnes, `=>`, `=` i `->`.
