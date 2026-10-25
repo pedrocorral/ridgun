@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  editors/gedit/ridgun.lang
+  GtkSourceView language specification for Ridgun (.rg)
+  Compatible with gedit (GtkSourceView 3/4) and GNOME Text Editor (GtkSourceView 5)
+  @implements FR-TOOL-001
+-->
+<language id="ridgun" name="Ridgun" version="2.0" _section="Source">
+  <metadata>
+    <property name="mimetypes">text/x-ridgun;application/x-ridgun</property>
+    <property name="globs">*.rg;*.rglib;build.rg</property>
+    <property name="line-comment-start">--</property>
+  </metadata>
+
+  <styles>
+    <style id="comment"       name="Comment"               map-to="def:comment"/>
+    <style id="annotation"    name="Traceability Marker"   map-to="def:preprocessor"/>
+    <style id="string"        name="String"                map-to="def:string"/>
+    <style id="escaped-char"  name="Escaped Character"     map-to="def:special-char"/>
+    <style id="interpolation" name="String Interpolation"  map-to="def:special-char"/>
+    <style id="keyword"       name="Keyword"               map-to="def:keyword"/>
+    <style id="declaration"   name="Declaration"           map-to="def:keyword"/>
+    <style id="guard"         name="Guard"                 map-to="def:keyword"/>
+    <style id="operator"      name="Operator"              map-to="def:operator"/>
+    <style id="type"          name="Data Type"             map-to="def:type"/>
+    <style id="constructor"   name="ADT Constructor"       map-to="def:type"/>
+    <style id="boolean"       name="Boolean"               map-to="def:boolean"/>
+    <style id="number"        name="Number"                map-to="def:number"/>
+    <style id="unit-number"   name="Duration / Quota Unit" map-to="def:constant"/>
+    <style id="builtin"       name="Built-in Function"     map-to="def:builtin"/>
+  </styles>
+
+  <definitions>
+
+    <context id="annotation" style-ref="annotation" class="no-spell-check">
+      <match>@(implements|tests|mitigates)\s+[A-Z]+-[A-Z0-9-]+</match>
+    </context>
+
+    <context id="line-comment" style-ref="comment" end-at-line-end="true" class="comment" class-disabled="no-spell-check">
+      <start>--</start>
+      <include>
+        <context ref="annotation"/>
+        <context ref="def:in-line-comment"/>
+      </include>
+    </context>
+
+    <context id="escaped-char" style-ref="escaped-char">
+      <match>\\[ntr"\\0]|\{\{|\}\}</match>
+    </context>
+
+    <context id="interpolation" style-ref="interpolation">
+      <match>\{[^{}\n]+\}</match>
+    </context>
+
+    <context id="double-quoted-string" style-ref="string" class="string" class-disabled="no-spell-check">
+      <start>"</start>
+      <end>"</end>
+      <include>
+        <context ref="escaped-char"/>
+        <context ref="interpolation"/>
+      </include>
+    </context>
+
+    <context id="single-quoted-string" style-ref="string" class="string" class-disabled="no-spell-check">
+      <start>'</start>
+      <end>'</end>
+    </context>
+
+    <context id="unit-literal" style-ref="unit-number">
+      <match>\b[0-9]+(_ms|_s|_min|_KB|_MB|_GB)\b</match>
+    </context>
+
+    <context id="float-literal" style-ref="number">
+      <match>\b[0-9]+\.[0-9]+([eE][+-]?[0-9]+)?\b</match>
+    </context>
+
+    <context id="int-literal" style-ref="number">
+      <match>\b[0-9]+\b</match>
+    </context>
+
+    <context id="boolean" style-ref="boolean">
+      <keyword>True</keyword>
+      <keyword>False</keyword>
+    </context>
+
+    <context id="declaration" style-ref="declaration">
+      <keyword>fn</keyword>
+      <keyword>op</keyword>
+      <keyword>type</keyword>
+      <keyword>expand</keyword>
+      <keyword>import</keyword>
+    </context>
+
+    <context id="keywords" style-ref="keyword">
+      <keyword>where</keyword>
+      <keyword>with</keyword>
+      <keyword>region</keyword>
+      <keyword>timeout</keyword>
+      <keyword>do</keyword>
+      <keyword>mut</keyword>
+      <keyword>out</keyword>
+      <keyword>echo</keyword>
+      <keyword>otherwise</keyword>
+      <keyword>and</keyword>
+      <keyword>or</keyword>
+      <keyword>not</keyword>
+      <keyword>xor</keyword>
+      <keyword>shl</keyword>
+      <keyword>shr</keyword>
+      <keyword>in</keyword>
+      <keyword>agent</keyword>
+      <keyword>send</keyword>
+      <keyword>to</keyword>
+      <keyword>receive</keyword>
+      <keyword>from</keyword>
+      <keyword>try</keyword>
+      <keyword>stop</keyword>
+    </context>
+
+    <context id="primitive-types" style-ref="type">
+      <keyword>Int</keyword>
+      <keyword>Real</keyword>
+      <keyword>Bool</keyword>
+      <keyword>String</keyword>
+      <keyword>Tensor</keyword>
+      <keyword>Agent</keyword>
+      <keyword>Option</keyword>
+      <keyword>Result</keyword>
+      <keyword>SysOs</keyword>
+      <keyword>SysArch</keyword>
+      <keyword>U8</keyword>
+      <keyword>U16</keyword>
+      <keyword>U32</keyword>
+      <keyword>U64</keyword>
+      <keyword>I8</keyword>
+      <keyword>I16</keyword>
+      <keyword>I32</keyword>
+      <keyword>I64</keyword>
+      <keyword>F32</keyword>
+      <keyword>F64</keyword>
+    </context>
+
+    <context id="adt-constructor" style-ref="constructor">
+      <match>\b[A-Z][A-Za-z0-9_]*\b</match>
+    </context>
+
+    <context id="builtins" style-ref="builtin">
+      <keyword>map</keyword>
+      <keyword>filter</keyword>
+      <keyword>fold</keyword>
+      <keyword>sha256_raw</keyword>
+      <keyword>read_file</keyword>
+      <keyword>write_file</keyword>
+      <keyword>read_bytes</keyword>
+      <keyword>write_bytes</keyword>
+      <keyword>shell_exec</keyword>
+      <keyword>sys_os</keyword>
+      <keyword>sys_arch</keyword>
+      <keyword>sys_getcwd</keyword>
+      <keyword>sys_getpid</keyword>
+      <keyword>sys_time_ms</keyword>
+      <keyword>sys_deadline_ms</keyword>
+      <keyword>sys_remaining_ms</keyword>
+      <keyword>sys_sleep_ms</keyword>
+      <keyword>sys_open_mode</keyword>
+      <keyword>sys_open</keyword>
+      <keyword>sys_close</keyword>
+      <keyword>sys_read_fd</keyword>
+      <keyword>sys_write_fd</keyword>
+      <keyword>sys_poll</keyword>
+      <keyword>sys_pipe</keyword>
+      <keyword>sys_waitpid</keyword>
+      <keyword>sys_terminate</keyword>
+      <keyword>sys_kill</keyword>
+      <keyword>sys_call</keyword>
+    </context>
+
+    <context id="guards" style-ref="guard">
+      <match>^\s*(\|\.\.\.|\|\.\.|\|\.|(\|\|)|\|)(?=\s)</match>
+    </context>
+
+    <context id="operators" style-ref="operator">
+      <match>::|=&gt;|-&gt;|\|\||==|!=|&lt;=|&gt;=|[=+*/%&lt;&gt;@:-]</match>
+    </context>
+
+    <context id="ridgun" class="no-spell-check">
+      <include>
+        <context ref="line-comment"/>
+        <context ref="double-quoted-string"/>
+        <context ref="single-quoted-string"/>
+        <context ref="unit-literal"/>
+        <context ref="float-literal"/>
+        <context ref="int-literal"/>
+        <context ref="boolean"/>
+        <context ref="declaration"/>
+        <context ref="keywords"/>
+        <context ref="primitive-types"/>
+        <context ref="builtins"/>
+        <context ref="adt-constructor"/>
+        <context ref="guards"/>
+        <context ref="operators"/>
+      </include>
+    </context>
+
+  </definitions>
+</language>

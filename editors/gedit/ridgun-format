@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# [Gedit Tool]
+# Name=Format Ridgun File (stable format)
+# Shortcut=<Primary><Alt>f
+# Applicability=all
+# Input=document
+# Output=replace-document
+# Errors=output-panel
+# Languages=ridgun
+# Save-files=nothing
+#
+# @implements FR-TOOL-001
+# Formats either a file path passed on the command line (`ridgun-format file.rg`)
+# or standard input when invoked by gedit's External Tools plugin.
+
+set -euo pipefail
+
+resolve_stable() {
+  if command -v stable >/dev/null 2>&1; then
+    command -v stable
+    return 0
+  fi
+  if [ -x "$HOME/.local/bin/stable" ]; then
+    printf '%s\n' "$HOME/.local/bin/stable"
+    return 0
+  fi
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  if [ -x "$script_dir/../../bin/stable" ]; then
+    printf '%s\n' "$script_dir/../../bin/stable"
+    return 0
+  fi
+  if [ -x "/home/boogie/ridgun/ridgun/bin/stable" ]; then
+    printf '%s\n' "/home/boogie/ridgun/ridgun/bin/stable"
+    return 0
+  fi
+  return 1
+}
+
+STABLE_BIN="$(resolve_stable || true)"
+
+# CLI mode: format the specified file(s) in-place
+if [ "$#" -gt 0 ]; then
+  if [ -z "$STABLE_BIN" ]; then
+    echo "[ridgun-format] Error: 'stable' binary not found in PATH or ~/.local/bin/stable" >&2
+    exit 1
+  fi
+  exec "$STABLE_BIN" format "$@"
+fi
+
+# Gedit External Tool filter mode: read stdin, format via temporary .rg file, write stdout
+TMP_RG="$(mktemp /tmp/gedit_ridgun_XXXXXX.rg)"
+trap 'rm -f "$TMP_RG"' EXIT
+
+cat > "$TMP_RG"
+
+if [ -n "$STABLE_BIN" ]; then
+  "$STABLE_BIN" format "$TMP_RG" >/dev/null 2>&1 || true
+fi
+
+cat "$TMP_RG"
