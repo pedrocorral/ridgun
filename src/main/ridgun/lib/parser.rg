@@ -714,9 +714,17 @@ fn :: parse add loop (RExpr, [RToken]) => RExpr [RToken]
         r = parse_mul_expr (skip_newlines rest)
         parse_add_combine OpConcat left r
       parse add loop (left, (TokColon:rest)) =
-        r = parse_mul_expr (skip_newlines rest)
-        parse_add_combine OpFlatJoin left r
+        r = parse_add_expr (skip_newlines rest)
+        parse_colon_combine left r
       parse add loop res               =  res
+
+fn :: parse colon combine RExpr (RExpr, [RToken]) => RExpr [RToken]
+      parse colon combine left ((EList elems), rest) =
+        (EList ([left] :: elems), rest)
+      parse colon combine left ((EBin OpConcat (EList elems) tail_e), rest) =
+        (EBin OpConcat (EList ([left] :: elems)) tail_e, rest)
+      parse colon combine left (right, rest) =
+        (EBin OpConcat (EList [left]) right, rest)
 
 fn :: parse add combine RBinOp RExpr (RExpr, [RToken]) => RExpr [RToken]
       parse add combine bop left (right, rest) =
@@ -931,8 +939,6 @@ fn :: parse atom base [RToken]           => RExpr [RToken]
       parse atom base []                 =  (EUnit, [])
 
 fn :: tensor zero fill String  => RExpr
-      tensor zero fill "Real"  =  EReal "0.0"
-      tensor zero fill "Float" =  EReal "0.0"
       tensor zero fill _       =  EInt 0
 
 fn :: parse tensor alloc dims [RToken]           => [RExpr] [RToken]

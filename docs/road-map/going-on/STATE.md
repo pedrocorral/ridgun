@@ -1,17 +1,19 @@
 ---
-updated: 2026-10-24T21:44
+updated: 2026-10-25T14:46
 active_task: none
 agent_runtime: gemini
 ---
 # Session state — read this first when resuming
 
 ## Where we are (3 lines max)
-- Branch `main`: Completed `TASK-0024` (resolved all 11 Solstice open issues: `RG-048`, `RG-063`, `RG-068`, `RG-069`, `RG-071`, `RG-072`, `RG-073`, `RG-074`, `RG-075`, `RG-079`, and record update harness docs; installed `PreToolUse` security guard hook).
+- Completed `TASK-0026` (`ADR-0002`, `FR-COMP-004`, `FR-COMP-011`): migrated `x86_64` native code generation to pure LLVM IR (`src/main/ridgun/lib/llvm.rg`), added LLVM IR codegen unit tests (`src/test/ridgun/test llvm codegen.rg`), and bootstrapped `ridgunc` and `stable` v0.9.19.
 ## Files to load for the active task (nothing else)
-- `docs/road-map/completed/2026-10/TASK-0024-fix-solstice-open-issues-rg-048-rg-063-rg-068-rg-0.md`
+- `docs/requirements/decisions/ADR-0002-migrate-x86-64-native-codegen-to-pure-llvm-ir.md`
+- `src/main/ridgun/lib/llvm.rg`
+- `src/test/ridgun/test llvm codegen.rg`
 ## Last verified facts (tests green? migrations applied? env?)
-- 3-stage self-hosted `ridgunc` (`sha256sum`: `6d89cf91cbd074cf4d5e62a54f200f2de7ee1684c904acf9201bdc80603d7647`) and `stable`; `./bin/stable check` (13/13 modules, 0 errors) and `./bin/stable test` (5/5 test suites green).
+- Self-hosted `ridgunc` and `stable` v0.9.19 in `bin/`, `python3 tests/run.py` (40/40 passed), `./bin/stable test` (6/6 passed), `solstice` `test_store_file_kv.rg` (30/30 passed), `aix docs validate` (0 errors).
 ## Immediate next action
-- Pick next roadmap task when requested.
+- Pick or create the next road-map task when requested by the user.
 ## Blockers / questions for the user
 - None.

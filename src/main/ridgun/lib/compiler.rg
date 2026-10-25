@@ -11,6 +11,7 @@
 -- @implements FR-COMP-008
 -- @implements FR-COMP-009
 -- @implements FR-COMP-010
+-- @implements FR-COMP-011
 -- @implements FR-VM-001
 -- @implements FR-VM-002
 -- ============================================================
@@ -22,6 +23,7 @@ import typecheck
 import elf64
 import x86_64
 import arm64
+import llvm
 
 -- ── Local Variable Table Helpers ────────────────────────────
 
@@ -1511,37 +1513,26 @@ fn :: lower make repeated list RNativeEnv RExpr RExpr [String] Int RNativeCode =
 
 fn :: lower make one dim tensor RNativeEnv RExpr RExpr [String] Int RNativeCode => RNativeCode
       lower make one dim tensor env lenE fillE boundLocals sp st =
-        st1 = lower make repeated list env lenE fillE boundLocals sp st
-        ins = [NStoreSlot sp, NMakeTensor sp 1, NStoreSlot (sp + 1), NClearLocals sp (sp + 1), NMoveSlot (sp + 1)]
-        nc emit list st1 ins (sp + 2)
+        st1 = lower expr list to slots env [fillE, lenE] boundLocals sp 0 st
+        nc emit st1 (NCallBuiltin 88 sp 2) (sp + 3)
 
 fn :: lower make two dim tensor RNativeEnv RExpr RExpr RExpr [String] Int RNativeCode => RNativeCode
       lower make two dim tensor env d1 d2 fillE boundLocals sp st =
-        st1 = lower make repeated list env d1 (EInt 0) boundLocals sp st
-        st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
-        st3 = lower make repeated list env d2 fillE boundLocals (sp + 1) st2
-        st4 = nc emit st3 (NStoreSlot (sp + 1)) (sp + 2)
-        loopLbl = nc lbl st4
-        doneLbl = loopLbl + 1
-        st5 = nc set lbl st4 (loopLbl + 2)
-        insInit = [NAdtField sp (0 - 1), NStoreSlot (sp + 2), NMakeList (sp + 3) 0, NStoreSlot (sp + 3), NLoadImmInt 0, NStoreSlot (sp + 4)]
-        insLoop = [NLabel loopLbl, NCloneSlot (sp + 4), NStoreSlot (sp + 5), NCloneSlot (sp + 2), NBinOp 8 (sp + 5), NAsBool, NJumpIfZero doneLbl, NMoveSlot (sp + 3), NStoreSlot (sp + 5), NCloneSlot (sp + 1), NStoreSlot (sp + 6), NMakeList (sp + 6) 1, NBinOp 14 (sp + 5), NStoreSlot (sp + 3), NMoveSlot (sp + 4), NStoreSlot (sp + 5), NLoadImmInt 1, NBinOp 0 (sp + 5), NStoreSlot (sp + 4), NJump loopLbl]
-        insDone = [NLabel doneLbl, NMoveSlot (sp + 3), NStoreSlot (sp + 5), NMakeTensor (sp + 5) 1, NStoreSlot (sp + 6), NClearLocals sp (sp + 6), NMoveSlot (sp + 6)]
-        nc emit list st5 (insInit :: insLoop :: insDone) (sp + 7)
+        st1 = lower expr list to slots env [fillE, d1, d2] boundLocals sp 0 st
+        nc emit st1 (NCallBuiltin 88 sp 3) (sp + 4)
 
 fn :: lower tensor clone RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
       lower tensor clone env baseE boundLocals sp st =
         st1 = lower expr env baseE boundLocals sp st
-        ijOff = env str off env "ij,ij"
-        ins = [NStoreSlot sp, NCloneSlot sp, NStoreSlot (sp + 1), NCloneSlot sp, NHadamard 1 (sp + 1) ijOff 5, NHadamard 0 sp ijOff 5]
-        nc emit list st1 ins (sp + 2)
+        ins = [NStoreSlot sp, NCloneSlot sp, NStoreSlot (sp + 1), NLoadImmInt 12, NStoreSlot (sp + 2), NCallBuiltin 90 sp 3]
+        nc emit list st1 ins (sp + 4)
 
 fn :: lower tensor set row slots Int Int Int Int RNativeCode => RNativeCode
       lower tensor set row slots mSlot rowSlot vecSlot sp st =
         loopLbl = nc lbl st
         doneLbl = loopLbl + 1
         st1 = nc set lbl st (loopLbl + 2)
-        ins = [NAdtField mSlot (0 - 11), NStoreSlot sp, NLoadImmInt 0, NStoreSlot (sp + 1), NLabel loopLbl, NCloneSlot (sp + 1), NStoreSlot (sp + 2), NCloneSlot sp, NBinOp 8 (sp + 2), NAsBool, NJumpIfZero doneLbl, NCloneSlot vecSlot, NStoreSlot (sp + 2), NCloneSlot (sp + 1), NStoreSlot (sp + 3), NIndex (sp + 2) (sp + 3) 1, NStoreSlot (sp + 4), NCloneSlot rowSlot, NStoreSlot (sp + 2), NCloneSlot (sp + 1), NStoreSlot (sp + 3), NMoveSlot (sp + 4), NIndexSet mSlot (sp + 2) 2, NStoreSlot mSlot, NMoveSlot (sp + 1), NStoreSlot (sp + 2), NLoadImmInt 1, NBinOp 0 (sp + 2), NStoreSlot (sp + 1), NJump loopLbl, NLabel doneLbl, NClearLocals sp (sp + 5)]
+        ins = [NAdtField mSlot (0 - 11), NStoreSlot sp, NLoadImmInt 0, NStoreSlot (sp + 1), NLabel loopLbl, NCloneSlot (sp + 1), NStoreSlot (sp + 2), NCloneSlot sp, NBinOp 8 (sp + 2), NAsBool, NJumpIfZero doneLbl, NCloneSlot (sp + 1), NStoreSlot (sp + 3), NIndex vecSlot (sp + 3) (0 - 1), NStoreSlot (sp + 4), NCloneSlot rowSlot, NStoreSlot (sp + 2), NCloneSlot (sp + 1), NStoreSlot (sp + 3), NMoveSlot (sp + 4), NIndexSet mSlot (sp + 2) 2, NStoreSlot mSlot, NMoveSlot (sp + 1), NStoreSlot (sp + 2), NLoadImmInt 1, NBinOp 0 (sp + 2), NStoreSlot (sp + 1), NJump loopLbl, NLabel doneLbl, NClearLocals sp (sp + 5)]
         nc emit list st1 ins (sp + 5)
 
 fn :: lower tensor set col slots Int Int Int Int RNativeCode => RNativeCode
@@ -1549,7 +1540,7 @@ fn :: lower tensor set col slots Int Int Int Int RNativeCode => RNativeCode
         loopLbl = nc lbl st
         doneLbl = loopLbl + 1
         st1 = nc set lbl st (loopLbl + 2)
-        ins = [NAdtField mSlot (0 - 10), NStoreSlot sp, NLoadImmInt 0, NStoreSlot (sp + 1), NLabel loopLbl, NCloneSlot (sp + 1), NStoreSlot (sp + 2), NCloneSlot sp, NBinOp 8 (sp + 2), NAsBool, NJumpIfZero doneLbl, NCloneSlot vecSlot, NStoreSlot (sp + 2), NCloneSlot (sp + 1), NStoreSlot (sp + 3), NIndex (sp + 2) (sp + 3) 1, NStoreSlot (sp + 4), NCloneSlot (sp + 1), NStoreSlot (sp + 2), NCloneSlot colSlot, NStoreSlot (sp + 3), NMoveSlot (sp + 4), NIndexSet mSlot (sp + 2) 2, NStoreSlot mSlot, NMoveSlot (sp + 1), NStoreSlot (sp + 2), NLoadImmInt 1, NBinOp 0 (sp + 2), NStoreSlot (sp + 1), NJump loopLbl, NLabel doneLbl, NClearLocals sp (sp + 5)]
+        ins = [NAdtField mSlot (0 - 10), NStoreSlot sp, NLoadImmInt 0, NStoreSlot (sp + 1), NLabel loopLbl, NCloneSlot (sp + 1), NStoreSlot (sp + 2), NCloneSlot sp, NBinOp 8 (sp + 2), NAsBool, NJumpIfZero doneLbl, NCloneSlot (sp + 1), NStoreSlot (sp + 3), NIndex vecSlot (sp + 3) (0 - 1), NStoreSlot (sp + 4), NCloneSlot (sp + 1), NStoreSlot (sp + 2), NCloneSlot colSlot, NStoreSlot (sp + 3), NMoveSlot (sp + 4), NIndexSet mSlot (sp + 2) 2, NStoreSlot mSlot, NMoveSlot (sp + 1), NStoreSlot (sp + 2), NLoadImmInt 1, NBinOp 0 (sp + 2), NStoreSlot (sp + 1), NJump loopLbl, NLabel doneLbl, NClearLocals sp (sp + 5)]
         nc emit list st1 ins (sp + 5)
 
 fn :: lower tensor get col slots RNativeEnv Int Int Int RNativeCode => RNativeCode
@@ -1557,8 +1548,8 @@ fn :: lower tensor get col slots RNativeEnv Int Int Int RNativeCode => RNativeCo
         loopLbl = nc lbl st
         doneLbl = loopLbl + 1
         st1 = nc set lbl st (loopLbl + 2)
-        insLoop = [NAdtField mSlot (0 - 10), NStoreSlot sp, NMakeList (sp + 1) 0, NStoreSlot (sp + 1), NLoadImmInt 0, NStoreSlot (sp + 2), NLabel loopLbl, NCloneSlot (sp + 2), NStoreSlot (sp + 3), NCloneSlot sp, NBinOp 8 (sp + 3), NAsBool, NJumpIfZero doneLbl, NCloneSlot mSlot, NStoreSlot (sp + 3), NCloneSlot (sp + 2), NStoreSlot (sp + 4), NCloneSlot colSlot, NStoreSlot (sp + 5), NIndex (sp + 3) (sp + 4) 2, NStoreSlot (sp + 4), NMoveSlot (sp + 1), NStoreSlot (sp + 3), NMakeList (sp + 4) 1, NBinOp 14 (sp + 3), NStoreSlot (sp + 1), NMoveSlot (sp + 2), NStoreSlot (sp + 3), NLoadImmInt 1, NBinOp 0 (sp + 3), NStoreSlot (sp + 2), NJump loopLbl]
-        insDone = [NLabel doneLbl, NMoveSlot (sp + 1), NStoreSlot (sp + 3), NMakeTensor (sp + 3) 1, NStoreSlot (sp + 4), NClearLocals sp (sp + 4), NMoveSlot (sp + 4)]
+        insLoop = [NAdtField mSlot (0 - 10), NStoreSlot sp, NLoadImmInt 0, NStoreSlot (sp + 1), NCloneSlot sp, NStoreSlot (sp + 2), NCallBuiltin 88 (sp + 1) 2, NStoreSlot (sp + 1), NLoadImmInt 0, NStoreSlot (sp + 2), NLabel loopLbl, NCloneSlot (sp + 2), NStoreSlot (sp + 3), NCloneSlot sp, NBinOp 8 (sp + 3), NAsBool, NJumpIfZero doneLbl, NCloneSlot (sp + 2), NStoreSlot (sp + 3), NCloneSlot colSlot, NStoreSlot (sp + 4), NIndex mSlot (sp + 3) (0 - 2), NStoreSlot (sp + 5), NCloneSlot (sp + 2), NStoreSlot (sp + 3), NMoveSlot (sp + 5), NIndexSet (sp + 1) (sp + 3) 1, NStoreSlot (sp + 1), NMoveSlot (sp + 2), NStoreSlot (sp + 3), NLoadImmInt 1, NBinOp 0 (sp + 3), NStoreSlot (sp + 2), NJump loopLbl]
+        insDone = [NLabel doneLbl, NMoveSlot (sp + 1), NStoreSlot (sp + 3), NClearLocals sp (sp + 3), NMoveSlot (sp + 3)]
         nc emit list st1 (insLoop :: insDone) (sp + 6)
 
 fn :: store back mutated tensor RNativeEnv RExpr [String] Int Int RNativeCode => RNativeCode
@@ -1613,12 +1604,13 @@ fn :: lower tensor helper RNativeEnv String [RExpr] [String] Int RNativeCode => 
         st4 = nc emit st3 (NStoreSlot (sp + 1)) (sp + 2)
         loopLbl = nc lbl st4
         keepLbl = loopLbl + 1
-        doneLbl = loopLbl + 2
-        st5 = nc set lbl st4 (loopLbl + 3)
-        insPre = [NAdtField (sp + 1) (0 - 10), NStoreSlot (sp + 2), NLoadImmInt 0, NStoreSlot (sp + 3), NLabel loopLbl, NCloneSlot (sp + 3), NStoreSlot (sp + 4), NCloneSlot (sp + 2), NBinOp 8 (sp + 4), NAsBool, NJumpIfZero doneLbl, NCloneSlot (sp + 1), NStoreSlot (sp + 4), NCloneSlot (sp + 3), NStoreSlot (sp + 5), NIndex (sp + 4) (sp + 5) 1, NStoreSlot (sp + 4), NCloneSlot (sp + 4), NStoreSlot (sp + 5), NCallIndirect1 sp (sp + 5), NJumpIfZero keepLbl, NStoreSlot (sp + 4), NLabel keepLbl]
+        afterKeepLbl = loopLbl + 2
+        doneLbl = loopLbl + 3
+        st5 = nc set lbl st4 (loopLbl + 4)
+        insPre = [NAdtField (sp + 1) (0 - 10), NStoreSlot (sp + 2), NLoadImmInt 0, NStoreSlot (sp + 3), NLabel loopLbl, NCloneSlot (sp + 3), NStoreSlot (sp + 4), NCloneSlot (sp + 2), NBinOp 8 (sp + 4), NAsBool, NJumpIfZero doneLbl, NCloneSlot (sp + 1), NStoreSlot (sp + 4), NCloneSlot (sp + 3), NStoreSlot (sp + 5), NIndex (sp + 4) (sp + 5) 1, NStoreSlot (sp + 4), NCloneSlot (sp + 4), NStoreSlot (sp + 5), NCallIndirect1 sp (sp + 5), NStoreSlot (sp + 5), NMatchAdt (sp + 5) 0 0 (0 - 5), NJumpIfZero keepLbl, NMoveSlot (sp + 5), NRebindSlot (sp + 4), NJump afterKeepLbl, NLabel keepLbl, NCmmDropSlot (sp + 5), NLabel afterKeepLbl]
         st6 = nc emit list st5 insPre (sp + 6)
         st7 = lower tensor set row slots (sp + 1) (sp + 3) (sp + 4) (sp + 5) st6
-        insLoopEnd = [NMoveSlot (sp + 3), NStoreSlot (sp + 5), NLoadImmInt 1, NBinOp 0 (sp + 5), NStoreSlot (sp + 3), NJump loopLbl, NLabel doneLbl]
+        insLoopEnd = [NCmmDropSlot (sp + 4), NMoveSlot (sp + 3), NStoreSlot (sp + 5), NLoadImmInt 1, NBinOp 0 (sp + 5), NStoreSlot (sp + 3), NJump loopLbl, NLabel doneLbl]
         st8 = nc emit list st7 insLoopEnd (sp + 6)
         st9 = store back mutated tensor env baseE boundLocals (sp + 1) (sp + 6) st8
         insPost = [NMoveSlot (sp + 1), NStoreSlot (sp + 5), NClearLocals sp (sp + 5), NMoveSlot (sp + 5)]
@@ -1632,15 +1624,16 @@ fn :: lower tensor helper RNativeEnv String [RExpr] [String] Int RNativeCode => 
         st4 = nc emit st3 (NStoreSlot (sp + 1)) (sp + 2)
         loopLbl = nc lbl st4
         keepLbl = loopLbl + 1
-        doneLbl = loopLbl + 2
-        st5 = nc set lbl st4 (loopLbl + 3)
+        afterKeepLbl = loopLbl + 2
+        doneLbl = loopLbl + 3
+        st5 = nc set lbl st4 (loopLbl + 4)
         insPre = [NAdtField (sp + 1) (0 - 11), NStoreSlot (sp + 2), NLoadImmInt 0, NStoreSlot (sp + 3), NLabel loopLbl, NCloneSlot (sp + 3), NStoreSlot (sp + 4), NCloneSlot (sp + 2), NBinOp 8 (sp + 4), NAsBool, NJumpIfZero doneLbl]
         st6 = nc emit list st5 insPre (sp + 5)
         st7 = lower tensor get col slots env (sp + 1) (sp + 3) (sp + 5) st6
-        insCall = [NStoreSlot (sp + 4), NCloneSlot (sp + 4), NStoreSlot (sp + 5), NCallIndirect1 sp (sp + 5), NJumpIfZero keepLbl, NStoreSlot (sp + 4), NLabel keepLbl]
+        insCall = [NStoreSlot (sp + 4), NCloneSlot (sp + 4), NStoreSlot (sp + 5), NCallIndirect1 sp (sp + 5), NStoreSlot (sp + 5), NMatchAdt (sp + 5) 0 0 (0 - 5), NJumpIfZero keepLbl, NMoveSlot (sp + 5), NRebindSlot (sp + 4), NJump afterKeepLbl, NLabel keepLbl, NCmmDropSlot (sp + 5), NLabel afterKeepLbl]
         st8 = nc emit list st7 insCall (sp + 6)
         st9 = lower tensor set col slots (sp + 1) (sp + 3) (sp + 4) (sp + 5) st8
-        insLoopEnd = [NMoveSlot (sp + 3), NStoreSlot (sp + 5), NLoadImmInt 1, NBinOp 0 (sp + 5), NStoreSlot (sp + 3), NJump loopLbl, NLabel doneLbl]
+        insLoopEnd = [NCmmDropSlot (sp + 4), NMoveSlot (sp + 3), NStoreSlot (sp + 5), NLoadImmInt 1, NBinOp 0 (sp + 5), NStoreSlot (sp + 3), NJump loopLbl, NLabel doneLbl]
         st10 = nc emit list st9 insLoopEnd (sp + 6)
         st11 = store back mutated tensor env baseE boundLocals (sp + 1) (sp + 6) st10
         insPost = [NMoveSlot (sp + 1), NStoreSlot (sp + 5), NClearLocals sp (sp + 5), NMoveSlot (sp + 5)]
@@ -1659,8 +1652,8 @@ fn :: lower tensor helper RNativeEnv String [RExpr] [String] Int RNativeCode => 
         lbl2dNextI = lbl2d + 4
         lblDone = lbl2d + 5
         st5 = nc set lbl st4 (lbl2d + 6)
-        ins1d = [NAdtField (sp + 1) (0 - 1), NStoreSlot (sp + 2), NMatchInt (sp + 2) 1, NJumpIfZero lbl2d, NAdtField (sp + 1) (0 - 10), NStoreSlot (sp + 2), NLoadImmInt 0, NStoreSlot (sp + 3), NLabel lbl1dLoop, NCloneSlot (sp + 3), NStoreSlot (sp + 4), NCloneSlot (sp + 2), NBinOp 8 (sp + 4), NAsBool, NJumpIfZero lblDone, NCloneSlot (sp + 1), NStoreSlot (sp + 4), NCloneSlot (sp + 3), NStoreSlot (sp + 5), NIndex (sp + 4) (sp + 5) 1, NStoreSlot (sp + 5), NCallIndirect1 sp (sp + 5), NStoreSlot (sp + 5), NCloneSlot (sp + 3), NStoreSlot (sp + 4), NMoveSlot (sp + 5), NIndexSet (sp + 1) (sp + 4) 1, NStoreSlot (sp + 1), NMoveSlot (sp + 3), NStoreSlot (sp + 4), NLoadImmInt 1, NBinOp 0 (sp + 4), NStoreSlot (sp + 3), NJump lbl1dLoop]
-        ins2d = [NLabel lbl2d, NAdtField (sp + 1) (0 - 10), NStoreSlot (sp + 2), NAdtField (sp + 1) (0 - 11), NStoreSlot (sp + 3), NLoadImmInt 0, NStoreSlot (sp + 4), NLabel lbl2dOuter, NCloneSlot (sp + 4), NStoreSlot (sp + 5), NCloneSlot (sp + 2), NBinOp 8 (sp + 5), NAsBool, NJumpIfZero lblDone, NLoadImmInt 0, NStoreSlot (sp + 5), NLabel lbl2dInner, NCloneSlot (sp + 5), NStoreSlot (sp + 6), NCloneSlot (sp + 3), NBinOp 8 (sp + 6), NAsBool, NJumpIfZero lbl2dNextI, NCloneSlot (sp + 1), NStoreSlot (sp + 6), NCloneSlot (sp + 4), NStoreSlot (sp + 7), NCloneSlot (sp + 5), NStoreSlot (sp + 8), NIndex (sp + 6) (sp + 7) 2, NStoreSlot (sp + 6), NCallIndirect1 sp (sp + 6), NStoreSlot (sp + 8), NCloneSlot (sp + 4), NStoreSlot (sp + 6), NCloneSlot (sp + 5), NStoreSlot (sp + 7), NMoveSlot (sp + 8), NIndexSet (sp + 1) (sp + 6) 2, NStoreSlot (sp + 1), NMoveSlot (sp + 5), NStoreSlot (sp + 6), NLoadImmInt 1, NBinOp 0 (sp + 6), NStoreSlot (sp + 5), NJump lbl2dInner, NLabel lbl2dNextI, NMoveSlot (sp + 4), NStoreSlot (sp + 6), NLoadImmInt 1, NBinOp 0 (sp + 6), NStoreSlot (sp + 4), NJump lbl2dOuter, NLabel lblDone]
+        ins1d = [NAdtField (sp + 1) (0 - 1), NStoreSlot (sp + 2), NMatchInt (sp + 2) 1, NJumpIfZero lbl2d, NAdtField (sp + 1) (0 - 10), NStoreSlot (sp + 2), NLoadImmInt 0, NStoreSlot (sp + 3), NLabel lbl1dLoop, NCloneSlot (sp + 3), NStoreSlot (sp + 4), NCloneSlot (sp + 2), NBinOp 8 (sp + 4), NAsBool, NJumpIfZero lblDone, NCloneSlot (sp + 3), NStoreSlot (sp + 4), NIndex (sp + 1) (sp + 4) (0 - 1), NStoreSlot (sp + 5), NCallIndirect1 sp (sp + 5), NStoreSlot (sp + 5), NCloneSlot (sp + 3), NStoreSlot (sp + 4), NMoveSlot (sp + 5), NIndexSet (sp + 1) (sp + 4) 1, NStoreSlot (sp + 1), NMoveSlot (sp + 3), NStoreSlot (sp + 4), NLoadImmInt 1, NBinOp 0 (sp + 4), NStoreSlot (sp + 3), NJump lbl1dLoop]
+        ins2d = [NLabel lbl2d, NAdtField (sp + 1) (0 - 10), NStoreSlot (sp + 2), NAdtField (sp + 1) (0 - 11), NStoreSlot (sp + 3), NLoadImmInt 0, NStoreSlot (sp + 4), NLabel lbl2dOuter, NCloneSlot (sp + 4), NStoreSlot (sp + 5), NCloneSlot (sp + 2), NBinOp 8 (sp + 5), NAsBool, NJumpIfZero lblDone, NLoadImmInt 0, NStoreSlot (sp + 5), NLabel lbl2dInner, NCloneSlot (sp + 5), NStoreSlot (sp + 6), NCloneSlot (sp + 3), NBinOp 8 (sp + 6), NAsBool, NJumpIfZero lbl2dNextI, NCloneSlot (sp + 4), NStoreSlot (sp + 6), NCloneSlot (sp + 5), NStoreSlot (sp + 7), NIndex (sp + 1) (sp + 6) (0 - 2), NStoreSlot (sp + 6), NCallIndirect1 sp (sp + 6), NStoreSlot (sp + 8), NCloneSlot (sp + 4), NStoreSlot (sp + 6), NCloneSlot (sp + 5), NStoreSlot (sp + 7), NMoveSlot (sp + 8), NIndexSet (sp + 1) (sp + 6) 2, NStoreSlot (sp + 1), NMoveSlot (sp + 5), NStoreSlot (sp + 6), NLoadImmInt 1, NBinOp 0 (sp + 6), NStoreSlot (sp + 5), NJump lbl2dInner, NLabel lbl2dNextI, NMoveSlot (sp + 4), NStoreSlot (sp + 6), NLoadImmInt 1, NBinOp 0 (sp + 6), NStoreSlot (sp + 4), NJump lbl2dOuter, NLabel lblDone]
         st6 = nc emit list st5 (ins1d :: ins2d) (sp + 9)
         st7 = store back mutated tensor env baseE boundLocals (sp + 1) (sp + 9) st6
         insDone = [NMoveSlot (sp + 1), NStoreSlot (sp + 6), NClearLocals sp (sp + 6), NMoveSlot (sp + 6)]
@@ -1673,19 +1666,9 @@ fn :: lower bitwise hadamard RNativeEnv RBinOp RExpr RExpr [String] Int RNativeC
         st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
         st3 = lower expr env rightE boundLocals (sp + 1) st2
         st4 = nc emit st3 (NStoreSlot (sp + 1)) (sp + 2)
-        ijOff = env str off env "ij,ij"
         opCode = binop id bop
-        lbl2d = nc lbl st4
-        lbl1dLoop = lbl2d + 1
-        lbl2dOuter = lbl2d + 2
-        lbl2dInner = lbl2d + 3
-        lbl2dNextI = lbl2d + 4
-        lblDone = lbl2d + 5
-        st5 = nc set lbl st4 (lbl2d + 6)
-        insClone = [NCloneSlot sp, NStoreSlot (sp + 2), NCloneSlot sp, NStoreSlot (sp + 3), NCloneSlot sp, NHadamard 1 (sp + 3) ijOff 5, NHadamard 0 (sp + 2) ijOff 5, NStoreSlot (sp + 2)]
-        ins1d = [NAdtField sp (0 - 1), NStoreSlot (sp + 3), NMatchInt (sp + 3) 1, NJumpIfZero lbl2d, NAdtField sp (0 - 10), NStoreSlot (sp + 3), NLoadImmInt 0, NStoreSlot (sp + 4), NLabel lbl1dLoop, NCloneSlot (sp + 4), NStoreSlot (sp + 5), NCloneSlot (sp + 3), NBinOp 8 (sp + 5), NAsBool, NJumpIfZero lblDone, NCloneSlot sp, NStoreSlot (sp + 5), NCloneSlot (sp + 4), NStoreSlot (sp + 6), NIndex (sp + 5) (sp + 6) 1, NStoreSlot (sp + 5), NCloneSlot (sp + 1), NStoreSlot (sp + 6), NCloneSlot (sp + 4), NStoreSlot (sp + 7), NIndex (sp + 6) (sp + 7) 1, NBinOp opCode (sp + 5), NStoreSlot (sp + 6), NCloneSlot (sp + 4), NStoreSlot (sp + 5), NMoveSlot (sp + 6), NIndexSet (sp + 2) (sp + 5) 1, NStoreSlot (sp + 2), NMoveSlot (sp + 4), NStoreSlot (sp + 5), NLoadImmInt 1, NBinOp 0 (sp + 5), NStoreSlot (sp + 4), NJump lbl1dLoop]
-        ins2d = [NLabel lbl2d, NAdtField sp (0 - 10), NStoreSlot (sp + 3), NAdtField sp (0 - 11), NStoreSlot (sp + 4), NLoadImmInt 0, NStoreSlot (sp + 5), NLabel lbl2dOuter, NCloneSlot (sp + 5), NStoreSlot (sp + 6), NCloneSlot (sp + 3), NBinOp 8 (sp + 6), NAsBool, NJumpIfZero lblDone, NLoadImmInt 0, NStoreSlot (sp + 6), NLabel lbl2dInner, NCloneSlot (sp + 6), NStoreSlot (sp + 7), NCloneSlot (sp + 4), NBinOp 8 (sp + 7), NAsBool, NJumpIfZero lbl2dNextI, NCloneSlot sp, NStoreSlot (sp + 7), NCloneSlot (sp + 5), NStoreSlot (sp + 8), NCloneSlot (sp + 6), NStoreSlot (sp + 9), NIndex (sp + 7) (sp + 8) 2, NStoreSlot (sp + 7), NCloneSlot (sp + 1), NStoreSlot (sp + 8), NCloneSlot (sp + 5), NStoreSlot (sp + 9), NCloneSlot (sp + 6), NStoreSlot (sp + 10), NIndex (sp + 8) (sp + 9) 2, NBinOp opCode (sp + 7), NStoreSlot (sp + 9), NCloneSlot (sp + 5), NStoreSlot (sp + 7), NCloneSlot (sp + 6), NStoreSlot (sp + 8), NMoveSlot (sp + 9), NIndexSet (sp + 2) (sp + 7) 2, NStoreSlot (sp + 2), NMoveSlot (sp + 6), NStoreSlot (sp + 7), NLoadImmInt 1, NBinOp 0 (sp + 7), NStoreSlot (sp + 6), NJump lbl2dInner, NLabel lbl2dNextI, NMoveSlot (sp + 5), NStoreSlot (sp + 7), NLoadImmInt 1, NBinOp 0 (sp + 7), NStoreSlot (sp + 5), NJump lbl2dOuter, NLabel lblDone, NMoveSlot (sp + 2), NStoreSlot (sp + 7), NClearLocals sp (sp + 7), NMoveSlot (sp + 7)]
-        nc emit list st5 (insClone :: ins1d :: ins2d) (sp + 11)
+        ins = [NLoadImmInt opCode, NStoreSlot (sp + 2), NCallBuiltin 90 sp 3]
+        nc emit list st4 ins (sp + 4)
 
 fn :: is agent call name String             => Bool
       is agent call name "agent"            =  True
@@ -1898,6 +1881,11 @@ fn :: lower call expr RNativeEnv String [RExpr] [String] Int RNativeCode => RNat
           lower_adt_ctor_call env args bound_locals off slen count sp st
         | fname == "map" or fname == "||map" or fname == "seq_map" or fname == "par_map" =
           lower map or closure map env fname args bound_locals sp st
+      lower call expr env "sha256_raw" ((EBin OpAdd a b):[]) bound_locals sp st
+        | (lookup_local bound_locals "sha256_raw") < 0 =
+          st1 = lower_expr_list_to_slots env [a, b] bound_locals sp 0 st
+          nc_emit st1 (NCallBuiltin 89 sp 2) (sp + 3)
+      lower call expr env fname args bound_locals sp st
         | (builtin_call_id fname) >= 0 =
           count = rexpr_list_len args
           bid = select_par_collection_builtin env fname args bound_locals
@@ -1992,6 +1980,12 @@ fn :: lower expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
       lower expr env (EIndex (EVar v) ((EInt idx):[])) _ sp st
         | (str_starts_with v ":tup-") OR (str_starts_with v ":idx-tup-") =
           nc_emit st (NTupleGet (env_var_slot env v) idx) sp
+      lower expr env (EIndex (EVar v) idxs) bound_locals sp st
+        | (lookup_local bound_locals v) >= 0 AND ((rexpr_list_len idxs) == 1 OR (rexpr_list_len idxs) == 2) =
+          count = rexpr_list_len idxs
+          vslot = env_var_slot env v
+          st1 = lower_expr_list_to_slots env idxs bound_locals sp 0 st
+          nc_emit st1 (NIndex vslot sp (0 - count)) (sp + count + 1)
       lower expr env (EIndex base idxs) bound_locals sp st =
         count = rexpr_list_len idxs
         st1 = lower_expr env base bound_locals sp st
@@ -2001,10 +1995,9 @@ fn :: lower expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
       lower expr env (EIndexAssign target idxs val_e) bound_locals sp st =
         count = rexpr_list_len idxs
         tslot = env_var_slot env target
-        st1 = nc_emit_list st [NCloneSlot tslot, NStoreSlot sp] (sp + 1)
-        st2 = lower_expr_list_to_slots env idxs bound_locals (sp + 1) 0 st1
-        st3 = lower_expr env val_e bound_locals (sp + 1 + count) st2
-        nc_emit st3 (NIndexSet sp (sp + 1) count) (sp + count + 2)
+        st1 = lower_expr_list_to_slots env idxs bound_locals sp 0 st
+        st2 = lower_expr env val_e bound_locals (sp + count) st1
+        nc_emit_list st2 [NIndexSet tslot sp count, NStoreSlot tslot, NCloneSlot tslot] (sp + count + 1)
       lower expr env (ESeqSelect base mask) bound_locals sp st =
         off = env_str_off env mask
         st1 = lower_expr env base bound_locals sp st
@@ -2998,6 +2991,26 @@ fn :: emit so elf for target RNativeProg String => [Int]
       emit so elf for target nprog "aarch64" = emit arm64 so elf nprog
       emit so elf for target nprog _ = emit x8664 so elf nprog
 
+fn :: build native target for arch RNativeProg String String => Int
+      build native target for arch nprog output_bin "arm64" =
+        write elf64 executable output_bin (emit arm64 elf nprog)
+      build native target for arch nprog output_bin "arm64-linux" =
+        write elf64 executable output_bin (emit arm64 elf nprog)
+      build native target for arch nprog output_bin "aarch64" =
+        write elf64 executable output_bin (emit arm64 elf nprog)
+      build native target for arch nprog output_bin _ =
+        build llvm x8664 executable nprog output_bin
+
+fn :: build native so for arch RNativeProg String String => Int
+      build native so for arch nprog output_so "arm64" =
+        write elf64 executable output_so (emit arm64 so elf nprog)
+      build native so for arch nprog output_so "arm64-linux" =
+        write elf64 executable output_so (emit arm64 so elf nprog)
+      build native so for arch nprog output_so "aarch64" =
+        write elf64 executable output_so (emit arm64 so elf nprog)
+      build native so for arch nprog output_so _ =
+        build llvm x8664 so library nprog output_so
+
 fn :: build native target executable String String String => Int
       build native target executable input_path output_bin target_arch =
         raw_src = load_rg_with_libs input_path
@@ -3020,8 +3033,7 @@ fn :: build native target after check RProgram String String [RTypeError] => Int
           1
         | otherwise =
           nprog = lower_program_to_native prog
-          elf_bytes = emit elf for target nprog target_arch
-          write elf64 executable output_bin elf_bytes
+          build native target for arch nprog output_bin target_arch
       build native target after check _ _ _ errs =
         _ = echo (format_type_errors errs)
         1
@@ -3048,8 +3060,7 @@ fn :: build native so after check RProgram String String [RTypeError] => Int
           1
         | otherwise =
           nprog = lower_library_to_native prog
-          elf_bytes = emit so elf for target nprog target_arch
-          write elf64 executable output_so elf_bytes
+          build native so for arch nprog output_so target_arch
       build native so after check _ _ _ errs =
         _ = echo (format_type_errors errs)
         1

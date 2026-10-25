@@ -4,7 +4,7 @@ title: 100% Pure-Ridgun Native ELF64 Code Generation for x86_64 and ARM64 Withou
 status: implemented
 priority: must
 created: 2026-10-21
-updated: 2026-10-21
+updated: 2026-10-25
 depends_on:
   - FR-COMP-001
   - FR-COMP-002
@@ -14,11 +14,11 @@ verified_by: []
 # FR-COMP-004 — 100% Pure-Ridgun Native ELF64 Code Generation for `x86_64` and `ARM64` Without Rust or `rustc`
 
 ## Statement
-The `ridgunc` compiler and the Ridgun repository SHALL be 100% self-contained in pure Ridgun (`.rg`) with zero Rust source files (`.rs`), zero `Cargo.toml`/`Cargo.lock` manifests, and zero invocations of `rustc` or any external C/Rust compiler:
-1. **Direct ELF64 Binary Emission (`src/main/ridgun/lib/elf64.rg`)**:
-   - `ridgunc build` and `ridgunc run` SHALL emit standalone Linux ELF64 executables directly to disk via `write_bytes` without invoking `rustc`, `gcc`, `cc`, or `ld`.
-   - The ELF64 emitter SHALL support both Linux `x86_64` (`e_machine = EM_X86_64 = 62`) and Linux `ARM64` / `AArch64` (`e_machine = EM_AARCH64 = 183`, Raspberry Pi 3/4/5).
-2. **Native Machine-Code Backends (`src/main/ridgun/lib/x86_64.rg` and `src/main/ridgun/lib/arm64.rg`)**:
+The `ridgunc` compiler and the Ridgun repository SHALL be 100% self-contained in pure Ridgun (`.rg`) with zero Rust or C source files (`.rs`, `.c`), zero `Cargo.toml`/`Cargo.lock` manifests, and zero invocations of `rustc`, `clang`, or `gcc`:
+1. **Native ELF64 Binary Emission (`src/main/ridgun/lib/llvm.rg` and `src/main/ridgun/lib/elf64.rg`)**:
+   - `ridgunc build` and `ridgunc run` SHALL emit standalone Linux ELF64 executables without invoking `rustc`, `clang`, or `gcc` (using pure LLVM IR `.ll` compiled via `llc -O2 -filetype=obj` and linked via `ld` on `x86_64` per `ADR-0002`, and direct `elf64.rg` emission on `ARM64`).
+   - The native backend SHALL support both Linux `x86_64` (`e_machine = EM_X86_64 = 62`) and Linux `ARM64` / `AArch64` (`e_machine = EM_AARCH64 = 183`, Raspberry Pi 3/4/5).
+2. **Native Codegen Backends (`src/main/ridgun/lib/llvm.rg`, `src/main/ridgun/lib/x86_64.rg`, and `src/main/ridgun/lib/arm64.rg`)**:
    - All reachable Ridgun functions (`fn ::` and `op ::`), pattern matches, guards (`|`, `|.`), parallel DAG `where` blocks (`||`, `||.`), mutable bindings (`mut`), tail-call loops (TCO), and `RMM1`/`RMM2` memory management operations SHALL be compiled directly into native `x86_64` or `ARM64` machine instructions.
    - All runtime primitives (`Int`, `Real`, `String`, `Bool`, `List`, `Tuple`, `Adt`, `Tensor`, `einsum`, Hadamard `@+`/`@-`/`@*`/`@/`, `map`, `||map`, `filter`, `||filter`, `fold`, channels/mailboxes, `context`/`shared`/`atomic`, `with region`, and POSIX/Linux OS built-ins) SHALL be embedded directly as native machine code inside the ELF64 binary.
 3. **Complete Elimination of Legacy Rust Code**:

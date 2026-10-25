@@ -1,6 +1,8 @@
 -- ============================================================
 -- src/test/ridgun/test parallel and tensors.rg
 -- Ridgun Test Suite: Parallel where-DAG, Tensors & Regions
+-- @implements FR-COMP-010
+-- @implements FR-COMP-011
 -- ============================================================
 
 import test
@@ -235,6 +237,23 @@ fn :: bench sha256 raw loop String Int => String
         | rem <= 0  = cur
         | otherwise = bench sha256 raw loop (sha256 raw cur) (rem - 1)
 
+fn :: mutate tensor ret int Tensor[U64 * 8 * 16] => Int
+      mutate tensor ret int z                    =
+        z_(3, 7) = 123456
+        0
+
+fn :: mutate row ret int Tensor[U64 * 16] => Int
+      mutate row ret int r                =
+        r_(5) = r_(5) + 77
+        0
+
+fn :: bench hmac sha256 fused String String String Int => String
+      bench hmac sha256 fused ipad   opad   u      rem
+        | rem <= 0  = u
+        | otherwise =
+          u_next = sha256 raw (opad + (sha256 raw (ipad + u)))
+          bench hmac sha256 fused ipad opad u_next (rem - 1)
+
 fn :: main => ()
       main =
         echo "=== Parallel || DAG, Tensors, Einsum, Masks & Region ==="
@@ -397,4 +416,44 @@ fn :: main => ()
         assert true (bv_(0, 0) != 1)
         echo "  [bench] 2,000 x blamka p16 (16,000 x blamka g 4-tuple unpacks):" bl_ms "ms (0 heap leaks)"
         assert true (bl_ms < 500)
+        echo "=== FR-COMP-011: O(N) Large 2D Tensor Allocation, In-Place Argument Mutation & Fused SHA-256 ==="
+        xs_tail = [40, 50]
+        assert equals (10:20:30:xs_tail) [10, 20, 30, 40, 50]
+        assert equals (1:2:3:[]) [1, 2, 3]
+        assert equals ("a":"b":["c", "d"]) ["a", "b", "c", "d"]
+        t_alloc0 = sys time ms
+        big_mem = Tensor[U64 * 160000 * 16]
+        t_alloc1 = sys time ms
+        alloc_ms = t_alloc1 - t_alloc0
+        echo "  [bench] Tensor[U64 * 160000 * 16] (20 MiB) allocation:" alloc_ms "ms"
+        assert true (alloc_ms < 200)
+        big_mem_(0, 0) = 42
+        big_mem_(159999, 15) = 999999
+        assert equals big_mem_(0, 0) 42
+        assert equals big_mem_(159999, 15) 999999
+        mut z_mut = Tensor[U64 * 8 * 16]
+        _ = mutate tensor ret int z_mut
+        assert equals z_mut_(3, 7) 123456
+        map mutate row ret int in z_mut_(i,)
+        assert equals z_mut_(0, 5) 77
+        assert equals z_mut_(7, 5) 77
+        s_a = "hello-"
+        s_b = "world"
+        s_ab = "hello-world"
+        assert equals (sha256 raw (s_a + s_b)) (sha256 raw s_ab)
+        live_hm0 = cmm_live_blocks
+        ipad64 = "6666666666666666666666666666666666666666666666666666666666666666"
+        opad64 = "\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\"
+        seed32 = sha256 raw "pbkdf2-seed"
+        pre_in = ipad64 + seed32
+        fused_in = sha256 raw (ipad64 + seed32)
+        assert equals fused_in (sha256 raw pre_in)
+        th0 = sys time ms
+        hm_out = bench hmac sha256 fused ipad64 opad64 seed32 10000
+        th1 = sys time ms
+        hm_ms = th1 - th0
+        assert equals (str len hm_out) 32
+        assert equals cmm_live_blocks live_hm0
+        echo "  [bench] 10,000 x HMAC-SHA256 (20,000 x fused sha256 raw (pad64 + u)):" hm_ms "ms (0 heap leaks)"
+        assert true (hm_ms < 200)
         echo "=== All parallel & tensor tests passed ==="

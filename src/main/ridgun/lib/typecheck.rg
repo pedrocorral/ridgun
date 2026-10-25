@@ -602,7 +602,11 @@ fn :: check binop RBinOp RType RType [RTypeBind] String => RType [RTypeError]
       check binop OpRotr l r fns fn_name = check_arith_binop OpRotr l r fns fn_name
       check binop OpRotl l r fns fn_name = check_arith_binop OpRotl l r fns fn_name
       check binop OpMatMul l r _ fn_name = check_matmul_binop l r fn_name
-      check binop OpFlatJoin _ _ _ _ = (TyVar "_seq", [])
+      check binop OpFlatJoin l (TyList (TyVar "_empty")) _ _ = (TyList l, [])
+      check binop OpFlatJoin l (TyList r_elem) _ fn_name
+        | types_compatible l r_elem = (TyList r_elem, [])
+        | otherwise = (TyList r_elem, [TypeError fn_name ("cons (:) requires element type compatible with list, got " + (rtype_to_str l) + " and [" + (rtype_to_str r_elem) + "]")])
+      check binop OpFlatJoin l _ _ _ = (TyList l, [])
       check binop OpConcat l r _ fn_name = check_concat_binop l r fn_name
       check binop OpEq l r _ fn_name
         | types_compatible l r = (TyBool, [])
