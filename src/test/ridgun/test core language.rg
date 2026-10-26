@@ -6,6 +6,7 @@
 -- @tests FR-COMP-003
 -- @tests FR-COMP-005
 -- @tests FR-COMP-012
+-- @tests FR-COMP-013
 -- ============================================================
 
 import test
@@ -370,6 +371,40 @@ fn :: total port pair http.Config d.Config => Int
       total port pair hcfg dcfg =
         (http.port hcfg) + (d.port dcfg)
 
+type GenericResult T E = GenOk T | GenErr E
+
+type GenericBox A = GenBox A
+
+type GenericPage T = page_items: [T], page_total: Int
+
+fn :: safe gen div Int Int => GenericResult Int String
+      safe gen div _ 0 = GenErr "div-zero"
+      safe gen div a b = GenOk (a / b)
+
+fn :: unwrap gen int (GenericResult Int String) Int => Int
+      unwrap gen int (GenOk v) _ = v
+      unwrap gen int (GenErr _) d = d
+
+fn :: unwrap gen str GenericResult String Int => String
+      unwrap gen str (GenOk s) = "ok:" + s
+      unwrap gen str (GenErr _) = "err"
+
+fn :: unbox gen GenericBox A => A
+      unbox gen (GenBox x) = x
+
+fn :: page first str (GenericPage String) => String
+      page first str p =
+        xs = page_items p
+        (int_to_str (page_total p)) + ":" + (head or xs "")
+
+fn :: page sum two GenericPage Int => Int
+      page sum two p =
+        xs = page_items p
+        (page_total p) + (sum int list xs)
+
+fn :: with session check String (String => String) => String
+      with session check tok handler = handler tok
+
 fn :: main => ()
       main =
         echo "=== Core Language, ADTs, Mixfix, Variadics & Higher-Order Ops ==="
@@ -492,4 +527,20 @@ fn :: main => ()
         assert equals (describe db status (d.check status d2)) "db-err:6432"
         assert equals (describe parse (ParseOut.Error "bad syntax")) "parse_err:bad syntax"
         assert equals (describe db (DbOut.Error 503 "unavailable")) "db_err:503:unavailable"
+        echo "=== FR-COMP-013: User-Defined Generics & Lexical Closures ==="
+        assert equals (unwrap gen int (safe gen div 84 2) 0) 42
+        assert equals (unwrap gen int (safe gen div 84 0) 99) 99
+        assert equals (unwrap gen str (GenOk (unbox gen (GenBox "ridgun")))) "ok:ridgun"
+        p_str = GenericPage ["alpha", "beta"] 2
+        p_int = GenericPage [10, 20, 30] 3
+        assert equals (page first str p_str) "2:alpha"
+        assert equals (page sum two p_int) 63
+        offset = 10
+        bonus = 3
+        prefix = "sess:"
+        assert equals (apply twice (\x -> x + offset) 5) 25
+        assert equals (with session check "alice" (\u -> prefix + u)) "sess:alice"
+        assert equals (map (\x -> x + offset) [1, 2, 3]) [11, 12, 13]
+        assert equals (filter (\x -> x >= bonus) [1, 2, 3, 4]) [3, 4]
+        assert equals (fold (\acc x -> acc + x + bonus) 0 [1, 2, 3]) 15
         echo "=== All core language tests passed ==="

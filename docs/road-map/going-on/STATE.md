@@ -1,17 +1,18 @@
 ---
-updated: 2026-10-26T14:50
+updated: 2026-10-26T19:03
 active_task: none
 agent_runtime: gemini
 ---
 # Session state — read this first when resuming
 
 ## Where we are (3 lines max)
-- Completed `TASK-0030` (`FR-COMP-012`): module-scoped namespaces (`import <mod> [as <alias>]`, `module :: <name>`, `type <Local> = <mod.Type>`), collision-free multi-module `type`/`Record`/`ADT`/`fn` definitions, and qualified dot notation (`mod.Type`, `mod.Ctor`, `mod.Type.Ctor`, `mod.field`, `mod.fn`).
+- Completed `TASK-0031` (`FR-COMP-013`): user-defined generic ADTs & records (`type Result T E`, `type Page T`), lexical closures (`\x -> expr`), zero-leak agent message passing (`RG-069`), built-in `Option A` (`RG-062`), transitive subdirectory imports (`RG-025`), tail-recursive `str split` (`RG-091`), and cached `.rt` runtime emission.
 ## Files to load for the active task (nothing else)
-- None (no active task).
+- `docs/road-map/completed/2026-10/TASK-0031-user-defined-generic-types-lexical-closures-and-pr.md`
+- `docs/requirements/functional/compiler/FR-COMP-013-generics-closures-and-regression-hardening.md`
 ## Last verified facts (tests green? migrations applied? env?)
-- Self-hosted `ridgunc` and `stable` v0.9.20 in `bin/`, `python3 tests/run.py` (40/40 passed), `./bin/stable test` (6/6 passed), `aix docs validate` (0 errors).
+- Self-hosted `ridgunc` and `stable` rebuilt in `bin/`, `./bin/stable test` (6/6 passed), `python3 tests/run.py` (40/40 passed), `aix docs validate` (0 errors).
 ## Immediate next action
-- Pick or create the next road-map task when requested by the user.
+- None; ready for the next task or commit.
 ## Blockers / questions for the user
 - None.

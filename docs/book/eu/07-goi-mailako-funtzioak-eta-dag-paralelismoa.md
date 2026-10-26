@@ -76,6 +76,21 @@ exekutatu_bi_aldiz (A => A) A => A
 exekutatu_bi_aldiz f        x =  f (f x)
 ```
 
+### 4. Itxitura lexikoak eta funtzio anonimoak (`\x -> expr`, `\acc x -> expr`)
+Unean bertan funtzio labur bat pasa nahi duzunean edo uneko esparruko aldagai lokalak (desplazamendu bat, aurrizki bat edo saio aktibo bat) atzeman nahi dituzunean funtzio global laguntzaile bat deklaratu gabe, **itxitura lexiko** bat erabiltzen duzu **`\`** eta **`->`**-rekin:
+
+```ridgun
+fn :: prozesatu saioarekin => [Int]
+      prozesatu saioarekin =
+        oinarria    = 10
+        hobaria     = 3
+        batuak      = map (\x -> x + oinarria) [1, 2, 3]
+        iragaziak   = filter (\x -> x >= hobaria) [1, 2, 3, 4]
+        guztira     = fold (\acc x -> acc + x + hobaria) 0 [1, 2, 3]
+        batuak :: iragaziak :: [guztira]
+```
+Atzemandako aldagaiak (`oinarria`, `hobaria`) automatikoki paketatzen dira memoria-kudeaketa deterministarekin (`RMM1`/`RMM2`), ihesik gabe eta zabor-biltzailearen etenik gabe.
+
 ---
 
 ## 7.2. Koroaren bitxia: `||` blokeak `->` geziekin Grafo Paralelo (DAG) gisa

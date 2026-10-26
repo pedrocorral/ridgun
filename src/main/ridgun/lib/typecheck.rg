@@ -16,6 +16,7 @@
 -- @implements FR-COMP-009
 -- @implements FR-COMP-010
 -- @implements FR-COMP-012
+-- @implements FR-COMP-013
 -- @implements FR-VM-001
 -- @implements FR-VM-002
 -- ============================================================
@@ -245,10 +246,15 @@ fn :: collect embedded tags [RVariant] => String
       collect embedded tags []         =  ""
       collect embedded tags (v:vs)     =  (embedded_variant_tag v) + (collect_embedded_tags vs)
 
+fn :: poly tag for tdef [RVariant] [RField] => String
+      poly tag for tdef vars fields
+        | (str_list_count (collect_poly_vars_in_fields fields (collect_poly_vars_in_variants vars []))) > 0 = "|poly"
+        | otherwise = ""
+
 fn :: collect typedef names [RTypeDef] => [String]
       collect typedef names []         =  []
-      collect typedef names ((TypeDef name vars _):ts) =
-        [(name + (collect_embedded_tags vars))] :: (collect_typedef_names ts)
+      collect typedef names ((TypeDef name vars fields):ts) =
+        [(name + (collect_embedded_tags vars) + (poly_tag_for_tdef vars fields))] :: (collect_typedef_names ts)
 
 fn :: lookup declared adt entry [String] String => String
       lookup declared adt entry [] _ = ""
@@ -262,6 +268,9 @@ fn :: qualify declared adt [String] RType              => RType
         | (lookup_declared_adt_entry tnames s) != "" = TyVar ("adt:" + (lookup_declared_adt_entry tnames s))
         | otherwise = TyVar s
       qualify declared adt tnames   (TyList inner)     =  TyList (qualify_declared_adt tnames inner)
+      qualify declared adt tnames   (TyTuple ((TyVar head_s):rest))
+        | str_contains (lookup_declared_adt_entry tnames head_s) "|poly" = TyVar ("adt:" + (lookup_declared_adt_entry tnames head_s))
+        | otherwise = TyTuple (qualify_declared_adt_list tnames ([TyVar head_s] :: rest))
       qualify declared adt tnames   (TyTuple elems)    =  TyTuple (qualify_declared_adt_list tnames elems)
       qualify declared adt tnames   (TyVariadic inner) =  TyVariadic (qualify_declared_adt tnames inner)
       qualify declared adt tnames   (TyFun params ret) =  TyFun (qualify_declared_adt_list tnames params) (qualify_declared_adt tnames ret)
@@ -539,7 +548,7 @@ fn :: check einsum cont [RExpr] [String] String [RTypeBind] [RTypeBind] ([RDimBi
 -- ── Binary Operator Type Checking ───────────────────────────
 
 fn :: is poly tyvar RType     => Bool
-      is poly tyvar (TyVar s) =  is_lower_ident s
+      is poly tyvar (TyVar s) =  (is_lower_ident s) OR (is_poly_type_var s)
       is poly tyvar _         =  False
 
 fn :: is int or poly RType => Bool

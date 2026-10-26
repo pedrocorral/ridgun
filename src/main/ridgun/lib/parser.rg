@@ -12,6 +12,7 @@
 -- @implements FR-COMP-009
 -- @implements FR-COMP-010
 -- @implements FR-COMP-012
+-- @implements FR-COMP-013
 -- ============================================================
 import ast
 import lexer
@@ -46,6 +47,12 @@ fn :: is top keyword RToken      => Bool
       is top keyword TokEof      =  True
       is top keyword _           =  False
 
+fn :: has type params then eq [RToken] => Bool
+      has type params then eq (TokEquals:_) = True
+      has type params then eq ((TokIdent p):rest)
+        | is_upper_ident p = has_type_params_then_eq rest
+      has type params then eq _ = False
+
 fn :: is top decl start [RToken]        => Bool
       is top decl start (TokFn:TokColonColon:_) = True
       is top decl start (TokFn:_)       =  False
@@ -54,8 +61,10 @@ fn :: is top decl start [RToken]        => Bool
       is top decl start (TokHardware:TokColonColon:_) = True
       is top decl start (TokHardware:_) =  False
       is top decl start ((TokIdent "module"):TokColonColon:_) = True
-      is top decl start (TokType:(TokIdent name):TokEquals:_) = is_upper_ident name
-      is top decl start ((TokIdent "expand"):TokType:(TokIdent name):TokEquals:_) = is_upper_ident name
+      is top decl start (TokType:(TokIdent name):rest)
+        | (is_upper_ident name) AND (has_type_params_then_eq rest) = True
+      is top decl start ((TokIdent "expand"):TokType:(TokIdent name):rest)
+        | (is_upper_ident name) AND (has_type_params_then_eq rest) = True
       is top decl start (TokType:_)     =  False
       is top decl start ts              =  is_top_keyword (tok_head ts)
 
@@ -975,6 +984,8 @@ fn :: parse atom base [RToken]           => RExpr [RToken]
         | s == "Tensor" or s == "Tensor_GPU" = finish_tensor_lit (parse_comma_exprs rest)
       parse atom base ((TokIdent s):TokIdxLBracket:rest)
         | s == "Tensor" or s == "Tensor_GPU" = finish_tensor_lit (parse_comma_exprs rest)
+      parse atom base ((TokIdent "\\"):rest) =
+        parse_lambda_expr rest []
       parse atom base ((TokIdent s):rest) = (EVar s, rest)
       parse atom base (TokMinus:(TokInt n):rest) = (EInt (0 - n), rest)
       parse atom base (TokMinus:(TokReal r):rest) = (EReal ("-" + r), rest)
@@ -988,6 +999,24 @@ fn :: parse atom base [RToken]           => RExpr [RToken]
         finish_list_lit elems_res
       parse atom base (_:rest)           =  (EUnit, rest)
       parse atom base []                 =  (EUnit, [])
+
+fn :: parse lambda expr [RToken] [RExpr] => RExpr [RToken]
+      parse lambda expr (TokArrow:rest) params =
+        finish_lambda_expr params (parse_expr rest)
+      parse lambda expr (TokFatArrow:rest) params =
+        finish_lambda_expr params (parse_expr rest)
+      parse lambda expr ((TokIdent p):rest) params =
+        parse_lambda_expr rest (params :: [EStr p])
+      parse lambda expr (TokType:rest) params =
+        parse_lambda_expr rest (params :: [EStr "type"])
+      parse lambda expr (TokWith:rest) params =
+        parse_lambda_expr rest (params :: [EStr "with"])
+      parse lambda expr ts params =
+        finish_lambda_expr params (parse_expr ts)
+
+fn :: finish lambda expr [RExpr] (RExpr, [RToken]) => RExpr [RToken]
+      finish lambda expr params (body_e, rest) =
+        (ECall "__lambda__" (params :: [body_e]), rest)
 
 fn :: tensor zero fill String  => RExpr
       tensor zero fill _       =  EInt 0
@@ -1772,6 +1801,11 @@ fn :: match op keyword RToken       String => Bool
 
 fn :: try parse op template [Bool] [String] [RToken] [RPattern] => Bool [RPattern] [RToken]
       try parse op template [] _ ts pats = (True, pats, ts)
+      try parse op template (True:_) [] (TokEquals:rest) pats = (True, pats, [TokEquals] :: rest)
+      try parse op template (True:_) [] (TokNewline:TokPipe:rest) pats = (True, pats, [TokNewline, TokPipe] :: rest)
+      try parse op template (True:t_rest) (kw:kw_rest) (tok:ts_rest) pats
+        | (pat_list_count pats) > 0 AND (tok_head ts_rest) != TokColonColon AND (match_op_keyword tok kw) =
+          try_parse_op_template (skip_true_slots t_rest) kw_rest ts_rest pats
       try parse op template (True:t_rest) kws ts pats
         | is_top_decl_start ts = (False, [], ts)
         | otherwise = try_parse_op_pat t_rest kws pats (parse_pattern ts)
@@ -1942,28 +1976,50 @@ fn :: strip optional colon [RToken]        => [RToken]
       strip optional colon (TokColon:rest) =  rest
       strip optional colon ts              =  ts
 
+fn :: parse field type more (String, [RToken]) Bool => String [RToken]
+      parse field type more (acc, ((TokIdent s):rest)) is_app
+        | (is_upper_ident s) AND (tok_head rest) != TokColon =
+          t2 = parse_type_tok ([TokIdent s] :: rest)
+          parse_field_type_step acc t2
+        | otherwise = finish_return_types acc ([TokIdent s] :: rest) is_app
+      parse field type more (acc, (TokLBracket:rest)) _ =
+        t2 = parse_type_tok ([TokLBracket] :: rest)
+        parse_field_type_step acc t2
+      parse field type more (acc, (TokLParen:rest)) _ =
+        t2 = parse_type_tok ([TokLParen] :: rest)
+        parse_field_type_step acc t2
+      parse field type more (acc, rest) is_app = finish_return_types acc rest is_app
+
+fn :: parse field type step String (String, [RToken]) => String [RToken]
+      parse field type step acc (next_ty, rest) =
+        parse_field_type_more (acc + ", " + next_ty, rest) True
+
+fn :: parse field type tok [RToken] => String [RToken]
+      parse field type tok ts =
+        parse_field_type_more (parse_type_tok ts) False
+
 fn :: parse record fields [RToken]          => [RField] [RToken]
       parse record fields (TokNewline:(TokIdent fname):TokColon:rest) =
-        ty_res = parse_type_tok rest
+        ty_res = parse_field_type_tok rest
         parse_record_fields_cont fname ty_res
       parse record fields (TokNewline:TokType:TokColon:rest) =
-        ty_res = parse_type_tok rest
+        ty_res = parse_field_type_tok rest
         parse_record_fields_cont "type" ty_res
       parse record fields (TokNewline:TokWith:TokColon:rest) =
-        ty_res = parse_type_tok rest
+        ty_res = parse_field_type_tok rest
         parse_record_fields_cont "with" ty_res
       parse record fields (TokNewline:rest) =  ([], rest)
       parse record fields (TokEof:rest)     =  ([], [TokEof] :: rest)
       parse record fields []                =  ([], [])
       parse record fields (TokComma:rest)   =  parse_record_fields rest
       parse record fields ((TokIdent fname):rest) =
-        ty_res = parse_type_tok (strip_optional_colon rest)
+        ty_res = parse_field_type_tok (strip_optional_colon rest)
         parse_record_fields_cont fname ty_res
       parse record fields (TokType:rest)    =
-        ty_res = parse_type_tok (strip_optional_colon rest)
+        ty_res = parse_field_type_tok (strip_optional_colon rest)
         parse_record_fields_cont "type" ty_res
       parse record fields (TokWith:rest)    =
-        ty_res = parse_type_tok (strip_optional_colon rest)
+        ty_res = parse_field_type_tok (strip_optional_colon rest)
         parse_record_fields_cont "with" ty_res
       parse record fields (_:rest)          =  ([], skip_to_newline rest)
 
@@ -1975,16 +2031,58 @@ fn :: parse record fields cont String (String, [RToken]) => [RField] [RToken]
 fn :: prepend field RField ([RField], [RToken]) => [RField] [RToken]
       prepend field f      (fs, rest)           =  ([f] :: fs, rest)
 
+fn :: collect type decl params [RToken] [String] => [String] [RToken]
+      collect type decl params (TokEquals:rest) acc = (acc, [TokEquals] :: rest)
+      collect type decl params ((TokIdent p):rest) acc
+        | is_upper_ident p = collect_type_decl_params rest (acc :: [p])
+      collect type decl params ts acc = (acc, ts)
+
+fn :: subst one tparam str String String String => String
+      subst one tparam str ty_s tp letter
+        | ty_s == tp = letter
+        | ty_s == ("[" + tp + "]") = "[" + letter + "]"
+        | otherwise = ty_s
+
+fn :: subst tparams in str String [String] Int => String
+      subst tparams in str ty_s [] _ = ty_s
+      subst tparams in str ty_s (tp:tps) idx
+        | (str_len tp) == 1 = subst_tparams_in_str ty_s tps (idx + 1)
+        | otherwise = subst_tparams_in_str (subst_one_tparam_str ty_s tp (char_from_code (65 + idx))) tps (idx + 1)
+
+fn :: subst tparams in strs [String] [String] => [String]
+      subst tparams in strs [] _ = []
+      subst tparams in strs (s:ss) tps = [subst_tparams_in_str s tps 0] :: (subst_tparams_in_strs ss tps)
+
+fn :: subst tparams in variants [RVariant] [String] => [RVariant]
+      subst tparams in variants [] _ = []
+      subst tparams in variants ((TypeVariant c args):vs) tps =
+        [TypeVariant c (subst_tparams_in_strs args tps)] :: (subst_tparams_in_variants vs tps)
+
+fn :: subst tparams in fields [RField] [String] => [RField]
+      subst tparams in fields [] _ = []
+      subst tparams in fields ((TypeField fnm fty):fs) tps =
+        [TypeField fnm (subst_tparams_in_str fty tps 0)] :: (subst_tparams_in_fields fs tps)
+
+fn :: apply tparams to tdef [String] (RTypeDef, [RToken]) => RTypeDef [RToken]
+      apply tparams to tdef [] res = res
+      apply tparams to tdef tps ((TypeDef nm vs fs), rest) =
+        (TypeDef nm (subst_tparams_in_variants vs tps) (subst_tparams_in_fields fs tps), rest)
+
+fn :: parse type decl after params String ([String], [RToken]) => RTypeDef [RToken]
+      parse type decl after params name (tps, (TokEquals:TokNewline:rest)) =
+        parse_type_decl_after_params name (tps, [TokEquals] :: (skip_newlines rest))
+      parse type decl after params name (tps, (TokEquals:(TokIdent first_w):rest))
+        | is_upper_ident first_w = apply_tparams_to_tdef tps (finish_sum_type name (parse_variants ([TokIdent first_w] :: rest)))
+        | otherwise = apply_tparams_to_tdef tps (finish_record_type name (parse_record_fields ([TokIdent first_w] :: rest)))
+      parse type decl after params name (tps, (TokEquals:TokType:rest)) =
+        apply_tparams_to_tdef tps (finish_record_type name (parse_record_fields ([TokType] :: rest)))
+      parse type decl after params name (tps, (TokEquals:TokWith:rest)) =
+        apply_tparams_to_tdef tps (finish_record_type name (parse_record_fields ([TokWith] :: rest)))
+      parse type decl after params _ (_, rest) = (TypeDef "Unknown" [] [], skip_to_newline rest)
+
 fn :: parse type decl [RToken] => RTypeDef [RToken]
-      parse type decl (TokType:(TokIdent name):TokEquals:TokNewline:rest) =
-        parse_type_decl ([TokType, TokIdent name, TokEquals] :: (skip_newlines rest))
-      parse type decl (TokType:(TokIdent name):TokEquals:((TokIdent first_w):rest))
-        | is_upper_ident first_w = finish_sum_type name (parse_variants ([TokIdent first_w] :: rest))
-        | otherwise = finish_record_type name (parse_record_fields ([TokIdent first_w] :: rest))
-      parse type decl (TokType:(TokIdent name):TokEquals:(TokType:rest)) =
-        finish_record_type name (parse_record_fields ([TokType] :: rest))
-      parse type decl (TokType:(TokIdent name):TokEquals:(TokWith:rest)) =
-        finish_record_type name (parse_record_fields ([TokWith] :: rest))
+      parse type decl (TokType:(TokIdent name):rest) =
+        parse_type_decl_after_params name (collect_type_decl_params rest [])
       parse type decl (_:rest) =  (TypeDef "Unknown" [] [], skip_to_newline rest)
       parse type decl []       =  (TypeDef "Unknown" [] [], [])
 
@@ -2334,6 +2432,7 @@ fn :: norm call fast or cands String [RExpr] [RArityEntry] Int => RExpr
 
 fn :: norm call String  [RExpr] [RArityEntry] => RExpr
       norm call fn_name args    arities
+        | fn_name == "__lambda__" = ECall "__lambda__" args
         | fn_name == "agent" and (not (has_longer_arity_prefix arities "agent" args)) = ECall "agent" (norm_expr_list (collapse_fn_ref_args args arities) arities)
         | fn_name == "send" = finish_send_to_norm fn_name args arities (split_send_to_args args [])
         | fn_name == "ask" = finish_ask_norm fn_name args arities (split_send_to_args args [])
@@ -2496,10 +2595,445 @@ fn :: norm fndef list acc [RFnDef] [RArityEntry] [RFnDef] => [RFnDef]
 fn :: norm fndef list [RFnDef] [RArityEntry] => [RFnDef]
       norm fndef list fns      arities       =  norm_fndef_list_acc fns arities []
 
+fn :: extract lambda params [RExpr] => [String] RExpr
+      extract lambda params (body_e:[]) = ([], body_e)
+      extract lambda params ((EStr p):rest) =
+        prepend_str_expr p (extract_lambda_params rest)
+      extract lambda params (_:rest) = extract_lambda_params rest
+      extract lambda params [] = ([], EUnit)
+
+fn :: prepend str expr String ([String], RExpr) => [String] RExpr
+      prepend str expr s (xs, e) = ([s] :: xs, e)
+
+fn :: collect expr free locals RExpr [String] [String] [String] => [String]
+      collect expr free locals (EVar v) outer_locals shadowed acc
+        | (str_in_seen_list v outer_locals) AND (NOT (str_in_seen_list v shadowed)) AND (NOT (str_in_seen_list v acc)) = acc :: [v]
+        | otherwise = acc
+      collect expr free locals (ENot e) outer_locals shadowed acc =
+        collect_expr_free_locals e outer_locals shadowed acc
+      collect expr free locals (EOut e) outer_locals shadowed acc =
+        collect_expr_free_locals e outer_locals shadowed acc
+      collect expr free locals (EBin _ l r) outer_locals shadowed acc =
+        collect_expr_free_locals r outer_locals shadowed (collect_expr_free_locals l outer_locals shadowed acc)
+      collect expr free locals (ECall "__lambda__" args) outer_locals shadowed acc =
+        collect_lambda_free_locals (extract_lambda_params args) outer_locals shadowed acc
+      collect expr free locals (ECall fn_name args) outer_locals shadowed acc =
+        acc1 = collect_expr_free_locals (EVar fn_name) outer_locals shadowed acc
+        collect_expr_list_free_locals args outer_locals shadowed acc1
+      collect expr free locals (EEcho args) outer_locals shadowed acc =
+        collect_expr_list_free_locals args outer_locals shadowed acc
+      collect expr free locals (EStrInterp parts) outer_locals shadowed acc =
+        collect_expr_list_free_locals parts outer_locals shadowed acc
+      collect expr free locals (EList elems) outer_locals shadowed acc =
+        collect_expr_list_free_locals elems outer_locals shadowed acc
+      collect expr free locals (ETuple elems) outer_locals shadowed acc =
+        collect_expr_list_free_locals elems outer_locals shadowed acc
+      collect expr free locals (ETensor elems) outer_locals shadowed acc =
+        collect_expr_list_free_locals elems outer_locals shadowed acc
+      collect expr free locals (EEinsum es _) outer_locals shadowed acc =
+        collect_expr_list_free_locals es outer_locals shadowed acc
+      collect expr free locals (EHadamard _ l _ r _) outer_locals shadowed acc =
+        collect_expr_free_locals r outer_locals shadowed (collect_expr_free_locals l outer_locals shadowed acc)
+      collect expr free locals (EIndex b idxs) outer_locals shadowed acc =
+        collect_expr_list_free_locals idxs outer_locals shadowed (collect_expr_free_locals b outer_locals shadowed acc)
+      collect expr free locals (EIndexAssign t idxs v) outer_locals shadowed acc =
+        a1 = collect_expr_free_locals (EVar t) outer_locals shadowed acc
+        a2 = collect_expr_list_free_locals idxs outer_locals shadowed a1
+        collect_expr_free_locals v outer_locals shadowed a2
+      collect expr free locals (ESeqSelect b _) outer_locals shadowed acc =
+        collect_expr_free_locals b outer_locals shadowed acc
+      collect expr free locals (EBlock stmts) outer_locals shadowed acc =
+        collect_stmt_list_free_locals stmts outer_locals shadowed acc
+      collect expr free locals (EGuard gs) outer_locals shadowed acc =
+        collect_guard_list_free_locals gs outer_locals shadowed acc
+      collect expr free locals (EWhere b wbs) outer_locals shadowed acc =
+        sh1 = collect_where_bound_vars wbs shadowed
+        a1 = collect_where_list_free_locals wbs outer_locals sh1 acc
+        collect_expr_free_locals b outer_locals sh1 a1
+      collect expr free locals (EParPipe bs) outer_locals shadowed acc =
+        collect_expr_list_free_locals bs outer_locals shadowed acc
+      collect expr free locals (EWithCtx c v b) outer_locals shadowed acc =
+        a1 = collect_expr_free_locals v outer_locals shadowed acc
+        collect_expr_free_locals b outer_locals ([c] :: shadowed) a1
+      collect expr free locals (EWithRegion _ b) outer_locals shadowed acc =
+        collect_expr_free_locals b outer_locals shadowed acc
+      collect expr free locals _ _ _ acc = acc
+
+fn :: collect lambda free locals ([String], RExpr) [String] [String] [String] => [String]
+      collect lambda free locals (lparams, lbody) outer_locals shadowed acc =
+        collect_expr_free_locals lbody outer_locals (lparams :: shadowed) acc
+
+fn :: collect expr list free locals [RExpr] [String] [String] [String] => [String]
+      collect expr list free locals [] _ _ acc = acc
+      collect expr list free locals (e:es) outer_locals shadowed acc =
+        collect_expr_list_free_locals es outer_locals shadowed (collect_expr_free_locals e outer_locals shadowed acc)
+
+fn :: collect stmt list free locals [RStmt] [String] [String] [String] => [String]
+      collect stmt list free locals [] _ _ acc = acc
+      collect stmt list free locals ((StmtLet v e):ss) outer_locals shadowed acc =
+        a1 = collect_expr_free_locals e outer_locals shadowed acc
+        collect_stmt_list_free_locals ss outer_locals ([v] :: shadowed) a1
+      collect stmt list free locals ((StmtMut v e):ss) outer_locals shadowed acc =
+        a1 = collect_expr_free_locals e outer_locals shadowed acc
+        collect_stmt_list_free_locals ss outer_locals ([v] :: shadowed) a1
+      collect stmt list free locals ((StmtExpr e):ss) outer_locals shadowed acc =
+        a1 = collect_expr_free_locals e outer_locals shadowed acc
+        collect_stmt_list_free_locals ss outer_locals shadowed a1
+      collect stmt list free locals ((StmtIndexAssign t idxs e):ss) outer_locals shadowed acc =
+        a1 = collect_expr_free_locals (EIndexAssign t idxs e) outer_locals shadowed acc
+        collect_stmt_list_free_locals ss outer_locals shadowed a1
+
+fn :: collect guard list free locals [RGuard] [String] [String] [String] => [String]
+      collect guard list free locals [] _ _ acc = acc
+      collect guard list free locals ((GuardBranch c b):gs) outer_locals shadowed acc =
+        a1 = collect_expr_free_locals c outer_locals shadowed acc
+        a2 = collect_expr_free_locals b outer_locals shadowed a1
+        collect_guard_list_free_locals gs outer_locals shadowed a2
+
+fn :: collect where list free locals [RWhereBind] [String] [String] [String] => [String]
+      collect where list free locals [] _ _ acc = acc
+      collect where list free locals ((WhereBind e _ _):wbs) outer_locals shadowed acc =
+        collect_where_list_free_locals wbs outer_locals shadowed (collect_expr_free_locals e outer_locals shadowed acc)
+
+fn :: make poly type vars Int Int => [String]
+      make poly type vars idx count
+        | idx >= count = []
+        | otherwise = [char_from_code (65 + (idx % 26))] :: (make_poly_type_vars (idx + 1) count)
+
+fn :: vars to pat list [String] => [RPattern]
+      vars to pat list [] = []
+      vars to pat list (v:vs) = [PatVar v] :: (vars_to_pat_list vs)
+
+fn :: vars to expr list [String] => [RExpr]
+      vars to expr list [] = []
+      vars to expr list (v:vs) = [EVar v] :: (vars_to_expr_list vs)
+
+fn :: build lambda call expr String [String] => RExpr
+      build lambda call expr lname [] = EVar lname
+      build lambda call expr lname caps = ECall lname (vars_to_expr_list caps)
+
+fn :: lift lambda node ([String], RExpr) [String] Int [RFnDef] => RExpr Int [RFnDef]
+      lift lambda node (lparams, lbody) locals cnt lifted =
+        lifted_body = lift_expr_lambdas lbody (locals :: lparams) (cnt + 1) lifted
+        finish_lift_lambda lparams locals cnt lifted_body
+
+fn :: finish lift lambda [String] [String] Int (RExpr, Int, [RFnDef]) => RExpr Int [RFnDef]
+      finish lift lambda lparams locals my_id (body1, cnt1, lifted1) =
+        caps = collect_expr_free_locals body1 locals lparams []
+        all_params = caps :: lparams
+        p_count = str_list_count all_params
+        lname = "__rg_lambda_" + (int_to_str my_id)
+        ty_vars = make_poly_type_vars 0 p_count
+        ret_var = char_from_code (65 + (p_count % 26))
+        lfn = FnDef lname ty_vars ret_var [FnCase (vars_to_pat_list all_params) [] body1]
+        (build_lambda_call_expr lname caps, cnt1, lifted1 :: [lfn])
+
+fn :: lift expr lambdas RExpr [String] Int [RFnDef] => RExpr Int [RFnDef]
+      lift expr lambdas (ECall "__lambda__" args) locals cnt lifted =
+        lift_lambda_node (extract_lambda_params args) locals cnt lifted
+      lift expr lambdas (ENot inner) locals cnt lifted =
+        wrap_lift_not (lift_expr_lambdas inner locals cnt lifted)
+      lift expr lambdas (EOut inner) locals cnt lifted =
+        wrap_lift_out (lift_expr_lambdas inner locals cnt lifted)
+      lift expr lambdas (EBin bop l r) locals cnt lifted =
+        lift_bin_lambdas bop (lift_expr_lambdas l locals cnt lifted) r locals
+      lift expr lambdas (ECall fn_name args) locals cnt lifted =
+        wrap_lift_call fn_name (lift_expr_list_lambdas args locals cnt lifted)
+      lift expr lambdas (EEcho args) locals cnt lifted =
+        wrap_lift_echo (lift_expr_list_lambdas args locals cnt lifted)
+      lift expr lambdas (EStrInterp parts) locals cnt lifted =
+        wrap_lift_interp (lift_expr_list_lambdas parts locals cnt lifted)
+      lift expr lambdas (EList elems) locals cnt lifted =
+        wrap_lift_list (lift_expr_list_lambdas elems locals cnt lifted)
+      lift expr lambdas (ETuple elems) locals cnt lifted =
+        wrap_lift_tuple (lift_expr_list_lambdas elems locals cnt lifted)
+      lift expr lambdas (ETensor elems) locals cnt lifted =
+        wrap_lift_tensor (lift_expr_list_lambdas elems locals cnt lifted)
+      lift expr lambdas (EIndex b idxs) locals cnt lifted =
+        lift_index_lambdas (lift_expr_lambdas b locals cnt lifted) idxs locals
+      lift expr lambdas (EIndexAssign t idxs v) locals cnt lifted =
+        lift_idx_assign_lambdas t (lift_expr_list_lambdas idxs locals cnt lifted) v locals
+      lift expr lambdas (ESeqSelect b m) locals cnt lifted =
+        wrap_lift_seq m (lift_expr_lambdas b locals cnt lifted)
+      lift expr lambdas (EBlock stmts) locals cnt lifted =
+        wrap_lift_block (lift_stmt_list_lambdas stmts locals cnt lifted)
+      lift expr lambdas (EGuard gs) locals cnt lifted =
+        wrap_lift_guard (lift_guard_list_lambdas gs locals cnt lifted)
+      lift expr lambdas (EWhere b wbs) locals cnt lifted =
+        locs1 = collect_where_bound_vars wbs locals
+        lift_where_lambdas (lift_expr_lambdas b locs1 cnt lifted) wbs locs1
+      lift expr lambdas (EParPipe bs) locals cnt lifted =
+        wrap_lift_parpipe (lift_expr_list_lambdas bs locals cnt lifted)
+      lift expr lambdas (EWithCtx c v b) locals cnt lifted =
+        lift_with_ctx_lambdas c (lift_expr_lambdas v locals cnt lifted) b ([c] :: locals)
+      lift expr lambdas (EWithRegion q b) locals cnt lifted =
+        wrap_lift_region q (lift_expr_lambdas b locals cnt lifted)
+      lift expr lambdas e _ cnt lifted = (e, cnt, lifted)
+
+fn :: wrap lift not (RExpr, Int, [RFnDef]) => RExpr Int [RFnDef]
+      wrap lift not (e1, c1, l1) = (ENot e1, c1, l1)
+
+fn :: wrap lift out (RExpr, Int, [RFnDef]) => RExpr Int [RFnDef]
+      wrap lift out (e1, c1, l1) = (EOut e1, c1, l1)
+
+fn :: lift bin lambdas RBinOp (RExpr, Int, [RFnDef]) RExpr [String] => RExpr Int [RFnDef]
+      lift bin lambdas bop (l1, c1, lf1) r locals =
+        finish_lift_bin bop l1 (lift_expr_lambdas r locals c1 lf1)
+
+fn :: finish lift bin RBinOp RExpr (RExpr, Int, [RFnDef]) => RExpr Int [RFnDef]
+      finish lift bin bop l1 (r1, c2, lf2) = (EBin bop l1 r1, c2, lf2)
+
+fn :: wrap lift call String ([RExpr], Int, [RFnDef]) => RExpr Int [RFnDef]
+      wrap lift call fn_name (es1, c1, l1) = (ECall fn_name es1, c1, l1)
+
+fn :: wrap lift echo ([RExpr], Int, [RFnDef]) => RExpr Int [RFnDef]
+      wrap lift echo (es1, c1, l1) = (EEcho es1, c1, l1)
+
+fn :: wrap lift interp ([RExpr], Int, [RFnDef]) => RExpr Int [RFnDef]
+      wrap lift interp (es1, c1, l1) = (EStrInterp es1, c1, l1)
+
+fn :: wrap lift list ([RExpr], Int, [RFnDef]) => RExpr Int [RFnDef]
+      wrap lift list (es1, c1, l1) = (EList es1, c1, l1)
+
+fn :: wrap lift tuple ([RExpr], Int, [RFnDef]) => RExpr Int [RFnDef]
+      wrap lift tuple (es1, c1, l1) = (ETuple es1, c1, l1)
+
+fn :: wrap lift tensor ([RExpr], Int, [RFnDef]) => RExpr Int [RFnDef]
+      wrap lift tensor (es1, c1, l1) = (ETensor es1, c1, l1)
+
+fn :: wrap lift parpipe ([RExpr], Int, [RFnDef]) => RExpr Int [RFnDef]
+      wrap lift parpipe (es1, c1, l1) = (EParPipe es1, c1, l1)
+
+fn :: wrap lift seq String (RExpr, Int, [RFnDef]) => RExpr Int [RFnDef]
+      wrap lift seq m (b1, c1, l1) = (ESeqSelect b1 m, c1, l1)
+
+fn :: wrap lift block ([RStmt], Int, [RFnDef]) => RExpr Int [RFnDef]
+      wrap lift block (ss1, c1, l1) = (EBlock ss1, c1, l1)
+
+fn :: wrap lift guard ([RGuard], Int, [RFnDef]) => RExpr Int [RFnDef]
+      wrap lift guard (gs1, c1, l1) = (EGuard gs1, c1, l1)
+
+fn :: wrap lift region Int (RExpr, Int, [RFnDef]) => RExpr Int [RFnDef]
+      wrap lift region q (b1, c1, l1) = (EWithRegion q b1, c1, l1)
+
+fn :: lift index lambdas (RExpr, Int, [RFnDef]) [RExpr] [String] => RExpr Int [RFnDef]
+      lift index lambdas (b1, c1, l1) idxs locals =
+        finish_lift_index b1 (lift_expr_list_lambdas idxs locals c1 l1)
+
+fn :: finish lift index RExpr ([RExpr], Int, [RFnDef]) => RExpr Int [RFnDef]
+      finish lift index b1 (idxs1, c2, l2) = (EIndex b1 idxs1, c2, l2)
+
+fn :: lift idx assign lambdas String ([RExpr], Int, [RFnDef]) RExpr [String] => RExpr Int [RFnDef]
+      lift idx assign lambdas t (idxs1, c1, l1) v locals =
+        finish_lift_idx_assign t idxs1 (lift_expr_lambdas v locals c1 l1)
+
+fn :: finish lift idx assign String [RExpr] (RExpr, Int, [RFnDef]) => RExpr Int [RFnDef]
+      finish lift idx assign t idxs1 (v1, c2, l2) = (EIndexAssign t idxs1 v1, c2, l2)
+
+fn :: lift with ctx lambdas String (RExpr, Int, [RFnDef]) RExpr [String] => RExpr Int [RFnDef]
+      lift with ctx lambdas c (v1, c1, l1) b locals =
+        finish_lift_with_ctx c v1 (lift_expr_lambdas b locals c1 l1)
+
+fn :: finish lift with ctx String RExpr (RExpr, Int, [RFnDef]) => RExpr Int [RFnDef]
+      finish lift with ctx c v1 (b1, c2, l2) = (EWithCtx c v1 b1, c2, l2)
+
+fn :: lift where lambdas (RExpr, Int, [RFnDef]) [RWhereBind] [String] => RExpr Int [RFnDef]
+      lift where lambdas (b1, c1, l1) wbs locals =
+        finish_lift_where b1 (lift_where_list_lambdas wbs locals c1 l1)
+
+fn :: finish lift where RExpr ([RWhereBind], Int, [RFnDef]) => RExpr Int [RFnDef]
+      finish lift where b1 (wbs1, c2, l2) = (EWhere b1 wbs1, c2, l2)
+
+fn :: lift expr list lambdas [RExpr] [String] Int [RFnDef] => [RExpr] Int [RFnDef]
+      lift expr list lambdas [] _ cnt lifted = ([], cnt, lifted)
+      lift expr list lambdas (e:es) locals cnt lifted =
+        lift_expr_list_step (lift_expr_lambdas e locals cnt lifted) es locals
+
+fn :: lift expr list step (RExpr, Int, [RFnDef]) [RExpr] [String] => [RExpr] Int [RFnDef]
+      lift expr list step (e1, c1, l1) es locals =
+        finish_lift_expr_list e1 (lift_expr_list_lambdas es locals c1 l1)
+
+fn :: finish lift expr list RExpr ([RExpr], Int, [RFnDef]) => [RExpr] Int [RFnDef]
+      finish lift expr list e1 (es1, c2, l2) = ([e1] :: es1, c2, l2)
+
+fn :: lift stmt list lambdas [RStmt] [String] Int [RFnDef] => [RStmt] Int [RFnDef]
+      lift stmt list lambdas [] _ cnt lifted = ([], cnt, lifted)
+      lift stmt list lambdas ((StmtLet v e):ss) locals cnt lifted =
+        lift_stmt_let_step v (lift_expr_lambdas e locals cnt lifted) ss (locals :: [v])
+      lift stmt list lambdas ((StmtMut v e):ss) locals cnt lifted =
+        lift_stmt_mut_step v (lift_expr_lambdas e locals cnt lifted) ss (locals :: [v])
+      lift stmt list lambdas ((StmtExpr e):ss) locals cnt lifted =
+        lift_stmt_expr_step (lift_expr_lambdas e locals cnt lifted) ss locals
+      lift stmt list lambdas ((StmtIndexAssign t idxs e):ss) locals cnt lifted =
+        lift_stmt_idx_step (lift_idx_assign_lambdas t (lift_expr_list_lambdas idxs locals cnt lifted) e locals) ss locals
+
+fn :: lift stmt let step String (RExpr, Int, [RFnDef]) [RStmt] [String] => [RStmt] Int [RFnDef]
+      lift stmt let step v (e1, c1, l1) ss locals =
+        finish_lift_stmt (StmtLet v e1) (lift_stmt_list_lambdas ss locals c1 l1)
+
+fn :: lift stmt mut step String (RExpr, Int, [RFnDef]) [RStmt] [String] => [RStmt] Int [RFnDef]
+      lift stmt mut step v (e1, c1, l1) ss locals =
+        finish_lift_stmt (StmtMut v e1) (lift_stmt_list_lambdas ss locals c1 l1)
+
+fn :: lift stmt expr step (RExpr, Int, [RFnDef]) [RStmt] [String] => [RStmt] Int [RFnDef]
+      lift stmt expr step (e1, c1, l1) ss locals =
+        finish_lift_stmt (StmtExpr e1) (lift_stmt_list_lambdas ss locals c1 l1)
+
+fn :: lift stmt idx step (RExpr, Int, [RFnDef]) [RStmt] [String] => [RStmt] Int [RFnDef]
+      lift stmt idx step ((EIndexAssign t idxs1 e1), c1, l1) ss locals =
+        finish_lift_stmt (StmtIndexAssign t idxs1 e1) (lift_stmt_list_lambdas ss locals c1 l1)
+      lift stmt idx step (e1, c1, l1) ss locals =
+        finish_lift_stmt (StmtExpr e1) (lift_stmt_list_lambdas ss locals c1 l1)
+
+fn :: finish lift stmt RStmt ([RStmt], Int, [RFnDef]) => [RStmt] Int [RFnDef]
+      finish lift stmt s1 (ss1, c2, l2) = ([s1] :: ss1, c2, l2)
+
+fn :: lift guard list lambdas [RGuard] [String] Int [RFnDef] => [RGuard] Int [RFnDef]
+      lift guard list lambdas [] _ cnt lifted = ([], cnt, lifted)
+      lift guard list lambdas ((GuardBranch c b):gs) locals cnt lifted =
+        lift_guard_step (lift_expr_lambdas c locals cnt lifted) b gs locals
+
+fn :: lift guard step (RExpr, Int, [RFnDef]) RExpr [RGuard] [String] => [RGuard] Int [RFnDef]
+      lift guard step (c1, cnt1, l1) b gs locals =
+        lift_guard_step2 c1 (lift_expr_lambdas b locals cnt1 l1) gs locals
+
+fn :: lift guard step2 RExpr (RExpr, Int, [RFnDef]) [RGuard] [String] => [RGuard] Int [RFnDef]
+      lift guard step2 c1 (b1, cnt2, l2) gs locals =
+        finish_lift_guard (GuardBranch c1 b1) (lift_guard_list_lambdas gs locals cnt2 l2)
+
+fn :: finish lift guard RGuard ([RGuard], Int, [RFnDef]) => [RGuard] Int [RFnDef]
+      finish lift guard g1 (gs1, c3, l3) = ([g1] :: gs1, c3, l3)
+
+fn :: lift where list lambdas [RWhereBind] [String] Int [RFnDef] => [RWhereBind] Int [RFnDef]
+      lift where list lambdas [] _ cnt lifted = ([], cnt, lifted)
+      lift where list lambdas ((WhereBind e v idxs):wbs) locals cnt lifted =
+        lift_where_step v idxs (lift_expr_lambdas e locals cnt lifted) wbs locals
+
+fn :: lift where step String [Int] (RExpr, Int, [RFnDef]) [RWhereBind] [String] => [RWhereBind] Int [RFnDef]
+      lift where step v idxs (e1, c1, l1) wbs locals =
+        finish_lift_where_bind (WhereBind e1 v idxs) (lift_where_list_lambdas wbs locals c1 l1)
+
+fn :: finish lift where bind RWhereBind ([RWhereBind], Int, [RFnDef]) => [RWhereBind] Int [RFnDef]
+      finish lift where bind wb1 (wbs1, c2, l2) = ([wb1] :: wbs1, c2, l2)
+
+fn :: lift case list lambdas [RFnCase] Int [RFnDef] => [RFnCase] Int [RFnDef]
+      lift case list lambdas [] cnt lifted = ([], cnt, lifted)
+      lift case list lambdas ((FnCase pats gs body):cs) cnt lifted =
+        locals = collect_pat_list_bound_vars pats []
+        lift_case_step pats (lift_guard_list_lambdas gs locals cnt lifted) body locals cs
+
+fn :: lift case step [RPattern] ([RGuard], Int, [RFnDef]) RExpr [String] [RFnCase] => [RFnCase] Int [RFnDef]
+      lift case step pats (gs1, c1, l1) body locals cs =
+        lift_case_step2 pats gs1 (lift_expr_lambdas body locals c1 l1) cs
+
+fn :: lift case step2 [RPattern] [RGuard] (RExpr, Int, [RFnDef]) [RFnCase] => [RFnCase] Int [RFnDef]
+      lift case step2 pats gs1 (body1, c2, l2) cs =
+        finish_lift_case (FnCase pats gs1 body1) (lift_case_list_lambdas cs c2 l2)
+
+fn :: finish lift case RFnCase ([RFnCase], Int, [RFnDef]) => [RFnCase] Int [RFnDef]
+      finish lift case fc1 (cs1, c3, l3) = ([fc1] :: cs1, c3, l3)
+
+fn :: lift fndef list lambdas [RFnDef] Int [RFnDef] [RFnDef] => [RFnDef]
+      lift fndef list lambdas [] _ lifted acc = acc :: lifted
+      lift fndef list lambdas ((FnDef name params ret_ty cases):fs) cnt lifted acc =
+        lift_fndef_step name params ret_ty (lift_case_list_lambdas cases cnt lifted) fs acc
+
+fn :: lift fndef step String [String] String ([RFnCase], Int, [RFnDef]) [RFnDef] [RFnDef] => [RFnDef]
+      lift fndef step name params ret_ty (cs1, c1, l1) fs acc =
+        lift_fndef_list_lambdas fs c1 l1 (acc :: [FnDef name params ret_ty cs1])
+
+fn :: strip ty brackets String => String
+      strip ty brackets s
+        | (str_len s) >= 2 AND (str_starts_with s "[") = strip_ty_brackets (str_slice s 1 ((str_len s) - 1))
+        | otherwise = s
+
+fn :: collect poly vars in str String [String] => [String]
+      collect poly vars in str s acc =
+        b = strip_ty_brackets s
+        collect_poly_var_base b acc
+
+fn :: collect poly var base String [String] => [String]
+      collect poly var base b acc
+        | (str_len b) == 1 AND (is_upper_ident b) AND (NOT (str_in_seen_list b acc)) = acc :: [b]
+        | otherwise = acc
+
+fn :: collect poly vars in strs [String] [String] => [String]
+      collect poly vars in strs [] acc = acc
+      collect poly vars in strs (s:ss) acc =
+        collect_poly_vars_in_strs ss (collect_poly_vars_in_str s acc)
+
+fn :: collect poly vars in variants [RVariant] [String] => [String]
+      collect poly vars in variants [] acc = acc
+      collect poly vars in variants ((TypeVariant _ args):vs) acc =
+        collect_poly_vars_in_variants vs (collect_poly_vars_in_strs args acc)
+
+fn :: collect poly vars in fields [RField] [String] => [String]
+      collect poly vars in fields [] acc = acc
+      collect poly vars in fields ((TypeField _ fty):fs) acc =
+        collect_poly_vars_in_fields fs (collect_poly_vars_in_str fty acc)
+
+fn :: collect poly type arities [RTypeDef] => [RArityEntry]
+      collect poly type arities [] = [ArityEntry "Option" 1]
+      collect poly type arities ((TypeDef name vars fields):ts) =
+        pvars = collect_poly_vars_in_fields fields (collect_poly_vars_in_variants vars [])
+        n = str_list_count pvars
+        prepend_poly_arity name n (collect_poly_type_arities ts)
+
+fn :: prepend poly arity String Int [RArityEntry] => [RArityEntry]
+      prepend poly arity _ 0 rest = rest
+      prepend poly arity name n rest
+        | str_contains name "." = [ArityEntry name n, ArityEntry (ident_base_name name) n] :: rest
+        | otherwise = [ArityEntry name n] :: rest
+
+fn :: take ty strs [String] Int => [String]
+      take ty strs _ 0 = []
+      take ty strs [] _ = []
+      take ty strs (x:xs) n = [x] :: (take_ty_strs xs (n - 1))
+
+fn :: drop ty strs [String] Int => [String]
+      drop ty strs xs 0 = xs
+      drop ty strs [] _ = []
+      drop ty strs (_:xs) n = drop_ty_strs xs (n - 1)
+
+fn :: join comma ty strs [String] => String
+      join comma ty strs [] = ""
+      join comma ty strs (s:[]) = s
+      join comma ty strs (s:ss) = s + ", " + (join_comma_ty_strs ss)
+
+fn :: collapse poly param list [String] Int [RArityEntry] => [String]
+      collapse poly param list [] _ _ = []
+      collapse poly param list (p:ps) target_arity poly_arities
+        | (1 + (str_list_count ps)) <= target_arity = [p] :: ps
+        | otherwise =
+          k = lookup_arity poly_arities p
+          collapse_poly_param_step p ps k target_arity poly_arities
+
+fn :: collapse poly param step String [String] Int Int [RArityEntry] => [String]
+      collapse poly param step p ps k target_arity poly_arities
+        | k > 0 AND (str_list_count ps) >= k =
+          app_s = "(" + p + ", " + (join_comma_ty_strs (take_ty_strs ps k)) + ")"
+          [app_s] :: (collapse_poly_param_list (drop_ty_strs ps k) (target_arity - 1) poly_arities)
+        | otherwise =
+          [p] :: (collapse_poly_param_list ps (target_arity - 1) poly_arities)
+
+fn :: first case pat arity [RFnCase] => Int
+      first case pat arity ((FnCase pats _ _):_) = pat_list_count pats
+      first case pat arity [] = 0
+
+fn :: collapse fndef poly params [RFnDef] [RArityEntry] [RFnDef] => [RFnDef]
+      collapse fndef poly params [] _ acc = acc
+      collapse fndef poly params ((FnDef name params ret_ty cases):fs) poly_arities acc =
+        pat_ar = first_case_pat_arity cases
+        params1 = collapse_poly_param_list params pat_ar poly_arities
+        collapse_fndef_poly_params fs poly_arities (acc :: [FnDef name params1 ret_ty cases])
+
 fn :: normalize program RProgram          => RProgram
       normalize program (Program fns tys) =
-        arities = (collect_fn_arities fns) :: (collect_type_arities tys)
-        Program (norm_fndef_list fns arities) tys
+        poly_arities = collect_poly_type_arities tys
+        fns0 = collapse_fndef_poly_params fns poly_arities []
+        fns1 = lift_fndef_list_lambdas fns0 0 [] []
+        arities = (collect_fn_arities fns1) :: (collect_type_arities tys)
+        Program (norm_fndef_list fns1 arities) tys
 
 -- ── Library & Module Import Resolution (`.rglib` / `.rg`) ────
 
@@ -2738,7 +3272,8 @@ fn :: append rglib resolved mod String String String String [String] => String [
         (acc + "\nfn :: unresolved import => Int\n      unresolved import = __missing_import__ \"" + clean_spec + "\"\n", seen1)
       append rglib resolved mod pdir clean_spec lib_src acc seen1 =
         mname = mod_name_of_spec clean_spec
-        res_deps = scan_rglib_imports_state pdir lib_src 0 (str_len lib_src) 0 acc seen1
+        sub_pdir = child_pdir_for_spec pdir clean_spec
+        res_deps = scan_rglib_imports_state sub_pdir lib_src 0 (str_len lib_src) 0 acc seen1
         append_rglib_after_deps mname lib_src res_deps
 
 fn :: append rglib local or ext String String String String [String] => String [String]
@@ -2747,7 +3282,8 @@ fn :: append rglib local or ext String String String String [String] => String [
         append_rglib_resolved_mod pdir clean_spec lib_src acc seen1
       append rglib local or ext pdir clean_spec local_rg acc seen1 =
         mname = mod_name_of_spec clean_spec
-        res_deps = scan_rglib_imports_state pdir local_rg 0 (str_len local_rg) 0 acc seen1
+        sub_pdir = child_pdir_for_spec pdir clean_spec
+        res_deps = scan_rglib_imports_state sub_pdir local_rg 0 (str_len local_rg) 0 acc seen1
         append_rglib_after_deps mname local_rg res_deps
 
 fn :: append rglib if unseen String String String [String] => String [String]
@@ -2809,17 +3345,32 @@ fn :: append own rg after local String String String (String, [String]) => Strin
         | is_core_compiler_mod clean_spec = (acc2 + "\n-- import " + clean_spec + "\n", seen2)
         | otherwise = (acc2 + "\n@__rg_mod_exit__\n" + (mod_alias_marker alias mname) + "-- import " + clean_spec + "\n", seen2)
 
+fn :: child pdir for spec String String => String
+      child pdir for spec pdir spec =
+        s1 = strip_mod_ext spec
+        s2 = norm_spec_path s1
+        sl = last_slash_idx s2 0 (str_len s2) (0 - 1)
+        child_pdir_step pdir s2 sl
+
+fn :: child pdir step String String Int => String
+      child pdir step pdir _ sl
+        | sl <= 0 = pdir
+      child pdir step pdir s2 sl =
+        pdir + "/" + (str_slice s2 0 sl)
+
 fn :: append own rg local String String String String String [String] => String [String]
       append own rg local _ clean_spec alias "" acc seen1 =
         (acc + (format_deferred_import clean_spec alias), seen1)
       append own rg local pdir clean_spec alias local_rg acc seen1
         | is_core_compiler_mod clean_spec =
-          res = scan_own_rg_lines pdir local_rg 0 (str_len local_rg) 0 0 acc seen1
+          sub_pdir = child_pdir_for_spec pdir clean_spec
+          res = scan_own_rg_lines sub_pdir local_rg 0 (str_len local_rg) 0 0 acc seen1
           append_own_rg_after_local clean_spec clean_spec alias res
         | otherwise =
           mname = mod_name_of_spec clean_spec
+          sub_pdir = child_pdir_for_spec pdir clean_spec
           acc_enter = acc + "\n@__rg_mod_enter__ " + mname + "\n"
-          res = scan_own_rg_lines pdir local_rg 0 (str_len local_rg) 0 0 acc_enter seen1
+          res = scan_own_rg_lines sub_pdir local_rg 0 (str_len local_rg) 0 0 acc_enter seen1
           append_own_rg_after_local clean_spec mname alias res
 
 fn :: append own rg import pair String String (String, String) String [String] => String [String]
@@ -3303,7 +3854,25 @@ fn :: rewrite rec update args [RExpr] String [String] [RModAlias] [RModAlias] [R
       rewrite rec update args (e:rest) cur_mod locals aliases ctor_map fn_map field_map =
         [rewrite_expr e cur_mod locals aliases ctor_map fn_map field_map] :: (rewrite_rec_update_args rest cur_mod locals aliases ctor_map fn_map field_map)
 
+fn :: collect lambda param strs [RExpr] [String] => [String]
+      collect lambda param strs [] acc = acc
+      collect lambda param strs (_:[]) acc = acc
+      collect lambda param strs ((EStr p):rest) acc =
+        collect_lambda_param_strs rest ([p] :: acc)
+      collect lambda param strs (_:rest) acc =
+        collect_lambda_param_strs rest acc
+
+fn :: rewrite lambda args [RExpr] String [String] [RModAlias] [RModAlias] [RModAlias] [RModAlias] => [RExpr]
+      rewrite lambda args [] _ _ _ _ _ _ = []
+      rewrite lambda args (body_e:[]) cur_mod locals aliases ctor_map fn_map field_map =
+        [rewrite_expr body_e cur_mod locals aliases ctor_map fn_map field_map]
+      rewrite lambda args (p:rest) cur_mod locals aliases ctor_map fn_map field_map =
+        [p] :: (rewrite_lambda_args rest cur_mod locals aliases ctor_map fn_map field_map)
+
 fn :: rewrite call expr String [RExpr] String [String] [RModAlias] [RModAlias] [RModAlias] [RModAlias] => RExpr
+      rewrite call expr "__lambda__" args cur_mod locals aliases ctor_map fn_map field_map =
+        locals1 = collect_lambda_param_strs args locals
+        ECall "__lambda__" (rewrite_lambda_args args cur_mod locals1 aliases ctor_map fn_map field_map)
       rewrite call expr "__record_update__" (base_e:rest) cur_mod locals aliases ctor_map fn_map field_map =
         base_r = rewrite_expr base_e cur_mod locals aliases ctor_map fn_map field_map
         ECall "__record_update__" ([base_r] :: (rewrite_rec_update_args rest cur_mod locals aliases ctor_map fn_map field_map))
@@ -3546,12 +4115,14 @@ fn :: parse items mod [RToken] [RScopedFn] [RScopedType] [RModAlias] [String] Bo
       parse items mod (TokHardware:rest) s_fns s_tys aliases mod_stack in_lib =
         hw_res = parse_hardware_decl ([TokHardware] :: rest)
         parse_items_after_fndefs_mod hw_res s_fns s_tys aliases mod_stack in_lib
-      parse items mod (TokType:(TokIdent name):TokEquals:rest) s_fns s_tys aliases mod_stack in_lib =
-        t_res = parse_type_decl ([TokType, TokIdent name, TokEquals] :: rest)
-        parse_items_after_type_mod False t_res s_fns s_tys aliases mod_stack in_lib
-      parse items mod ((TokIdent "expand"):TokType:(TokIdent name):TokEquals:rest) s_fns s_tys aliases mod_stack in_lib =
-        t_res = parse_type_decl ([TokType, TokIdent name, TokEquals] :: rest)
-        parse_items_after_type_mod True t_res s_fns s_tys aliases mod_stack in_lib
+      parse items mod (TokType:(TokIdent name):rest) s_fns s_tys aliases mod_stack in_lib
+        | (is_upper_ident name) AND (has_type_params_then_eq rest) =
+          t_res = parse_type_decl ([TokType, TokIdent name] :: rest)
+          parse_items_after_type_mod False t_res s_fns s_tys aliases mod_stack in_lib
+      parse items mod ((TokIdent "expand"):TokType:(TokIdent name):rest) s_fns s_tys aliases mod_stack in_lib
+        | (is_upper_ident name) AND (has_type_params_then_eq rest) =
+          t_res = parse_type_decl ([TokType, TokIdent name] :: rest)
+          parse_items_after_type_mod True t_res s_fns s_tys aliases mod_stack in_lib
       parse items mod ts                 s_fns s_tys aliases mod_stack in_lib
         | (NOT (line_has_colon_colon ts)) AND (line_has_fat_arrow ts) =
           parse_items_after_fn_mod (parse_bare_decl ts) s_fns s_tys aliases mod_stack in_lib

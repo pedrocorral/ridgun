@@ -1,14 +1,14 @@
 ---
 name: implement-code-ridgun
-description: Implement, refactor or review Ridgun (.rg) code and build.rg definitions using the exact Ridgun v0.9.12 grammar, type system, Native Agent Model (agent, send ... to, receive from, try receive from, stop), RMM1/RMM2 deterministic memory rules, parallel || DAGs, with timeout quotas, PAL primitives, and pure-Ridgun stable/ridgunc ELF64 toolchain; use for any Ridgun (.rg) change.
+description: Implement, refactor or review Ridgun (.rg) code and build.rg definitions using the exact Ridgun v0.9.20 grammar, type system, user-defined generic types (type Result T E, type Page T), lexical closures (\x -> expr), module namespaces (module ::, import ... as, mod.Type/Ctor/fn), Native Agent Model (agent, send ... to, receive from, try receive from, stop), RMM1/RMM2 deterministic memory rules, parallel || DAGs, with timeout quotas, PAL primitives, and pure-Ridgun stable/ridgunc ELF64 toolchain; use for any Ridgun (.rg) change.
 ---
-# implement-code-ridgun (`v0.9.12`)
+# implement-code-ridgun (`v0.9.20`)
 
 Reading budget: `harness/skills/implement-code-ridgun/references/cheatsheet.rg` (or `docs/lang/spec.md` when a construct is unfamiliar), `build.rg`, and the target `.rg` files under `src/main/ridgun/` or `src/test/ridgun/`.
 
 ---
 
-## 1. Project & Architecture Overview (`v0.9.12`)
+## 1. Project & Architecture Overview (`v0.9.20`)
 - **100% Pure Ridgun (Zero Rust / Zero `rustc`)**: Both `ridgunc` (`src/main/ridgun/ridgunc/main.rg`) and `stable` (`src/main/ridgun/stable/main.rg`) are written 100% in Ridgun and emit standalone, statically linked Linux ELF64 executables directly to disk via `elf64.rg`, `x86_64.rg` (`EM_X86_64 = 62`), and `arm64.rg` (`EM_AARCH64 = 183` for Raspberry Pi).
 - **Project Layout**:
   - `build.rg`: Pure-Ridgun project manifest (`fn :: project name => String`, `project version`, `main entry`, `source dir`, `test dir`, `target dir`).
@@ -32,7 +32,8 @@ Reading budget: `harness/skills/implement-code-ridgun/references/cheatsheet.rg` 
 | Guard clause without `=` (`clamp x lo hi \| x < lo = lo`) | `clamp x lo hi =` followed by `\| x < lo = lo` | Every clause and guard branch requires `=` (`FR-COMP-003`) |
 | Reassigning `x = x + 1` after `x = 0` | `mut x = 0` then `x = x + 1` | Local bindings are immutable unless declared with `mut` |
 | `par_map f xs` / `par_filter p xs` | `\|\|map f xs` / `\|\|filter p xs` | Parallel higher-order combinators use the `\|\|` prefix (`FR-COMP-001`) |
-| `map (\x -> x * 2) xs` | `map double val xs` (with `fn :: double val Int => Int`) | Higher-order combinators take named top-level functions (`FR-COMP-001` / `FR-COMP-005`) |
+| `(x) => x * 2` or `fn(x) { x * 2 }` | `\x -> x * 2` or `map (\x -> x + offset) xs` | Anonymous closures use `\params -> expr` and capture outer immutable bindings (`FR-COMP-013`) |
+| `Result<T, E>` or `Page[T]` | `type Result T E = Ok T \| Err E` and `type Page T = items: [T], total: Int` | User-defined generic types list uppercase type parameters after the type name (`FR-COMP-013`) |
 | `(a, b) = compute_pair x` in local block | `res = compute pair x` then `a = fst res` (or destructure in function clause `helper (a, b) = ...`) | Local `=` binds a single variable name (`x = ...` or `mut x = ...`) |
 | `Some x` in function argument pattern without parens | `unwrap (Some x) = x` | Constructor patterns with arguments must be parenthesized |
 
@@ -120,14 +121,35 @@ Every `=` (in `fn ::`, `op ::`, local bindings `x =` / `mut x =`, and guard bran
           acc
   ```
 
-### 3.4 First-Class Named Functions & Parallel Higher-Order Combinators (`FR-COMP-001`)
+### 3.4 First-Class Named Functions, Lexical Closures (`\x -> expr`) & Parallel Higher-Order Combinators (`FR-COMP-001`, `FR-COMP-013`)
 - Function types use `(T1 T2 => Ret)` inside signatures: `fn :: apply twice (Int => Int) Int => Int`.
-- Pass named top-level functions by bare single-word or space-separated multi-word name (`map double val xs`, `filter is even xs`, `fold add pair 0 xs`).
+- Pass named top-level functions by bare single-word or space-separated multi-word name (`map double val xs`, `filter is even xs`, `fold add pair 0 xs`) or pass **anonymous lexical closures** (`\x -> expr`, `\acc x -> expr`):
+  ```ridgun
+  offset = 10
+  bonus  = 3
+  r1 = map (\x -> x + offset) [1, 2, 3]
+  r2 = filter (\x -> x >= bonus) [1, 2, 3, 4]
+  r3 = fold (\acc x -> acc + x + bonus) 0 [1, 2, 3]
+  ```
 - **Sequential vs Parallel Combinators**:
   - Sequential (left-to-right, deterministic side-effects): `map f xs`, `filter p xs`, `fold f init xs`.
   - Multicore parallel (work-stealing worker threads): **`||map f xs`** and **`||filter p xs`**.
 
-### 3.5 Types, ADTs, Record Updates (`with`), and Natural-Language Mixfix (`op ::`)
+### 3.5 Types, User-Defined Generics (`FR-COMP-013`), Module Namespaces (`FR-COMP-012`), ADTs, Record Updates (`with`), and Natural-Language Mixfix (`op ::`)
+- **User-Defined Generic Sum ADTs and Product Records (`FR-COMP-013`)**:
+  - Both Sum ADTs and Product Records can declare uppercase type parameters (`A`..`Z`):
+    ```ridgun
+    type Result T E = Ok T | Err E
+    type Box A      = Box A
+    type Page T     = items: [T], total: Int
+
+    fn :: unwrap result (Result A String) A => A
+          unwrap result (Ok v)            _ =  v
+          unwrap result (Err _)           d =  d
+    ```
+  - `type Option A = Some A | None` is pre-registered as a built-in polymorphic ADT (`RG-062`), so `try receive from ag` works out of the box without redeclaring `Option`.
+- **Module Namespaces, Aliased Imports, and Qualified Types (`FR-COMP-012`)**:
+  - `import http`, `import db as d`, or `module :: http` scopes types, records, constructors, fields, and functions to their module namespace so multiple modules can define `type Config = ...` or `type Status = ...` without collision (`http.Config`, `d.Config`, `http.port cfg`, `http.check status cfg`).
 - **Sum ADTs, Shared Constructor Names & Type-Name Variants (`FR-COMP-005`)**:
   - `type Shape = Circle Int | Rect Int Int` or polymorphic `type Option A = None | Some A`.
   - Multiple `type` declarations can share variant constructor names (such as `Error`, `Var`, `Lit`, `None`) with the same or different arities; the typechecker resolves them by expected column type and argument types.
@@ -154,7 +176,7 @@ Every `=` (in `fn ::`, `op ::`, local bindings `x =` / `mut x =`, and guard bran
   type Config = debug: Bool, threads: Int, name: String
 
   fn :: tune config Config => Config
-        tune config cfg    =  cfg with debug = True, threads = 16
+        tune config cfg    =  cfg with debug: True, threads: 16
   ```
    Auto-generated field accessors: `debug cfg`, `threads cfg`, `name cfg`.
 - **Natural-Language Mixfix Operators (`op ::`)**:

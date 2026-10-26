@@ -527,6 +527,33 @@ type Option = Some Int | None
 type Color = Red | Green | Blue
 ```
 
+#### Generic Sum ADTs & Generic Product Records (`FR-COMP-013`)
+
+User-defined Sum ADTs and Product Records may declare one or more uppercase type parameters (`A`..`Z` or capitalized type variable names) between the type name and `=`:
+
+```ridgun
+type Result T E = Ok T | Err E
+type Option A   = Some A | None
+type Box A      = Box A
+type Page T     = items: [T], total: Int
+type Pair A B   = fst: A, snd: B
+```
+
+- Parametric type applications (`Result Int String`, `Page User`, `[Box Int]`) can be used in `fn ::` / `op ::` signatures, nested record fields, and ADT constructor payloads.
+- Constructors (`Ok 42`, `Ok "hello"`, `Page [1, 2] 2`), pattern matching, field accessors (`items p`, `total p`), and functional record updates (`p with total = 10`) instantiate fresh type variables at each call site.
+- `type Option A = Some A | None` is pre-registered as a built-in polymorphic ADT when not already declared by the user, so `try receive from ag` returns `Some v` or `None` without requiring boilerplate declarations (`FR-COMP-013`).
+
+#### Anonymous Functions & Lexical Closures (`\x -> expr`, `\x y -> expr` — `FR-COMP-013`)
+
+Anonymous functions (lambdas) are written `\x -> expr` or `\x y -> expr` (typically parenthesized when passed as an argument, e.g. `map (\x -> x + offset) xs`) and may capture local variables or parameters from their enclosing lexical scope:
+
+```ridgun
+fn :: add offset Int [Int] => [Int]
+      add offset k   xs    =  map (\x -> x + k) xs
+```
+
+Captured bindings are lifted automatically into partial-application closures managed by `RMM1`/`RMM2`.
+
 #### Recursive Types
 
 Types can reference themselves:

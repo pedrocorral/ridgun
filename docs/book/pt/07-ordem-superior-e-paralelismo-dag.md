@@ -76,6 +76,21 @@ executar_duas_vezes (A => A) A => A
 executar_duas_vezes f        x =  f (f x)
 ```
 
+### 4. Fechos léxicos e funções anónimas (`\x -> expr`, `\acc x -> expr`)
+Quando quiser passar uma função curta em linha ou capturar variáveis locais do âmbito atual (como um deslocamento, um prefixo ou uma sessão ativa) sem declarar uma função global auxiliar, usa um **fecho léxico** com **`\`** e **`->`**:
+
+```ridgun
+fn :: processar com sessao => [Int]
+      processar com sessao =
+        base      = 10
+        bonus     = 3
+        somados   = map (\x -> x + base) [1, 2, 3]
+        filtrados = filter (\x -> x >= bonus) [1, 2, 3, 4]
+        total     = fold (\acc x -> acc + x + bonus) 0 [1, 2, 3]
+        somados :: filtrados :: [total]
+```
+As variáveis capturadas (`base`, `bonus`) são empacotadas automaticamente com gestão determinística de memória (`RMM1`/`RMM2`), sem fugas e sem pausas de coletor de lixo.
+
 ---
 
 ## 7.2. A joia da coroa: Blocos `||` com `->` como Grafos Paralelos (DAGs)

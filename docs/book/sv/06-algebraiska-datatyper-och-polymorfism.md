@@ -212,4 +212,16 @@ fn :: beskriv nagot Something => String
       beskriv nagot (Bool b)  =  "boolesk:{b}"
 ```
 
-I **Kapitel 07** ska vi sätta alla kärnor i din processor i arbete samtidigt utan att fälla en enda svettdroppe: **högre ordningens funktioner (`map`, `||map`, `filter`, `||filter`, `fold`), parallella `||`-grafer med `->` och samtidiga kanaler**.
+### 5. Egna generiska typer (`type Result T E`, `type Page T`) och modulnamnrymder (`import ... as`, `mod.Typ`)
+Utöver polymorfa funktioner kan du deklarera **egna generiska summatyper och posttyper** med typparametrar (`A`..`Z`), samt organisera typer med samma namn i olika moduler utan namnkrockar (`module ::`, `import db as d`, `http.Config`, `d.Config`):
+
+```ridgun
+type Result T E = Ok T | Err E
+type Page T     = items: [T], total: Int
+
+fn :: packa upp ok (Result A String) A => A
+      packa upp ok (Ok v)            _ =  v
+      packa upp ok (Err _)           d =  d
+```
+
+I **Kapitel 07** ska vi sätta alla kärnor i din processor i arbete samtidigt utan att fälla en enda svettdroppe: **högre ordningens funktioner (`map`, `||map`, `filter`, `||filter`, `fold`), lexikala closures (`\x -> expr`), parallella `||`-grafer med `->` och samtidiga kanaler**.

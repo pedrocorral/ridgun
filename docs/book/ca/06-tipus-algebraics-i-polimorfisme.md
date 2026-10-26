@@ -212,4 +212,16 @@ fn :: descriure algo Something => String
       descriure algo (Bool b)  =  "boolea:{b}"
 ```
 
-Al **Capítol 07** posarem tots els nuclis del teu processador a treballar alhora sense vessar ni una gota de suor: **funcions d'ordre superior (`map`, `||map`, `filter`, `||filter`, `fold`), grafs paral·lels `||` amb `->` i canals concurrents**.
+### 5. Tipus genèrics propis (`type Result T E`, `type Page T`) i espais de noms de mòdul (`import ... as`, `mod.Tipus`)
+A més de funcions polimòrfiques, pots declarar **els teus propis tipus suma i registres genèrics** amb paràmetres de tipus (`A`..`Z`), així com organitzar tipus amb el mateix nom en diferents mòduls sense col·lisió (`module ::`, `import db as d`, `http.Config`, `d.Config`):
+
+```ridgun
+type Resultat T E = Exit T | Fallada E
+type Pagina T     = elements: [T], total: Int
+
+fn :: desempaquetar exit (Resultat A String) A => A
+      desempaquetar exit (Exit v)            _ =  v
+      desempaquetar exit (Fallada _)         d =  d
+```
+
+Al **Capítol 07** posarem tots els nuclis del teu processador a treballar alhora sense vessar ni una gota de suor: **funcions d'ordre superior (`map`, `||map`, `filter`, `||filter`, `fold`), clausures lèxiques (`\x -> expr`), grafs paral·lels `||` amb `->` i canals concurrents**.

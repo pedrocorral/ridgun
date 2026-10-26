@@ -212,4 +212,16 @@ fn :: describe something Something => String
       describe something (Bool b)  =  "bool:{b}"
 ```
 
-In **Chapter 07** we will put every core of your processor to work at once without breaking a sweat: **higher-order functions (`map`, `||map`, `filter`, `||filter`, `fold`), parallel `||` graphs with `->`, and concurrent channels**.
+### 5. User-Defined Generic Types (`type Result T E`, `type Page T`) and Module Namespaces (`import ... as`, `mod.Type`)
+Beyond polymorphic functions, you can declare **your own generic sum types and generic product records** with uppercase type parameters (`A`..`Z`), and scope identically named types across modules without collision (`module ::`, `import db as d`, `http.Config`, `d.Config`):
+
+```ridgun
+type Result T E = Ok T | Err E
+type Page T     = items: [T], total: Int
+
+fn :: unwrap ok (Result A String) A => A
+      unwrap ok (Ok v)            _ =  v
+      unwrap ok (Err _)           d =  d
+```
+
+In **Chapter 07** we will put every core of your processor to work at once without breaking a sweat: **higher-order functions (`map`, `||map`, `filter`, `||filter`, `fold`), lexical closures (`\x -> expr`), parallel `||` graphs with `->`, and concurrent channels**.

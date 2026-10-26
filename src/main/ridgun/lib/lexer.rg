@@ -7,6 +7,7 @@
 -- @implements FR-COMP-007
 -- @implements FR-COMP-010
 -- @implements FR-COMP-012
+-- @implements FR-COMP-013
 -- ============================================================
 import ast
 
@@ -198,6 +199,7 @@ fn :: lex one tok String Int Int Int Int => RToken Int
         | c == 91 = (TokLBracket, pos + 1)
         | c == 93 = (TokRBracket, pos + 1)
         | c == 94 = (TokIdent "^", pos + 1)
+        | c == 92 = (TokIdent "\\", pos + 1)
         | c == 44 = (TokComma, pos + 1)
         | c == 34 = tok_dquote src pos len
         | c == 39 = tok_squote src pos len

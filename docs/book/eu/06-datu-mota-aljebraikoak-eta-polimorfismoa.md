@@ -212,4 +212,16 @@ fn :: deskribatu zerbait Something => String
       deskribatu zerbait (Bool b)  =  "boolearra:{b}"
 ```
 
-**07. kapituluan** zure prozesadorearen nukleo guztiak aldi berean lanean jarriko ditugu izerdi tanta bat ere bota gabe: **goi-mailako funtzioak (`map`, `||map`, `filter`, `||filter`, `fold`), `||` grafo paraleloak `->` geziekin eta kanal konkurrenteak**.
+### 5. Mota generiko propioak (`type Result T E`, `type Page T`) eta moduluen izen-espazioak (`import ... as`, `mod.Mota`)
+Funtzio polimorfikoez gain, **zure batura-mota eta erregistro generiko propioak** deklara ditzakezu mota-parametroekin (`A`..`Z`), baita izen bereko motak modulu ezberdinetan talkarik gabe antolatu ere (`module ::`, `import db as d`, `http.Config`, `d.Config`):
+
+```ridgun
+type Emaitza T E = Arrakasta T | Hutsegitea E
+type Orrialdea T = elementuak: [T], guztira: Int
+
+fn :: atera arrakasta (Emaitza A String) A => A
+      atera arrakasta (Arrakasta v)      _ =  v
+      atera arrakasta (Hutsegitea _)     d =  d
+```
+
+**07. kapituluan** zure prozesadorearen nukleo guztiak aldi berean lanean jarriko ditugu izerdi tanta bat ere bota gabe: **goi-mailako funtzioak (`map`, `||map`, `filter`, `||filter`, `fold`), itxitura lexikoak (`\x -> expr`), `||` grafo paraleloak `->` geziekin eta kanal konkurrenteak**.

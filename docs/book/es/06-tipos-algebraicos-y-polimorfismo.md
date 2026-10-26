@@ -212,4 +212,16 @@ fn :: describir algo Something => String
       describir algo (Bool b)  =  "booleano:{b}"
 ```
 
-En el **Capítulo 07** vamos a poner todos los núcleos de tu procesador a trabajar a la vez sin derramar una gota de sudor: **funciones de orden superior (`map`, `||map`, `filter`, `||filter`, `fold`), grafos paralelos `||` con `->` y canales concurrentes**.
+### 5. Tipos genéricos propios (`type Result T E`, `type Page T`) y espacios de nombres de módulo (`import ... as`, `mod.Tipo`)
+Además de funciones polimórficas, puedes declarar **tus propios tipos suma y registros genéricos** con parámetros de tipo (`A`..`Z`), así como organizar tipos con el mismo nombre en distintos módulos sin colisión (`module ::`, `import db as d`, `http.Config`, `d.Config`):
+
+```ridgun
+type Resultado T E = Exito T | Fallo E
+type Pagina T      = elementos: [T], total: Int
+
+fn :: desempaquetar exito (Resultado A String) A => A
+      desempaquetar exito (Exito v)            _ =  v
+      desempaquetar exito (Fallo _)            d =  d
+```
+
+En el **Capítulo 07** vamos a poner todos los núcleos de tu procesador a trabajar a la vez sin derramar una gota de sudor: **funciones de orden superior (`map`, `||map`, `filter`, `||filter`, `fold`), clausuras léxicas (`\x -> expr`), grafos paralelos `||` con `->` y canales concurrentes**.

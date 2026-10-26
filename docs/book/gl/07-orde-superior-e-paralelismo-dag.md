@@ -76,6 +76,21 @@ executar_duas_veces (A => A) A => A
 executar_duas_veces f        x =  f (f x)
 ```
 
+### 4. Clausuras léxicas e funcións anónimas (`\x -> expr`, `\acc x -> expr`)
+Cando queres pasar unha función curta ao voo ou capturar variables locais do teu ámbito actual (como un desprazamento, un prefixo ou unha sesión activa) sen declarar unha función global auxiliar, usas unha **clausura léxica** con **`\`** e **`->`**:
+
+```ridgun
+fn :: procesar con sesion => [Int]
+      procesar con sesion =
+        base      = 10
+        bono      = 3
+        sumados   = map (\x -> x + base) [1, 2, 3]
+        filtrados = filter (\x -> x >= bono) [1, 2, 3, 4]
+        total     = fold (\acc x -> acc + x + bono) 0 [1, 2, 3]
+        sumados :: filtrados :: [total]
+```
+As variables capturadas (`base`, `bono`) empaquétanse automaticamente con xestión determinista de memoria (`RMM1`/`RMM2`), sen fugas e sen pausas de colector de lixo.
+
 ---
 
 ## 7.2. A xoia da coroa: Bloques `||` con `->` como Grafos Paralelos (DAGs)

@@ -76,6 +76,21 @@ kor_tva_ganger (A => A) A => A
 kor_tva_ganger f        x =  f (f x)
 ```
 
+### 4. Lexikala closures och anonyma funktioner (`\x -> expr`, `\acc x -> expr`)
+När du vill skicka in en kort funktion i farten eller fånga lokala variabler från det omgivande scopet (som en offset, ett prefix eller en aktiv session) utan att deklarera en separat toppnivåfunktion använder du en **lexikal closure** med **`\`** och **`->`**:
+
+```ridgun
+fn :: bearbeta med session => [Int]
+      bearbeta med session =
+        offset     = 10
+        bonus      = 3
+        adderade   = map (\x -> x + offset) [1, 2, 3]
+        filtrerade = filter (\x -> x >= bonus) [1, 2, 3, 4]
+        total      = fold (\acc x -> acc + x + bonus) 0 [1, 2, 3]
+        adderade :: filtrerade :: [total]
+```
+Fångade variabler (`offset`, `bonus`) hanteras deterministiskt med `RMM1`/`RMM2` — noll minnesläckor och noll skräpsamlingspauser.
+
 ---
 
 ## 7.2. Kronjuvelen: `||`-block med `->` som parallella grafer (DAG)

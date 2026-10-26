@@ -168,7 +168,21 @@ fn :: run visit agent => Int
         stop counter
         res
 
--- 13. Zero-Argument Entrypoint (`fn :: main => ()`)
+-- 13. User-Defined Generic ADTs & Records and Lexical Closures (`FR-COMP-013`)
+type Result T E = Ok T | Err E
+type Page T     = page_items: [T], page_total: Int
+
+fn :: unwrap ok (Result A String) A => A
+      unwrap ok (Ok v)            _ =  v
+      unwrap ok (Err _)           d =  d
+
+fn :: demo generics and closures Int => Int
+      demo generics and closures offset =
+        p    = Page [1, 2, 3] 3
+        nums = map (\x -> x + offset) (page_items p)
+        fold (\acc x -> acc + x) (unwrap ok (Ok 10) 0) nums
+
+-- 14. Zero-Argument Entrypoint (`fn :: main => ()`)
 fn :: main => ()
       main =
         spec  = enable tls (ServerSpec "localhost" 8080 False)

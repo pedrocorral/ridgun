@@ -76,6 +76,21 @@ executar_dues_vegades (A => A) A => A
 executar_dues_vegades f        x =  f (f x)
 ```
 
+### 4. Clausures lèxiques i funcions anònimes (`\x -> expr`, `\acc x -> expr`)
+Quan vols passar una funció curta al vol o capturar variables locals del teu àmbit actual (com un desplaçament, un prefix o una sessió activa) sense declarar una funció global auxiliar, fas servir una **clausura lèxica** amb **`\`** i **`->`**:
+
+```ridgun
+fn :: processar amb sessio => [Int]
+      processar amb sessio =
+        base      = 10
+        bo        = 3
+        sumats    = map (\x -> x + base) [1, 2, 3]
+        filtrats  = filter (\x -> x >= bo) [1, 2, 3, 4]
+        total     = fold (\acc x -> acc + x + bo) 0 [1, 2, 3]
+        sumats :: filtrats :: [total]
+```
+Les variables capturades (`base`, `bo`) s'empaqueten automàticament amb gestió determinista de memòria (`RMM1`/`RMM2`), sense fuites i sense pauses de recol·lector de brossa.
+
 ---
 
 ## 7.2. La joia de la corona: Blocs `||` amb `->` com a Grafs Paral·lels (DAGs)
