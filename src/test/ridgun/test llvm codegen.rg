@@ -42,7 +42,29 @@ fn :: test llvm instr emission => Int
         e12 = assert true (str contains ir_tfill "call i64 @__rg_builtin_tensor_fill(") "NCallBuiltin 88 calls @__rg_builtin_tensor_fill"
         ir_tco = emit llvm instr (NTailCall 2 2) 12 4 16
         e13 = assert true ((str contains ir_tco "call void @__rg_rt_tco_copy(") AND (str contains ir_tco "br label %tco_entry")) "NTailCall copies args and branches to %tco_entry"
-        e1 + e2 + e3 + e4 + e5 + e6 + e7 + e8 + e9 + e10 + e11 + e12 + e13
+        ir_bin = emit llvm instr (NBinOp 0 1) 13 4 16
+        e14 = assert true (str contains ir_bin "call i64 @__rg_fast_bin_op(i64 0,") "NBinOp emits @__rg_fast_bin_op"
+        ir_cslot = emit llvm instr (NCloneSlot 2) 14 4 16
+        e15 = assert true (str contains ir_cslot "call i64 @__rg_fast_clone_slot(") "NCloneSlot emits @__rg_fast_clone_slot"
+        ir_sslot = emit llvm instr (NStoreSlot 2) 15 4 16
+        e16 = assert true (str contains ir_sslot "call i64 @__rg_fast_store_slot(") "NStoreSlot emits @__rg_fast_store_slot"
+        ir_chr_fast = emit llvm instr (NCallBuiltin 91 3 0) 16 4 16
+        e17 = assert true (str contains ir_chr_fast "call i64 @__rg_str_char_at_fast(") "NCallBuiltin 91 emits @__rg_str_char_at_fast"
+        ir_chr_gen = emit llvm instr (NCallBuiltin 40 1 2) 17 4 16
+        e18 = assert true (str contains ir_chr_gen "call i64 @__rg_builtin_str_char_at(") "NCallBuiltin 40 emits @__rg_builtin_str_char_at"
+        ir_rslice = emit llvm instr (NCallBuiltin 92 1 2) 18 4 16
+        e19 = assert true (str contains ir_rslice "call i64 @__rg_builtin_tensor_row_slice(") "NCallBuiltin 92 emits @__rg_builtin_tensor_row_slice"
+        ir_rset = emit llvm instr (NCallBuiltin 93 1 3) 19 4 16
+        e20 = assert true (str contains ir_rset "call i64 @__rg_builtin_tensor_set_row(") "NCallBuiltin 93 emits @__rg_builtin_tensor_set_row"
+        ir_cslice = emit llvm instr (NCallBuiltin 94 1 2) 20 4 16
+        e21 = assert true (str contains ir_cslice "call i64 @__rg_builtin_tensor_col_slice(") "NCallBuiltin 94 emits @__rg_builtin_tensor_col_slice"
+        ir_cset = emit llvm instr (NCallBuiltin 95 1 3) 21 4 16
+        e22 = assert true (str contains ir_cset "call i64 @__rg_builtin_tensor_set_col(") "NCallBuiltin 95 emits @__rg_builtin_tensor_set_col"
+        ir_ein = emit llvm instr (NEinsum 1 2 0 5) 22 4 16
+        e23 = assert true (str contains ir_ein "call i64 @__rg_fast_einsum(") "NEinsum emits @__rg_fast_einsum"
+        ir_clr = emit llvm instr (NClearLocals 2 4) 23 4 16
+        e24 = assert true (str contains ir_clr "call i64 @__rg_fast_drop_val(") "Small NClearLocals unrolls constant-offset @__rg_fast_drop_val"
+        e1 + e2 + e3 + e4 + e5 + e6 + e7 + e8 + e9 + e10 + e11 + e12 + e13 + e14 + e15 + e16 + e17 + e18 + e19 + e20 + e21 + e22 + e23 + e24
 
 fn :: verify llc status Int String => Int
       verify llc status 0 tmp_base =
@@ -108,7 +130,53 @@ fn :: test tensor primitives => Int
         m2 = Tensor[Int * 3 * 4]
         _ = mutate tensor mat m2
         e2 = assert true ((m2_(1, 2) == 999) AND (m2_(2, 3) == -4611686018427387904)) "2D Tensor in-place argument mutation and fast-path subscript"
-        e1 + e2
+        -- Full 64-bit U64 values where bit 63 != bit 62 (0x4000000000000000 .. 0xBFFFFFFFFFFFFFFF)
+        u_b62 = (1 shl 62) + 42
+        u_b63 = (1 shl 63) or 99
+        iv0 = (1779033703 shl 32) or 4089235720
+        iv1 = (3144134277 shl 32) or 2227873595
+        m64 = Tensor[Int * 2 * 4]
+        m64_(0, 0) = u_b62
+        m64_(0, 1) = u_b63
+        m64_(1, 2) = iv0
+        m64_(1, 3) = iv1
+        r_b62 = m64_(0, 0)
+        r_b63 = m64_(0, 1)
+        r_iv0 = m64_(1, 2)
+        r_iv1 = m64_(1, 3)
+        e3 = assert true ((r_b62 == u_b62) AND ((r_b62 shr 62) == 1) AND ((r_b62 and 63) == 42)) "2D Tensor preserves bit 62 (0x400000000000002A) without truncation"
+        e4 = assert true ((r_b63 == u_b63) AND ((r_b63 shr 63) == 1) AND ((r_b63 and 127) == 99)) "2D Tensor preserves bit 63 (0x8000000000000063) without truncation"
+        e5 = assert true (((r_iv0 xor r_iv1) xor r_iv1) == iv0) "64-bit U64 xor roundtrip on SHA-512/Blake2b IV words"
+        rot_v = (r_iv0 rotr 24) rotl 24
+        e6 = assert true (rot_v == iv0) "64-bit U64 rotr/rotl roundtrip"
+        -- Row/Col slice & set builtins (92..95), arithmetic Hadamard, and 2D Einsum
+        m64_(1,) = m64_(0,)
+        c_slice1 = m64_(,1)
+        e7 = assert true ((m64_(1, 0) == u_b62) AND (m64_(1, 1) == u_b63) AND (c_slice1_(0) == u_b63) AND (c_slice1_(1) == u_b63)) "Row slice/set (92, 93) and col slice (94) preserve 64-bit U64 elements"
+        ma = Tensor [[2, 3], [4, 5]]
+        mb = Tensor [[10, 20], [30, 40]]
+        mh_add = ma_ij + mb_ij
+        mh_mul = ma_ij * mb_ij
+        mc_ein = ma_ik @ mb_kj
+        e8 = assert true ((mh_add_(0, 0) == 12) AND (mh_add_(1, 1) == 45) AND (mh_mul_(0, 1) == 60) AND (mh_mul_(1, 0) == 120)) "SIMD-vectorized flat arithmetic Hadamard (+, *)"
+        e9 = assert true ((mc_ein_(0, 0) == 110) AND (mc_ein_(0, 1) == 160) AND (mc_ein_(1, 0) == 190) AND (mc_ein_(1, 1) == 280)) "Fast 2D matrix multiplication NEinsum (A_ik @ B_kj)"
+        e1 + e2 + e3 + e4 + e5 + e6 + e7 + e8 + e9
+
+fn :: digest byte sum loop String Int Int Int => Int
+      digest byte sum loop s i n acc
+        | i >= n = acc
+        | otherwise = digest byte sum loop s (i + 1) n (acc xor ((str char at s i) and 255))
+
+fn :: test str char at fastpath => Int
+      test str char at fastpath =
+        s = "Ridgun!"
+        e1 = assert true (((str char at s 0) == 82) AND ((str char at s 6) == 33)) "str_char_at fast-path local variable bounds"
+        e2 = assert true (((str char at s (-1)) == (-1)) AND ((str char at s 7) == (-1))) "str_char_at fast-path out-of-bounds returns -1"
+        e3 = assert true (((str char at ("A" + "Z") 1) == 90) AND ((str char at ("A" + "Z") 2) == (-1))) "str_char_at general expression builtin 40"
+        digest = sha256 raw "00679"
+        xsum = digest byte sum loop digest 0 32 0
+        e4 = assert true ((xsum >= 0) AND (xsum <= 255)) "str_char_at loop over 32-byte raw SHA-256 digest"
+        e1 + e2 + e3 + e4
 
 fn :: tco sum loop Int Int => Int
       tco sum loop n acc
@@ -129,5 +197,5 @@ fn :: finish test suite Int => ()
 
 fn :: main => ()
       main =
-        errs = (test llvm instr emission) + (test llvm module llc validation) + (test sha256 primitives) + (test tensor primitives) + (test tco loop)
+        errs = (test llvm instr emission) + (test llvm module llc validation) + (test sha256 primitives) + (test tensor primitives) + (test str char at fastpath) + (test tco loop)
         finish test suite errs

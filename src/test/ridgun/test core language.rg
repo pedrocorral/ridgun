@@ -5,6 +5,7 @@
 -- @tests FR-COMP-002
 -- @tests FR-COMP-003
 -- @tests FR-COMP-005
+-- @tests FR-COMP-012
 -- ============================================================
 
 import test
@@ -310,6 +311,65 @@ fn :: unpack nested tuple (Int [String String] String) => String
         host_val = lookup header hdrs "Host"
         "{code}:{host_val}:{msg}"
 
+-- 5) FR-COMP-012: Module Namespaces & Qualified Types:
+module :: http
+
+type Config =
+  host: String
+  port: Int
+
+type Status = Ok Int | Failed String
+
+fn :: default config => Config
+      default config = Config "localhost" 8080
+
+fn :: check status Config => Status
+      check status cfg
+        | (port cfg) == 8080 = Ok 200
+        | otherwise = Failed "custom-port"
+
+fn :: bump port Config Int => Config
+      bump port cfg delta =
+        cfg with port = (port cfg) + delta
+
+module :: db
+
+type Config =
+  port: Int
+  pool_size: Int
+
+type Status = Ok String | Failed Int
+
+fn :: default config => Config
+      default config = Config 5432 16
+
+fn :: check status Config => Status
+      check status cfg
+        | (port cfg) == 5432 = Ok "connected"
+        | otherwise = Failed (port cfg)
+
+fn :: bump port Config Int => Config
+      bump port cfg delta =
+        cfg with port = (port cfg) + delta
+
+module :: main
+
+import db as d
+
+type HttpConfig = http.Config
+
+fn :: describe http status http.Status => String
+      describe http status (http.Ok code) = "http-ok:{code}"
+      describe http status (http.Failed msg) = "http-err:{msg}"
+
+fn :: describe db status d.Status => String
+      describe db status (d.Status.Ok tag) = "db-ok:{tag}"
+      describe db status (d.Status.Failed code) = "db-err:{code}"
+
+fn :: total port pair http.Config d.Config => Int
+      total port pair hcfg dcfg =
+        (http.port hcfg) + (d.port dcfg)
+
 fn :: main => ()
       main =
         echo "=== Core Language, ADTs, Mixfix, Variadics & Higher-Order Ops ==="
@@ -411,4 +471,25 @@ fn :: main => ()
         assert equals pkt (200, 2, [("Host", "ridgun.org"), ("X-Tag", "v0.9.9")], "OK")
         assert equals (lookup header [("Host", "ridgun.org"), ("Mode", "native")] "Mode") "native"
         assert equals (unpack nested tuple (201, [("Host", "ridgun.org")], "CREATED")) "201:ridgun.org:CREATED"
+        echo "=== FR-COMP-012: Module Namespaces & Qualified Types ==="
+        h0 = http.default config
+        d0 = d.default config
+        assert equals (http.port h0) 8080
+        assert equals (d.port d0) 5432
+        assert equals (total port pair h0 d0) 13512
+        h1 = http.bump port h0 100
+        d1 = d.bump port d0 1
+        assert equals (http.port h1) 8180
+        assert equals (d.port d1) 5433
+        h2 = h1 with http.port = 9090
+        d2 = d1 with d.port = 6432
+        assert equals (http.port h2) 9090
+        assert equals (d.port d2) 6432
+        h_alias = HttpConfig "0.0.0.0" 8080
+        assert equals (describe http status (http.check status h_alias)) "http-ok:200"
+        assert equals (describe http status (http.check status h2)) "http-err:custom-port"
+        assert equals (describe db status (d.check status d0)) "db-ok:connected"
+        assert equals (describe db status (d.check status d2)) "db-err:6432"
+        assert equals (describe parse (ParseOut.Error "bad syntax")) "parse_err:bad syntax"
+        assert equals (describe db (DbOut.Error 503 "unavailable")) "db_err:503:unavailable"
         echo "=== All core language tests passed ==="

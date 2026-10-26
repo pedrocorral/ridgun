@@ -6,6 +6,7 @@
 -- Attributes (@), Ellipsis (...), and Operators.
 -- @implements FR-COMP-007
 -- @implements FR-COMP-010
+-- @implements FR-COMP-012
 -- ============================================================
 import ast
 
@@ -54,6 +55,7 @@ fn :: scan ident end String Int Int => Int
       scan ident end src pos len
         | pos >= len = pos
         | is_alnum (str_char_at src pos) = scan_ident_end src (pos + 1) len
+        | (str_char_at src pos) == 46 AND (pos + 1) < len AND (is_alpha (str_char_at src (pos + 1))) = scan_ident_end src (pos + 1) len
         | otherwise = pos
 
 fn :: scan hex end String Int Int => Int

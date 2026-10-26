@@ -15,6 +15,7 @@
 -- @implements FR-COMP-008
 -- @implements FR-COMP-009
 -- @implements FR-COMP-010
+-- @implements FR-COMP-012
 -- @implements FR-VM-001
 -- @implements FR-VM-002
 -- ============================================================
@@ -304,13 +305,17 @@ fn :: put ctor local step [RTypeBind] String RType (Bool, RType) => [RTypeBind]
       put ctor local step locals ctor adt_ty (False, _) =
         put_type_bind locals ctor adt_ty
 
-fn :: register variants [String] [RVariant] RType [RTypeBind] [RTypeBind] => [RTypeBind] [RTypeBind]
-      register variants _ [] _ locals fns = (locals, fns)
-      register variants tnames ((TypeVariant ctor []):vs) adt_ty locals fns =
-        register_variants tnames vs adt_ty (put_ctor_local_bind locals ctor adt_ty) fns
-      register variants tnames ((TypeVariant ctor arg_strs):vs) adt_ty locals fns =
+fn :: register variants [String] String [RVariant] RType [RTypeBind] [RTypeBind] => [RTypeBind] [RTypeBind]
+      register variants _ _ [] _ locals fns = (locals, fns)
+      register variants tnames tdef_name ((TypeVariant ctor []):vs) adt_ty locals fns =
+        locals1 = put_ctor_local_bind locals ctor adt_ty
+        locals2 = put_ctor_local_bind locals1 (tdef_name + "." + ctor) adt_ty
+        register_variants tnames tdef_name vs adt_ty locals2 fns
+      register variants tnames tdef_name ((TypeVariant ctor arg_strs):vs) adt_ty locals fns =
         arg_tys = qualify_declared_adt_list tnames (parse_type_list_strs arg_strs)
-        register_variants tnames vs adt_ty locals (put_type_bind fns ctor (TyFun arg_tys adt_ty))
+        fns1 = put_type_bind fns ctor (TyFun arg_tys adt_ty)
+        fns2 = put_type_bind fns1 (tdef_name + "." + ctor) (TyFun arg_tys adt_ty)
+        register_variants tnames tdef_name vs adt_ty locals fns2
 
 fn :: collect field types [String] [RField] => [RType]
       collect field types _        []       =  []
@@ -321,15 +326,22 @@ fn :: register field accessors [String] [RField] RType [RTypeBind] => [RTypeBind
       register field accessors _ [] _ fns = fns
       register field accessors tnames ((TypeField fname fty_str):fs) adt_ty fns =
         fty = qualify_declared_adt tnames (parse_type_str fty_str)
-        register_field_accessors tnames fs adt_ty (put_type_bind fns fname (TyFun [adt_ty] fty))
+        fns1 = put_type_bind fns fname (TyFun [adt_ty] fty)
+        fns2 = put_base_field_bind fname adt_ty fty fns1
+        register_field_accessors tnames fs adt_ty fns2
+
+fn :: put base field bind String RType RType [RTypeBind] => [RTypeBind]
+      put base field bind fname adt_ty fty fns
+        | str_contains fname "." = put_type_bind fns (ident_base_name fname) (TyFun [adt_ty] fty)
+        | otherwise = fns
 
 fn :: register typedef [String] RTypeDef [RTypeBind] [RTypeBind] => [RTypeBind] [RTypeBind]
       register typedef tnames (TypeDef name vars []) locals fns =
         adt_ty = qualify_declared_adt tnames (parse_type_str name)
-        register_variants tnames vars adt_ty locals fns
+        register_variants tnames name vars adt_ty locals fns
       register typedef tnames (TypeDef name vars fields) locals fns =
         adt_ty = qualify_declared_adt tnames (parse_type_str name)
-        v_res = register_variants tnames vars adt_ty locals fns
+        v_res = register_variants tnames name vars adt_ty locals fns
         register_record_helpers tnames name adt_ty fields v_res
 
 fn :: register record helpers [String] String RType [RField] ([RTypeBind], [RTypeBind]) => [RTypeBind] [RTypeBind]
