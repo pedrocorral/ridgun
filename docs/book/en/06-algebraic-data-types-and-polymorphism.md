@@ -224,4 +224,4 @@ fn :: unwrap ok (Result A String) A => A
       unwrap ok (Err _)           d =  d
 ```
 
-In **Chapter 07** we will put every core of your processor to work at once without breaking a sweat: **higher-order functions (`map`, `||map`, `filter`, `||filter`, `fold`), lexical closures (`\x -> expr`), parallel `||` graphs with `->`, and concurrent channels**.
+In **Chapter 07** we will put every core of your processor to work at once without breaking a sweat: **higher-order functions (`map`, `||map`, `filter`, `||filter`, `fold`), lexical closures (`(x => expr)`), parallel `||` graphs with `->`, and concurrent channels**.

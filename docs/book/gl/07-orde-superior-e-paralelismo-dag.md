@@ -76,19 +76,34 @@ executar_duas_veces (A => A) A => A
 executar_duas_veces f        x =  f (f x)
 ```
 
-### 4. Clausuras léxicas e funcións anónimas (`\x -> expr`, `\acc x -> expr`)
-Cando queres pasar unha función curta ao voo ou capturar variables locais do teu ámbito actual (como un desprazamento, un prefixo ou unha sesión activa) sen declarar unha función global auxiliar, usas unha **clausura léxica** con **`\`** e **`->`**:
+### 4. Clausuras léxicas e funcións anónimas (`(x => expr)`, `(acc x => expr)`)
+Cando queres pasar unha función curta ao voo ou capturar variables locais do teu ámbito actual (como un desprazamento, un prefixo ou unha sesión activa) sen declarar unha función global auxiliar, usas unha **clausura léxica** entre parénteses con **`=>`**:
 
 ```ridgun
 fn :: procesar con sesion => [Int]
       procesar con sesion =
         base      = 10
         bono      = 3
-        sumados   = map (\x -> x + base) [1, 2, 3]
-        filtrados = filter (\x -> x >= bono) [1, 2, 3, 4]
-        total     = fold (\acc x -> acc + x + bono) 0 [1, 2, 3]
-        sumados :: filtrados :: [total]
+        sumados   = map (x => x + base) [1, 2, 3]
+        filtrados = filter (x => x >= bono) [1, 2, 3, 4]
+        total     = fold (acc x => acc + x + bono) 0 [1, 2, 3]
+        pares     = map ((a b) => a + b + base) [(1, 2), (3, 4)]
+        sumados :: filtrados :: [total] :: pares
 ```
+
+Cinco regras manteñen as lambdas limpas e sen ambigüidade:
+- **Parénteses obrigatorias**: toda lambda vai sempre entre parénteses `(... => ...)`.
+- **Lambda sen parámetros (`(=> expr)`)**: igual que `fn :: main => ()` non leva `()` antes de `=>`, unha lambda sen parámetros escríbese `(=> expr)` (e o seu tipo é `(=> Tipo)`), nunca `(() => expr)`.
+- **Varios parámetros fronte a tupla (`(a b => ...)` vs. `((a b) => ...)`)**: `(acc x => ...)` recibe dous parámetros separados; `((a b) => ...)` recibe unha soa tupla e desestrutúraa.
+- **Corpo de varias liñas**: se pos un salto de liña tras `=>`, podes escribir un bloque sangrado de varios pasos antes do `)` de peche:
+  ```ridgun
+  dobres = map (x =>
+    paso = x * 2
+    paso + base
+  ) [1, 2, 3]
+  ```
+- **Maiúsculas fronte a minúsculas**: `(Conn => Conn)` é un tipo de función (inicial maiúscula) e `(conn => conn)` é un valor lambda (inicial minúscula).
+
 As variables capturadas (`base`, `bono`) empaquétanse automaticamente con xestión determinista de memoria (`RMM1`/`RMM2`), sen fugas e sen pausas de colector de lixo.
 
 ---

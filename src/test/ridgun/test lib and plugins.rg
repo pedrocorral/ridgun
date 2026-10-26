@@ -329,7 +329,7 @@ fn :: main => ()
         st_repl = shell exec ("cd target/test_lib_work/multi_app && \"" + stable_bin + "\" < repl_in.txt > repl_out.txt")
         assert int equals st_repl 0 "interactive REPL session exits cleanly with 0"
         repl_out = read file "target/test_lib_work/multi_app/repl_out.txt"
-        assert ok (str contains repl_out "Welcome to stable 0.9.20")
+        assert ok (str contains repl_out "Welcome to stable 0.9.21")
         assert ok (str contains repl_out "Reloaded build.rg — current project is 'alpha'")
         assert ok (str contains repl_out "Exiting stable.")
         echo "=== FR-COMP-007: Cross-Platform PAL Descriptor/Poll/Process Primitives & with timeout ==="
@@ -416,5 +416,41 @@ fn :: main => ()
         _ = write file strict_good "fn :: op Int => Int Int\n      op where = (where, where + 1)\nop :: Int fn Int => Int\n      a fn b = a + b\n"
         rc_strict_good = shell exec ("\"" + ridgunc_bin + "\" check --strict " + strict_good + " >/dev/null 2>&1")
         assert equals rc_strict_good 0
+        -- 7. Verify the 5 canonical lambda syntax & diagnostic rules (`FR-COMP-013`)
+        lam_bad_empty = "target/test_lib_work/lam_bad_empty.rg"
+        _ = write file lam_bad_empty "fn :: main => ()\n      main =\n        f = (() => 42)\n        echo (f ())\n"
+        rc_lam_empty = shell exec ("\"" + ridgunc_bin + "\" check " + lam_bad_empty + " > target/test_lib_work/lam_empty.txt 2>&1")
+        assert true (rc_lam_empty != 0)
+        assert ok (str contains (read file "target/test_lib_work/lam_empty.txt") "zero-parameter lambda uses '(=> expr)', not '(() => expr)'")
+        lam_bad_sig = "target/test_lib_work/lam_bad_sig.rg"
+        _ = write file lam_bad_sig "fn :: run thunk (() => Int) => Int\n      run thunk f = f ()\nfn :: main => ()\n      main = echo 1\n"
+        rc_lam_sig = shell exec ("\"" + ridgunc_bin + "\" check " + lam_bad_sig + " > target/test_lib_work/lam_sig.txt 2>&1")
+        assert true (rc_lam_sig != 0)
+        assert ok (str contains (read file "target/test_lib_work/lam_sig.txt") "zero-parameter function type in signature uses '(=> Type)', not '(() => Type)'")
+        lam_bad_unparen = "target/test_lib_work/lam_bad_unparen.rg"
+        _ = write file lam_bad_unparen "fn :: main => ()\n      main =\n        f = x => x + 1\n        echo (f 5)\n"
+        rc_lam_unparen = shell exec ("\"" + ridgunc_bin + "\" check " + lam_bad_unparen + " > target/test_lib_work/lam_unparen.txt 2>&1")
+        assert true (rc_lam_unparen != 0)
+        assert ok (str contains (read file "target/test_lib_work/lam_unparen.txt") "lambda expression must be enclosed in parentheses: '(x => expr)'")
+        lam_bad_type_expr = "target/test_lib_work/lam_bad_type_expr.rg"
+        _ = write file lam_bad_type_expr "fn :: main => ()\n      main =\n        echo (map (Int => Int) [1, 2, 3])\n"
+        rc_lam_type_expr = shell exec ("\"" + ridgunc_bin + "\" check " + lam_bad_type_expr + " > target/test_lib_work/lam_type_expr.txt 2>&1")
+        assert true (rc_lam_type_expr != 0)
+        assert ok (str contains (read file "target/test_lib_work/lam_type_expr.txt") "type signature '(Type => Type)' cannot be used as an expression")
+        lam_bad_val_type = "target/test_lib_work/lam_bad_val_type.rg"
+        _ = write file lam_bad_val_type "fn :: run handler (conn => conn) Int => Int\n      run handler f x = f x\nfn :: main => ()\n      main = echo 1\n"
+        rc_lam_val_type = shell exec ("\"" + ridgunc_bin + "\" check " + lam_bad_val_type + " > target/test_lib_work/lam_val_type.txt 2>&1")
+        assert true (rc_lam_val_type != 0)
+        assert ok (str contains (read file "target/test_lib_work/lam_val_type.txt") "function type in signature must use uppercase type names")
+        lam_bad_tup = "target/test_lib_work/lam_bad_tup.rg"
+        _ = write file lam_bad_tup "fn :: main => ()\n      main =\n        echo (map (a b => a + b) [(1, 2), (3, 4)])\n"
+        rc_lam_tup = shell exec ("\"" + ridgunc_bin + "\" check " + lam_bad_tup + " > target/test_lib_work/lam_tup.txt 2>&1")
+        assert true (rc_lam_tup != 0)
+        assert ok (str contains (read file "target/test_lib_work/lam_tup.txt") "use '((a b) => ...)' to destructure a tuple")
+        lam_bad_multi = "target/test_lib_work/lam_bad_multi.rg"
+        _ = write file lam_bad_multi "fn :: main => ()\n      main =\n        echo (fold ((acc x) => acc + x) 0 [1, 2, 3])\n"
+        rc_lam_multi = shell exec ("\"" + ridgunc_bin + "\" check " + lam_bad_multi + " > target/test_lib_work/lam_multi.txt 2>&1")
+        assert true (rc_lam_multi != 0)
+        assert ok (str contains (read file "target/test_lib_work/lam_multi.txt") "use '(a b => ...)' for multiple parameters")
         _ = shell exec "rm -rf target/test_lib_work"
         echo "=== All library compilation, stable plugin & PAL timeout tests passed ==="

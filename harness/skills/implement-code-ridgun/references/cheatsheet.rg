@@ -179,8 +179,8 @@ fn :: unwrap ok (Result A String) A => A
 fn :: demo generics and closures Int => Int
       demo generics and closures offset =
         p    = Page [1, 2, 3] 3
-        nums = map (\x -> x + offset) (page_items p)
-        fold (\acc x -> acc + x) (unwrap ok (Ok 10) 0) nums
+        nums = map (x => x + offset) (page_items p)
+        fold (acc x => acc + x) (unwrap ok (Ok 10) 0) nums
 
 -- 14. Zero-Argument Entrypoint (`fn :: main => ()`)
 fn :: main => ()

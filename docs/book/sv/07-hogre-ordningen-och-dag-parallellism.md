@@ -76,19 +76,34 @@ kor_tva_ganger (A => A) A => A
 kor_tva_ganger f        x =  f (f x)
 ```
 
-### 4. Lexikala closures och anonyma funktioner (`\x -> expr`, `\acc x -> expr`)
-När du vill skicka in en kort funktion i farten eller fånga lokala variabler från det omgivande scopet (som en offset, ett prefix eller en aktiv session) utan att deklarera en separat toppnivåfunktion använder du en **lexikal closure** med **`\`** och **`->`**:
+### 4. Lexikala closures och anonyma funktioner (`(x => expr)`, `(acc x => expr)`)
+När du vill skicka in en kort funktion i farten eller fånga lokala variabler från det omgivande scopet (som en offset, ett prefix eller en aktiv session) utan att deklarera en separat toppnivåfunktion använder du en **lexikal closure** inom parentes med **`=>`**:
 
 ```ridgun
 fn :: bearbeta med session => [Int]
       bearbeta med session =
         offset     = 10
         bonus      = 3
-        adderade   = map (\x -> x + offset) [1, 2, 3]
-        filtrerade = filter (\x -> x >= bonus) [1, 2, 3, 4]
-        total      = fold (\acc x -> acc + x + bonus) 0 [1, 2, 3]
-        adderade :: filtrerade :: [total]
+        adderade   = map (x => x + offset) [1, 2, 3]
+        filtrerade = filter (x => x >= bonus) [1, 2, 3, 4]
+        total      = fold (acc x => acc + x + bonus) 0 [1, 2, 3]
+        par        = map ((a b) => a + b + offset) [(1, 2), (3, 4)]
+        adderade :: filtrerade :: [total] :: par
 ```
+
+Fem regler håller lambdauttryck rena och entydiga:
+- **Obligatoriska parenteser**: varje lambda skrivs alltid inom parentes `(... => ...)`.
+- **Lambda utan parametrar (`(=> expr)`)**: precis som `fn :: main => ()` inte har `()` före `=>`, skrivs en parameterlös lambda `(=> expr)` (och dess typ är `(=> Typ)`), aldrig `(() => expr)`.
+- **Flera parametrar kontra tupel (`(a b => ...)` vs. `((a b) => ...)`)**: `(acc x => ...)` tar två separata parametrar, medan `((a b) => ...)` tar en enda tupel och destrukturerar den.
+- **Flerradig kropp**: om du lägger en radbrytning efter `=>` kan du skriva ett indenterat flerstegsblock före det avslutande `)`:
+  ```ridgun
+  dubblade = map (x =>
+    steg = x * 2
+    steg + offset
+  ) [1, 2, 3]
+  ```
+- **Versaler kontra gemener**: `(Conn => Conn)` är en funktionstyp (stor begynnelsebokstav) och `(conn => conn)` är ett lambdavärde (liten begynnelsebokstav).
+
 Fångade variabler (`offset`, `bonus`) hanteras deterministiskt med `RMM1`/`RMM2` — noll minnesläckor och noll skräpsamlingspauser.
 
 ---

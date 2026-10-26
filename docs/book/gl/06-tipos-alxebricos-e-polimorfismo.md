@@ -224,4 +224,4 @@ fn :: desempaquetar exito (Resultado A String) A => A
       desempaquetar exito (Fallo _)            d =  d
 ```
 
-No **Capítulo 07** imos poñer todos os núcleos do teu procesador a traballar á vez sen derramar unha pinga de suor: **funcións de orde superior (`map`, `||map`, `filter`, `||filter`, `fold`), clausuras léxicas (`\x -> expr`), grafos paralelos `||` con `->` e canles concorrentes**.
+No **Capítulo 07** imos poñer todos os núcleos do teu procesador a traballar á vez sen derramar unha pinga de suor: **funcións de orde superior (`map`, `||map`, `filter`, `||filter`, `fold`), clausuras léxicas (`(x => expr)`), grafos paralelos `||` con `->` e canles concorrentes**.

@@ -76,19 +76,34 @@ exekutatu_bi_aldiz (A => A) A => A
 exekutatu_bi_aldiz f        x =  f (f x)
 ```
 
-### 4. Itxitura lexikoak eta funtzio anonimoak (`\x -> expr`, `\acc x -> expr`)
-Unean bertan funtzio labur bat pasa nahi duzunean edo uneko esparruko aldagai lokalak (desplazamendu bat, aurrizki bat edo saio aktibo bat) atzeman nahi dituzunean funtzio global laguntzaile bat deklaratu gabe, **itxitura lexiko** bat erabiltzen duzu **`\`** eta **`->`**-rekin:
+### 4. Itxitura lexikoak eta funtzio anonimoak (`(x => expr)`, `(acc x => expr)`)
+Unean bertan funtzio labur bat pasa nahi duzunean edo uneko esparruko aldagai lokalak (desplazamendu bat, aurrizki bat edo saio aktibo bat) atzeman nahi dituzunean funtzio global laguntzaile bat deklaratu gabe, **itxitura lexiko** bat erabiltzen duzu parentesi artean **`=>`**-rekin:
 
 ```ridgun
 fn :: prozesatu saioarekin => [Int]
       prozesatu saioarekin =
         oinarria    = 10
         hobaria     = 3
-        batuak      = map (\x -> x + oinarria) [1, 2, 3]
-        iragaziak   = filter (\x -> x >= hobaria) [1, 2, 3, 4]
-        guztira     = fold (\acc x -> acc + x + hobaria) 0 [1, 2, 3]
-        batuak :: iragaziak :: [guztira]
+        batuak      = map (x => x + oinarria) [1, 2, 3]
+        iragaziak   = filter (x => x >= hobaria) [1, 2, 3, 4]
+        guztira     = fold (acc x => acc + x + hobaria) 0 [1, 2, 3]
+        bikoteak    = map ((a b) => a + b + oinarria) [(1, 2), (3, 4)]
+        batuak :: iragaziak :: [guztira] :: bikoteak
 ```
+
+Bost arauk mantentzen dituzte lambdak garbi eta anbiguotasunik gabe:
+- **Parentesiak derrigorrezkoak**: lambda oro beti doa parentesi artean `(... => ...)`.
+- **Parametrorik gabeko lambda (`(=> expr)`)**: `fn :: main => ()`-k `=>` aurretik `()` ez daraman bezala, parametrorik gabeko lambda `(=> expr)` idazten da (eta bere mota `(=> Mota)` da), inoiz ez `(() => expr)`.
+- **Parametro anitz vs. tupla (`(a b => ...)` vs. `((a b) => ...)`)**: `(acc x => ...)`-k bi parametro bereiz jasotzen ditu; `((a b) => ...)`-k tupla bakar bat jasotzen du eta desegituratu egiten du.
+- **Lerro anitzeko gorputza**: `=>` ondoren lerro-jauzi bat jartzen baduzu, koskatutako urrats anitzeko bloke bat idatz dezakezu ixteko `)` aurretik:
+  ```ridgun
+  bikoitzak = map (x =>
+    urratsa = x * 2
+    urratsa + oinarria
+  ) [1, 2, 3]
+  ```
+- **Maiuskulak vs. minuskulak**: `(Conn => Conn)` funtzio-mota bat da (hasiera maiuskulaz) eta `(conn => conn)` lambda balio bat da (hasiera minuskulaz).
+
 Atzemandako aldagaiak (`oinarria`, `hobaria`) automatikoki paketatzen dira memoria-kudeaketa deterministarekin (`RMM1`/`RMM2`), ihesik gabe eta zabor-biltzailearen etenik gabe.
 
 ---

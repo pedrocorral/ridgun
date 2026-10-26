@@ -224,4 +224,4 @@ fn :: desempaquetar exit (Resultat A String) A => A
       desempaquetar exit (Fallada _)         d =  d
 ```
 
-Al **Capítol 07** posarem tots els nuclis del teu processador a treballar alhora sense vessar ni una gota de suor: **funcions d'ordre superior (`map`, `||map`, `filter`, `||filter`, `fold`), clausures lèxiques (`\x -> expr`), grafs paral·lels `||` amb `->` i canals concurrents**.
+Al **Capítol 07** posarem tots els nuclis del teu processador a treballar alhora sense vessar ni una gota de suor: **funcions d'ordre superior (`map`, `||map`, `filter`, `||filter`, `fold`), clausures lèxiques (`(x => expr)`), grafs paral·lels `||` amb `->` i canals concurrents**.

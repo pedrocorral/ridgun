@@ -76,19 +76,34 @@ fn :: ejecutar dos veces (A => A) A => A
       ejecutar dos veces f        x =  f (f x)
 ```
 
-### 4. Clausuras léxicas y funciones anónimas (`\x -> expr`, `\acc x -> expr`)
-Cuando quieres pasar una función corta al vuelo o capturar variables locales de tu ámbito actual (como un desplazamiento, un prefijo o una sesión activa) sin declarar una función global auxiliar, usas una **clausura léxica** con **`\`** y **`->`**:
+### 4. Clausuras léxicas y funciones anónimas (`(x => expr)`, `(acc x => expr)`)
+Cuando quieres pasar una función corta al vuelo o capturar variables locales de tu ámbito actual (como un desplazamiento, un prefijo o una sesión activa) sin declarar una función global auxiliar, usas una **clausura léxica** entre paréntesis con **`=>`**:
 
 ```ridgun
 fn :: procesar con sesion => [Int]
       procesar con sesion =
-        base  = 10
-        bono  = 3
-        sumados   = map (\x -> x + base) [1, 2, 3]
-        filtrados = filter (\x -> x >= bono) [1, 2, 3, 4]
-        total     = fold (\acc x -> acc + x + bono) 0 [1, 2, 3]
-        sumados :: filtrados :: [total]
+        base      = 10
+        bono      = 3
+        sumados   = map (x => x + base) [1, 2, 3]
+        filtrados = filter (x => x >= bono) [1, 2, 3, 4]
+        total     = fold (acc x => acc + x + bono) 0 [1, 2, 3]
+        pares     = map ((a b) => a + b + base) [(1, 2), (3, 4)]
+        sumados :: filtrados :: [total] :: pares
 ```
+
+Cinco reglas mantienen las lambdas limpias y sin ambigüedad:
+- **Paréntesis obligatorios**: toda lambda va siempre entre paréntesis `(... => ...)`.
+- **Lambda sin parámetros (`(=> expr)`)**: igual que `fn :: main => ()` no lleva `()` antes de `=>`, una lambda sin parámetros se escribe `(=> expr)` (y su tipo es `(=> Tipo)`), nunca `(() => expr)`.
+- **Varios parámetros frente a tupla (`(a b => ...)` vs. `((a b) => ...)`)**: `(acc x => ...)` recibe dos parámetros separados; `((a b) => ...)` recibe una sola tupla y la desestructura.
+- **Cuerpo de varias líneas**: si pones un salto de línea tras `=>`, puedes escribir un bloque sangrado de varios pasos antes del `)` de cierre:
+  ```ridgun
+  dobles = map (x =>
+    paso = x * 2
+    paso + base
+  ) [1, 2, 3]
+  ```
+- **Mayúsculas frente a minúsculas**: `(Conn => Conn)` es un tipo de función (inicial mayúscula) y `(conn => conn)` es un valor lambda (inicial minúscula).
+
 Las variables capturadas (`base`, `bono`) se empaquetan automáticamente con gestión determinista de memoria (`RMM1`/`RMM2`), sin fugas y sin pausas de recolector de basura.
 
 ---

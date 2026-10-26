@@ -118,6 +118,8 @@ fn :: rtype to str RType              => String
       rtype to str (TyTensor [])      =  "Tensor"
       rtype to str (TyTensor dims)    =  "Tensor(" + (join_comma_strs dims) + ")"
       rtype to str (TyVariadic inner) =  (rtype_to_str inner) + "..."
+      rtype to str (TyFun (TyUnit:[]) ret) = "(=> " + (rtype_to_str ret) + ")"
+      rtype to str (TyFun [] ret)     =  "(=> " + (rtype_to_str ret) + ")"
       rtype to str (TyFun params ret) =  "(" + (rtype_list_to_str params) + " => " + (rtype_to_str ret) + ")"
       rtype to str (TyVar name)
         | str_starts_with name "Option " =
@@ -710,11 +712,20 @@ fn :: last variadic inner [RType] => RType
       last variadic inner (_:ts)  =  last_variadic_inner ts
       last variadic inner []      =  TyInt
 
+fn :: lambda tuple arity hint RType RType => String
+      lambda tuple arity hint (TyFun p1 _) (TyFun p2 _)
+        | (rtype_list_len p1) > 1 AND (rtype_list_len p2) == 1 =
+          "; note: '(a b => ...)' has multiple parameters — use '((a b) => ...)' to destructure a tuple"
+        | (rtype_list_len p1) == 1 AND (rtype_list_len p2) > 1 =
+          "; note: '((a b) => ...)' takes 1 tuple parameter — use '(a b => ...)' for multiple parameters"
+        | otherwise = ""
+      lambda tuple arity hint _ _ = ""
+
 fn :: check fixed args [RType] [RType] String String Int [RDimBind] => [RTypeError]
       check fixed args [] _ _ _ _ _ = []
       check fixed args _ [] _ _ _ _ = []
       check fixed args (arg:args) (param:params) callee fn_name idx dim_env
-        | NOT (types_compatible arg param) = [TypeError fn_name ("function '" + callee + "' arg #" + (int_to_str idx) + " has type " + (rtype_to_str arg) + ", expected " + (rtype_to_str param))] :: (check_fixed_args args params callee fn_name (idx + 1) dim_env)
+        | NOT (types_compatible arg param) = [TypeError fn_name ("function '" + callee + "' arg #" + (int_to_str idx) + " has type " + (rtype_to_str arg) + ", expected " + (rtype_to_str param) + (lambda_tuple_arity_hint arg param))] :: (check_fixed_args args params callee fn_name (idx + 1) dim_env)
         | otherwise = check_arg_tensor_dims arg param args params callee fn_name idx dim_env
 
 fn :: check arg tensor dims RType RType [RType] [RType] String String Int [RDimBind] => [RTypeError]
@@ -967,7 +978,7 @@ fn :: check expr RExpr String [RTypeBind] [RTypeBind] => RType [RTypeError]
       check expr (ECall "__missing_import__" ((EStr mod_name):_)) _ _ _ =
         (TyInt, [TypeError "import" ("unresolved import '" + mod_name + "': module not found in project or .stable/deps")])
       check expr (ECall "__syntax_error__" ((EStr msg):_)) _ _ _ =
-        (TyInt, [TypeError "syntax" msg])
+        (TyVar "_any", [TypeError "syntax" msg])
       check expr (ECall callee args) fn_name locals fns =
         args_res = check_expr_list args fn_name locals fns
         finish_call_check callee args_res fn_name locals fns
@@ -1318,12 +1329,27 @@ fn :: check fn cases [RFnCase] String [RType] RType Int [RTypeBind] [RTypeBind] 
       check fn cases (c:cs) fn_name param_tys ret_ty idx locals fns =
         (check_one_case c fn_name param_tys ret_ty idx locals fns) :: (check_fn_cases cs fn_name param_tys ret_ty (idx + 1) locals fns)
 
+fn :: check sig syntax errs [String] String String => [RTypeError]
+      check sig syntax errs [] ret_str fn_name
+        | str_contains ret_str "__err_unit_fn_type__" =
+          [TypeError fn_name "zero-parameter function type in signature uses '(=> Type)', not '(() => Type)'"]
+        | str_contains ret_str "__err_lower_fn_type__" =
+          [TypeError fn_name "function type in signature must use uppercase type names (e.g. '(Conn => Conn)'), not lowercase lambda parameters"]
+        | otherwise = []
+      check sig syntax errs (p:ps) ret_str fn_name
+        | str_contains p "__err_unit_fn_type__" =
+          [TypeError fn_name "zero-parameter function type in signature uses '(=> Type)', not '(() => Type)'"] :: (check_sig_syntax_errs ps ret_str fn_name)
+        | str_contains p "__err_lower_fn_type__" =
+          [TypeError fn_name "function type in signature must use uppercase type names (e.g. '(Conn => Conn)'), not lowercase lambda parameters"] :: (check_sig_syntax_errs ps ret_str fn_name)
+        | otherwise = check_sig_syntax_errs ps ret_str fn_name
+
 fn :: check all functions acc [String] [RFnDef] [RTypeBind] [RTypeBind] [RTypeError] => [RTypeError]
       check all functions acc _ [] _ _ acc = acc
       check all functions acc tnames ((FnDef name param_strs ret_str cases):fs) locals fns acc =
+        sig_errs = check_sig_syntax_errs param_strs ret_str name
         param_tys = qualify_declared_adt_list tnames (parse_type_list_strs param_strs)
         ret_ty = qualify_declared_adt tnames (parse_type_str ret_str)
-        check_all_functions_acc tnames fs locals fns (acc :: (check_fn_cases cases name param_tys ret_ty 0 locals fns))
+        check_all_functions_acc tnames fs locals fns (acc :: sig_errs :: (check_fn_cases cases name param_tys ret_ty 0 locals fns))
 
 fn :: check all functions [String] [RFnDef] [RTypeBind] [RTypeBind] => [RTypeError]
       check all functions tnames fdefs locals fns =

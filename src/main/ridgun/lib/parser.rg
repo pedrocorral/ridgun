@@ -263,9 +263,25 @@ fn :: finish type list String [RToken] Bool => String [RToken]
 
 fn :: parse type paren [RToken]         => String [RToken]
       parse type paren (TokRParen:rest) =  ("()", rest)
+      parse type paren (TokLParen:TokRParen:TokFatArrow:rest) =
+        merge_type_fn "__err_unit_fn_type__" (parse_type_tok rest)
+      parse type paren (TokFatArrow:rest) =
+        merge_type_fn "()" (parse_type_tok rest)
+      parse type paren ((TokIdent s):rest)
+        | (is_lower_ident s) AND (is_paren_lambda ([TokIdent s] :: rest) False) =
+          ("__err_lower_fn_type__", skip_to_rparen rest 0)
       parse type paren ts               =
         p1 = parse_type_tok ts
         parse_type_tuple_rest p1
+
+fn :: skip to rparen [RToken] Int => [RToken]
+      skip to rparen [] _ = []
+      skip to rparen (TokEof:rest) _ = [TokEof] :: rest
+      skip to rparen (TokNewline:rest) 0 = [TokNewline] :: rest
+      skip to rparen (TokLParen:rest) d = skip_to_rparen rest (d + 1)
+      skip to rparen (TokRParen:rest) 0 = rest
+      skip to rparen (TokRParen:rest) d = skip_to_rparen rest (d - 1)
+      skip to rparen (_:rest) d = skip_to_rparen rest d
 
 fn :: parse type tuple rest (String, [RToken]) => String [RToken]
       parse type tuple rest (acc, (TokComma:rest)) =
@@ -984,15 +1000,23 @@ fn :: parse atom base [RToken]           => RExpr [RToken]
         | s == "Tensor" or s == "Tensor_GPU" = finish_tensor_lit (parse_comma_exprs rest)
       parse atom base ((TokIdent s):TokIdxLBracket:rest)
         | s == "Tensor" or s == "Tensor_GPU" = finish_tensor_lit (parse_comma_exprs rest)
-      parse atom base ((TokIdent "\\"):rest) =
-        parse_lambda_expr rest []
       parse atom base ((TokIdent s):rest) = (EVar s, rest)
       parse atom base (TokMinus:(TokInt n):rest) = (EInt (0 - n), rest)
       parse atom base (TokMinus:(TokReal r):rest) = (EReal ("-" + r), rest)
       parse atom base (TokLParen:TokRParen:rest) = (EUnit, rest)
-      parse atom base (TokLParen:rest)   =
-        p1 = parse_expr rest
-        parse_paren_expr p1
+      parse atom base (TokLParen:TokLParen:TokRParen:TokFatArrow:rest) =
+        (ECall "__syntax_error__" [EStr "zero-parameter lambda uses '(=> expr)', not '(() => expr)'"], skip_to_rparen rest 0)
+      parse atom base (TokLParen:TokRParen:TokFatArrow:rest) =
+        (ECall "__syntax_error__" [EStr "zero-parameter lambda uses '(=> expr)', not '(() => expr)'"], skip_to_newline rest)
+      parse atom base (TokLParen:TokFatArrow:rest) =
+        parse_lambda_paren (parse_lambda_body [] rest)
+      parse atom base (TokLParen:rest)
+        | is_paren_lambda rest False = parse_lambda_paren (parse_lambda_expr rest [])
+        | is_paren_type_arrow rest False =
+          (ECall "__syntax_error__" [EStr "type signature '(Type => Type)' cannot be used as an expression; lambda parameters must start with a lowercase letter"], skip_to_rparen rest 0)
+        | otherwise =
+          p1 = parse_expr rest
+          parse_paren_expr p1
       parse atom base (TokLBracket:TokRBracket:rest) = (EList [], rest)
       parse atom base (TokLBracket:rest) =
         elems_res = parse_comma_exprs rest
@@ -1000,19 +1024,79 @@ fn :: parse atom base [RToken]           => RExpr [RToken]
       parse atom base (_:rest)           =  (EUnit, rest)
       parse atom base []                 =  (EUnit, [])
 
+fn :: is lambda param ident String => Bool
+      is lambda param ident "_" = True
+      is lambda param ident s = (is_lower_ident s) AND (NOT (str_contains s "."))
+
+fn :: scan lambda tuple params [RToken] [String] => Bool [String] [RToken]
+      scan lambda tuple params (TokRParen:rest) acc = ((str_list_count acc) >= 2, acc, rest)
+      scan lambda tuple params (TokComma:rest) acc = scan_lambda_tuple_params rest acc
+      scan lambda tuple params ((TokIdent p):rest) acc
+        | is_lambda_param_ident p = scan_lambda_tuple_params rest (acc :: [p])
+      scan lambda tuple params (TokType:rest) acc = scan_lambda_tuple_params rest (acc :: ["type"])
+      scan lambda tuple params (TokWith:rest) acc = scan_lambda_tuple_params rest (acc :: ["with"])
+      scan lambda tuple params ts _ = (False, [], ts)
+
+fn :: is paren lambda [RToken] Bool => Bool
+      is paren lambda (TokFatArrow:_) has_p = has_p
+      is paren lambda ((TokIdent p):rest) _
+        | is_lambda_param_ident p = is_paren_lambda rest True
+      is paren lambda (TokType:rest) _ = is_paren_lambda rest True
+      is paren lambda (TokWith:rest) _ = is_paren_lambda rest True
+      is paren lambda (TokLParen:rest) _ =
+        is_paren_lambda_tuple (scan_lambda_tuple_params rest [])
+      is paren lambda _ _ = False
+
+fn :: is paren lambda tuple (Bool, [String], [RToken]) => Bool
+      is paren lambda tuple (True, _, after_tup) = is_paren_lambda after_tup True
+      is paren lambda tuple (False, _, _) = False
+
+fn :: is paren type arrow [RToken] Bool => Bool
+      is paren type arrow (TokFatArrow:_) has_t = has_t
+      is paren type arrow ((TokIdent s):rest) _
+        | is_upper_ident s = is_paren_type_arrow rest True
+      is paren type arrow (TokComma:rest) has_t = is_paren_type_arrow rest has_t
+      is paren type arrow _ _ = False
+
+fn :: join raw comma strs [String] => String
+      join raw comma strs [] = ""
+      join raw comma strs (s:[]) = s
+      join raw comma strs (s:ss) = s + "," + (join_raw_comma_strs ss)
+
 fn :: parse lambda expr [RToken] [RExpr] => RExpr [RToken]
-      parse lambda expr (TokArrow:rest) params =
-        finish_lambda_expr params (parse_expr rest)
       parse lambda expr (TokFatArrow:rest) params =
-        finish_lambda_expr params (parse_expr rest)
+        parse_lambda_body params rest
       parse lambda expr ((TokIdent p):rest) params =
         parse_lambda_expr rest (params :: [EStr p])
       parse lambda expr (TokType:rest) params =
         parse_lambda_expr rest (params :: [EStr "type"])
       parse lambda expr (TokWith:rest) params =
         parse_lambda_expr rest (params :: [EStr "with"])
+      parse lambda expr (TokLParen:rest) params =
+        parse_lambda_tup_step params (scan_lambda_tuple_params rest [])
       parse lambda expr ts params =
+        parse_lambda_body params ts
+
+fn :: parse lambda tup step [RExpr] (Bool, [String], [RToken]) => RExpr [RToken]
+      parse lambda tup step params (True, tup_vars, after_tup) =
+        parse_lambda_expr after_tup (params :: [EStr ("(" + (join_raw_comma_strs tup_vars) + ")")])
+      parse lambda tup step params (False, _, after_tup) =
+        parse_lambda_body params after_tup
+
+fn :: parse lambda body [RExpr] [RToken] => RExpr [RToken]
+      parse lambda body params (TokNewline:rest) =
+        finish_lambda_expr params (parse_case_body ([TokNewline] :: rest))
+      parse lambda body params ts =
         finish_lambda_expr params (parse_expr ts)
+
+fn :: parse lambda paren (RExpr, [RToken]) => RExpr [RToken]
+      parse lambda paren (e, rest) =
+        clean = skip_newlines rest
+        finish_lambda_paren e rest clean
+
+fn :: finish lambda paren RExpr [RToken] [RToken] => RExpr [RToken]
+      finish lambda paren e _ (TokRParen:after_rp) = (e, after_rp)
+      finish lambda paren e orig_rest _ = parse_paren_expr (e, orig_rest)
 
 fn :: finish lambda expr [RExpr] (RExpr, [RToken]) => RExpr [RToken]
       finish lambda expr params (body_e, rest) =
@@ -1263,12 +1347,24 @@ fn :: line has arrow [RToken]       => Bool
       line has arrow (TokArrow:_)   =  True
       line has arrow (_:ts)         =  line_has_arrow ts
 
-fn :: line has fat arrow [RToken]        => Bool
-      line has fat arrow []              =  False
-      line has fat arrow (TokEof:_)      =  False
-      line has fat arrow (TokNewline:_)  =  False
-      line has fat arrow (TokFatArrow:_) =  True
-      line has fat arrow (_:ts)          =  line_has_fat_arrow ts
+fn :: line has fat arrow [RToken] => Bool
+      line has fat arrow ts = line_has_fat_arrow_depth ts 0
+
+fn :: line has fat arrow depth [RToken] Int => Bool
+      line has fat arrow depth [] _ = False
+      line has fat arrow depth (TokEof:_) _ = False
+      line has fat arrow depth (TokNewline:_) _ = False
+      line has fat arrow depth (TokLParen:ts) d = line_has_fat_arrow_depth ts (d + 1)
+      line has fat arrow depth (TokLBracket:ts) d = line_has_fat_arrow_depth ts (d + 1)
+      line has fat arrow depth (TokIdxLBracket:ts) d = line_has_fat_arrow_depth ts (d + 1)
+      line has fat arrow depth (TokRParen:ts) d
+        | d > 0 = line_has_fat_arrow_depth ts (d - 1)
+        | otherwise = line_has_fat_arrow_depth ts 0
+      line has fat arrow depth (TokRBracket:ts) d
+        | d > 0 = line_has_fat_arrow_depth ts (d - 1)
+        | otherwise = line_has_fat_arrow_depth ts 0
+      line has fat arrow depth (TokFatArrow:_) 0 = True
+      line has fat arrow depth (_:ts) d = line_has_fat_arrow_depth ts d
 
 fn :: parse int indices [RToken]           => [Int] [RToken]
       parse int indices (TokRBracket:rest) =  ([], rest)
@@ -1384,6 +1480,16 @@ fn :: wrap dpipe where stmts [RWhereBind] ([RStmt], [RToken]) => RExpr [RToken]
       wrap dpipe where stmts binds (stmts, rest) =
         (EWhere (EBlock stmts) binds, rest)
 
+fn :: has unparenthesized fat arrow [RToken] => Bool
+      has unparenthesized fat arrow [] = False
+      has unparenthesized fat arrow (TokNewline:_) = False
+      has unparenthesized fat arrow (TokEof:_) = False
+      has unparenthesized fat arrow (TokLParen:_) = False
+      has unparenthesized fat arrow (TokFatArrow:_) = True
+      has unparenthesized fat arrow ((TokIdent p):rest)
+        | is_lambda_param_ident p = has_unparenthesized_fat_arrow rest
+      has unparenthesized fat arrow _ = False
+
 fn :: parse let rhs [RToken]          => RExpr [RToken]
       parse let rhs (TokNewline:rest) =
         clean = skip_newlines rest
@@ -1392,8 +1498,11 @@ fn :: parse let rhs [RToken]          => RExpr [RToken]
         finish_guard_expr (parse_guards ([TokPipe] :: rest))
       parse let rhs (TokDoublePipe:rest) =
         finish_par_pipe (parse_par_pipe_branches ([TokDoublePipe] :: rest))
-      parse let rhs ts                =
-        check_trailing_comma_and_where (parse_expr ts)
+      parse let rhs ts
+        | has_unparenthesized_fat_arrow ts =
+          (ECall "__syntax_error__" [EStr "lambda expression must be enclosed in parentheses: '(x => expr)'"], skip_to_newline ts)
+        | otherwise =
+          check_trailing_comma_and_where (parse_expr ts)
 
 fn :: parse let rhs newline [RToken] [RToken] => RExpr [RToken]
       parse let rhs newline _ (TokPipe:rest) =
@@ -1576,6 +1685,7 @@ fn :: parse block stmts safe [RToken] => [RStmt] [RToken]
 
 fn :: parse block safe dispatch [RToken]          => [RStmt] [RToken]
       parse block safe dispatch []                =  ([], [])
+      parse block safe dispatch (TokRParen:rest)  =  ([], [TokRParen] :: rest)
       parse block safe dispatch (TokPipe:rest)    =  ([], [TokPipe] :: rest)
       parse block safe dispatch (TokPipeDot:rest) =  ([], [TokPipeDot] :: rest)
       parse block safe dispatch (TokDoublePipeDot:rest) = ([], [TokDoublePipeDot] :: rest)
@@ -2659,9 +2769,25 @@ fn :: collect expr free locals RExpr [String] [String] [String] => [String]
         collect_expr_free_locals b outer_locals shadowed acc
       collect expr free locals _ _ _ acc = acc
 
+fn :: split raw comma loop String Int Int Int [String] => [String]
+      split raw comma loop s start pos len acc
+        | pos >= len = acc :: [str_slice s start len]
+        | (str_char_at s pos) == 44 = split_raw_comma_loop s (pos + 1) (pos + 1) len (acc :: [str_slice s start pos])
+        | otherwise = split_raw_comma_loop s start (pos + 1) len acc
+
+fn :: split raw comma strs String => [String]
+      split raw comma strs "" = []
+      split raw comma strs s = split_raw_comma_loop s 0 0 (str_len s) []
+
+fn :: expand lambda param names [String] => [String]
+      expand lambda param names [] = []
+      expand lambda param names (p:ps)
+        | str_starts_with p "(" = (split_raw_comma_strs (str_slice p 1 ((str_len p) - 1))) :: (expand_lambda_param_names ps)
+        | otherwise = [p] :: (expand_lambda_param_names ps)
+
 fn :: collect lambda free locals ([String], RExpr) [String] [String] [String] => [String]
       collect lambda free locals (lparams, lbody) outer_locals shadowed acc =
-        collect_expr_free_locals lbody outer_locals (lparams :: shadowed) acc
+        collect_expr_free_locals lbody outer_locals ((expand_lambda_param_names lparams) :: shadowed) acc
 
 fn :: collect expr list free locals [RExpr] [String] [String] [String] => [String]
       collect expr list free locals [] _ _ acc = acc
@@ -2700,9 +2826,30 @@ fn :: make poly type vars Int Int => [String]
         | idx >= count = []
         | otherwise = [char_from_code (65 + (idx % 26))] :: (make_poly_type_vars (idx + 1) count)
 
+fn :: make lambda param ty vars [String] Int => [String] Int
+      make lambda param ty vars [] idx = ([], idx)
+      make lambda param ty vars (p:ps) idx
+        | str_starts_with p "(" =
+          tvs = split_raw_comma_strs (str_slice p 1 ((str_len p) - 1))
+          k = str_list_count tvs
+          tup_ty = "(" + (join_comma_ty_strs (make_poly_type_vars idx (idx + k))) + ")"
+          prepend_ty_var_idx tup_ty (make_lambda_param_ty_vars ps (idx + k))
+        | otherwise =
+          v = char_from_code (65 + (idx % 26))
+          prepend_ty_var_idx v (make_lambda_param_ty_vars ps (idx + 1))
+
+fn :: prepend ty var idx String ([String], Int) => [String] Int
+      prepend ty var idx s (xs, next_idx) = ([s] :: xs, next_idx)
+
+fn :: var to pat String => RPattern
+      var to pat "_" = PatWild
+      var to pat v
+        | str_starts_with v "(" = PatTuple (vars_to_pat_list (split_raw_comma_strs (str_slice v 1 ((str_len v) - 1))))
+        | otherwise = PatVar v
+
 fn :: vars to pat list [String] => [RPattern]
       vars to pat list [] = []
-      vars to pat list (v:vs) = [PatVar v] :: (vars_to_pat_list vs)
+      vars to pat list (v:vs) = [var_to_pat v] :: (vars_to_pat_list vs)
 
 fn :: vars to expr list [String] => [RExpr]
       vars to expr list [] = []
@@ -2712,19 +2859,28 @@ fn :: build lambda call expr String [String] => RExpr
       build lambda call expr lname [] = EVar lname
       build lambda call expr lname caps = ECall lname (vars_to_expr_list caps)
 
+fn :: ensure non empty lambda params [String] => [String]
+      ensure non empty lambda params [] = ["_"]
+      ensure non empty lambda params ps = ps
+
 fn :: lift lambda node ([String], RExpr) [String] Int [RFnDef] => RExpr Int [RFnDef]
       lift lambda node (lparams, lbody) locals cnt lifted =
-        lifted_body = lift_expr_lambdas lbody (locals :: lparams) (cnt + 1) lifted
+        bound_names = expand_lambda_param_names lparams
+        lifted_body = lift_expr_lambdas lbody (locals :: bound_names) (cnt + 1) lifted
         finish_lift_lambda lparams locals cnt lifted_body
 
 fn :: finish lift lambda [String] [String] Int (RExpr, Int, [RFnDef]) => RExpr Int [RFnDef]
       finish lift lambda lparams locals my_id (body1, cnt1, lifted1) =
-        caps = collect_expr_free_locals body1 locals lparams []
-        all_params = caps :: lparams
-        p_count = str_list_count all_params
+        bound_names = expand_lambda_param_names lparams
+        caps = collect_expr_free_locals body1 locals bound_names []
+        eff_params = ensure_non_empty_lambda_params lparams
+        all_params = caps :: eff_params
         lname = "__rg_lambda_" + (int_to_str my_id)
-        ty_vars = make_poly_type_vars 0 p_count
-        ret_var = char_from_code (65 + (p_count % 26))
+        finish_lift_lambda_fn lname caps all_params body1 cnt1 lifted1 (make_lambda_param_ty_vars all_params 0)
+
+fn :: finish lift lambda fn String [String] [String] RExpr Int [RFnDef] ([String], Int) => RExpr Int [RFnDef]
+      finish lift lambda fn lname caps all_params body1 cnt1 lifted1 (ty_vars, next_idx) =
+        ret_var = char_from_code (65 + (next_idx % 26))
         lfn = FnDef lname ty_vars ret_var [FnCase (vars_to_pat_list all_params) [] body1]
         (build_lambda_call_expr lname caps, cnt1, lifted1 :: [lfn])
 
@@ -3858,7 +4014,7 @@ fn :: collect lambda param strs [RExpr] [String] => [String]
       collect lambda param strs [] acc = acc
       collect lambda param strs (_:[]) acc = acc
       collect lambda param strs ((EStr p):rest) acc =
-        collect_lambda_param_strs rest ([p] :: acc)
+        collect_lambda_param_strs rest ((expand_lambda_param_names [p]) :: acc)
       collect lambda param strs (_:rest) acc =
         collect_lambda_param_strs rest acc
 

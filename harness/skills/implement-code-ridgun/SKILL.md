@@ -1,14 +1,14 @@
 ---
 name: implement-code-ridgun
-description: Implement, refactor or review Ridgun (.rg) code and build.rg definitions using the exact Ridgun v0.9.20 grammar, type system, user-defined generic types (type Result T E, type Page T), lexical closures (\x -> expr), module namespaces (module ::, import ... as, mod.Type/Ctor/fn), Native Agent Model (agent, send ... to, receive from, try receive from, stop), RMM1/RMM2 deterministic memory rules, parallel || DAGs, with timeout quotas, PAL primitives, and pure-Ridgun stable/ridgunc ELF64 toolchain; use for any Ridgun (.rg) change.
+description: Implement, refactor or review Ridgun (.rg) code and build.rg definitions using the exact Ridgun v0.9.21 grammar, type system, user-defined generic types (type Result T E, type Page T), lexical closures ((x => expr), (acc x => expr)), module namespaces (module ::, import ... as, mod.Type/Ctor/fn), Native Agent Model (agent, send ... to, receive from, try receive from, stop), RMM1/RMM2 deterministic memory rules, parallel || DAGs, with timeout quotas, PAL primitives, and pure-Ridgun stable/ridgunc ELF64 toolchain; use for any Ridgun (.rg) change.
 ---
-# implement-code-ridgun (`v0.9.20`)
+# implement-code-ridgun (`v0.9.21`)
 
 Reading budget: `harness/skills/implement-code-ridgun/references/cheatsheet.rg` (or `docs/lang/spec.md` when a construct is unfamiliar), `build.rg`, and the target `.rg` files under `src/main/ridgun/` or `src/test/ridgun/`.
 
 ---
 
-## 1. Project & Architecture Overview (`v0.9.20`)
+## 1. Project & Architecture Overview (`v0.9.21`)
 - **100% Pure Ridgun (Zero Rust / Zero `rustc`)**: Both `ridgunc` (`src/main/ridgun/ridgunc/main.rg`) and `stable` (`src/main/ridgun/stable/main.rg`) are written 100% in Ridgun and emit standalone, statically linked Linux ELF64 executables directly to disk via `elf64.rg`, `x86_64.rg` (`EM_X86_64 = 62`), and `arm64.rg` (`EM_AARCH64 = 183` for Raspberry Pi).
 - **Project Layout**:
   - `build.rg`: Pure-Ridgun project manifest (`fn :: project name => String`, `project version`, `main entry`, `source dir`, `test dir`, `target dir`).
@@ -32,7 +32,7 @@ Reading budget: `harness/skills/implement-code-ridgun/references/cheatsheet.rg` 
 | Guard clause without `=` (`clamp x lo hi \| x < lo = lo`) | `clamp x lo hi =` followed by `\| x < lo = lo` | Every clause and guard branch requires `=` (`FR-COMP-003`) |
 | Reassigning `x = x + 1` after `x = 0` | `mut x = 0` then `x = x + 1` | Local bindings are immutable unless declared with `mut` |
 | `par_map f xs` / `par_filter p xs` | `\|\|map f xs` / `\|\|filter p xs` | Parallel higher-order combinators use the `\|\|` prefix (`FR-COMP-001`) |
-| `(x) => x * 2` or `fn(x) { x * 2 }` | `\x -> x * 2` or `map (\x -> x + offset) xs` | Anonymous closures use `\params -> expr` and capture outer immutable bindings (`FR-COMP-013`) |
+| `\x -> x * 2`, `(() => expr)`, or unparenthesized `x => x * 2` | `(x => x * 2)`, `(=> expr)`, `(acc x => acc + x)`, `((a b) => a + b)` | Anonymous closures use parenthesized `(params => expr)` (`FR-COMP-013`) |
 | `Result<T, E>` or `Page[T]` | `type Result T E = Ok T \| Err E` and `type Page T = items: [T], total: Int` | User-defined generic types list uppercase type parameters after the type name (`FR-COMP-013`) |
 | `(a, b) = compute_pair x` in local block | `res = compute pair x` then `a = fst res` (or destructure in function clause `helper (a, b) = ...`) | Local `=` binds a single variable name (`x = ...` or `mut x = ...`) |
 | `Some x` in function argument pattern without parens | `unwrap (Some x) = x` | Constructor patterns with arguments must be parenthesized |
@@ -121,16 +121,27 @@ Every `=` (in `fn ::`, `op ::`, local bindings `x =` / `mut x =`, and guard bran
           acc
   ```
 
-### 3.4 First-Class Named Functions, Lexical Closures (`\x -> expr`) & Parallel Higher-Order Combinators (`FR-COMP-001`, `FR-COMP-013`)
-- Function types use `(T1 T2 => Ret)` inside signatures: `fn :: apply twice (Int => Int) Int => Int`.
-- Pass named top-level functions by bare single-word or space-separated multi-word name (`map double val xs`, `filter is even xs`, `fold add pair 0 xs`) or pass **anonymous lexical closures** (`\x -> expr`, `\acc x -> expr`):
+### 3.4 First-Class Named Functions, Lexical Closures (`(x => expr)`, `(acc x => expr)`) & Parallel Higher-Order Combinators (`FR-COMP-001`, `FR-COMP-013`)
+- Function types use `(T1 T2 => Ret)` (or `(=> Ret)` for 0-parameter functions) inside signatures: `fn :: apply twice (Int => Int) Int => Int`.
+- Pass named top-level functions by bare single-word or space-separated multi-word name (`map double val xs`, `filter is even xs`, `fold add pair 0 xs`) or pass **parenthesized anonymous lexical closures** (`(x => expr)`, `(acc x => expr)`, `(=> expr)`, `((a b) => expr)`):
   ```ridgun
   offset = 10
   bonus  = 3
-  r1 = map (\x -> x + offset) [1, 2, 3]
-  r2 = filter (\x -> x >= bonus) [1, 2, 3, 4]
-  r3 = fold (\acc x -> acc + x + bonus) 0 [1, 2, 3]
+  r1 = map (x => x + offset) [1, 2, 3]
+  r2 = filter (x => x >= bonus) [1, 2, 3, 4]
+  r3 = fold (acc x => acc + x + bonus) 0 [1, 2, 3]
+  r4 = map ((a b) => a + b + offset) [(1, 2), (3, 4)]
+  r5 = map (x =>
+    step = x * 2
+    step + offset
+  ) [1, 2, 3]
   ```
+- **5 Canonical Lambda Rules**:
+  1. **Mandatory parentheses**: always write `(x => expr)` (unparenthesized `x => expr` is a compile error).
+  2. **Zero-parameter lambdas**: write `(=> expr)` and type `(=> Type)`, never `(() => expr)`.
+  3. **Multiple parameters vs. tuple**: `(a b => expr)` takes 2 parameters; `((a b) => expr)` destructures 1 tuple parameter.
+  4. **Multi-line bodies**: put a newline after `=>` and indent the block before the closing `)`.
+  5. **Uppercase vs. lowercase**: `(Conn => Conn)` is a function type; `(conn => conn)` is a lambda value.
 - **Sequential vs Parallel Combinators**:
   - Sequential (left-to-right, deterministic side-effects): `map f xs`, `filter p xs`, `fold f init xs`.
   - Multicore parallel (work-stealing worker threads): **`||map f xs`** and **`||filter p xs`**.

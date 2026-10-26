@@ -405,6 +405,9 @@ fn :: page sum two GenericPage Int => Int
 fn :: with session check String (String => String) => String
       with session check tok handler = handler tok
 
+fn :: run lazy thunk (=> Int) => Int
+      run lazy thunk thunk = thunk ()
+
 fn :: main => ()
       main =
         echo "=== Core Language, ADTs, Mixfix, Variadics & Higher-Order Ops ==="
@@ -538,9 +541,16 @@ fn :: main => ()
         offset = 10
         bonus = 3
         prefix = "sess:"
-        assert equals (apply twice (\x -> x + offset) 5) 25
-        assert equals (with session check "alice" (\u -> prefix + u)) "sess:alice"
-        assert equals (map (\x -> x + offset) [1, 2, 3]) [11, 12, 13]
-        assert equals (filter (\x -> x >= bonus) [1, 2, 3, 4]) [3, 4]
-        assert equals (fold (\acc x -> acc + x + bonus) 0 [1, 2, 3]) 15
+        assert equals (apply twice (x => x + offset) 5) 25
+        assert equals (with session check "alice" (u => prefix + u)) "sess:alice"
+        assert equals (map (x => x + offset) [1, 2, 3]) [11, 12, 13]
+        assert equals (filter (x => x >= bonus) [1, 2, 3, 4]) [3, 4]
+        assert equals (fold (acc x => acc + x + bonus) 0 [1, 2, 3]) 15
+        assert equals (run lazy thunk (=> offset + bonus)) 13
+        assert equals (map ((a b) => a + b + offset) [(1, 2), (3, 4)]) [13, 17]
+        multi_res = map (x =>
+          doubled = x * 2
+          doubled + offset
+        ) [1, 2, 3]
+        assert equals multi_res [12, 14, 16]
         echo "=== All core language tests passed ==="

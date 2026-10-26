@@ -224,4 +224,4 @@ fn :: atera arrakasta (Emaitza A String) A => A
       atera arrakasta (Hutsegitea _)     d =  d
 ```
 
-**07. kapituluan** zure prozesadorearen nukleo guztiak aldi berean lanean jarriko ditugu izerdi tanta bat ere bota gabe: **goi-mailako funtzioak (`map`, `||map`, `filter`, `||filter`, `fold`), itxitura lexikoak (`\x -> expr`), `||` grafo paraleloak `->` geziekin eta kanal konkurrenteak**.
+**07. kapituluan** zure prozesadorearen nukleo guztiak aldi berean lanean jarriko ditugu izerdi tanta bat ere bota gabe: **goi-mailako funtzioak (`map`, `||map`, `filter`, `||filter`, `fold`), itxitura lexikoak (`(x => expr)`), `||` grafo paraleloak `->` geziekin eta kanal konkurrenteak**.

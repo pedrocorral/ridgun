@@ -543,14 +543,28 @@ type Pair A B   = fst: A, snd: B
 - Constructors (`Ok 42`, `Ok "hello"`, `Page [1, 2] 2`), pattern matching, field accessors (`items p`, `total p`), and functional record updates (`p with total = 10`) instantiate fresh type variables at each call site.
 - `type Option A = Some A | None` is pre-registered as a built-in polymorphic ADT when not already declared by the user, so `try receive from ag` returns `Some v` or `None` without requiring boilerplate declarations (`FR-COMP-013`).
 
-#### Anonymous Functions & Lexical Closures (`\x -> expr`, `\x y -> expr` — `FR-COMP-013`)
+#### Anonymous Functions & Lexical Closures (`(x => expr)`, `(a b => expr)` — `FR-COMP-013`)
 
-Anonymous functions (lambdas) are written `\x -> expr` or `\x y -> expr` (typically parenthesized when passed as an argument, e.g. `map (\x -> x + offset) xs`) and may capture local variables or parameters from their enclosing lexical scope:
+Anonymous functions (lambdas) are written inside parentheses with space-separated parameters followed by `=>` and the body expression (`(x => expr)` or `(a b => expr)`, e.g. `map (x => x + offset) xs`, `fold (acc x => acc + x) 0 xs`) and may capture local variables or parameters from their enclosing lexical scope:
 
 ```ridgun
 fn :: add offset Int [Int] => [Int]
-      add offset k   xs    =  map (\x -> x + k) xs
+      add offset k   xs    =  map (x => x + k) xs
 ```
+
+Five canonical rules govern anonymous functions:
+
+1. **Mandatory parentheses**: Every lambda must be enclosed in parentheses `(... => ...)`. Unparenthesized `x => expr` (such as `f = x => x + 1`) is a compile-time error (`lambda expression must be enclosed in parentheses: '(x => expr)'`).
+2. **Zero-parameter lambdas (`(=> expr)`)**: Ridgun forbids `()` before `=>` in function signatures (`fn :: main => ()`). Consistently, a zero-parameter lambda is written `(=> expr)` (invoked as `thunk ()`), and its type in signatures is `(=> Type)`. Writing `(() => expr)` or `(() => Type)` is a compile-time error.
+3. **Multiple parameters vs. tuple destructuring (`(a b => expr)` vs. `((a b) => expr)`)**: `(a b => expr)` is a 2-parameter lambda (such as `fold (acc x => acc + x) 0 xs`), whereas `((a b) => expr)` is a 1-parameter lambda that destructures a tuple (`map ((a b) => a + b) [(1, 2), (3, 4)]`). Mixing them up produces a dedicated type error explaining the difference.
+4. **Multi-line lambda bodies**: When `=>` is at the end of the line, the indented block underneath forms a multi-statement (or `|` guard) body closed by `)`:
+   ```ridgun
+   map (x =>
+     doubled = x * 2
+     doubled + offset
+   ) [1, 2, 3]
+   ```
+5. **Uppercase types vs. lowercase values**: `(Conn => Conn)` is a function type and `(conn => conn)` is a lambda value. Writing uppercase types `(Conn => Conn)` in an expression or lowercase parameters `(conn => conn)` in a `fn ::` signature is rejected with a clear compile-time error.
 
 Captured bindings are lifted automatically into partial-application closures managed by `RMM1`/`RMM2`.
 

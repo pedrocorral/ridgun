@@ -76,19 +76,34 @@ run_twice (A => A) A => A
 run_twice f        x =  f (f x)
 ```
 
-### 4. Lexical Closures and Anonymous Functions (`\x -> expr`, `\acc x -> expr`)
-When you want to pass a short function on the fly or capture local variables from the enclosing scope (such as an offset, a prefix, or an active session) without declaring a separate top-level helper, use a **lexical closure** with **`\`** and **`->`**:
+### 4. Lexical Closures and Anonymous Functions (`(x => expr)`, `(acc x => expr)`)
+When you want to pass a short function on the fly or capture local variables from the enclosing scope (such as an offset, a prefix, or an active session) without declaring a separate top-level helper, use a parenthesized **lexical closure** with **`=>`**:
 
 ```ridgun
 fn :: process with session => [Int]
       process with session =
         offset   = 10
         bonus    = 3
-        added    = map (\x -> x + offset) [1, 2, 3]
-        filtered = filter (\x -> x >= bonus) [1, 2, 3, 4]
-        total    = fold (\acc x -> acc + x + bonus) 0 [1, 2, 3]
-        added :: filtered :: [total]
+        added    = map (x => x + offset) [1, 2, 3]
+        filtered = filter (x => x >= bonus) [1, 2, 3, 4]
+        total    = fold (acc x => acc + x + bonus) 0 [1, 2, 3]
+        pairs    = map ((a b) => a + b + offset) [(1, 2), (3, 4)]
+        added :: filtered :: [total] :: pairs
 ```
+
+Five rules keep lambdas clean and unambiguous:
+- **Mandatory parentheses**: every lambda is enclosed in parentheses `(... => ...)`.
+- **Zero-parameter lambdas (`(=> expr)`)**: just as `fn :: main => ()` forbids `()` before `=>`, a zero-parameter lambda is written `(=> expr)` (and its type is `(=> Type)`), never `(() => expr)`.
+- **Multiple parameters vs. tuple (`(a b => ...)` vs. `((a b) => ...)`)**: `(acc x => ...)` takes two separate parameters, whereas `((a b) => ...)` takes a single tuple and destructures it.
+- **Multi-line bodies**: placing a newline after `=>` lets you write an indented multi-step block before the closing `)`:
+  ```ridgun
+  doubled = map (x =>
+    step = x * 2
+    step + offset
+  ) [1, 2, 3]
+  ```
+- **Uppercase vs. lowercase**: `(Conn => Conn)` is a function type (uppercase initial) and `(conn => conn)` is a lambda value (lowercase initial).
+
 Captured bindings (`offset`, `bonus`) are automatically lifted with deterministic `RMM1`/`RMM2` reference management—zero memory leaks and zero garbage-collector pauses.
 
 ---

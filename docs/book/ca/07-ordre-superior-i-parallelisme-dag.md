@@ -76,19 +76,34 @@ executar_dues_vegades (A => A) A => A
 executar_dues_vegades f        x =  f (f x)
 ```
 
-### 4. Clausures lèxiques i funcions anònimes (`\x -> expr`, `\acc x -> expr`)
-Quan vols passar una funció curta al vol o capturar variables locals del teu àmbit actual (com un desplaçament, un prefix o una sessió activa) sense declarar una funció global auxiliar, fas servir una **clausura lèxica** amb **`\`** i **`->`**:
+### 4. Clausures lèxiques i funcions anònimes (`(x => expr)`, `(acc x => expr)`)
+Quan vols passar una funció curta al vol o capturar variables locals del teu àmbit actual (com un desplaçament, un prefix o una sessió activa) sense declarar una funció global auxiliar, fas servir una **clausura lèxica** entre parèntesis amb **`=>`**:
 
 ```ridgun
 fn :: processar amb sessio => [Int]
       processar amb sessio =
         base      = 10
         bo        = 3
-        sumats    = map (\x -> x + base) [1, 2, 3]
-        filtrats  = filter (\x -> x >= bo) [1, 2, 3, 4]
-        total     = fold (\acc x -> acc + x + bo) 0 [1, 2, 3]
-        sumats :: filtrats :: [total]
+        sumats    = map (x => x + base) [1, 2, 3]
+        filtrats  = filter (x => x >= bo) [1, 2, 3, 4]
+        total     = fold (acc x => acc + x + bo) 0 [1, 2, 3]
+        parells   = map ((a b) => a + b + base) [(1, 2), (3, 4)]
+        sumats :: filtrats :: [total] :: parells
 ```
+
+Cinc regles mantenen les lambdes netes i sense ambigüitat:
+- **Parèntesis obligatoris**: tota lambda va sempre entre parèntesis `(... => ...)`.
+- **Lambda sense paràmetres (`(=> expr)`)**: igual que `fn :: main => ()` no porta `()` abans de `=>`, una lambda sense paràmetres s'escriu `(=> expr)` (i el seu tipus és `(=> Tipus)`), mai `(() => expr)`.
+- **Diversos paràmetres enfront de tupla (`(a b => ...)` vs. `((a b) => ...)`)**: `(acc x => ...)` rep dos paràmetres separats; `((a b) => ...)` rep una sola tupla i la desestructura.
+- **Cos de diverses línies**: si poses un salt de línia després de `=>`, pots escriure un bloc sagnat de diversos passos abans del `)` de tancament:
+  ```ridgun
+  dobles = map (x =>
+    pas = x * 2
+    pas + base
+  ) [1, 2, 3]
+  ```
+- **Majúscules enfront de minúscules**: `(Conn => Conn)` és un tipus de funció (inicial majúscula) i `(conn => conn)` és un valor lambda (inicial minúscula).
+
 Les variables capturades (`base`, `bo`) s'empaqueten automàticament amb gestió determinista de memòria (`RMM1`/`RMM2`), sense fuites i sense pauses de recol·lector de brossa.
 
 ---

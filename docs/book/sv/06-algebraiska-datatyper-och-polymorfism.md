@@ -224,4 +224,4 @@ fn :: packa upp ok (Result A String) A => A
       packa upp ok (Err _)           d =  d
 ```
 
-I **Kapitel 07** ska vi sätta alla kärnor i din processor i arbete samtidigt utan att fälla en enda svettdroppe: **högre ordningens funktioner (`map`, `||map`, `filter`, `||filter`, `fold`), lexikala closures (`\x -> expr`), parallella `||`-grafer med `->` och samtidiga kanaler**.
+I **Kapitel 07** ska vi sätta alla kärnor i din processor i arbete samtidigt utan att fälla en enda svettdroppe: **högre ordningens funktioner (`map`, `||map`, `filter`, `||filter`, `fold`), lexikala closures (`(x => expr)`), parallella `||`-grafer med `->` och samtidiga kanaler**.
