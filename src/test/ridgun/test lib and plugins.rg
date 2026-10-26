@@ -452,5 +452,26 @@ fn :: main => ()
         rc_lam_multi = shell exec ("\"" + ridgunc_bin + "\" check " + lam_bad_multi + " > target/test_lib_work/lam_multi.txt 2>&1")
         assert true (rc_lam_multi != 0)
         assert ok (str contains (read file "target/test_lib_work/lam_multi.txt") "use '(a b => ...)' for multiple parameters")
+        -- 8. RG-095 regression test: multi-file module (`module :: modlib` across `modlib.rg` and `modlib_extra.rg`)
+        --    imported by an app that defines its own `type Changeset` (both source and `.rglib` bundle)
+        _ = write file "target/test_lib_work/modlib_extra.rg" "module :: modlib\n\nfn :: trim field String => String\n      trim field s = s\n"
+        _ = write file "target/test_lib_work/modlib.rg" "module :: modlib\nimport modlib_extra\n\ntype Changeset = cs_field: String\n\nfn :: validate required String => Changeset\n      validate required s = Changeset (trim_field s)\n"
+        _ = write file "target/test_lib_work/modapp.rg" "import modlib\n\ntype Changeset = app_a: String, app_b: String\n\nfn :: app cs val Changeset => String\n      app cs val c = (app_a c) + (app_b c)\n\nfn :: lib cs val modlib.Changeset => String\n      lib cs val c = modlib.cs_field c\n\nfn :: main => ()\n      main =\n        lc = modlib.validate_required \"ok\"\n        ac = Changeset \"1\" \"2\"\n        echo ((lib_cs_val lc) + \":\" + (app_cs_val ac))\n"
+        rc_modapp = shell exec ("\"" + ridgunc_bin + "\" run --strict target/test_lib_work/modapp.rg > target/test_lib_work/modapp_out.txt 2>&1")
+        assert int equals rc_modapp 0 "RG-095 multi-file module source run"
+        assert str eq (str trim (read file "target/test_lib_work/modapp_out.txt")) "ok:12" "RG-095 multi-file module output"
+        rc_modlib_bundle = shell exec ("\"" + ridgunc_bin + "\" build --lib --strict target/test_lib_work/modlib.rg -o target/test_lib_work/modlib.rglib >/dev/null 2>&1")
+        assert int equals rc_modlib_bundle 0 "RG-095 multi-file .rglib build"
+        _ = shell exec "rm -f target/test_lib_work/modlib.rg target/test_lib_work/modlib_extra.rg"
+        rc_modapp_bundle = shell exec ("\"" + ridgunc_bin + "\" run --strict target/test_lib_work/modapp.rg > target/test_lib_work/modapp_bundle_out.txt 2>&1")
+        assert int equals rc_modapp_bundle 0 "RG-095 multi-file .rglib bundle run"
+        assert str eq (str trim (read file "target/test_lib_work/modapp_bundle_out.txt")) "ok:12" "RG-095 multi-file .rglib bundle output"
+        -- 9. RG-094 regression test: Argon2id OWASP (m=19456, t=2, p=1) must execute in < 1,100 ms with LLVM opt -O2
+        _ = write file "target/test_lib_work/bench_a2.rg" "import argon2id\n\nfn :: report a2 Int String => String\n      report a2 elapsed h\n        | elapsed < 1100 and (str_len h) > 32 = \"argon2id_ok\"\n        | otherwise = \"argon2id_slow\"\n\nfn :: main => ()\n      main =\n        t0 = sys_time_ms\n        res = argon2id_hash \"correct horse battery staple\" \"saltsaltsaltsalt\" 19456 2 1\n        t1 = sys_time_ms\n        echo (report_a2 (t1 - t0) res)\n"
+        rc_a2_build = shell exec ("\"" + ridgunc_bin + "\" build target/test_lib_work/bench_a2.rg -o target/test_lib_work/bench_a2 >/dev/null 2>&1")
+        assert int equals rc_a2_build 0 "RG-094 Argon2id build"
+        rc_a2_run = shell exec "target/test_lib_work/bench_a2 > target/test_lib_work/bench_a2_out.txt 2>&1"
+        assert int equals rc_a2_run 0 "RG-094 Argon2id run"
+        assert str eq (str trim (read file "target/test_lib_work/bench_a2_out.txt")) "argon2id_ok" "RG-094 Argon2id < 1100 ms"
         _ = shell exec "rm -rf target/test_lib_work"
         echo "=== All library compilation, stable plugin & PAL timeout tests passed ==="

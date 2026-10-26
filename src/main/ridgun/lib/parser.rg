@@ -3247,7 +3247,7 @@ fn :: norm spec path String => String
 
 fn :: read local rg module raw String String => String
       read local rg module raw pdir spec =
-        try_read_candidate_paths [pdir + "/" + spec + ".rg", pdir + "/" + spec + "/lib.rg", pdir + "/" + spec + "/mod.rg", pdir + "/../" + spec + ".rg", pdir + "/../lib/" + spec + ".rg", pdir + "/../../main/ridgun/lib/" + spec + ".rg", pdir + "/../../main/ridgun/" + spec + ".rg", "src/main/ridgun/lib/" + spec + ".rg", "src/main/ridgun/" + spec + ".rg", "src/main/ridgun/" + spec + "/lib.rg", spec + ".rg"]
+        try_read_candidate_paths [pdir + "/" + spec + ".rg", pdir + "/" + spec + "/lib.rg", pdir + "/" + spec + "/mod.rg", pdir + "/../" + spec + ".rg", pdir + "/../../" + spec + ".rg", pdir + "/../../../" + spec + ".rg", pdir + "/../lib/" + spec + ".rg", pdir + "/../../main/ridgun/lib/" + spec + ".rg", pdir + "/../../main/ridgun/" + spec + ".rg", "src/main/ridgun/lib/" + spec + ".rg", "src/main/ridgun/" + spec + ".rg", "src/main/ridgun/" + spec + "/lib.rg", spec + ".rg"]
 
 fn :: read local rg module String String => String
       read local rg module pdir spec =
@@ -3530,8 +3530,8 @@ fn :: append own rg local String String String String String [String] => String 
           append_own_rg_after_local clean_spec mname alias res
 
 fn :: append own rg import pair String String (String, String) String [String] => String [String]
-      append own rg import pair pdir s (clean_spec, alias) acc seen
-        | (str_in_seen_list clean_spec seen) OR (str_contains s ("module :: " + clean_spec)) =
+      append own rg import pair pdir _ (clean_spec, alias) acc seen
+        | str_in_seen_list clean_spec seen =
           (acc + (mod_alias_marker alias (mod_name_of_spec clean_spec)), seen)
         | has_same_dir_rglib pdir clean_spec = (acc + (format_deferred_import clean_spec alias), [clean_spec] :: seen)
         | otherwise =
@@ -3568,7 +3568,8 @@ fn :: load rg own source raw String String => String
       load rg own source raw _ "" = ""
       load rg own source raw input_path raw_file =
         pdir = rglib_dir_of input_path 0 (str_len input_path) (0 - 1)
-        fst_str_seen (scan_own_rg_lines pdir raw_file 0 (str_len raw_file) 0 0 "" [])
+        root_spec = mod_name_of_spec input_path
+        fst_str_seen (scan_own_rg_lines pdir raw_file 0 (str_len raw_file) 0 0 "" [root_spec])
 
 fn :: load rg own source String => String
       load rg own source input_path =
@@ -3600,11 +3601,15 @@ fn :: pop mod stack [String] => [String]
       pop mod stack []       =  []
       pop mod stack (_:ms)   =  ms
 
-fn :: set explicit mod String => [String]
-      set explicit mod "main" =  []
-      set explicit mod "root" =  []
-      set explicit mod ""     =  []
-      set explicit mod mname  =  [mname]
+fn :: set explicit mod String [String] => [String]
+      set explicit mod "main" []     =  []
+      set explicit mod "main" (_:ms) =  [""] :: ms
+      set explicit mod "root" []     =  []
+      set explicit mod "root" (_:ms) =  [""] :: ms
+      set explicit mod ""     []     =  []
+      set explicit mod ""     (_:ms) =  [""] :: ms
+      set explicit mod mname  []     =  [mname]
+      set explicit mod mname  (_:ms) =  [mname] :: ms
 
 fn :: parse inline import alias [RToken] [RModAlias] => [RModAlias]
       parse inline import alias ((TokIdent spec):(TokIdent "as"):(TokIdent al):_) aliases =
@@ -4258,8 +4263,8 @@ fn :: parse items mod [RToken] [RScopedFn] [RScopedType] [RModAlias] [String] Bo
         parse_items_mod (skip_to_newline rest) s_fns s_tys aliases mod_stack in_lib
       parse items mod ((TokIdent "RGC1"):rest) s_fns s_tys aliases mod_stack in_lib =
         parse_items_mod (skip_to_newline rest) s_fns s_tys aliases mod_stack in_lib
-      parse items mod ((TokIdent "module"):TokColonColon:(TokIdent mname):rest) s_fns s_tys aliases _ in_lib =
-        parse_items_mod (skip_to_newline rest) s_fns s_tys aliases (set_explicit_mod mname) in_lib
+      parse items mod ((TokIdent "module"):TokColonColon:(TokIdent mname):rest) s_fns s_tys aliases mod_stack in_lib =
+        parse_items_mod (skip_to_newline rest) s_fns s_tys aliases (set_explicit_mod mname mod_stack) in_lib
       parse items mod (TokImport:rest)   s_fns s_tys aliases mod_stack in_lib =
         parse_items_mod (skip_to_newline rest) s_fns s_tys (parse_inline_import_alias rest aliases) mod_stack in_lib
       parse items mod (TokFn:rest)       s_fns s_tys aliases mod_stack in_lib =

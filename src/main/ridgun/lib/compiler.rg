@@ -1000,6 +1000,35 @@ fn :: lookup fn arity [RFnEntry] String => Int
         | k == target = arity
         | otherwise = lookup_fn_arity rest target
 
+fn :: is heavy call name String               => Bool
+      is heavy call name "sys_sleep_ms"       =  True
+      is heavy call name "poll_fd_ms"         =  True
+      is heavy call name "wait_fd"            =  True
+      is heavy call name "sys_poll"           =  True
+      is heavy call name "sys_read"           =  True
+      is heavy call name "sys_read_fd"        =  True
+      is heavy call name "sys_write"          =  True
+      is heavy call name "sys_write_fd"       =  True
+      is heavy call name "sys_syscall6"       =  True
+      is heavy call name "sys_call"           =  True
+      is heavy call name "sys_waitpid"        =  True
+      is heavy call name "sys_pipe"           =  True
+      is heavy call name "shell_exec"         =  True
+      is heavy call name "shell_capture"      =  True
+      is heavy call name "posix_read"         =  True
+      is heavy call name "posix_write"        =  True
+      is heavy call name "posix_pipe"         =  True
+      is heavy call name "socket_accept"      =  True
+      is heavy call name "socket_recv"        =  True
+      is heavy call name "socket_send"        =  True
+      is heavy call name "socket_connect"     =  True
+      is heavy call name "send_to"            =  True
+      is heavy call name "receive_from"       =  True
+      is heavy call name "try_receive_from"   =  True
+      is heavy call name "ask_to"             =  True
+      is heavy call name "ask"                =  True
+      is heavy call name _                    =  False
+
 fn :: expr has heavy ops RExpr             => Bool
       expr has heavy ops (ETensor _)       =  True
       expr has heavy ops (EEinsum _ _)     =  True
@@ -1008,14 +1037,16 @@ fn :: expr has heavy ops RExpr             => Bool
       expr has heavy ops (EBin _ l r)      =  (expr_has_heavy_ops l) OR (expr_has_heavy_ops r)
       expr has heavy ops (ENot inner)      =  expr_has_heavy_ops inner
       expr has heavy ops (EOut inner)      =  expr_has_heavy_ops inner
-      expr has heavy ops (ECall "sys_sleep_ms" _) = True
-      expr has heavy ops (ECall _ args)    =  expr_list_has_heavy_ops args
+      expr has heavy ops (ECall fname args)
+        | is_heavy_call_name fname = True
+        | otherwise = expr_list_has_heavy_ops args
       expr has heavy ops (EList elems)     =  expr_list_has_heavy_ops elems
       expr has heavy ops (ETuple elems)    =  expr_list_has_heavy_ops elems
       expr has heavy ops (EBlock stmts)    =  stmt_list_has_heavy_ops stmts
       expr has heavy ops (EGuard guards)   =  guard_list_has_heavy_ops guards
       expr has heavy ops (EWhere body binds) = (expr_has_heavy_ops body) OR (where_list_has_heavy_ops binds)
       expr has heavy ops (EParPipe branches) = expr_list_has_heavy_ops branches
+      expr has heavy ops (EWithCtx "__rg_timeout_ms__" _ _) = True
       expr has heavy ops (EWithCtx _ v b)  =  (expr_has_heavy_ops v) OR (expr_has_heavy_ops b)
       expr has heavy ops (EWithRegion _ b) =  expr_has_heavy_ops b
       expr has heavy ops _                 =  False
@@ -1070,13 +1101,30 @@ fn :: collect direct heavy fns [RFnDef] => [String]
           [name] :: (collect_direct_heavy_fns fs)
         | otherwise = collect_direct_heavy_fns fs
 
-fn :: collect caller heavy fns [RFnDef] [String] => [String]
-      collect caller heavy fns [] heavy = heavy
-      collect caller heavy fns ((FnDef name _ _ cases):fs) heavy
-        | str_in_list name heavy = collect_caller_heavy_fns fs heavy
-        | any_str_in_list (collect_refs_cases cases []) heavy =
-      collect caller heavy fns fs (heavy :: [name])
-        | otherwise = collect_caller_heavy_fns fs heavy
+fn :: build non heavy ref pairs [RFnDef] [String] => [(String, [String])]
+      build non heavy ref pairs [] _ = []
+      build non heavy ref pairs ((FnDef name _ _ cases):fs) direct_heavy
+        | str_in_list name direct_heavy = build_non_heavy_ref_pairs fs direct_heavy
+        | otherwise = [(name, collect_refs_cases cases [])] :: (build_non_heavy_ref_pairs fs direct_heavy)
+
+fn :: expand heavy pass [(String, [String])] [String] [(String, [String])] Bool => [String] [(String, [String])] Bool
+      expand heavy pass [] heavy rem changed = (heavy, rem, changed)
+      expand heavy pass ((name, refs):rest) heavy rem changed
+        | any_str_in_list refs heavy =
+          expand_heavy_pass rest (heavy :: [name]) rem True
+        | otherwise =
+          expand_heavy_pass rest heavy (rem :: [(name, refs)]) changed
+
+fn :: expand heavy fixpoint [(String, [String])] [String] Int => [String]
+      expand heavy fixpoint _ heavy 0 = heavy
+      expand heavy fixpoint [] heavy _ = heavy
+      expand heavy fixpoint pairs heavy rounds =
+        expand_heavy_step (expand_heavy_pass pairs heavy [] False) rounds
+
+fn :: expand heavy step ([String], [(String, [String])], Bool) Int => [String]
+      expand heavy step (heavy1, _, False) _ = heavy1
+      expand heavy step (heavy1, rem1, True) rounds =
+        expand_heavy_fixpoint rem1 heavy1 (rounds - 1)
 
 fn :: build heavy fn entries [String] [RFnEntry] => [RFnEntry]
       build heavy fn entries [] acc = acc
@@ -1084,14 +1132,11 @@ fn :: build heavy fn entries [String] [RFnEntry] => [RFnEntry]
         build_heavy_fn_entries hs (acc :: [FnEntry ("__heavy__" + h) 1 (0 - 1)])
 
 fn :: attach heavy fn entries [RFnDef] [String] [RFnEntry] => [RFnEntry]
-      attach heavy fn entries fns fn_names fn_tbl
-        | (list_str_len fn_names) <= 200 =
-          direct_heavy = collect_direct_heavy_fns fns
-          all_heavy = collect_caller_heavy_fns fns direct_heavy
-          build_heavy_fn_entries all_heavy fn_tbl
-        | otherwise =
-          direct_heavy = collect_direct_heavy_fns fns
-          build_heavy_fn_entries direct_heavy fn_tbl
+      attach heavy fn entries fns _ fn_tbl =
+        direct_heavy = collect_direct_heavy_fns fns
+        ref_pairs = build_non_heavy_ref_pairs fns direct_heavy
+        all_heavy = expand_heavy_fixpoint ref_pairs direct_heavy 8
+        build_heavy_fn_entries all_heavy fn_tbl
 
 -- ── Local Variable Collection & RMM2 Liveness Helpers ────────
 

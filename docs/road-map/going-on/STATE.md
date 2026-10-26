@@ -1,17 +1,23 @@
 ---
-updated: 2026-10-26T21:29
+updated: 2026-10-26T22:15
 active_task: none
-agent_runtime: gemini
+agent_runtime: antigravity
 ---
 # Session state — read this first when resuming
 
 ## Where we are (3 lines max)
-- Completed `TASK-0032` (`FR-COMP-013`): canonicalized Ridgun lexical closures/lambdas to `(x => expr)` and `(a b => expr)` with the 5 closure rules (`(=> expr)` zero-arg lambda, `((a b) => expr)` tuple destructuring, multi-line bodies, mandatory parentheses, and uppercase/lowercase function type vs value diagnostics) across the compiler (`0.9.21`), tests, requirement specs, all 7 editions of The Ridgun Book, and agent skills/instructions.
+- `TASK-0033` is complete: fixed `RG-093` (blocking I/O agent waits overlap in ~1,002 ms), `RG-094` (Argon2id `m=19456, t=2, p=1` in 0.79 s and PBKDF2 600k in 0.38 s via LLVM `opt -O2`), and `RG-095` (multi-file `module ::` namespace stack preservation), while keeping `RG-069` at 0 KB leak.
+- Added automated regression tests for `RG-069`, `RG-093`, `RG-094`, and `RG-095` in `src/test/ridgun/test parallel and tensors.rg` and `src/test/ridgun/test lib and plugins.rg`.
+
 ## Files to load for the active task (nothing else)
-- None (no active task).
+- `docs/road-map/completed/2026-10/TASK-0033-fix-rg-093-blocking-agent-waits-rg-094-argon2id-ll.md`
+
 ## Last verified facts (tests green? migrations applied? env?)
-- Self-hosted `ridgunc` and `stable` (`0.9.21`) in `bin/` pass `./bin/stable check` (14 modules, 0 errors), `./bin/stable test` (6/6), and `aix docs validate` (0 errors).
+- `bin/ridgunc` and `bin/stable` (v0.9.21) bootstrapped in 2 stages and installed.
+- `test parallel and tensors.rg`, `test lib and plugins.rg`, and `tests/run.py --no-toolchain agents` all pass with 0 errors.
+
 ## Immediate next action
-- Await next user task.
+- Pick the next task from `docs/road-map/pending/next/INDEX.md` or await user instructions.
+
 ## Blockers / questions for the user
 - None.

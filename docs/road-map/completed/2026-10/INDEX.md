@@ -12,3 +12,4 @@ Tasks completed this month, newest last.
 | `TASK-0025-fix-acceptance-suite-issues-rg-081-rg-085-rg-087-r.md` | Fix acceptance suite issues (`RG-081`, `RG-085`, `RG-087`, `RG-089`, `RG-090`) and add `sys_pipe` / `sys_waitpid` PAL built-ins | `FR-COMP-007`, `FR-COMP-009`, `FR-VM-001` |
 | `TASK-0030-module-namespaces-qualified-types-constructors-fun.md` | Module Namespaces, Qualified Types/Constructors/Functions, and Aliased Imports (`FR-COMP-012`) | `FR-COMP-005`, `FR-COMP-006`, `FR-COMP-012` |
 | `TASK-0032-canonicalize-lambda-syntax-to-x-expr-and-a-b-expr.md` | Canonicalize lambda syntax to `(x => expr)` and `(a b => expr)` | `FR-COMP-013` |
+| `TASK-0033-fix-rg-093-blocking-agent-waits-rg-094-argon2id-ll.md` | Fix `RG-093` blocking agent waits, `RG-094` Argon2id LLVM `opt -O2`, and `RG-095` multi-file module namespaces | `FR-COMP-009`, `FR-COMP-012` |

@@ -424,13 +424,14 @@ fn :: build llvm x8664 executable RNativeProg String     => Int
         pid_s = int to str (sys getpid)
         tmp_base = "/tmp/__rg_llvm_" + pid_s
         ll_path = tmp_base + ".ll"
+        bc_path = tmp_base + ".bc"
         obj_path = tmp_base + ".o"
         rt_path = "/tmp/__rg_llvm_cache_v0_9_21_s2.rt"
         lds_path = "/tmp/__rg_llvm_cache_v0_9_21_s2.lds"
         _ = ensure cached rt files rt_path lds_path
         ll_text = emit llvm ir nprog
         _ = write file ll_path ll_text
-        cmd = "/usr/bin/llc -O1 -filetype=obj \"" + ll_path + "\" -o \"" + obj_path + "\" && /usr/bin/ld -n --no-warn-rwx-segments -T \"" + lds_path + "\" -b binary \"" + rt_path + "\" -b elf64-x86-64 \"" + obj_path + "\" -o \"" + output_bin + "\""
+        cmd = "/usr/bin/opt -O2 \"" + ll_path + "\" -o \"" + bc_path + "\" && /usr/bin/llc -O2 -filetype=obj \"" + bc_path + "\" -o \"" + obj_path + "\" && /usr/bin/ld -n --no-warn-rwx-segments -T \"" + lds_path + "\" -b binary \"" + rt_path + "\" -b elf64-x86-64 \"" + obj_path + "\" -o \"" + output_bin + "\""
         res = shell exec cmd
         finish llvm link res output_bin tmp_base
 
@@ -439,12 +440,13 @@ fn :: build llvm x8664 so library RNativeProg String    => Int
         pid_s = int to str (sys getpid)
         tmp_base = "/tmp/__rg_llvm_so_" + pid_s
         ll_path = tmp_base + ".ll"
+        bc_path = tmp_base + ".bc"
         obj_path = tmp_base + ".o"
         rt_path = "/tmp/__rg_llvm_cache_v0_9_21_s2.rt"
         lds_path = "/tmp/__rg_llvm_cache_v0_9_21_s2.lds"
         _ = ensure cached rt files rt_path lds_path
         ll_text = emit llvm ir nprog
         _ = write file ll_path ll_text
-        cmd = "/usr/bin/llc -O1 -relocation-model=pic -filetype=obj \"" + ll_path + "\" -o \"" + obj_path + "\" && /usr/bin/ld -shared -n --no-warn-rwx-segments -T \"" + lds_path + "\" -b binary \"" + rt_path + "\" -b elf64-x86-64 \"" + obj_path + "\" -o \"" + output_so + "\""
+        cmd = "/usr/bin/opt -O2 \"" + ll_path + "\" -o \"" + bc_path + "\" && /usr/bin/llc -O2 -relocation-model=pic -filetype=obj \"" + bc_path + "\" -o \"" + obj_path + "\" && /usr/bin/ld -shared -n --no-warn-rwx-segments -T \"" + lds_path + "\" -b binary \"" + rt_path + "\" -b elf64-x86-64 \"" + obj_path + "\" -o \"" + output_so + "\""
         res = shell exec cmd
         finish llvm link res output_so tmp_base

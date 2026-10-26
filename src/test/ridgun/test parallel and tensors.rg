@@ -103,6 +103,36 @@ fn :: dormir agente Int => String
         sys sleep ms ms
         "despierto-{ms}"
 
+fn :: fst pipe fd (Int Int) => Int
+      fst pipe fd (a, _)    =  a
+
+fn :: snd pipe fd (Int Int) => Int
+      snd pipe fd (_, b)    =  b
+
+fn :: esperar pipe bloqueante Int => Int
+      esperar pipe bloqueante ms =
+        fds = sys pipe
+        rfd = fst pipe fd fds
+        wfd = snd pipe fd fds
+        rc = sys poll rfd 1 ms
+        _ = sys close rfd
+        _ = sys close wfd
+        rc
+
+fn :: delegar espera pipe Int => Int
+      delegar espera pipe ms  =  esperar pipe bloqueante ms
+
+fn :: eco ligero Int => Int
+      eco ligero x   =  x + 1
+
+fn :: bombear agente (Agent Int Int) Int Int => Int
+      bombear agente ag i n
+        | i >= n = 0
+        | otherwise =
+          send i to ag
+          r = receive from ag
+          bombear agente ag (i + (r - i)) n
+
 type OptionInt = Some Int | None
 
 fn :: unwrap opt int OptionInt => Int
@@ -340,6 +370,30 @@ fn :: main => ()
         assert true ((t_fib1 - t_fib0) < 20)
         stop ag_fib
         assert equals (agent alive ag_fib) False
+        -- RG-093 regression test: two agents blocking on empty pipes via poll_fd_ms must overlap in ~300 ms (< 480 ms), not 600 ms
+        ag_poll1 = agent (delegar espera pipe)
+        ag_poll2 = agent (delegar espera pipe)
+        tp0 = sys time ms
+        send 300 to ag_poll1
+        send 300 to ag_poll2
+        rp1 = receive from ag_poll1
+        rp2 = receive from ag_poll2
+        tp1 = sys time ms
+        poll_overlap_ms = tp1 - tp0
+        echo "  [bench] 2 x 300 ms blocking poll_fd_ms agents elapsed:" poll_overlap_ms "ms"
+        assert equals rp1 0
+        assert equals rp2 0
+        assert true (poll_overlap_ms >= 280 and poll_overlap_ms < 480)
+        stop ag_poll1
+        stop ag_poll2
+        -- RG-069 regression test: 5,000 round-trip messages on a stateless agent must leak 0 CMM blocks
+        ag_noleak = agent (eco ligero)
+        _ = bombear agente ag_noleak 0 10
+        live_ag0 = cmm_live_blocks
+        _ = bombear agente ag_noleak 0 5000
+        live_ag1 = cmm_live_blocks
+        assert equals live_ag1 live_ag0
+        stop ag_noleak
         echo "=== FR-COMP-010: Typed Tensors, Subscript Views, Axis Map & Bitwise Ops ==="
         assert equals (1 shl 8) 256
         assert equals (256 shr 4) 16
