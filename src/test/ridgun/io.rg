@@ -33,5 +33,5 @@ fn :: main => ()
       main =
         hello
         multi
-        show_sum 3 4
+        show sum 3 4
         formatted

@@ -7,7 +7,7 @@
 fn :: fail test String => ()
       fail test msg    =
         echo "[FAIL] {msg}"
-        sys_exit 1
+        sys exit 1
 
 -- ── Non-Exiting Predicate Helpers ────────────────────────────
 

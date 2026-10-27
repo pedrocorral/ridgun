@@ -6,4 +6,4 @@ fn :: add_one Int => Int
       add_one x =  x + 1
 
 fn :: main => ()
-      main =  echo (int_to_str (add_one 1))
+      main =  echo (int to str (add_one 1))

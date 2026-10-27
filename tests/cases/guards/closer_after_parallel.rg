@@ -12,8 +12,8 @@ fn :: compute risk score Int => Int
 
 fn :: charge order Int => Int
       charge order payment =
-        || fetch_base_fee payment   -> base_fee
-        || compute_risk_score payment -> risk_score ||.
+        || fetch base fee payment   -> base_fee
+        || compute risk score payment -> risk_score ||.
         surcharge =
           | risk_score > 80 = 50
           | otherwise       = 0 |.
@@ -21,5 +21,5 @@ fn :: charge order Int => Int
 
 fn :: main => ()
       main =
-        _ = echo (int_to_str (charge_order 100))
-        echo (int_to_str (charge_order 50))
+        echo (int to str (charge order 100))
+        echo (int to str (charge order 50))

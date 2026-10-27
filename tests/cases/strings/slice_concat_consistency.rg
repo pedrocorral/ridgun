@@ -8,9 +8,9 @@
 
 fn :: halves ok String Int => Bool
       halves ok s k =
-        | k > (str_len s)                                                          = True
-        | ((str_slice s 0 k) + (str_slice s k (str_len s))) != s                   = False
-        | otherwise                                                                = halves_ok s (k + 1)
+        | k > (str len s)                                                          = True
+        | ((str slice s 0 k) + (str slice s k (str len s))) != s                   = False
+        | otherwise                                                                = halves ok s (k + 1)
 
 fn :: report String Bool => String
       report label True  =  label + " ok"
@@ -18,6 +18,6 @@ fn :: report String Bool => String
 
 fn :: main => ()
       main =
-        _ = echo (report "ascii" (halves_ok "hello, world" 0))
-        _ = echo (report "utf8" (halves_ok "aéb€c😀d" 0))
-        echo (report "whole" ((str_slice "aéb" 0 (str_len "aéb")) == "aéb"))
+        echo (report "ascii" (halves ok "hello, world" 0))
+        echo (report "utf8" (halves ok "aéb€c😀d" 0))
+        echo (report "whole" ((str slice "aéb" 0 (str len "aéb")) == "aéb"))

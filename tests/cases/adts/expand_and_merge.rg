@@ -20,7 +20,7 @@ fn :: format err Error                => String
 
 fn :: main => ()
       main =
-        _ = echo (format_err (IoError "disk"))
-        _ = echo (format_err (Timeout 5))
-        _ = echo (format_err (AuthError "bob"))
-        echo (format_err (DbError 3 "down"))
+        echo (format err (IoError "disk"))
+        echo (format err (Timeout 5))
+        echo (format err (AuthError "bob"))
+        echo (format err (DbError 3 "down"))

@@ -8,4 +8,4 @@ fn :: loop dag => Int
         || a + 1 -> b
 
 fn :: main => ()
-      main =  echo (int_to_str loop_dag)
+      main =  echo (int to str (loop dag))

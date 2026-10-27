@@ -12,15 +12,15 @@ fn :: make point Int => Point
       make point n =  Point n (n * 2)
 
 fn :: wait for (Agent Int Point) Int => String
-      wait for ag tries =  wait_result ag tries (try receive from ag)
+      wait for ag tries =  wait result ag tries (try receive from ag)
 
 fn :: wait result (Agent Int Point) Int OptionPoint => String
-      wait result _  _     (Some p) =  (int_to_str (px p)) + " " + (int_to_str (py p))
+      wait result _  _     (Some p) =  (int to str (px p)) + " " + (int to str (py p))
       wait result ag tries None
         | tries <= 0 = "no answer after 2 s"
         | otherwise  =
-            _ = sys_sleep_ms 10
-            wait_for ag (tries - 1)
+            sys sleep ms 10
+            wait for ag (tries - 1)
 
 fn :: describe OptionPoint => String
       describe (Some _) =  "already there"
@@ -29,6 +29,6 @@ fn :: describe OptionPoint => String
 fn :: main => ()
       main =
         ag = agent (make point)
-        _ = echo (describe (try receive from ag))
+        echo (describe (try receive from ag))
         send 3 to ag
-        echo (wait_for ag 200)
+        echo (wait for ag 200)

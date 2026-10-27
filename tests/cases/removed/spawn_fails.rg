@@ -8,4 +8,4 @@ fn :: work Int => Int
 fn :: main => ()
       main =
         h = spawn (work 1)
-        echo (int_to_str (join h))
+        echo (int to str (join h))

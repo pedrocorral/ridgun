@@ -22,6 +22,6 @@ fn :: compose (Int => Int) (Int => Int) Int => Int
 
 fn :: main => ()
       main =
-        _ = echo (int_to_str (apply double 6))
-        _ = echo ("apply twice: " + (int_to_str (twice inc 5)))
-        echo ("composed: " + (int_to_str (compose inc double 7)))
+        echo (int to str (apply double 6))
+        echo ("apply twice: " + (int to str (twice inc 5)))
+        echo ("composed: " + (int to str (compose inc double 7)))

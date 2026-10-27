@@ -20,10 +20,10 @@ fn :: bool text Bool => String
 
 fn :: main => ()
       main =
-        data = bytes_from_list (upto 0 256 [])
-        _ = write_file "bytes.bin" data
-        back = read_file "bytes.bin"
-        _ = echo ((int_to_str (str_len back)) + " bytes back")
-        _ = echo ("same bytes: " + (bool_text (back == data)))
-        _ = write_file "text.txt" "aé€"
-        echo ("text: " + (read_file "text.txt"))
+        data = bytes from list (upto 0 256 [])
+        write file "bytes.bin" data
+        back = read file "bytes.bin"
+        echo ((int to str (str len back)) + " bytes back")
+        echo ("same bytes: " + (bool text (back == data)))
+        write file "text.txt" "aé€"
+        echo ("text: " + (read file "text.txt"))

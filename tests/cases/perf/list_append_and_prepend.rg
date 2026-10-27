@@ -9,16 +9,16 @@
 fn :: at end Int [Int] => [Int]
       at end n acc =
         | n == 0    = acc
-        | otherwise = at_end (n - 1) (acc :: [n])
+        | otherwise = at end (n - 1) (acc :: [n])
 
 fn :: at front Int [Int] => [Int]
       at front n acc =
         | n == 0    = acc
-        | otherwise = at_front (n - 1) ([n] :: acc)
+        | otherwise = at front (n - 1) ([n] :: acc)
 
 fn :: count [Int] Int => Int
       count []     k =  k
       count (_:xs) k =  count xs (k + 1)
 
 fn :: main => ()
-      main =  echo ((int_to_str (count (at_end 20000 []) 0)) + " " + (int_to_str (count (at_front 20000 []) 0)))
+      main =  echo ((int to str (count (at end 20000 []) 0)) + " " + (int to str (count (at front 20000 []) 0)))

@@ -21,9 +21,9 @@ fn :: bool text Bool => String
 
 fn :: main => ()
       main =
-        t0 = sys_monotonic_ms
+        t0 = sys monotonic ms
         serial = (fib 25) + (fib 25) + (fib 25) + (fib 25) + (fib 25) + (fib 25) + (fib 25) + (fib 25)
-        t1 = sys_monotonic_ms
+        t1 = sys monotonic ms
         a1 = agent (fib)
         a2 = agent (fib)
         a3 = agent (fib)
@@ -41,6 +41,6 @@ fn :: main => ()
         send 25 to a7
         send 25 to a8
         par = (receive from a1) + (receive from a2) + (receive from a3) + (receive from a4) + (receive from a5) + (receive from a6) + (receive from a7) + (receive from a8)
-        t2 = sys_monotonic_ms
-        _ = echo ("same results: " + (bool_text (par == serial)))
-        echo ("parallel not slower: " + (bool_text ((t2 - t1) <= (t1 - t0) + 20)))
+        t2 = sys monotonic ms
+        echo ("same results: " + (bool text (par == serial)))
+        echo ("parallel not slower: " + (bool text ((t2 - t1) <= (t1 - t0) + 20)))

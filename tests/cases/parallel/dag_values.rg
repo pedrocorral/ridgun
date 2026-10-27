@@ -26,9 +26,9 @@ fn :: both metrics Int => Int Int
         || fact x
 
 fn :: show pair (Int Int) => String
-      show pair (a, b) =  (int_to_str a) + " " + (int_to_str b)
+      show pair (a, b) =  (int to str a) + " " + (int to str b)
 
 fn :: main => ()
       main =
-        _ = echo (int_to_str parallel_dag_calc)
-        echo (show_pair (both_metrics 10))
+        echo (int to str (parallel dag calc))
+        echo (show pair (both metrics 10))

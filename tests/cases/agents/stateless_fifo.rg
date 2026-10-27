@@ -19,11 +19,11 @@ fn :: main => ()
         send 3 to sq
         send 4 to sq
         send 5 to sq
-        _ = echo (int_to_str (receive from sq))
-        _ = echo (int_to_str (receive from sq))
-        _ = echo (int_to_str (receive from sq))
+        echo (int to str (receive from sq))
+        echo (int to str (receive from sq))
+        echo (int to str (receive from sq))
         ad = agent (add)
         send 3 4 to ad
         send 5 7 to ad
-        _ = echo (int_to_str (receive from ad))
-        echo (int_to_str (receive from ad))
+        echo (int to str (receive from ad))
+        echo (int to str (receive from ad))

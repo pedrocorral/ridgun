@@ -8,8 +8,8 @@
 fn :: main => ()
       main =
         mut x = 1
-        _ = echo (int_to_str x)
+        echo (int to str x)
         x = x + 2
-        _ = echo (int_to_str x)
+        echo (int to str x)
         x = x * 2
-        echo ("done " + (int_to_str x))
+        echo ("done " + (int to str x))

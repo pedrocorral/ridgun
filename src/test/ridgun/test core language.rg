@@ -79,20 +79,20 @@ fn :: elegir Bool [Int] [Int] => [Int]
 -- @tests FR-COMP-002
 fn :: cmm trace elegir Bool => Int Int Int Int Int Int
       cmm trace elegir cond =
-        base_live = cmm_live_blocks
-        base_freed = cmm_cond_freed
-        base_spared = cmm_cond_spared
+        base_live = cmm live blocks
+        base_freed = cmm cond freed
+        base_spared = cmm cond spared
         a = [10, 20, 30]
         b = [40, 50, 60]
-        vivos_ab = cmm_live_blocks - base_live
+        vivos_ab = (cmm live blocks) - base_live
         c = elegir cond a b
-        vivos_tras_elegir = cmm_live_blocks - base_live
+        vivos_tras_elegir = (cmm live blocks) - base_live
         list len a
-        vivos_tras_usar_a = cmm_live_blocks - base_live
+        vivos_tras_usar_a = (cmm live blocks) - base_live
         list len c
-        vivos_tras_usar_c = cmm_live_blocks - base_live
-        delta_freed = cmm_cond_freed - base_freed
-        delta_spared = cmm_cond_spared - base_spared
+        vivos_tras_usar_c = (cmm live blocks) - base_live
+        delta_freed = (cmm cond freed) - base_freed
+        delta_spared = (cmm cond spared) - base_spared
         (vivos_ab, vivos_tras_elegir, vivos_tras_usar_a, vivos_tras_usar_c, delta_freed, delta_spared)
 
 fn :: cmm check ptr identity Bool => Bool Bool
@@ -106,30 +106,30 @@ fn :: cmm check ptr identity Bool => Bool Bool
 
 fn :: cmm trace cascada Bool Bool => Int Int Int
       cmm trace cascada c1   c2   =
-        base = cmm_live_blocks
+        base = cmm live blocks
         a = [1, 2]
         b = [3, 4]
         d = [5, 6]
         c = elegir c1 a b
         e = elegir c2 c d
-        vivos_tras_cascada = cmm_live_blocks - base
+        vivos_tras_cascada = (cmm live blocks) - base
         list len a
-        vivos_tras_a = cmm_live_blocks - base
+        vivos_tras_a = (cmm live blocks) - base
         list len e
-        vivos_tras_e = cmm_live_blocks - base
+        vivos_tras_e = (cmm live blocks) - base
         (vivos_tras_cascada, vivos_tras_a, vivos_tras_e)
 
 fn :: rmm2 trace nested => Int Int Int
       rmm2 trace nested =
-        base = cmm_live_blocks
+        base = cmm live blocks
         a = [10, 20]
         b = [30, 40]
         xs = [a, b]
-        vivos_inicial = cmm_live_blocks - base
+        vivos_inicial = (cmm live blocks) - base
         list len xs
-        vivos_tras_xs = cmm_live_blocks - base
+        vivos_tras_xs = (cmm live blocks) - base
         list len a
-        vivos_final = cmm_live_blocks - base
+        vivos_final = (cmm live blocks) - base
         (vivos_inicial, vivos_tras_xs, vivos_final)
 
 -- @tests FR-COMP-003
@@ -189,14 +189,14 @@ fn :: parallel dag bottom Int Int => Int
 -- 4. Mutable local variables (`mut x = ...`) with `RMM2` heap rebinding
 fn :: accum and rebind Int => Int Int Int
       accum and rebind n   =
-        base = cmm_live_blocks
+        base = cmm live blocks
         mut acc = n
         acc = acc + 10
         acc = acc * 2
         mut items = [1, 2, 3]
-        live_before_rebind = cmm_live_blocks - base
+        live_before_rebind = (cmm live blocks) - base
         items = [10, 20, 30, 40]
-        live_after_rebind = cmm_live_blocks - base
+        live_after_rebind = (cmm live blocks) - base
         total = acc + (list len items)
         (total, live_before_rebind, live_after_rebind)
 
@@ -290,10 +290,10 @@ fn :: tco list accum Int [Int] => [Int]
 
 fn :: rmm2 rebind self trace => Int Int
       rmm2 rebind self trace =
-        base = cmm_live_blocks
+        base = cmm live blocks
         mut xs = [100, 200, 300]
         xs = elegir True xs [400, 500]
-        live_mid = cmm_live_blocks - base
+        live_mid = (cmm live blocks) - base
         len_xs = list len xs
         (len_xs, live_mid)
 
@@ -395,7 +395,7 @@ fn :: unbox gen GenericBox A => A
 fn :: page first str (GenericPage String) => String
       page first str p =
         xs = page_items p
-        (int_to_str (page_total p)) + ":" + (head or xs "")
+        (int to str (page_total p)) + ":" + (head or xs "")
 
 fn :: page sum two GenericPage Int => Int
       page sum two p =
@@ -596,7 +596,7 @@ fn :: main => ()
         parse header packet "v0.9.9" -> (+ _ _ +) -> combine code msg -> masked_pkt
         assert equals masked_pkt "200:OK"
         -- Agent stage in pipeline + explicit unit discard (-> ())
-        ag_pipe = agent pipe_agent_worker 100
+        ag_pipe = agent (pipe agent worker) 100
         [5, 10, 15] -> sum int list -> send to ag_pipe
         receive from ag_pipe -> ag_first
         assert equals ag_first 130

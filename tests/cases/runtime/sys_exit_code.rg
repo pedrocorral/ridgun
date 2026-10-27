@@ -6,6 +6,6 @@
 
 fn :: main => ()
       main =
-        _ = echo "before"
-        _ = sys_exit 3
+        echo "before"
+        sys exit 3
         echo "after"

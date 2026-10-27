@@ -33,6 +33,6 @@ fn :: show pair String String => ()
 fn :: main => ()
       main =
         greet "world"
-        show_pair "foo" "bar"
+        show pair "foo" "bar"
         echo "literal: {{braces}}"
         echo 'raw: {no interpolation}'

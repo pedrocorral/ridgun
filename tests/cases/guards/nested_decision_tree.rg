@@ -34,7 +34,7 @@ fn :: evaluate payment Account Customer Payment => String
                     | tenure customer > 10       = "RISK_COMMITTEE_REVIEW"
                     | otherwise                  = "REJECTED_ENTERPRISE_LIMIT" |.
                 | country payment != "US" =
-                    | is_whitelisted (country payment) = "APPROVED_ENTERPRISE_INTL"
+                    | is whitelisted (country payment) = "APPROVED_ENTERPRISE_INTL"
                     | otherwise                        = "HELD_COMPLIANCE_INTL" |.
                 | otherwise = "APPROVED_ENTERPRISE_STANDARD" |.
             | tier customer == "VIP" =
@@ -55,17 +55,17 @@ fn :: main => ()
         ent_new = Customer "ENTERPRISE" 2
         vip = Customer "VIP" 1
         retail = Customer "RETAIL" 1
-        _ = echo (evaluate_payment (Account True) ent (Payment 100 "US" False False 0))
-        _ = echo (evaluate_payment open ent (Payment 0 "US" False False 0))
-        _ = echo (evaluate_payment open ent (Payment 60000 "US" True False 0))
-        _ = echo (evaluate_payment open ent (Payment 60000 "US" False False 0))
-        _ = echo (evaluate_payment open ent_new (Payment 60000 "US" False False 0))
-        _ = echo (evaluate_payment open ent (Payment 100 "CA" False False 0))
-        _ = echo (evaluate_payment open ent (Payment 100 "FR" False False 0))
-        _ = echo (evaluate_payment open ent (Payment 100 "US" False False 0))
-        _ = echo (evaluate_payment open vip (Payment 20000 "US" False True 0))
-        _ = echo (evaluate_payment open vip (Payment 20000 "US" False False 0))
-        _ = echo (evaluate_payment open vip (Payment 500 "US" False False 0))
-        _ = echo (evaluate_payment open retail (Payment 2000 "US" False True 10))
-        _ = echo (evaluate_payment open retail (Payment 2000 "US" False True 50))
-        echo (evaluate_payment open retail (Payment 10 "US" False False 0))
+        echo (evaluate payment (Account True) ent (Payment 100 "US" False False 0))
+        echo (evaluate payment open ent (Payment 0 "US" False False 0))
+        echo (evaluate payment open ent (Payment 60000 "US" True False 0))
+        echo (evaluate payment open ent (Payment 60000 "US" False False 0))
+        echo (evaluate payment open ent_new (Payment 60000 "US" False False 0))
+        echo (evaluate payment open ent (Payment 100 "CA" False False 0))
+        echo (evaluate payment open ent (Payment 100 "FR" False False 0))
+        echo (evaluate payment open ent (Payment 100 "US" False False 0))
+        echo (evaluate payment open vip (Payment 20000 "US" False True 0))
+        echo (evaluate payment open vip (Payment 20000 "US" False False 0))
+        echo (evaluate payment open vip (Payment 500 "US" False False 0))
+        echo (evaluate payment open retail (Payment 2000 "US" False True 10))
+        echo (evaluate payment open retail (Payment 2000 "US" False True 50))
+        echo (evaluate payment open retail (Payment 10 "US" False False 0))

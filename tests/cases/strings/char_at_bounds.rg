@@ -8,7 +8,7 @@
 
 fn :: main => ()
       main =
-        _ = echo (int_to_str (str_char_at "abc" 0))
-        _ = echo (int_to_str (str_char_at "abc" (0 - 1)))
-        _ = echo (int_to_str (str_char_at "abc" 3))
-        echo (int_to_str (str_char_at "abc" 100))
+        echo (int to str (str char at "abc" 0))
+        echo (int to str (str char at "abc" (0 - 1)))
+        echo (int to str (str char at "abc" 3))
+        echo (int to str (str char at "abc" 100))

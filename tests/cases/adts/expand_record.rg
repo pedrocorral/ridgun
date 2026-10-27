@@ -8,7 +8,7 @@ type ServerConfig = host: String, port: Int
 expand type ServerConfig = tls: Bool, max_conns: Int
 
 fn :: describe ServerConfig => String
-      describe c =  (host c) + ":" + (int_to_str (port c)) + " tls=" + (bool_text (tls c)) + " conns=" + (int_to_str (max_conns c))
+      describe c =  (host c) + ":" + (int to str (port c)) + " tls=" + (bool text (tls c)) + " conns=" + (int to str (max_conns c))
 
 fn :: bool text Bool => String
       bool text True  =  "True"
@@ -17,6 +17,6 @@ fn :: bool text Bool => String
 fn :: main => ()
       main =
         c = ServerConfig "example.org" 443 True 100
-        _ = echo (describe c)
+        echo (describe c)
         c2 = c with port = 8443, max_conns = 200
         echo (describe c2)

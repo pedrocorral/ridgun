@@ -15,6 +15,6 @@ fn :: compute invoice Int Bool => Int
 
 fn :: main => ()
       main =
-        _ = echo (int_to_str (compute_invoice 100 True))
-        _ = echo (int_to_str (compute_invoice 100 False))
-        echo (int_to_str (compute_invoice 40 False))
+        echo (int to str (compute invoice 100 True))
+        echo (int to str (compute invoice 100 False))
+        echo (int to str (compute invoice 40 False))

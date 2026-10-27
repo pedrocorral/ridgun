@@ -11,7 +11,7 @@
 type Person = name: String, age: Int
 
 fn :: show Person => String
-      show p =  (name p) + " " + (int_to_str (age p))
+      show p =  (name p) + " " + (int to str (age p))
 
 fn :: older Person => Person
       older p =
@@ -25,7 +25,7 @@ fn :: main => ()
       main =
         a = Person "ana" 30
         b = older a
-        _ = echo (show a)
-        _ = echo (show b)
-        _ = echo (show (b with name = "eva"))
+        echo (show a)
+        echo (show b)
+        echo (show (b with name = "eva"))
         echo (show (renamed a "bea" 40))

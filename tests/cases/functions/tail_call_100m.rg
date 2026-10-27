@@ -7,7 +7,7 @@
 
 fn :: sum fast loop Int Int => Int
       sum fast loop 0 acc =  acc
-      sum fast loop n acc =  sum_fast_loop (n - 1) (acc + n)
+      sum fast loop n acc =  sum fast loop (n - 1) (acc + n)
 
 fn :: main => ()
-      main =  echo (int_to_str (sum_fast_loop 100000000 0))
+      main =  echo (int to str (sum fast loop 100000000 0))

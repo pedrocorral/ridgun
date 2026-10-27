@@ -16,4 +16,4 @@ fn :: pump (Agent Int Int) Int Int => Int
 fn :: main => ()
       main =
         ag = agent (identity)
-        echo (int_to_str (pump ag 1 0))
+        echo (int to str (pump ag 1 0))

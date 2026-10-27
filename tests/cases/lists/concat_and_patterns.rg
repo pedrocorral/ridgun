@@ -13,16 +13,16 @@
 
 fn :: show ints [Int] => String
       show ints []     =  "[]"
-      show ints (x:xs) =  "[" + (int_to_str x) + (show rest xs) + "]"
+      show ints (x:xs) =  "[" + (int to str x) + (show rest xs) + "]"
 
 fn :: show rest [Int] => String
       show rest []     =  ""
-      show rest (x:xs) =  ", " + (int_to_str x) + (show rest xs)
+      show rest (x:xs) =  ", " + (int to str x) + (show rest xs)
 
 fn :: describe [Int] => String
       describe []         =  "empty"
-      describe (x:[])     =  "one " + (int_to_str x)
-      describe (a:b:rest) =  "two or more " + (int_to_str a) + " " + (int_to_str b) + " rest " + (show_ints rest)
+      describe (x:[])     =  "one " + (int to str x)
+      describe (a:b:rest) =  "two or more " + (int to str a) + " " + (int to str b) + " rest " + (show ints rest)
 
 fn :: command [String] => String
       command ("copy":src:dst:[]) =  "copy " + src + " " + dst
@@ -30,12 +30,12 @@ fn :: command [String] => String
 
 fn :: main => ()
       main =
-        _ = echo (show_ints ([1, 2] :: [3, 4]))
-        _ = echo (show_ints ([1, 2] :: []))
-        _ = echo (show_ints ([] :: [3, 4]))
-        _ = echo (show_ints ([] :: []))
-        _ = echo (describe [])
-        _ = echo (describe [7])
-        _ = echo (describe [1, 2, 3])
-        _ = echo (command ["copy", "a.txt", "b.txt"])
+        echo (show ints ([1, 2] :: [3, 4]))
+        echo (show ints ([1, 2] :: []))
+        echo (show ints ([] :: [3, 4]))
+        echo (show ints ([] :: []))
+        echo (describe [])
+        echo (describe [7])
+        echo (describe [1, 2, 3])
+        echo (command ["copy", "a.txt", "b.txt"])
         echo (command ["copy", "a.txt"])

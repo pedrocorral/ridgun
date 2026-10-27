@@ -22,6 +22,6 @@ fn :: local sum => Int
 
 fn :: main => ()
       main =
-        _ = echo (int_to_str (bump 10))
-        _ = echo (int_to_str local_sum)
-        echo (int_to_str total)
+        echo (int to str (bump 10))
+        echo (int to str (local sum))
+        echo (int to str total)

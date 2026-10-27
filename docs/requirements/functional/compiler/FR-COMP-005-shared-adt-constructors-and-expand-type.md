@@ -53,9 +53,11 @@ The Ridgun language and `ridgunc` compiler SHALL support constructor name reuse 
      expand type Something = Bool
      ```
    - Values of a type-name variant MAY be passed either directly as bare values (`describe "hello"`, `describe 42`, `describe True`) or via explicit type-constructor application (`describe (String "hello")`, `describe (Int 42)`), and pattern matching SHALL support both literal patterns (`describe "admin"`, `describe 0`) and typed patterns (`describe (String s)`, `describe (Int n)`, `describe (Bool b)`).
-5. **Natural-Language Spaces in `fn ::` Declarations, Built-in Calls, and Filenames**:
-   - `fn ::` declarations and clauses SHALL accept multi-word function names separated by spaces (e.g., `fn :: describe something Something => String`, `fn :: project name => String`, `fn :: sum variadic Int... => Int`) in addition to single-word/underscore names.
-   - Standard built-in functions and `test` assertions SHALL be callable with spaces (`assert equals a b`, `assert true cond`, `str len s`, `str slice s a b`, `read file path`, `write file path text`, `cmm live blocks`, etc.) while keeping underscore forms backward-compatible.
+5. **Natural-Language Spaces in `fn ::` Declarations, Built-in Calls, and Filenames (`" "` $\neq$ `"_"` & `--strict` Enforcement)**:
+   - `fn ::` declarations and clauses SHALL accept multi-word function names separated by spaces (e.g., `fn :: describe something Something => String`, `fn :: project name => String`, `fn :: sum variadic Int... => Int`) in addition to single-word/underscore names when `--strict` is not enabled.
+   - Spaces (`" "`) and underscores (`"_"`) in user-defined function and operator names SHALL NEVER be treated as equivalent: a function declared with spaces (`fn :: report build status`) is distinct from `report_build_status`, and calling `report_build_status` (or vice versa) SHALL fail compilation with an undefined function error.
+   - Standard built-in functions and `test` assertions SHALL be callable with spaces (`assert equals a b`, `assert true cond`, `str len s`, `str slice s a b`, `read file path`, `write file path text`, `cmm live blocks`, etc.); underscore built-in forms remain allowed only when `--strict` is not enabled.
+   - Under `--strict` mode, `_` SHALL be forbidden in all `fn ::` / `op ::` declarations AND in all function calls and function references (including built-ins), while remaining permitted in parameter names and local variable bindings (`my_var = 1`, `input_path`, tensor subscripts `a_i`).
    - `stable` and `ridgunc` SHALL support source and test filenames containing spaces (such as `src/test/ridgun/test basics.rg`, `src/test/ridgun/test core language.rg`, `src/test/ridgun/test parallel and tensors.rg`, and `src/test/ridgun/test strings.rg`).
 
 ## Rationale

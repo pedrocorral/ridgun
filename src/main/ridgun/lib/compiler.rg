@@ -31,60 +31,60 @@ import llvm
 
 fn :: list str len [String] => Int
       list str len []       =  0
-      list str len (_:xs)   =  1 + (list_str_len xs)
+      list str len (_:xs)   =  1 + (list str len xs)
 
 fn :: pat list len [RPattern] => Int
       pat list len []         =  0
-      pat list len (_:xs)     =  1 + (pat_list_len xs)
+      pat list len (_:xs)     =  1 + (pat list len xs)
 
 fn :: find local idx [String] String Int => Int
       find local idx [] _ _ = -1
       find local idx (x:xs) target idx
         | x == target = idx
-        | otherwise = find_local_idx xs target (idx + 1)
+        | otherwise = find local idx xs target (idx + 1)
 
 fn :: lookup local [String] String => Int
-      lookup local locals   name   =  find_local_idx locals name 0
+      lookup local locals   name   =  find local idx locals name 0
 
 fn :: ensure local [String] String => [String] Int
       ensure local locals   name   =
-        existing = lookup_local locals name
-        ensure_local_branch locals name existing
+        existing = lookup local locals name
+        ensure local branch locals name existing
 
 fn :: ensure local branch [String] String Int => [String] Int
       ensure local branch locals name existing
         | existing >= 0 = (locals, existing)
-        | otherwise = (locals :: [name], list_str_len locals)
+        | otherwise = (locals :: [name], list str len locals)
 
 fn :: rinstr len [RInstr] => Int
       rinstr len []       =  0
-      rinstr len (_:xs)   =  1 + (rinstr_len xs)
+      rinstr len (_:xs)   =  1 + (rinstr len xs)
 
 -- ── Pattern Binding & Match Emission (Bytecode) ─────────────
 
 fn :: bind pat vars [RPattern] Int [String] => [String]
       bind pat vars [] _ locals = locals
       bind pat vars ((PatVar v):ps) idx locals =
-        bind_pat_vars ps (idx + 1) (locals :: [v])
+        bind pat vars ps (idx + 1) (locals :: [v])
       bind pat vars ((PatSeqBind v):ps) idx locals =
-        bind_pat_vars ps (idx + 1) (locals :: [v])
+        bind pat vars ps (idx + 1) (locals :: [v])
       bind pat vars (_:ps) idx locals =
-        bind_pat_vars ps (idx + 1) (locals :: ['_arg_' + (int_to_str idx)])
+        bind pat vars ps (idx + 1) (locals :: ['_arg_' + (int to str idx)])
 
 fn :: emit pat checks [RPattern] Int Int => [RInstr]
       emit pat checks [] _ _ = []
       emit pat checks ((PatInt n):ps) slot fail_ip =
-        [BLoadLocal slot, BPushInt n, BJumpIfNeq fail_ip] :: (emit_pat_checks ps (slot + 1) fail_ip)
+        [BLoadLocal slot, BPushInt n, BJumpIfNeq fail_ip] :: (emit pat checks ps (slot + 1) fail_ip)
       emit pat checks ((PatReal r):ps) slot fail_ip =
-        [BLoadLocal slot, BPushReal r, BJumpIfNeq fail_ip] :: (emit_pat_checks ps (slot + 1) fail_ip)
+        [BLoadLocal slot, BPushReal r, BJumpIfNeq fail_ip] :: (emit pat checks ps (slot + 1) fail_ip)
       emit pat checks ((PatStr s):ps) slot fail_ip =
-        [BLoadLocal slot, BPushStr s, BJumpIfNeq fail_ip] :: (emit_pat_checks ps (slot + 1) fail_ip)
+        [BLoadLocal slot, BPushStr s, BJumpIfNeq fail_ip] :: (emit pat checks ps (slot + 1) fail_ip)
       emit pat checks ((PatBool b):ps) slot fail_ip =
-        [BLoadLocal slot, BPushBool b, BJumpIfNeq fail_ip] :: (emit_pat_checks ps (slot + 1) fail_ip)
+        [BLoadLocal slot, BPushBool b, BJumpIfNeq fail_ip] :: (emit pat checks ps (slot + 1) fail_ip)
       emit pat checks (PatEmpty:ps) slot fail_ip =
-        [BLoadLocal slot, BJumpIfNotEmpty fail_ip] :: (emit_pat_checks ps (slot + 1) fail_ip)
+        [BLoadLocal slot, BJumpIfNotEmpty fail_ip] :: (emit pat checks ps (slot + 1) fail_ip)
       emit pat checks (_:ps) slot fail_ip =
-        emit_pat_checks ps (slot + 1) fail_ip
+        emit pat checks ps (slot + 1) fail_ip
 
 -- ── Expression Lowering to [RInstr] ─────────────────────────
 
@@ -116,88 +116,88 @@ fn :: compile rexpr RExpr              [String] => [RInstr] [String]
       compile rexpr (EReal r)          locals   =  ([BPushReal r], locals)
       compile rexpr (EStr s)           locals   =  ([BPushStr s], locals)
       compile rexpr (EStrInterp parts) locals   =
-        p_res = compile_rexpr_list parts locals
-        append_instr (BStrInterp (rexpr_list_len parts)) p_res
+        p_res = compile rexpr list parts locals
+        append instr (BStrInterp (rexpr list len parts)) p_res
       compile rexpr (EBool b)          locals   =  ([BPushBool b], locals)
       compile rexpr EUnit              locals   =  ([BPushUnit], locals)
       compile rexpr (EVar name)        locals   =
-        idx = lookup_local locals name
-        compile_var_lookup name idx locals
+        idx = lookup local locals name
+        compile var lookup name idx locals
       compile rexpr (ENot inner)       locals   =
-        r1 = compile_rexpr inner locals
-        append_instr BNot r1
+        r1 = compile rexpr inner locals
+        append instr BNot r1
       compile rexpr (EOut inner)       locals   =
-        r1 = compile_rexpr inner locals
-        append_instr BOut r1
+        r1 = compile rexpr inner locals
+        append instr BOut r1
       compile rexpr (EBin bop l r)     locals   =
-        r1 = compile_rexpr l locals
-        compile_bin_rhs bop r r1
+        r1 = compile rexpr l locals
+        compile bin rhs bop r r1
       compile rexpr (ECall fname args) locals   =
-        args_res = compile_rexpr_list args locals
-        append_instr (BCall fname (rexpr_list_len args)) args_res
+        args_res = compile rexpr list args locals
+        append instr (BCall fname (rexpr list len args)) args_res
       compile rexpr (EEcho args)       locals   =
-        args_res = compile_rexpr_list args locals
-        append_instr (BEcho (rexpr_list_len args)) args_res
+        args_res = compile rexpr list args locals
+        append instr (BEcho (rexpr list len args)) args_res
       compile rexpr (EList elems)      locals   =
-        elems_res = compile_rexpr_list elems locals
-        append_instr (BListConcat (rexpr_list_len elems)) elems_res
+        elems_res = compile rexpr list elems locals
+        append instr (BListConcat (rexpr list len elems)) elems_res
       compile rexpr (ETuple elems)     locals   =
-        elems_res = compile_rexpr_list elems locals
-        append_instr (BMakeTuple (rexpr_list_len elems)) elems_res
+        elems_res = compile rexpr list elems locals
+        append instr (BMakeTuple (rexpr list len elems)) elems_res
       compile rexpr (ETensor elems)    locals   =
-        elems_res = compile_rexpr_list elems locals
-        append_instr (BMakeTensor (rexpr_list_len elems)) elems_res
+        elems_res = compile rexpr list elems locals
+        append instr (BMakeTensor (rexpr list len elems)) elems_res
       compile rexpr (EEinsum es subs)  locals   =
-        es_res = compile_rexpr_list es locals
-        append_instr (BTensorEinsum subs) es_res
+        es_res = compile rexpr list es locals
+        append instr (BTensorEinsum subs) es_res
       compile rexpr (EHadamard bop l s1 r s2) locals =
-        r1 = compile_rexpr l locals
-        r2 = compile_rexpr_after r r1
-        append_instr (BTensorHadamard bop s1 s2) r2
+        r1 = compile rexpr l locals
+        r2 = compile rexpr after r r1
+        append instr (BTensorHadamard bop s1 s2) r2
       compile rexpr (EIndex base idxs) locals   =
-        b_res = compile_rexpr base locals
-        i_res = compile_rexpr_list_after idxs b_res
-        append_instr (BTensorGet (rexpr_list_len idxs)) i_res
+        b_res = compile rexpr base locals
+        i_res = compile rexpr list after idxs b_res
+        append instr (BTensorGet (rexpr list len idxs)) i_res
       compile rexpr (EIndexAssign target idxs val_e) locals =
-        slot_res = ensure_local locals target
-        compile_index_assign_bc slot_res idxs val_e
+        slot_res = ensure local locals target
+        compile index assign bc slot_res idxs val_e
       compile rexpr (ESeqSelect base mask) locals =
-        b_res = compile_rexpr base locals
-        append_instr (BSeqSelectMask mask) b_res
+        b_res = compile rexpr base locals
+        append instr (BSeqSelectMask mask) b_res
       compile rexpr (EBlock stmts)     locals   =
-        compile_rblock stmts locals
+        compile rblock stmts locals
       compile rexpr (EGuard guards)    locals   =
-        compile_rguard_expr guards locals
+        compile rguard expr guards locals
       compile rexpr (EWhere body binds) locals  =
-        w_res = compile_where_list binds locals
-        compile_where_body body w_res
+        w_res = compile where list binds locals
+        compile where body body w_res
       compile rexpr (EParPipe branches) locals  =
-        b_res = compile_rexpr_list branches locals
-        append_instr (BMakeTuple (rexpr_list_len branches)) b_res
+        b_res = compile rexpr list branches locals
+        append instr (BMakeTuple (rexpr list len branches)) b_res
       compile rexpr (EWithCtx ctx_name val_e body) locals =
-        v_res = compile_rexpr val_e locals
-        v_push = append_instr (BPushCtx ctx_name) v_res
-        b_res = compile_rexpr_after body v_push
-        append_instr (BPopCtx ctx_name) b_res
+        v_res = compile rexpr val_e locals
+        v_push = append instr (BPushCtx ctx_name) v_res
+        b_res = compile rexpr after body v_push
+        append instr (BPopCtx ctx_name) b_res
       compile rexpr (EWithRegion quota body) locals =
-        b_res = compile_rexpr body locals
-        wrap_region_bc quota b_res
+        b_res = compile rexpr body locals
+        wrap region bc quota b_res
 
 fn :: compile rexpr after RExpr ([RInstr], [String]) => [RInstr] [String]
       compile rexpr after e     (c1, locals1)        =
-        r2 = compile_rexpr e locals1
-        merge_code_pair c1 r2
+        r2 = compile rexpr e locals1
+        merge code pair c1 r2
 
 fn :: compile rexpr list after [RExpr] ([RInstr], [String]) => [RInstr] [String]
       compile rexpr list after es (c1, locals1) =
-        r2 = compile_rexpr_list es locals1
-        merge_code_pair c1 r2
+        r2 = compile rexpr list es locals1
+        merge code pair c1 r2
 
 fn :: compile index assign bc ([String], Int) [RExpr] RExpr => [RInstr] [String]
       compile index assign bc (locals1, slot) idxs val_e =
-        i_res = compile_rexpr_list idxs locals1
-        v_res = compile_rexpr_after val_e i_res
-        finish_index_assign_bc slot (rexpr_list_len idxs) v_res
+        i_res = compile rexpr list idxs locals1
+        v_res = compile rexpr after val_e i_res
+        finish index assign bc slot (rexpr list len idxs) v_res
 
 fn :: finish index assign bc Int Int ([RInstr], [String]) => [RInstr] [String]
       finish index assign bc slot ndim (code, locals2) =
@@ -217,8 +217,8 @@ fn :: append instr RInstr ([RInstr], [String]) => [RInstr] [String]
 
 fn :: compile bin rhs RBinOp RExpr ([RInstr], [String]) => [RInstr] [String]
       compile bin rhs bop r (l_code, locals1) =
-        r_res = compile_rexpr r locals1
-        merge_bin_code (compile_binop bop) l_code r_res
+        r_res = compile rexpr r locals1
+        merge bin code (compile binop bop) l_code r_res
 
 fn :: merge bin code RInstr [RInstr] ([RInstr], [String]) => [RInstr] [String]
       merge bin code ins l_code (r_code, locals2) =
@@ -226,18 +226,18 @@ fn :: merge bin code RInstr [RInstr] ([RInstr], [String]) => [RInstr] [String]
 
 fn :: rexpr list len [RExpr] => Int
       rexpr list len []      =  0
-      rexpr list len (_:xs)  =  1 + (rexpr_list_len xs)
+      rexpr list len (_:xs)  =  1 + (rexpr list len xs)
 
 fn :: compile rexpr list [RExpr] [String] => [RInstr] [String]
       compile rexpr list []      locals   =  ([], locals)
       compile rexpr list (e:es)  locals   =
-        r1 = compile_rexpr e locals
-        compile_rexpr_list_cont es r1
+        r1 = compile rexpr e locals
+        compile rexpr list cont es r1
 
 fn :: compile rexpr list cont [RExpr] ([RInstr], [String]) => [RInstr] [String]
       compile rexpr list cont es (c1, locals1) =
-        r2 = compile_rexpr_list es locals1
-        merge_code_pair c1 r2
+        r2 = compile rexpr list es locals1
+        merge code pair c1 r2
 
 fn :: merge code pair [RInstr] ([RInstr], [String]) => [RInstr] [String]
       merge code pair c1       (c2, locals2)        =  (c1 :: c2, locals2)
@@ -245,123 +245,123 @@ fn :: merge code pair [RInstr] ([RInstr], [String]) => [RInstr] [String]
 fn :: compile rguard expr [RGuard] [String] => [RInstr] [String]
       compile rguard expr []       locals   =  ([BPushUnit], locals)
       compile rguard expr ((GuardBranch _ body):[]) locals =
-        compile_rexpr body locals
+        compile rexpr body locals
       compile rguard expr ((GuardBranch _ body):_) locals =
-        compile_rexpr body locals
+        compile rexpr body locals
 
 fn :: compile rblock [RStmt]           [String] => [RInstr] [String]
       compile rblock []                locals   =  ([BPushUnit], locals)
-      compile rblock ((StmtExpr e):[]) locals   =  compile_rexpr e locals
+      compile rblock ((StmtExpr e):[]) locals   =  compile rexpr e locals
       compile rblock ((StmtLet v e):rest) locals =
-        e_res = compile_rexpr e locals
-        compile_rblock_after_let v rest e_res
+        e_res = compile rexpr e locals
+        compile rblock after let v rest e_res
       compile rblock ((StmtMut v e):rest) locals =
-        e_res = compile_rexpr e locals
-        compile_rblock_after_let v rest e_res
+        e_res = compile rexpr e locals
+        compile rblock after let v rest e_res
       compile rblock ((StmtIndexAssign t idxs e):rest) locals =
-        e_res = compile_rexpr (EIndexAssign t idxs e) locals
-        compile_rblock_after_expr rest e_res
+        e_res = compile rexpr (EIndexAssign t idxs e) locals
+        compile rblock after expr rest e_res
       compile rblock ((StmtExpr e):rest) locals =
-        e_res = compile_rexpr e locals
-        compile_rblock_after_expr rest e_res
+        e_res = compile rexpr e locals
+        compile rblock after expr rest e_res
 
 fn :: compile rblock after let String [RStmt] ([RInstr], [String]) => [RInstr] [String]
       compile rblock after let v rest (e_code, locals1) =
-        slot_res = ensure_local locals1 v
-        compile_rblock_store_let rest e_code slot_res
+        slot_res = ensure local locals1 v
+        compile rblock store let rest e_code slot_res
 
 fn :: compile rblock store let [RStmt] [RInstr] ([String], Int) => [RInstr] [String]
       compile rblock store let [] e_code (locals2, slot) =
         (e_code :: [BStoreLocal slot, BLoadLocal slot], locals2)
       compile rblock store let rest e_code (locals2, slot) =
-        r_more = compile_rblock rest locals2
-        merge_code_pair (e_code :: [BStoreLocal slot]) r_more
+        r_more = compile rblock rest locals2
+        merge code pair (e_code :: [BStoreLocal slot]) r_more
 
 fn :: compile rblock after expr [RStmt] ([RInstr], [String]) => [RInstr] [String]
       compile rblock after expr [] (e_code, locals1) = (e_code, locals1)
       compile rblock after expr rest (e_code, locals1) =
-        r_more = compile_rblock rest locals1
-        merge_code_pair (e_code :: [BPop]) r_more
+        r_more = compile rblock rest locals1
+        merge code pair (e_code :: [BPop]) r_more
 
 fn :: compile where list [RWhereBind] [String] => [RInstr] [String]
       compile where list []           locals   =  ([], locals)
       compile where list ((WhereBind e v _):wbs) locals =
-        e_res = compile_rexpr e locals
-        compile_where_list_step v wbs e_res
+        e_res = compile rexpr e locals
+        compile where list step v wbs e_res
 
 fn :: compile where list step String [RWhereBind] ([RInstr], [String]) => [RInstr] [String]
       compile where list step v wbs (e_code, locals1) =
-        slot_res = ensure_local locals1 v
-        compile_where_store wbs e_code slot_res
+        slot_res = ensure local locals1 v
+        compile where store wbs e_code slot_res
 
 fn :: compile where store [RWhereBind] [RInstr] ([String], Int) => [RInstr] [String]
       compile where store wbs e_code (locals2, slot) =
-        more = compile_where_list wbs locals2
-        merge_code_pair (e_code :: [BStoreLocal slot]) more
+        more = compile where list wbs locals2
+        merge code pair (e_code :: [BStoreLocal slot]) more
 
 fn :: compile where body RExpr ([RInstr], [String]) => [RInstr] [String]
       compile where body body  (w_code, locals1)    =
-        b_res = compile_rexpr body locals1
-        merge_code_pair w_code b_res
+        b_res = compile rexpr body locals1
+        merge code pair w_code b_res
 
 -- ── Function & Case Lowering (Bytecode) ─────────────────────
 
 fn :: compile guards [RGuard] [String] Int     => [RInstr]
       compile guards []       _        _       =  []
       compile guards ((GuardBranch cond body):gs) locals base_ip =
-        c_res = compile_rexpr cond locals
-        b_res = compile_rexpr body locals
-        emit_guard_branch gs locals base_ip c_res b_res
+        c_res = compile rexpr cond locals
+        b_res = compile rexpr body locals
+        emit guard branch gs locals base_ip c_res b_res
 
 fn :: emit guard branch [RGuard] [String] Int ([RInstr], [String]) ([RInstr], [String]) => [RInstr]
       emit guard branch gs locals base_ip (c_code, _) (b_code, _) =
-        next_guard_ip = base_ip + (rinstr_len c_code) + 1 + (rinstr_len b_code) + 1
+        next_guard_ip = base_ip + (rinstr len c_code) + 1 + (rinstr len b_code) + 1
         this_guard = c_code :: [BJumpIfFalse next_guard_ip] :: b_code :: [BReturn]
-        this_guard :: (compile_guards gs locals next_guard_ip)
+        this_guard :: (compile guards gs locals next_guard_ip)
 
 fn :: compile single case RFnCase Int     => [RInstr]
       compile single case (FnCase pats guards body) base_ip =
-        locals = bind_pat_vars pats 0 []
-        compile_case_inner pats guards body locals base_ip
+        locals = bind pat vars pats 0 []
+        compile case inner pats guards body locals base_ip
 
 fn :: compile case inner [RPattern] [RGuard] RExpr [String] Int => [RInstr]
       compile case inner pats [] body locals base_ip =
-        b_res = compile_rexpr body locals
-        finish_case_with_body pats base_ip b_res
+        b_res = compile rexpr body locals
+        finish case with body pats base_ip b_res
       compile case inner pats guards _ locals base_ip =
-        p_pre = emit_pat_checks pats 0 0
-        g_code = compile_guards guards locals (base_ip + (rinstr_len p_pre))
-        fail_ip = base_ip + (rinstr_len p_pre) + (rinstr_len g_code)
-        p_checks = emit_pat_checks pats 0 fail_ip
+        p_pre = emit pat checks pats 0 0
+        g_code = compile guards guards locals (base_ip + (rinstr len p_pre))
+        fail_ip = base_ip + (rinstr len p_pre) + (rinstr len g_code)
+        p_checks = emit pat checks pats 0 fail_ip
         p_checks :: g_code
 
 fn :: finish case with body [RPattern] Int ([RInstr], [String]) => [RInstr]
       finish case with body pats base_ip (b_code, _) =
-        p_pre = emit_pat_checks pats 0 0
-        fail_ip = base_ip + (rinstr_len p_pre) + (rinstr_len b_code) + 1
-        p_checks = emit_pat_checks pats 0 fail_ip
+        p_pre = emit pat checks pats 0 0
+        fail_ip = base_ip + (rinstr len p_pre) + (rinstr len b_code) + 1
+        p_checks = emit pat checks pats 0 fail_ip
         p_checks :: b_code :: [BReturn]
 
 fn :: compile cases seq [RFnCase] Int     => [RInstr]
       compile cases seq []        _       =  []
       compile cases seq (c:cs)    base_ip =
-        c_code = compile_single_case c base_ip
-        next_ip = base_ip + (rinstr_len c_code)
-        c_code :: (compile_cases_seq cs next_ip)
+        c_code = compile single case c base_ip
+        next_ip = base_ip + (rinstr len c_code)
+        c_code :: (compile cases seq cs next_ip)
 
 fn :: compile rfndef RFnDef => RCompiledFn
       compile rfndef (FnDef name params _ cases) =
-        arity = list_str_len params
-        code = compile_cases_seq cases 0
+        arity = list str len params
+        code = compile cases seq cases 0
         CompiledFn name arity code
 
 fn :: compile rfndef list [RFnDef] => [RCompiledFn]
       compile rfndef list []       =  []
-      compile rfndef list (f:fs)   =  [compile_rfndef f] :: (compile_rfndef_list fs)
+      compile rfndef list (f:fs)   =  [compile rfndef f] :: (compile rfndef list fs)
 
 fn :: compile rprogram RProgram        => RCompiledProg
       compile rprogram (Program fns _) =
-        CompiledProg (compile_rfndef_list fns)
+        CompiledProg (compile rfndef list fns)
 
 -- ── Pre-Codegen Normalization (Variadic Packing & Tuple-Chain Unpacking) ──
 
@@ -369,84 +369,84 @@ type RCgSig = CgSig String Int Bool
 
 fn :: str ends with dots String => Bool
       str ends with dots s      =
-        len = str_len s
-        len > 3 AND (str_slice s (len - 3) len) == "..."
+        len = str len s
+        len > 3 AND (str slice s (len - 3) len) == "..."
 
 fn :: params has variadic [String] => Bool
       params has variadic []       =  False
-      params has variadic (p:[])   =  str_ends_with_dots p
-      params has variadic (_:ps)   =  params_has_variadic ps
+      params has variadic (p:[])   =  str ends with dots p
+      params has variadic (_:ps)   =  params has variadic ps
 
 fn :: infer fndef arity [String] [RFnCase] => Int
-      infer fndef arity params   ((FnCase ((PatSeqBind _):[]) _ _):_) = list_str_len params
-      infer fndef arity _        ((FnCase pats _ _):_) = pat_list_len pats
-      infer fndef arity params   []        =  list_str_len params
+      infer fndef arity params   ((FnCase ((PatSeqBind _):[]) _ _):_) = list str len params
+      infer fndef arity _        ((FnCase pats _ _):_) = pat list len pats
+      infer fndef arity params   []        =  list str len params
 
 fn :: build cg sigs acc [RFnDef] [RCgSig] => [RCgSig]
       build cg sigs acc []       acc      =  acc
       build cg sigs acc ((FnDef name params _ cases):fs) acc =
-        build_cg_sigs_acc fs (acc :: [CgSig name (infer_fndef_arity params cases) (params_has_variadic params)])
+        build cg sigs acc fs (acc :: [CgSig name (infer fndef arity params cases) (params has variadic params)])
 
 fn :: build cg sigs [RFnDef] => [RCgSig]
-      build cg sigs fns      =  build_cg_sigs_acc fns []
+      build cg sigs fns      =  build cg sigs acc fns []
 
 fn :: lookup var cg sig [RCgSig] String => Bool Int Bool
       lookup var cg sig []       _      =  (False, 0, False)
       lookup var cg sig ((CgSig name arity is_var):rest) target
         | name == target AND arity < 0 = (False, 0, False)
         | name == target = (True, arity, is_var)
-        | otherwise = lookup_var_cg_sig rest target
+        | otherwise = lookup var cg sig rest target
 
 fn :: lookup cg sig [RCgSig] String => Bool Int Bool
       lookup cg sig []       _      =  (False, 0, False)
       lookup cg sig ((CgSig name arity is_var):rest) target
         | arity >= 0 AND name == target = (True, arity, is_var)
-        | otherwise = lookup_cg_sig rest target
+        | otherwise = lookup cg sig rest target
 
 fn :: bind pat cg sigs RPattern [RCgSig] => [RCgSig]
       bind pat cg sigs (PatVar v) sigs = [CgSig v (0 - 2) False] :: sigs
       bind pat cg sigs (PatSeqBind v) sigs = [CgSig v (0 - 2) False] :: sigs
-      bind pat cg sigs (PatCons h t) sigs = bind_pat_cg_sigs t (bind_pat_cg_sigs h sigs)
-      bind pat cg sigs (PatTuple ps) sigs = bind_pat_list_cg_sigs ps sigs
-      bind pat cg sigs (PatCtor _ ps) sigs = bind_pat_list_cg_sigs ps sigs
+      bind pat cg sigs (PatCons h t) sigs = bind pat cg sigs t (bind pat cg sigs h sigs)
+      bind pat cg sigs (PatTuple ps) sigs = bind pat list cg sigs ps sigs
+      bind pat cg sigs (PatCtor _ ps) sigs = bind pat list cg sigs ps sigs
       bind pat cg sigs _ sigs = sigs
 
 fn :: bind pat list cg sigs [RPattern] [RCgSig] => [RCgSig]
       bind pat list cg sigs [] sigs = sigs
-      bind pat list cg sigs (p:ps) sigs = bind_pat_list_cg_sigs ps (bind_pat_cg_sigs p sigs)
+      bind pat list cg sigs (p:ps) sigs = bind pat list cg sigs ps (bind pat cg sigs p sigs)
 
 fn :: bind where cg sigs [RWhereBind] [RCgSig] => [RCgSig]
       bind where cg sigs [] sigs = sigs
       bind where cg sigs ((WhereBind _ v _):wbs) sigs
-        | v != "" = bind_where_cg_sigs wbs ([CgSig v (0 - 2) False] :: sigs)
-        | otherwise = bind_where_cg_sigs wbs sigs
+        | v != "" = bind where cg sigs wbs ([CgSig v (0 - 2) False] :: sigs)
+        | otherwise = bind where cg sigs wbs sigs
 
 fn :: prep expr RExpr              [RCgSig] => RExpr
-      prep expr (ENot inner)       sigs     =  ENot (prep_expr inner sigs)
-      prep expr (EOut inner)       sigs     =  EOut (prep_expr inner sigs)
-      prep expr (EBin bop l r)     sigs     =  EBin bop (prep_expr l sigs) (prep_expr r sigs)
+      prep expr (ENot inner)       sigs     =  ENot (prep expr inner sigs)
+      prep expr (EOut inner)       sigs     =  EOut (prep expr inner sigs)
+      prep expr (EBin bop l r)     sigs     =  EBin bop (prep expr l sigs) (prep expr r sigs)
       prep expr (ECall fname args) sigs     =
-        p_args = prep_expr_list args sigs
-        prep_call fname p_args (lookup_cg_sig sigs fname)
-      prep expr (EEcho args)       sigs     =  EEcho (prep_expr_list args sigs)
-      prep expr (EStrInterp parts) sigs     =  EStrInterp (prep_expr_list parts sigs)
-      prep expr (EList elems)      sigs     =  EList (prep_expr_list elems sigs)
-      prep expr (ETuple elems)     sigs     =  ETuple (prep_expr_list elems sigs)
-      prep expr (ETensor elems)    sigs     =  ETensor (prep_expr_list elems sigs)
-      prep expr (EEinsum es subs)  sigs     =  EEinsum (prep_expr_list es sigs) subs
-      prep expr (EHadamard bop l s1 r s2) sigs = EHadamard bop (prep_expr l sigs) s1 (prep_expr r sigs) s2
-      prep expr (EIndex base idxs) sigs     =  EIndex (prep_expr base sigs) (prep_expr_list idxs sigs)
-      prep expr (EIndexAssign t idxs v) sigs = EIndexAssign t (prep_expr_list idxs sigs) (prep_expr v sigs)
-      prep expr (ESeqSelect b m)   sigs     =  ESeqSelect (prep_expr b sigs) m
-      prep expr (EBlock stmts)     sigs     =  EBlock (prep_stmt_list stmts sigs)
-      prep expr (EGuard guards)    sigs     =  EGuard (prep_guard_list guards sigs)
+        p_args = prep expr list args sigs
+        prep call fname p_args (lookup cg sig sigs fname)
+      prep expr (EEcho args)       sigs     =  EEcho (prep expr list args sigs)
+      prep expr (EStrInterp parts) sigs     =  EStrInterp (prep expr list parts sigs)
+      prep expr (EList elems)      sigs     =  EList (prep expr list elems sigs)
+      prep expr (ETuple elems)     sigs     =  ETuple (prep expr list elems sigs)
+      prep expr (ETensor elems)    sigs     =  ETensor (prep expr list elems sigs)
+      prep expr (EEinsum es subs)  sigs     =  EEinsum (prep expr list es sigs) subs
+      prep expr (EHadamard bop l s1 r s2) sigs = EHadamard bop (prep expr l sigs) s1 (prep expr r sigs) s2
+      prep expr (EIndex base idxs) sigs     =  EIndex (prep expr base sigs) (prep expr list idxs sigs)
+      prep expr (EIndexAssign t idxs v) sigs = EIndexAssign t (prep expr list idxs sigs) (prep expr v sigs)
+      prep expr (ESeqSelect b m)   sigs     =  ESeqSelect (prep expr b sigs) m
+      prep expr (EBlock stmts)     sigs     =  EBlock (prep stmt list stmts sigs)
+      prep expr (EGuard guards)    sigs     =  EGuard (prep guard list guards sigs)
       prep expr (EWhere body binds) sigs    =
-        sigs1 = bind_where_cg_sigs binds sigs
-        EWhere (prep_expr body sigs1) (prep_where_list binds sigs1)
-      prep expr (EParPipe branches) sigs    =  EParPipe (prep_expr_list branches sigs)
-      prep expr (EWithCtx c v b)   sigs     =  EWithCtx c (prep_expr v sigs) (prep_expr b sigs)
-      prep expr (EWithRegion q b)  sigs     =  EWithRegion q (prep_expr b sigs)
-      prep expr (EVar v)           sigs     =  prep_var v (lookup_var_cg_sig sigs v)
+        sigs1 = bind where cg sigs binds sigs
+        EWhere (prep expr body sigs1) (prep where list binds sigs1)
+      prep expr (EParPipe branches) sigs    =  EParPipe (prep expr list branches sigs)
+      prep expr (EWithCtx c v b)   sigs     =  EWithCtx c (prep expr v sigs) (prep expr b sigs)
+      prep expr (EWithRegion q b)  sigs     =  EWithRegion q (prep expr b sigs)
+      prep expr (EVar v)           sigs     =  prep var v (lookup var cg sig sigs v)
       prep expr e                  _        =  e
 
 fn :: prep var String (Bool, Int, Bool) => RExpr
@@ -456,46 +456,46 @@ fn :: prep var String (Bool, Int, Bool) => RExpr
 fn :: prep call String [RExpr]         (Bool, Int, Bool) => RExpr
       prep call fname  args            (True, arity, True)
         | arity <= 1 = ECall fname [EList args]
-        | otherwise = ECall fname ((take_exprs args (arity - 1)) :: [EList (drop_exprs args (arity - 1))])
+        | otherwise = ECall fname ((take exprs args (arity - 1)) :: [EList (drop exprs args (arity - 1))])
       prep call fname  (single_arg:[]) (True, 2, False)
-        | NOT (str_starts_with fname "__rg_lambda_") =
+        | NOT (str starts with fname "__rg_lambda_") =
           ECall "__unpack2__" [EVar fname, single_arg]
       prep call fname  args            _                 =  ECall fname args
 
 fn :: prep expr list [RExpr] [RCgSig] => [RExpr]
       prep expr list []      _        =  []
-      prep expr list (e:es)  sigs     =  [prep_expr e sigs] :: (prep_expr_list es sigs)
+      prep expr list (e:es)  sigs     =  [prep expr e sigs] :: (prep expr list es sigs)
 
 fn :: prep stmt list [RStmt]            [RCgSig] => [RStmt]
       prep stmt list []                 _        =  []
       prep stmt list ((StmtLet v e):ss) sigs     =
-        [StmtLet v (prep_expr e sigs)] :: (prep_stmt_list ss ([CgSig v (0 - 2) False] :: sigs))
+        [StmtLet v (prep expr e sigs)] :: (prep stmt list ss ([CgSig v (0 - 2) False] :: sigs))
       prep stmt list ((StmtMut v e):ss) sigs     =
-        [StmtMut v (prep_expr e sigs)] :: (prep_stmt_list ss ([CgSig v (0 - 2) False] :: sigs))
-      prep stmt list ((StmtExpr e):ss)  sigs     =  [StmtExpr (prep_expr e sigs)] :: (prep_stmt_list ss sigs)
-      prep stmt list ((StmtIndexAssign t idxs e):ss) sigs = [StmtIndexAssign t (prep_expr_list idxs sigs) (prep_expr e sigs)] :: (prep_stmt_list ss sigs)
+        [StmtMut v (prep expr e sigs)] :: (prep stmt list ss ([CgSig v (0 - 2) False] :: sigs))
+      prep stmt list ((StmtExpr e):ss)  sigs     =  [StmtExpr (prep expr e sigs)] :: (prep stmt list ss sigs)
+      prep stmt list ((StmtIndexAssign t idxs e):ss) sigs = [StmtIndexAssign t (prep expr list idxs sigs) (prep expr e sigs)] :: (prep stmt list ss sigs)
 
 fn :: prep where list [RWhereBind] [RCgSig] => [RWhereBind]
       prep where list []           _        =  []
-      prep where list ((WhereBind e v idxs):wbs) sigs = [WhereBind (prep_expr e sigs) v idxs] :: (prep_where_list wbs sigs)
+      prep where list ((WhereBind e v idxs):wbs) sigs = [WhereBind (prep expr e sigs) v idxs] :: (prep where list wbs sigs)
 
 fn :: prep guard list [RGuard] [RCgSig] => [RGuard]
       prep guard list []       _        =  []
-      prep guard list ((GuardBranch c b):gs) sigs = [GuardBranch (prep_expr c sigs) (prep_expr b sigs)] :: (prep_guard_list gs sigs)
+      prep guard list ((GuardBranch c b):gs) sigs = [GuardBranch (prep expr c sigs) (prep expr b sigs)] :: (prep guard list gs sigs)
 
 fn :: prep case list [RFnCase] [RCgSig] => [RFnCase]
       prep case list []        _        =  []
       prep case list ((FnCase pats guards body):cs) sigs =
-        case_sigs = bind_pat_list_cg_sigs pats sigs
-        [FnCase pats (prep_guard_list guards case_sigs) (prep_expr body case_sigs)] :: (prep_case_list cs sigs)
+        case_sigs = bind pat list cg sigs pats sigs
+        [FnCase pats (prep guard list guards case_sigs) (prep expr body case_sigs)] :: (prep case list cs sigs)
 
 fn :: prep fndef list acc [RFnDef] [RCgSig] [RFnDef] => [RFnDef]
       prep fndef list acc []       _        acc      =  acc
       prep fndef list acc ((FnDef name params ret_ty cases):fs) sigs acc =
-        prep_fndef_list_acc fs sigs (acc :: [FnDef name params ret_ty (prep_case_list cases sigs)])
+        prep fndef list acc fs sigs (acc :: [FnDef name params ret_ty (prep case list cases sigs)])
 
 fn :: prep fndef list [RFnDef] [RCgSig] => [RFnDef]
-      prep fndef list fns      sigs     =  prep_fndef_list_acc fns sigs []
+      prep fndef list fns      sigs     =  prep fndef list acc fns sigs []
 
 -- ── Pure-Ridgun AST Inlining & Tuple Escape Elimination ──────
 
@@ -535,7 +535,7 @@ fn :: is pure arith binop RBinOp => Bool
       is pure arith binop _      =  False
 
 fn :: is pure arith expr RExpr          => Bool
-      is pure arith expr (EVar v)       =  NOT (is_upper_ident v)
+      is pure arith expr (EVar v)       =  NOT (is upper ident v)
       is pure arith expr (EInt _)       =  True
       is pure arith expr (EBool _)      =  True
       is pure arith expr (ENot a)       =  is pure arith expr a
@@ -559,14 +559,14 @@ fn :: all simple inline args [RExpr] => Bool
 fn :: collect inline expr fns [RFnDef] => [RInlineExprEntry]
       collect inline expr fns []       =  []
       collect inline expr fns ((FnDef name _ _ ((FnCase pats [] body):[])):fs)
-        | (NOT (str_starts_with name "__rg_lambda_")) AND pats != [] AND (all pat vars pats) AND (is compound arith expr body) =
+        | (NOT (str starts with name "__rg_lambda_")) AND pats != [] AND (all pat vars pats) AND (is compound arith expr body) =
           [InlineExprEntry name (extract pat var names pats) body] :: (collect inline expr fns fs)
       collect inline expr fns (_:fs)   =  collect inline expr fns fs
 
 fn :: lookup inline expr [RInlineExprEntry] String Int => Bool [String] RExpr
       lookup inline expr [] _ _ = (False, [], EUnit)
       lookup inline expr ((InlineExprEntry name pnames body):rest) target arity
-        | name == target AND (list_str_len pnames) == arity = (True, pnames, body)
+        | name == target AND (list str len pnames) == arity = (True, pnames, body)
         | otherwise = lookup inline expr rest target arity
 
 fn :: subst param var String [String] [RExpr] => RExpr
@@ -589,7 +589,7 @@ fn :: inline leaf call String [RExpr] (Bool, [String], RExpr) => RExpr
 fn :: inline leaf call check String [RExpr] [RInlineExprEntry] => RExpr
       inline leaf call check fname args1 tbl
         | all simple inline args args1 =
-          inline leaf call fname args1 (lookup inline expr tbl fname (rexpr_list_len args1))
+          inline leaf call fname args1 (lookup inline expr tbl fname (rexpr list len args1))
         | otherwise = ECall fname args1
 
 fn :: inline leaf expr RExpr              [RInlineExprEntry] => RExpr
@@ -639,8 +639,8 @@ fn :: inline leaf fndef list [RFnDef] [RInlineExprEntry] => [RFnDef]
       inline leaf fndef list ((FnDef n p r cs):fs) tbl = [FnDef n p r (inline leaf case list cs tbl)] :: (inline leaf fndef list fs tbl)
 
 fn :: is pure inline stmt RStmt         => Bool
-      is pure inline stmt (StmtLet v e) =  v != "_" AND (NOT (str_starts_with v ":")) AND (is pure arith expr e)
-      is pure inline stmt (StmtMut v e) =  v != "_" AND (NOT (str_starts_with v ":")) AND (is pure arith expr e)
+      is pure inline stmt (StmtLet v e) =  v != "_" AND (NOT (str starts with v ":")) AND (is pure arith expr e)
+      is pure inline stmt (StmtMut v e) =  v != "_" AND (NOT (str starts with v ":")) AND (is pure arith expr e)
       is pure inline stmt _             =  False
 
 fn :: all pure arith exprs [RExpr] => Bool
@@ -675,7 +675,7 @@ fn :: collect inline tuple fns [RFnDef] => [RInlineTupleEntry]
 fn :: lookup inline tuple [RInlineTupleEntry] String Int => Bool [String] [RStmt] [RExpr]
       lookup inline tuple [] _ _ = (False, [], [], [])
       lookup inline tuple ((InlineTupleEntry name pnames init_stmts ret_es):rest) target arity
-        | name == target AND (list_str_len pnames) == arity = (True, pnames, init_stmts, ret_es)
+        | name == target AND (list str len pnames) == arity = (True, pnames, init_stmts, ret_es)
         | otherwise = lookup inline tuple rest target arity
 
 fn :: match tup unpack stmts [RStmt] String Int Int [RStmt] => Bool [RStmt] [RStmt]
@@ -691,13 +691,13 @@ fn :: match tup unpack stmts [RStmt] String Int Int [RStmt] => Bool [RStmt] [RSt
 
 fn :: collect inline local vars [RStmt] [String] => [String]
       collect inline local vars [] acc = acc
-      collect inline local vars ((StmtLet v _):ss) acc = collect inline local vars ss (add_unique_str v acc)
-      collect inline local vars ((StmtMut v _):ss) acc = collect inline local vars ss (add_unique_str v acc)
+      collect inline local vars ((StmtLet v _):ss) acc = collect inline local vars ss (add unique str v acc)
+      collect inline local vars ((StmtMut v _):ss) acc = collect inline local vars ss (add unique str v acc)
       collect inline local vars (_:ss) acc = collect inline local vars ss acc
 
 fn :: rename inline expr RExpr [String] String => RExpr
       rename inline expr (EVar v) local_vars prefix
-        | str_in_list v local_vars = EVar (prefix + v)
+        | str in list v local_vars = EVar (prefix + v)
         | otherwise = EVar v
       rename inline expr (ENot a) local_vars prefix =
         ENot (rename inline expr a local_vars prefix)
@@ -732,7 +732,7 @@ fn :: build inline unpack assigns [RStmt] [RExpr] [String] String => [RStmt]
 
 fn :: try expand inline tuple String String [RExpr] [RStmt] (Bool, [String], [RStmt], [RExpr]) [RInlineTupleEntry] => [RStmt]
       try expand inline tuple tmp_name fname args rest (True, pnames, init_stmts, ret_es) tbl =
-        finish expand inline tuple tmp_name fname args rest pnames init_stmts ret_es (match tup unpack stmts rest tmp_name 0 (rexpr_list_len ret_es) []) tbl
+        finish expand inline tuple tmp_name fname args rest pnames init_stmts ret_es (match tup unpack stmts rest tmp_name 0 (rexpr list len ret_es) []) tbl
       try expand inline tuple tmp_name fname args rest _ tbl =
         [StmtMut tmp_name (ECall fname args)] :: (inline tuple stmt list rest tbl)
 
@@ -758,8 +758,8 @@ fn :: inline tuple expr RExpr             [RInlineTupleEntry] => RExpr
 fn :: inline tuple stmt list [RStmt] [RInlineTupleEntry] => [RStmt]
       inline tuple stmt list [] _ = []
       inline tuple stmt list ((StmtMut tmp_name (ECall fname args)):rest) tbl
-        | (str_starts_with tmp_name ":tup-") OR (str_starts_with tmp_name ":idx-tup-") =
-          try expand inline tuple tmp_name fname args rest (lookup inline tuple tbl fname (rexpr_list_len args)) tbl
+        | (str starts with tmp_name ":tup-") OR (str starts with tmp_name ":idx-tup-") =
+          try expand inline tuple tmp_name fname args rest (lookup inline tuple tbl fname (rexpr list len args)) tbl
       inline tuple stmt list ((StmtLet v e):ss) tbl =
         [StmtLet v (inline tuple expr e tbl)] :: (inline tuple stmt list ss tbl)
       inline tuple stmt list ((StmtMut v e):ss) tbl =
@@ -821,107 +821,107 @@ fn :: nc set lbl RNativeCode Int     => RNativeCode
 
 fn :: nc emit RNativeCode RNativeInstr Int     => RNativeCode
       nc emit (NativeCode instrs lbl msp) ins used_sp =
-        NativeCode (instrs :: [ins]) lbl (max_int msp used_sp)
+        NativeCode (instrs :: [ins]) lbl (max int msp used_sp)
 
 fn :: nc emit list RNativeCode [RNativeInstr] Int => RNativeCode
       nc emit list (NativeCode instrs lbl msp) more used_sp =
-        NativeCode (instrs :: more) lbl (max_int msp used_sp)
+        NativeCode (instrs :: more) lbl (max int msp used_sp)
 
 -- ── String Pool (.rodata) Collection & Interning ─────────────
 
 fn :: join comma [String] => String
       join comma []       =  ""
       join comma (s:[])   =  s
-      join comma (s:ss)   =  s + "," + (join_comma ss)
+      join comma (s:ss)   =  s + "," + (join comma ss)
 
 fn :: add ctor str String [String] => [String]
       add ctor str s acc
-        | is_upper_ident s = add_unique_str (ident_base_name s) (add_unique_str s acc)
-        | otherwise = add_unique_str s acc
+        | is upper ident s = add unique str (ident base name s) (add unique str s acc)
+        | otherwise = add unique str s acc
 
 fn :: collect pat strs RPattern         [String] => [String]
-      collect pat strs (PatReal r)      acc      =  add_unique_str r acc
-      collect pat strs (PatStr s)       acc      =  add_unique_str s acc
-      collect pat strs (PatCons h t)    acc      =  collect_pat_strs t (collect_pat_strs h acc)
-      collect pat strs (PatTuple ps)    acc      =  collect_pat_list_strs ps acc
-      collect pat strs (PatCtor c args) acc      =  collect_pat_list_strs args (add_ctor_str c acc)
+      collect pat strs (PatReal r)      acc      =  add unique str r acc
+      collect pat strs (PatStr s)       acc      =  add unique str s acc
+      collect pat strs (PatCons h t)    acc      =  collect pat strs t (collect pat strs h acc)
+      collect pat strs (PatTuple ps)    acc      =  collect pat list strs ps acc
+      collect pat strs (PatCtor c args) acc      =  collect pat list strs args (add ctor str c acc)
       collect pat strs _                acc      =  acc
 
 fn :: collect pat list strs [RPattern] [String] => [String]
       collect pat list strs [] acc = acc
-      collect pat list strs (p:ps) acc = collect_pat_list_strs ps (collect_pat_strs p acc)
+      collect pat list strs (p:ps) acc = collect pat list strs ps (collect pat strs p acc)
 
 fn :: collect expr strs RExpr              [String] => [String]
-      collect expr strs (EReal r)          acc      =  add_unique_str r acc
-      collect expr strs (EStr s)           acc      =  add_unique_str s acc
-      collect expr strs (EVar v)           acc      =  add_ctor_str v acc
-      collect expr strs (ENot inner)       acc      =  collect_expr_strs inner acc
-      collect expr strs (EOut inner)       acc      =  collect_expr_strs inner acc
-      collect expr strs (EBin _ l r)       acc      =  collect_expr_strs r (collect_expr_strs l acc)
-      collect expr strs (ECall fname args) acc      =  collect_expr_list_strs args (add_ctor_str fname acc)
-      collect expr strs (EEcho args)       acc      =  collect_expr_list_strs args acc
-      collect expr strs (EStrInterp parts) acc      =  collect_expr_list_strs parts acc
-      collect expr strs (EList elems)      acc      =  collect_expr_list_strs elems acc
-      collect expr strs (ETuple elems)     acc      =  collect_expr_list_strs elems acc
-      collect expr strs (ETensor elems)    acc      =  collect_expr_list_strs elems acc
-      collect expr strs (EEinsum es subs)  acc      =  collect_expr_list_strs es (add_unique_str (join_comma subs) acc)
-      collect expr strs (EHadamard _ l s1 r s2) acc =  collect_expr_strs r (collect_expr_strs l (add_unique_str (s1 + "," + s2) acc))
-      collect expr strs (EIndex base idxs) acc      =  collect_expr_list_strs idxs (collect_expr_strs base acc)
-      collect expr strs (EIndexAssign _ idxs v) acc =  collect_expr_strs v (collect_expr_list_strs idxs acc)
-      collect expr strs (ESeqSelect b m)   acc      =  collect_expr_strs b (add_unique_str m acc)
-      collect expr strs (EBlock stmts)     acc      =  collect_stmt_list_strs stmts acc
-      collect expr strs (EGuard guards)    acc      =  collect_guard_list_strs guards acc
-      collect expr strs (EWhere body binds) acc     =  collect_where_list_strs binds (collect_expr_strs body acc)
-      collect expr strs (EParPipe branches) acc     =  collect_expr_list_strs branches acc
-      collect expr strs (EWithCtx c v b)   acc      =  collect_expr_strs b (collect_expr_strs v (add_unique_str c acc))
-      collect expr strs (EWithRegion _ b)  acc      =  collect_expr_strs b acc
+      collect expr strs (EReal r)          acc      =  add unique str r acc
+      collect expr strs (EStr s)           acc      =  add unique str s acc
+      collect expr strs (EVar v)           acc      =  add ctor str v acc
+      collect expr strs (ENot inner)       acc      =  collect expr strs inner acc
+      collect expr strs (EOut inner)       acc      =  collect expr strs inner acc
+      collect expr strs (EBin _ l r)       acc      =  collect expr strs r (collect expr strs l acc)
+      collect expr strs (ECall fname args) acc      =  collect expr list strs args (add ctor str fname acc)
+      collect expr strs (EEcho args)       acc      =  collect expr list strs args acc
+      collect expr strs (EStrInterp parts) acc      =  collect expr list strs parts acc
+      collect expr strs (EList elems)      acc      =  collect expr list strs elems acc
+      collect expr strs (ETuple elems)     acc      =  collect expr list strs elems acc
+      collect expr strs (ETensor elems)    acc      =  collect expr list strs elems acc
+      collect expr strs (EEinsum es subs)  acc      =  collect expr list strs es (add unique str (join comma subs) acc)
+      collect expr strs (EHadamard _ l s1 r s2) acc =  collect expr strs r (collect expr strs l (add unique str (s1 + "," + s2) acc))
+      collect expr strs (EIndex base idxs) acc      =  collect expr list strs idxs (collect expr strs base acc)
+      collect expr strs (EIndexAssign _ idxs v) acc =  collect expr strs v (collect expr list strs idxs acc)
+      collect expr strs (ESeqSelect b m)   acc      =  collect expr strs b (add unique str m acc)
+      collect expr strs (EBlock stmts)     acc      =  collect stmt list strs stmts acc
+      collect expr strs (EGuard guards)    acc      =  collect guard list strs guards acc
+      collect expr strs (EWhere body binds) acc     =  collect where list strs binds (collect expr strs body acc)
+      collect expr strs (EParPipe branches) acc     =  collect expr list strs branches acc
+      collect expr strs (EWithCtx c v b)   acc      =  collect expr strs b (collect expr strs v (add unique str c acc))
+      collect expr strs (EWithRegion _ b)  acc      =  collect expr strs b acc
       collect expr strs _                  acc      =  acc
 
 fn :: collect expr list strs [RExpr] [String] => [String]
       collect expr list strs [] acc = acc
-      collect expr list strs (e:es) acc = collect_expr_list_strs es (collect_expr_strs e acc)
+      collect expr list strs (e:es) acc = collect expr list strs es (collect expr strs e acc)
 
 fn :: collect stmt list strs [RStmt] [String] => [String]
       collect stmt list strs [] acc = acc
-      collect stmt list strs ((StmtLet _ e):ss) acc = collect_stmt_list_strs ss (collect_expr_strs e acc)
-      collect stmt list strs ((StmtMut _ e):ss) acc = collect_stmt_list_strs ss (collect_expr_strs e acc)
-      collect stmt list strs ((StmtExpr e):ss) acc = collect_stmt_list_strs ss (collect_expr_strs e acc)
+      collect stmt list strs ((StmtLet _ e):ss) acc = collect stmt list strs ss (collect expr strs e acc)
+      collect stmt list strs ((StmtMut _ e):ss) acc = collect stmt list strs ss (collect expr strs e acc)
+      collect stmt list strs ((StmtExpr e):ss) acc = collect stmt list strs ss (collect expr strs e acc)
       collect stmt list strs ((StmtIndexAssign _ idxs e):ss) acc =
-        collect_stmt_list_strs ss (collect_expr_strs e (collect_expr_list_strs idxs acc))
+        collect stmt list strs ss (collect expr strs e (collect expr list strs idxs acc))
 
 fn :: collect where list strs [RWhereBind] [String] => [String]
       collect where list strs [] acc = acc
       collect where list strs ((WhereBind e _ _):wbs) acc =
-        collect_where_list_strs wbs (collect_expr_strs e acc)
+        collect where list strs wbs (collect expr strs e acc)
 
 fn :: collect guard list strs [RGuard] [String] => [String]
       collect guard list strs [] acc = acc
       collect guard list strs ((GuardBranch c b):gs) acc =
-        collect_guard_list_strs gs (collect_expr_strs b (collect_expr_strs c acc))
+        collect guard list strs gs (collect expr strs b (collect expr strs c acc))
 
 fn :: collect case list strs [RFnCase] [String] => [String]
       collect case list strs [] acc = acc
       collect case list strs ((FnCase pats guards body):cs) acc =
-        a1 = collect_pat_list_strs pats acc
-        a2 = collect_guard_list_strs guards a1
-        collect_case_list_strs cs (collect_expr_strs body a2)
+        a1 = collect pat list strs pats acc
+        a2 = collect guard list strs guards a1
+        collect case list strs cs (collect expr strs body a2)
 
 fn :: collect fndef list strs [RFnDef] [String] => [String]
       collect fndef list strs [] acc = acc
       collect fndef list strs ((FnDef name _ _ cases):fs) acc =
-        collect_fndef_list_strs fs (collect_case_list_strs cases (add_unique_str name acc))
+        collect fndef list strs fs (collect case list strs cases (add unique str name acc))
 
 fn :: build str pool loop [String] Int String [RStrEntry] => RStrPool
       build str pool loop [] _ rodata entries = StrPool rodata entries
       build str pool loop (s:ss) cur_off rodata entries =
-        slen = str_len s
-        build_str_pool_loop ss (cur_off + slen) (rodata + s) (entries :: [StrEntry s cur_off slen])
+        slen = str len s
+        build str pool loop ss (cur_off + slen) (rodata + s) (entries :: [StrEntry s cur_off slen])
 
 fn :: build str pool [RFnDef] [String]   => RStrPool
       build str pool fns      extra_strs =
         base_strs = ["", "+", "-", "*", "/", "%", "Linux", "MacOS", "Windows", "X86_64", "Arm64", "Ok", "Some", "None", "__rg_par_eval__", "ki,k", "i,j", "i,i", "ij,ij"] :: extra_strs
-        all_strs = collect_fndef_list_strs fns base_strs
-        build_str_pool_loop all_strs 0 "" []
+        all_strs = collect fndef list strs fns base_strs
+        build str pool loop all_strs 0 "" []
 
 fn :: pool rodata RStrPool      => String
       pool rodata (StrPool s _) =  s
@@ -933,7 +933,7 @@ fn :: lookup str off [RStrEntry] String => Int
       lookup str off []          _      =  0
       lookup str off ((StrEntry k off _):rest) target
         | k == target = off
-        | otherwise = lookup_str_off rest target
+        | otherwise = lookup str off rest target
 
 -- ── Function & Record Field Tables ───────────────────────────
 
@@ -941,64 +941,64 @@ fn :: has field entry [RFieldEntry] String => Bool
       has field entry []            _      =  False
       has field entry ((FieldEntry k _):rest) target
         | k == target = True
-        | otherwise = has_field_entry rest target
+        | otherwise = has field entry rest target
 
 fn :: add base field entry String Int [RFieldEntry] => [RFieldEntry]
       add base field entry fname idx acc
-        | (str_contains fname ".") AND (NOT (has_field_entry acc (ident_base_name fname))) =
-          acc :: [FieldEntry (ident_base_name fname) idx]
+        | (str contains fname ".") AND (NOT (has field entry acc (ident base name fname))) =
+          acc :: [FieldEntry (ident base name fname) idx]
         | otherwise = acc
 
 fn :: collect fields from list [RField] Int [RFieldEntry] => [RFieldEntry]
       collect fields from list [] _ acc = acc
       collect fields from list ((TypeField fname _):fs) idx acc
-        | has_field_entry acc fname = collect_fields_from_list fs (idx + 1) (add_base_field_entry fname idx acc)
-        | otherwise = collect_fields_from_list fs (idx + 1) (add_base_field_entry fname idx (acc :: [FieldEntry fname idx]))
+        | has field entry acc fname = collect fields from list fs (idx + 1) (add base field entry fname idx acc)
+        | otherwise = collect fields from list fs (idx + 1) (add base field entry fname idx (acc :: [FieldEntry fname idx]))
 
 fn :: collect typedef fields [RTypeDef] [RFieldEntry] => [RFieldEntry]
       collect typedef fields []         acc           =  acc
       collect typedef fields ((TypeDef _ _ fields):ts) acc =
-        collect_typedef_fields ts (collect_fields_from_list fields 0 acc)
+        collect typedef fields ts (collect fields from list fields 0 acc)
 
 fn :: lookup field idx [RFieldEntry] String => Int
       lookup field idx []            _      =  0
       lookup field idx ((FieldEntry k idx):rest) target
         | k == target = idx
-        | otherwise = lookup_field_idx rest target
+        | otherwise = lookup field idx rest target
 
 fn :: collect field names [RFieldEntry] => [String]
       collect field names []            =  []
-      collect field names ((FieldEntry k _):rest) = [k] :: (collect_field_names rest)
+      collect field names ((FieldEntry k _):rest) = [k] :: (collect field names rest)
 
 fn :: build field cg sigs [RFieldEntry] [String] => [RCgSig]
       build field cg sigs [] _ = []
       build field cg sigs ((FieldEntry fname _):rest) fn_names
-        | str_in_list fname fn_names = build_field_cg_sigs rest fn_names
-        | otherwise = [CgSig fname 1 False] :: (build_field_cg_sigs rest fn_names)
+        | str in list fname fn_names = build field cg sigs rest fn_names
+        | otherwise = [CgSig fname 1 False] :: (build field cg sigs rest fn_names)
 
 fn :: build fn table fndefs [RFnDef] Int [RFnEntry] => [RFnEntry]
       build fn table fndefs [] _ acc = acc
       build fn table fndefs ((FnDef name params _ cases):fs) next_fid acc =
-        arity = infer_fndef_arity params cases
-        build_fn_table_fndefs fs (next_fid + 1) (acc :: [FnEntry name next_fid arity])
+        arity = infer fndef arity params cases
+        build fn table fndefs fs (next_fid + 1) (acc :: [FnEntry name next_fid arity])
 
 fn :: build fn table fields [RFieldEntry] [String] Int [RFnEntry] => [RFnEntry]
       build fn table fields [] _ _ acc = acc
       build fn table fields ((FieldEntry fname _):rest) fn_names next_fid acc
-        | str_in_list fname fn_names = build_fn_table_fields rest fn_names next_fid acc
-        | otherwise = build_fn_table_fields rest fn_names (next_fid + 1) (acc :: [FnEntry fname next_fid 1])
+        | str in list fname fn_names = build fn table fields rest fn_names next_fid acc
+        | otherwise = build fn table fields rest fn_names (next_fid + 1) (acc :: [FnEntry fname next_fid 1])
 
 fn :: lookup fn id [RFnEntry] String => Int
       lookup fn id []         _      =  0
       lookup fn id ((FnEntry k fid _):rest) target
         | k == target = fid
-        | otherwise = lookup_fn_id rest target
+        | otherwise = lookup fn id rest target
 
 fn :: lookup fn arity [RFnEntry] String => Int
       lookup fn arity []         _      =  -1
       lookup fn arity ((FnEntry k _ arity):rest) target
         | k == target = arity
-        | otherwise = lookup_fn_arity rest target
+        | otherwise = lookup fn arity rest target
 
 fn :: is heavy call name String               => Bool
       is heavy call name "sys_sleep_ms"       =  True
@@ -1034,252 +1034,252 @@ fn :: expr has heavy ops RExpr             => Bool
       expr has heavy ops (EEinsum _ _)     =  True
       expr has heavy ops (EHadamard _ _ _ _ _) = True
       expr has heavy ops (EBin OpMatMul _ _) = True
-      expr has heavy ops (EBin _ l r)      =  (expr_has_heavy_ops l) OR (expr_has_heavy_ops r)
-      expr has heavy ops (ENot inner)      =  expr_has_heavy_ops inner
-      expr has heavy ops (EOut inner)      =  expr_has_heavy_ops inner
+      expr has heavy ops (EBin _ l r)      =  (expr has heavy ops l) OR (expr has heavy ops r)
+      expr has heavy ops (ENot inner)      =  expr has heavy ops inner
+      expr has heavy ops (EOut inner)      =  expr has heavy ops inner
       expr has heavy ops (ECall fname args)
-        | is_heavy_call_name fname = True
-        | otherwise = expr_list_has_heavy_ops args
-      expr has heavy ops (EList elems)     =  expr_list_has_heavy_ops elems
-      expr has heavy ops (ETuple elems)    =  expr_list_has_heavy_ops elems
-      expr has heavy ops (EBlock stmts)    =  stmt_list_has_heavy_ops stmts
-      expr has heavy ops (EGuard guards)   =  guard_list_has_heavy_ops guards
-      expr has heavy ops (EWhere body binds) = (expr_has_heavy_ops body) OR (where_list_has_heavy_ops binds)
-      expr has heavy ops (EParPipe branches) = expr_list_has_heavy_ops branches
+        | is heavy call name fname = True
+        | otherwise = expr list has heavy ops args
+      expr has heavy ops (EList elems)     =  expr list has heavy ops elems
+      expr has heavy ops (ETuple elems)    =  expr list has heavy ops elems
+      expr has heavy ops (EBlock stmts)    =  stmt list has heavy ops stmts
+      expr has heavy ops (EGuard guards)   =  guard list has heavy ops guards
+      expr has heavy ops (EWhere body binds) = (expr has heavy ops body) OR (where list has heavy ops binds)
+      expr has heavy ops (EParPipe branches) = expr list has heavy ops branches
       expr has heavy ops (EWithCtx "__rg_timeout_ms__" _ _) = True
-      expr has heavy ops (EWithCtx _ v b)  =  (expr_has_heavy_ops v) OR (expr_has_heavy_ops b)
-      expr has heavy ops (EWithRegion _ b) =  expr_has_heavy_ops b
+      expr has heavy ops (EWithCtx _ v b)  =  (expr has heavy ops v) OR (expr has heavy ops b)
+      expr has heavy ops (EWithRegion _ b) =  expr has heavy ops b
       expr has heavy ops _                 =  False
 
 fn :: expr list has heavy ops [RExpr] => Bool
       expr list has heavy ops [] = False
       expr list has heavy ops (e:es)
-        | expr_has_heavy_ops e = True
-        | otherwise = expr_list_has_heavy_ops es
+        | expr has heavy ops e = True
+        | otherwise = expr list has heavy ops es
 
 fn :: stmt list has heavy ops [RStmt] => Bool
       stmt list has heavy ops [] = False
       stmt list has heavy ops ((StmtLet _ e):ss)
-        | expr_has_heavy_ops e = True
-        | otherwise = stmt_list_has_heavy_ops ss
+        | expr has heavy ops e = True
+        | otherwise = stmt list has heavy ops ss
       stmt list has heavy ops ((StmtMut _ e):ss)
-        | expr_has_heavy_ops e = True
-        | otherwise = stmt_list_has_heavy_ops ss
+        | expr has heavy ops e = True
+        | otherwise = stmt list has heavy ops ss
       stmt list has heavy ops ((StmtExpr e):ss)
-        | expr_has_heavy_ops e = True
-        | otherwise = stmt_list_has_heavy_ops ss
-      stmt list has heavy ops (_:ss) = stmt_list_has_heavy_ops ss
+        | expr has heavy ops e = True
+        | otherwise = stmt list has heavy ops ss
+      stmt list has heavy ops (_:ss) = stmt list has heavy ops ss
 
 fn :: where list has heavy ops [RWhereBind] => Bool
       where list has heavy ops [] = False
       where list has heavy ops ((WhereBind e _ _):wbs)
-        | expr_has_heavy_ops e = True
-        | otherwise = where_list_has_heavy_ops wbs
+        | expr has heavy ops e = True
+        | otherwise = where list has heavy ops wbs
 
 fn :: guard list has heavy ops [RGuard] => Bool
       guard list has heavy ops [] = False
       guard list has heavy ops ((GuardBranch c b):gs)
-        | (expr_has_heavy_ops c) OR (expr_has_heavy_ops b) = True
-        | otherwise = guard_list_has_heavy_ops gs
+        | (expr has heavy ops c) OR (expr has heavy ops b) = True
+        | otherwise = guard list has heavy ops gs
 
 fn :: cases have heavy ops [RFnCase] => Bool
       cases have heavy ops []        =  False
       cases have heavy ops ((FnCase _ gs b):cs)
-        | (guard_list_has_heavy_ops gs) OR (expr_has_heavy_ops b) = True
-        | otherwise = cases_have_heavy_ops cs
+        | (guard list has heavy ops gs) OR (expr has heavy ops b) = True
+        | otherwise = cases have heavy ops cs
 
 fn :: any str in list [String] [String] => Bool
       any str in list [] _ = False
       any str in list (x:xs) targets
-        | str_in_list x targets = True
-        | otherwise = any_str_in_list xs targets
+        | str in list x targets = True
+        | otherwise = any str in list xs targets
 
 fn :: collect direct heavy fns [RFnDef] => [String]
       collect direct heavy fns []       =  []
       collect direct heavy fns ((FnDef name _ _ cases):fs)
-        | (count_case_calls name cases) > 0 OR (cases_have_heavy_ops cases) =
-          [name] :: (collect_direct_heavy_fns fs)
-        | otherwise = collect_direct_heavy_fns fs
+        | (count case calls name cases) > 0 OR (cases have heavy ops cases) =
+          [name] :: (collect direct heavy fns fs)
+        | otherwise = collect direct heavy fns fs
 
 fn :: build non heavy ref pairs [RFnDef] [String] => [(String, [String])]
       build non heavy ref pairs [] _ = []
       build non heavy ref pairs ((FnDef name _ _ cases):fs) direct_heavy
-        | str_in_list name direct_heavy = build_non_heavy_ref_pairs fs direct_heavy
-        | otherwise = [(name, collect_refs_cases cases [])] :: (build_non_heavy_ref_pairs fs direct_heavy)
+        | str in list name direct_heavy = build non heavy ref pairs fs direct_heavy
+        | otherwise = [(name, collect refs cases cases [])] :: (build non heavy ref pairs fs direct_heavy)
 
 fn :: expand heavy pass [(String, [String])] [String] [(String, [String])] Bool => [String] [(String, [String])] Bool
       expand heavy pass [] heavy rem changed = (heavy, rem, changed)
       expand heavy pass ((name, refs):rest) heavy rem changed
-        | any_str_in_list refs heavy =
-          expand_heavy_pass rest (heavy :: [name]) rem True
+        | any str in list refs heavy =
+          expand heavy pass rest (heavy :: [name]) rem True
         | otherwise =
-          expand_heavy_pass rest heavy (rem :: [(name, refs)]) changed
+          expand heavy pass rest heavy (rem :: [(name, refs)]) changed
 
 fn :: expand heavy fixpoint [(String, [String])] [String] Int => [String]
       expand heavy fixpoint _ heavy 0 = heavy
       expand heavy fixpoint [] heavy _ = heavy
       expand heavy fixpoint pairs heavy rounds =
-        expand_heavy_step (expand_heavy_pass pairs heavy [] False) rounds
+        expand heavy step (expand heavy pass pairs heavy [] False) rounds
 
 fn :: expand heavy step ([String], [(String, [String])], Bool) Int => [String]
       expand heavy step (heavy1, _, False) _ = heavy1
       expand heavy step (heavy1, rem1, True) rounds =
-        expand_heavy_fixpoint rem1 heavy1 (rounds - 1)
+        expand heavy fixpoint rem1 heavy1 (rounds - 1)
 
 fn :: build heavy fn entries [String] [RFnEntry] => [RFnEntry]
       build heavy fn entries [] acc = acc
       build heavy fn entries (h:hs) acc =
-        build_heavy_fn_entries hs (acc :: [FnEntry ("__heavy__" + h) 1 (0 - 1)])
+        build heavy fn entries hs (acc :: [FnEntry ("__heavy__" + h) 1 (0 - 1)])
 
 fn :: attach heavy fn entries [RFnDef] [String] [RFnEntry] => [RFnEntry]
       attach heavy fn entries fns _ fn_tbl =
-        direct_heavy = collect_direct_heavy_fns fns
-        ref_pairs = build_non_heavy_ref_pairs fns direct_heavy
-        all_heavy = expand_heavy_fixpoint ref_pairs direct_heavy 8
-        build_heavy_fn_entries all_heavy fn_tbl
+        direct_heavy = collect direct heavy fns fns
+        ref_pairs = build non heavy ref pairs fns direct_heavy
+        all_heavy = expand heavy fixpoint ref_pairs direct_heavy 8
+        build heavy fn entries all_heavy fn_tbl
 
 -- ── Local Variable Collection & RMM2 Liveness Helpers ────────
 
 fn :: collect pat vars RPattern         [String] => [String]
-      collect pat vars (PatVar v)       acc      =  add_unique_str v acc
-      collect pat vars (PatSeqBind v)   acc      =  add_unique_str v acc
-      collect pat vars (PatCons h t)    acc      =  collect_pat_vars t (collect_pat_vars h acc)
-      collect pat vars (PatTuple ps)    acc      =  collect_pat_list_vars ps acc
-      collect pat vars (PatCtor _ args) acc      =  collect_pat_list_vars args acc
+      collect pat vars (PatVar v)       acc      =  add unique str v acc
+      collect pat vars (PatSeqBind v)   acc      =  add unique str v acc
+      collect pat vars (PatCons h t)    acc      =  collect pat vars t (collect pat vars h acc)
+      collect pat vars (PatTuple ps)    acc      =  collect pat list vars ps acc
+      collect pat vars (PatCtor _ args) acc      =  collect pat list vars args acc
       collect pat vars _                acc      =  acc
 
 fn :: collect pat list vars [RPattern] [String] => [String]
       collect pat list vars [] acc = acc
-      collect pat list vars (p:ps) acc = collect_pat_list_vars ps (collect_pat_vars p acc)
+      collect pat list vars (p:ps) acc = collect pat list vars ps (collect pat vars p acc)
 
 fn :: add bound var String [String] => [String]
       add bound var "_"    acc      =  acc
-      add bound var v      acc      =  add_unique_str v acc
+      add bound var v      acc      =  add unique str v acc
 
 fn :: collect expr bound vars RExpr [String] => [String]
-      collect expr bound vars (ENot inner) acc = collect_expr_bound_vars inner acc
-      collect expr bound vars (EOut inner) acc = collect_expr_bound_vars inner acc
-      collect expr bound vars (EBin _ l r) acc = collect_expr_bound_vars r (collect_expr_bound_vars l acc)
-      collect expr bound vars (ECall _ args) acc = collect_expr_list_bound_vars args acc
-      collect expr bound vars (EEcho args) acc = collect_expr_list_bound_vars args acc
-      collect expr bound vars (EStrInterp parts) acc = collect_expr_list_bound_vars parts acc
-      collect expr bound vars (EList elems) acc = collect_expr_list_bound_vars elems acc
-      collect expr bound vars (ETuple elems) acc = collect_expr_list_bound_vars elems acc
-      collect expr bound vars (ETensor elems) acc = collect_expr_list_bound_vars elems acc
-      collect expr bound vars (EEinsum es _) acc = collect_expr_list_bound_vars es acc
-      collect expr bound vars (EHadamard _ l _ r _) acc = collect_expr_bound_vars r (collect_expr_bound_vars l acc)
-      collect expr bound vars (EIndex base idxs) acc = collect_expr_list_bound_vars idxs (collect_expr_bound_vars base acc)
-      collect expr bound vars (EIndexAssign t idxs v) acc = collect_expr_bound_vars v (collect_expr_list_bound_vars idxs (add_bound_var t acc))
-      collect expr bound vars (ESeqSelect b _) acc = collect_expr_bound_vars b acc
-      collect expr bound vars (EBlock stmts) acc = collect_stmt_list_bound_vars stmts acc
-      collect expr bound vars (EGuard guards) acc = collect_guard_list_bound_vars guards acc
-      collect expr bound vars (EWhere body binds) acc = collect_where_list_bound_vars binds (collect_expr_bound_vars body acc)
-      collect expr bound vars (EParPipe branches) acc = collect_expr_list_bound_vars branches acc
-      collect expr bound vars (EWithCtx _ v b) acc = collect_expr_bound_vars b (collect_expr_bound_vars v acc)
-      collect expr bound vars (EWithRegion _ b) acc = collect_expr_bound_vars b acc
+      collect expr bound vars (ENot inner) acc = collect expr bound vars inner acc
+      collect expr bound vars (EOut inner) acc = collect expr bound vars inner acc
+      collect expr bound vars (EBin _ l r) acc = collect expr bound vars r (collect expr bound vars l acc)
+      collect expr bound vars (ECall _ args) acc = collect expr list bound vars args acc
+      collect expr bound vars (EEcho args) acc = collect expr list bound vars args acc
+      collect expr bound vars (EStrInterp parts) acc = collect expr list bound vars parts acc
+      collect expr bound vars (EList elems) acc = collect expr list bound vars elems acc
+      collect expr bound vars (ETuple elems) acc = collect expr list bound vars elems acc
+      collect expr bound vars (ETensor elems) acc = collect expr list bound vars elems acc
+      collect expr bound vars (EEinsum es _) acc = collect expr list bound vars es acc
+      collect expr bound vars (EHadamard _ l _ r _) acc = collect expr bound vars r (collect expr bound vars l acc)
+      collect expr bound vars (EIndex base idxs) acc = collect expr list bound vars idxs (collect expr bound vars base acc)
+      collect expr bound vars (EIndexAssign t idxs v) acc = collect expr bound vars v (collect expr list bound vars idxs (add bound var t acc))
+      collect expr bound vars (ESeqSelect b _) acc = collect expr bound vars b acc
+      collect expr bound vars (EBlock stmts) acc = collect stmt list bound vars stmts acc
+      collect expr bound vars (EGuard guards) acc = collect guard list bound vars guards acc
+      collect expr bound vars (EWhere body binds) acc = collect where list bound vars binds (collect expr bound vars body acc)
+      collect expr bound vars (EParPipe branches) acc = collect expr list bound vars branches acc
+      collect expr bound vars (EWithCtx _ v b) acc = collect expr bound vars b (collect expr bound vars v acc)
+      collect expr bound vars (EWithRegion _ b) acc = collect expr bound vars b acc
       collect expr bound vars _ acc = acc
 
 fn :: collect expr list bound vars [RExpr] [String] => [String]
       collect expr list bound vars [] acc = acc
-      collect expr list bound vars (e:es) acc = collect_expr_list_bound_vars es (collect_expr_bound_vars e acc)
+      collect expr list bound vars (e:es) acc = collect expr list bound vars es (collect expr bound vars e acc)
 
 fn :: collect stmt list bound vars [RStmt] [String] => [String]
       collect stmt list bound vars [] acc = acc
       collect stmt list bound vars ((StmtLet v e):ss) acc =
-        collect_stmt_list_bound_vars ss (add_bound_var v (collect_expr_bound_vars e acc))
+        collect stmt list bound vars ss (add bound var v (collect expr bound vars e acc))
       collect stmt list bound vars ((StmtMut v e):ss) acc =
-        collect_stmt_list_bound_vars ss (add_bound_var v (collect_expr_bound_vars e acc))
+        collect stmt list bound vars ss (add bound var v (collect expr bound vars e acc))
       collect stmt list bound vars ((StmtExpr e):ss) acc =
-        collect_stmt_list_bound_vars ss (collect_expr_bound_vars e acc)
+        collect stmt list bound vars ss (collect expr bound vars e acc)
       collect stmt list bound vars ((StmtIndexAssign t idxs e):ss) acc =
-        collect_stmt_list_bound_vars ss (collect_expr_bound_vars e (collect_expr_list_bound_vars idxs (add_bound_var t acc)))
+        collect stmt list bound vars ss (collect expr bound vars e (collect expr list bound vars idxs (add bound var t acc)))
 
 fn :: collect where list bound vars [RWhereBind] [String] => [String]
       collect where list bound vars [] acc = acc
       collect where list bound vars ((WhereBind e v _):wbs) acc =
-        collect_where_list_bound_vars wbs (add_bound_var v (collect_expr_bound_vars e acc))
+        collect where list bound vars wbs (add bound var v (collect expr bound vars e acc))
 
 fn :: collect guard list bound vars [RGuard] [String] => [String]
       collect guard list bound vars [] acc = acc
       collect guard list bound vars ((GuardBranch c b):gs) acc =
-        collect_guard_list_bound_vars gs (collect_expr_bound_vars b (collect_expr_bound_vars c acc))
+        collect guard list bound vars gs (collect expr bound vars b (collect expr bound vars c acc))
 
 fn :: collect cases all locals [RFnCase] [String] => [String]
       collect cases all locals [] acc = acc
       collect cases all locals ((FnCase pats guards body):cs) acc =
-        a1 = collect_pat_list_vars pats acc
-        a2 = collect_guard_list_bound_vars guards a1
-        collect_cases_all_locals cs (collect_expr_bound_vars body a2)
+        a1 = collect pat list vars pats acc
+        a2 = collect guard list bound vars guards a1
+        collect cases all locals cs (collect expr bound vars body a2)
 
 fn :: cmm expr vars RExpr              [String] => [String]
-      cmm expr vars (EVar name)        acc      =  add_unique_str name acc
-      cmm expr vars (ENot inner)       acc      =  cmm_expr_vars inner acc
-      cmm expr vars (EOut inner)       acc      =  cmm_expr_vars inner acc
-      cmm expr vars (EBin _ l r)       acc      =  cmm_expr_vars r (cmm_expr_vars l acc)
+      cmm expr vars (EVar name)        acc      =  add unique str name acc
+      cmm expr vars (ENot inner)       acc      =  cmm expr vars inner acc
+      cmm expr vars (EOut inner)       acc      =  cmm expr vars inner acc
+      cmm expr vars (EBin _ l r)       acc      =  cmm expr vars r (cmm expr vars l acc)
       cmm expr vars (ECall "__record_update__" (base_e:rest_args)) acc =
-        cmm_expr_list_vars rest_args (cmm_expr_vars base_e acc)
+        cmm expr list vars rest_args (cmm expr vars base_e acc)
       cmm expr vars (ECall "__unpack2__" (_:single_arg:[])) acc =
-        cmm_expr_vars single_arg acc
-      cmm expr vars (ECall fname args) acc      =  cmm_expr_list_vars args (add_unique_str fname acc)
-      cmm expr vars (EEcho args)       acc      =  cmm_expr_list_vars args acc
-      cmm expr vars (EStrInterp parts) acc      =  cmm_expr_list_vars parts acc
-      cmm expr vars (EList elems)      acc      =  cmm_expr_list_vars elems acc
-      cmm expr vars (ETuple elems)     acc      =  cmm_expr_list_vars elems acc
-      cmm expr vars (ETensor elems)    acc      =  cmm_expr_list_vars elems acc
-      cmm expr vars (EEinsum es _)     acc      =  cmm_expr_list_vars es acc
-      cmm expr vars (EHadamard _ l _ r _) acc   =  cmm_expr_vars r (cmm_expr_vars l acc)
-      cmm expr vars (EIndex base idxs) acc      =  cmm_expr_list_vars idxs (cmm_expr_vars base acc)
-      cmm expr vars (EIndexAssign t idxs v) acc =  cmm_expr_vars v (cmm_expr_list_vars idxs (add_unique_str t acc))
-      cmm expr vars (ESeqSelect b _)   acc      =  cmm_expr_vars b acc
-      cmm expr vars (EBlock stmts)     acc      =  cmm_stmts_vars stmts acc
-      cmm expr vars (EGuard guards)    acc      =  cmm_guards_vars guards acc
-      cmm expr vars (EWhere body binds) acc     =  cmm_where_vars binds body acc
-      cmm expr vars (EParPipe branches) acc     =  cmm_expr_list_vars branches acc
-      cmm expr vars (EWithCtx _ v b)   acc      =  cmm_expr_vars b (cmm_expr_vars v acc)
-      cmm expr vars (EWithRegion _ b)  acc      =  cmm_expr_vars b acc
+        cmm expr vars single_arg acc
+      cmm expr vars (ECall fname args) acc      =  cmm expr list vars args (add unique str fname acc)
+      cmm expr vars (EEcho args)       acc      =  cmm expr list vars args acc
+      cmm expr vars (EStrInterp parts) acc      =  cmm expr list vars parts acc
+      cmm expr vars (EList elems)      acc      =  cmm expr list vars elems acc
+      cmm expr vars (ETuple elems)     acc      =  cmm expr list vars elems acc
+      cmm expr vars (ETensor elems)    acc      =  cmm expr list vars elems acc
+      cmm expr vars (EEinsum es _)     acc      =  cmm expr list vars es acc
+      cmm expr vars (EHadamard _ l _ r _) acc   =  cmm expr vars r (cmm expr vars l acc)
+      cmm expr vars (EIndex base idxs) acc      =  cmm expr list vars idxs (cmm expr vars base acc)
+      cmm expr vars (EIndexAssign t idxs v) acc =  cmm expr vars v (cmm expr list vars idxs (add unique str t acc))
+      cmm expr vars (ESeqSelect b _)   acc      =  cmm expr vars b acc
+      cmm expr vars (EBlock stmts)     acc      =  cmm stmts vars stmts acc
+      cmm expr vars (EGuard guards)    acc      =  cmm guards vars guards acc
+      cmm expr vars (EWhere body binds) acc     =  cmm where vars binds body acc
+      cmm expr vars (EParPipe branches) acc     =  cmm expr list vars branches acc
+      cmm expr vars (EWithCtx _ v b)   acc      =  cmm expr vars b (cmm expr vars v acc)
+      cmm expr vars (EWithRegion _ b)  acc      =  cmm expr vars b acc
       cmm expr vars _                  acc      =  acc
 
 fn :: cmm guards vars [RGuard] [String] => [String]
       cmm guards vars []       acc      =  acc
       cmm guards vars ((GuardBranch c b):gs) acc =
-        cmm_guards_vars gs (cmm_expr_vars b (cmm_expr_vars c acc))
+        cmm guards vars gs (cmm expr vars b (cmm expr vars c acc))
 
 fn :: cmm expr list vars [RExpr] [String] => [String]
       cmm expr list vars [] acc = acc
-      cmm expr list vars (e:es) acc = cmm_expr_list_vars es (cmm_expr_vars e acc)
+      cmm expr list vars (e:es) acc = cmm expr list vars es (cmm expr vars e acc)
 
 fn :: cmm stmts vars [RStmt]            [String] => [String]
       cmm stmts vars []                 acc      =  acc
-      cmm stmts vars ((StmtLet _ e):ss) acc      =  cmm_stmts_vars ss (cmm_expr_vars e acc)
-      cmm stmts vars ((StmtMut _ e):ss) acc      =  cmm_stmts_vars ss (cmm_expr_vars e acc)
-      cmm stmts vars ((StmtExpr e):ss)  acc      =  cmm_stmts_vars ss (cmm_expr_vars e acc)
+      cmm stmts vars ((StmtLet _ e):ss) acc      =  cmm stmts vars ss (cmm expr vars e acc)
+      cmm stmts vars ((StmtMut _ e):ss) acc      =  cmm stmts vars ss (cmm expr vars e acc)
+      cmm stmts vars ((StmtExpr e):ss)  acc      =  cmm stmts vars ss (cmm expr vars e acc)
       cmm stmts vars ((StmtIndexAssign t idxs e):ss) acc =
-        cmm_stmts_vars ss (cmm_expr_vars e (cmm_expr_list_vars idxs (add_unique_str t acc)))
+        cmm stmts vars ss (cmm expr vars e (cmm expr list vars idxs (add unique str t acc)))
 
 fn :: cmm where vars [RWhereBind] RExpr [String] => [String]
-      cmm where vars [] body acc = cmm_expr_vars body acc
+      cmm where vars [] body acc = cmm expr vars body acc
       cmm where vars ((WhereBind e _ []):wbs) body acc =
-        cmm_where_vars wbs body (cmm_expr_vars e acc)
+        cmm where vars wbs body (cmm expr vars e acc)
       cmm where vars ((WhereBind e v _):wbs) body acc =
-        cmm_where_vars wbs body (cmm_expr_vars e (add_unique_str v acc))
+        cmm where vars wbs body (cmm expr vars e (add unique str v acc))
 
 fn :: cmm filter in list [String] [String] => [String]
       cmm filter in list [] _ = []
       cmm filter in list (x:xs) allowed
-        | x != "_" AND (str_in_list x allowed) = [x] :: (cmm_filter_in_list xs allowed)
-        | otherwise = cmm_filter_in_list xs allowed
+        | x != "_" AND (str in list x allowed) = [x] :: (cmm filter in list xs allowed)
+        | otherwise = cmm filter in list xs allowed
 
 fn :: cmm filter not in list [String] [String] => [String]
       cmm filter not in list [] _ = []
       cmm filter not in list (x:xs) excluded
-        | x != "_" AND (NOT (str_in_list x excluded)) = [x] :: (cmm_filter_not_in_list xs excluded)
-        | otherwise = cmm_filter_not_in_list xs excluded
+        | x != "_" AND (NOT (str in list x excluded)) = [x] :: (cmm filter not in list xs excluded)
+        | otherwise = cmm filter not in list xs excluded
 
 fn :: cmm remove str String [String] => [String]
       cmm remove str _      []       =  []
       cmm remove str target (x:xs)
-        | x == target = cmm_remove_str target xs
-        | otherwise = [x] :: (cmm_remove_str target xs)
+        | x == target = cmm remove str target xs
+        | otherwise = [x] :: (cmm remove str target xs)
 
 -- ── Environment Accessors & Builtin ID Mapping ───────────────
 
@@ -1290,28 +1290,28 @@ fn :: env arity RNativeEnv => Int
       env arity (NativeEnv _ arity _ _ _ _) = arity
 
 fn :: env str off RNativeEnv String => Int
-      env str off (NativeEnv _ _ _ str_tbl _ _) s = lookup_str_off str_tbl s
+      env str off (NativeEnv _ _ _ str_tbl _ _) s = lookup str off str_tbl s
 
 fn :: env fn id RNativeEnv String => Int
-      env fn id (NativeEnv _ _ _ _ fn_tbl _) fname = lookup_fn_id fn_tbl fname
+      env fn id (NativeEnv _ _ _ _ fn_tbl _) fname = lookup fn id fn_tbl fname
 
 fn :: env fn arity RNativeEnv String => Int
-      env fn arity (NativeEnv _ _ _ _ fn_tbl _) fname = lookup_fn_arity fn_tbl fname
+      env fn arity (NativeEnv _ _ _ _ fn_tbl _) fname = lookup fn arity fn_tbl fname
 
 fn :: env fn is heavy RNativeEnv String => Bool
       env fn is heavy (NativeEnv _ _ _ _ fn_tbl _) fname =
-        (lookup_fn_id fn_tbl ("__heavy__" + fname)) > 0
+        (lookup fn id fn_tbl ("__heavy__" + fname)) > 0
 
 fn :: env field idx RNativeEnv String => Int
-      env field idx (NativeEnv _ _ _ _ _ field_tbl) fname = lookup_field_idx field_tbl fname
+      env field idx (NativeEnv _ _ _ _ _ field_tbl) fname = lookup field idx field_tbl fname
 
 fn :: env has field RNativeEnv String => Bool
-      env has field (NativeEnv _ _ _ _ _ field_tbl) fname = has_field_entry field_tbl fname
+      env has field (NativeEnv _ _ _ _ _ field_tbl) fname = has field entry field_tbl fname
 
 fn :: env var slot RNativeEnv String => Int
       env var slot (NativeEnv _ arity all_locals _ _ _) name =
-        idx = lookup_local all_locals name
-        env_var_slot_idx arity idx
+        idx = lookup local all_locals name
+        env var slot idx arity idx
 
 fn :: env var slot idx Int Int => Int
       env var slot idx arity idx
@@ -1464,63 +1464,63 @@ fn :: builtin call id String             => Int
 fn :: lower cmm drops RNativeEnv [String] Int RNativeCode => RNativeCode
       lower cmm drops _ [] _ st = st
       lower cmm drops env (x:xs) used_sp st =
-        slot = env_var_slot env x
-        st1 = nc_emit st (NCmmDropSlot slot) used_sp
-        lower_cmm_drops env xs used_sp st1
+        slot = env var slot env x
+        st1 = nc emit st (NCmmDropSlot slot) used_sp
+        lower cmm drops env xs used_sp st1
 
 fn :: lower unused let drop RNativeEnv String [String] Int RNativeCode => RNativeCode
       lower unused let drop env v live_after used_sp st
-        | str_in_list v live_after = st
-        | otherwise = nc_emit st (NCmmDropSlot (env_var_slot env v)) used_sp
+        | str in list v live_after = st
+        | otherwise = nc emit st (NCmmDropSlot (env var slot env v)) used_sp
 
 fn :: lower let var store RNativeEnv String [String] Int RNativeCode => RNativeCode
       lower let var store env v bound_locals used_sp st
-        | (lookup_local bound_locals v) >= 0 = nc_emit st (NRebindSlot (env_var_slot env v)) used_sp
-        | otherwise = nc_emit st (NStoreSlot (env_var_slot env v)) used_sp
+        | (lookup local bound_locals v) >= 0 = nc emit st (NRebindSlot (env var slot env v)) used_sp
+        | otherwise = nc emit st (NStoreSlot (env var slot env v)) used_sp
 
 fn :: lower expr list to slots RNativeEnv [RExpr] [String] Int Int RNativeCode => RNativeCode
       lower expr list to slots _ [] _ _ _ st = st
       lower expr list to slots env (e:es) bound_locals sp idx st =
         cur_slot = sp + idx
-        st1 = lower_expr env e bound_locals cur_slot st
-        st2 = nc_emit st1 (NStoreSlot cur_slot) (cur_slot + 1)
-        lower_expr_list_to_slots env es bound_locals sp (idx + 1) st2
+        st1 = lower expr env e bound_locals cur_slot st
+        st2 = nc emit st1 (NStoreSlot cur_slot) (cur_slot + 1)
+        lower expr list to slots env es bound_locals sp (idx + 1) st2
 
 fn :: lower int list to slots [Int] Int Int RNativeCode => RNativeCode
       lower int list to slots [] _ _ st = st
       lower int list to slots (n:ns) sp idx st =
         cur_slot = sp + idx
-        st1 = nc_emit_list st [NLoadImmInt n, NStoreSlot cur_slot] (cur_slot + 1)
-        lower_int_list_to_slots ns sp (idx + 1) st1
+        st1 = nc emit list st [NLoadImmInt n, NStoreSlot cur_slot] (cur_slot + 1)
+        lower int list to slots ns sp (idx + 1) st1
 
 fn :: lower record updates RNativeEnv [RExpr] [String] Int RNativeCode => RNativeCode
       lower record updates env ((EStr fname):val_e:rest) bound_locals sp st =
-        st1 = nc_emit st (NStoreSlot sp) (sp + 1)
-        st2 = lower_expr env val_e bound_locals (sp + 1) st1
-        fidx = env_field_idx env fname
-        st3 = nc_emit st2 (NAdtSet sp fidx) (sp + 1)
-        lower_record_updates env rest bound_locals sp st3
+        st1 = nc emit st (NStoreSlot sp) (sp + 1)
+        st2 = lower expr env val_e bound_locals (sp + 1) st1
+        fidx = env field idx env fname
+        st3 = nc emit st2 (NAdtSet sp fidx) (sp + 1)
+        lower record updates env rest bound_locals sp st3
       lower record updates _ _ _ _ st = st
 
 fn :: lower var expr RNativeEnv String [String] Int RNativeCode => RNativeCode
       lower var expr env name bound_locals sp st
-        | (lookup_local bound_locals name) >= 0 =
-          nc_emit st (NCloneSlot (env_var_slot env name)) sp
+        | (lookup local bound_locals name) >= 0 =
+          nc emit st (NCloneSlot (env var slot env name)) sp
         | name == "sys_os" =
-          nc_emit st (NLoadAdt0 (env_str_off env "Linux") 5) sp
+          nc emit st (NLoadAdt0 (env str off env "Linux") 5) sp
         | name == "sys_arch" =
-          nc_emit st (NLoadAdt0 (0 - 1) 0) sp
-        | is_upper_ident name =
-          c_tag = ident_base_name name
-          off = env_str_off env c_tag
-          nc_emit st (NLoadAdt0 off (str_len c_tag)) sp
-        | (builtin_zero_arg_id name) >= 0 =
-          nc_emit st (NCallBuiltin (builtin_zero_arg_id name) sp 0) (sp + 1)
-        | (env_fn_arity env name) == 0 =
-          nc_emit st (NCallFn (env_fn_id env name) sp 0) (sp + 1)
+          nc emit st (NLoadAdt0 (0 - 1) 0) sp
+        | is upper ident name =
+          c_tag = ident base name name
+          off = env str off env c_tag
+          nc emit st (NLoadAdt0 off (str len c_tag)) sp
+        | (builtin zero arg id name) >= 0 =
+          nc emit st (NCallBuiltin (builtin zero arg id name) sp 0) (sp + 1)
+        | (env fn arity env name) == 0 =
+          nc emit st (NCallFn (env fn id env name) sp 0) (sp + 1)
         | otherwise =
-          off = env_str_off env name
-          nc_emit st (NLoadStrLit off (str_len name)) sp
+          off = env str off env name
+          nc emit st (NLoadStrLit off (str len name)) sp
 
 fn :: prim type tag id String       => Int
       prim type tag id "Int"        =  1
@@ -1590,8 +1590,8 @@ fn :: lower tensor clone RNativeEnv RExpr [String] Int RNativeCode => RNativeCod
 
 fn :: tensor map call instr RNativeEnv RExpr [String] Int Int => RNativeInstr
       tensor map call instr env (EVar fname) boundLocals fnSlot argSlot
-        | (lookup_local boundLocals fname) < 0 AND (env_fn_arity env fname) == 1 =
-          NCallFn (env_fn_id env fname) argSlot 1
+        | (lookup local boundLocals fname) < 0 AND (env fn arity env fname) == 1 =
+          NCallFn (env fn id env fname) argSlot 1
         | otherwise =
           NCallIndirect1 fnSlot argSlot
       tensor map call instr _ _ _ fnSlot argSlot =
@@ -1614,8 +1614,8 @@ fn :: lower tensor get col slots RNativeEnv Int Int Int RNativeCode => RNativeCo
 
 fn :: store back mutated tensor RNativeEnv RExpr [String] Int Int RNativeCode => RNativeCode
       store back mutated tensor env (EVar tname) boundLocals srcSlot usedSp st
-        | (lookup_local boundLocals tname) >= 0 =
-          tslot = env_var_slot env tname
+        | (lookup local boundLocals tname) >= 0 =
+          tslot = env var slot env tname
           nc emit list st [NCloneSlot srcSlot, NRebindSlot tslot] usedSp
       store back mutated tensor _ _ _ _ _ st = st
 
@@ -1750,36 +1750,36 @@ fn :: is agent call name String             => Bool
 
 fn :: agent fn mode RNativeEnv RExpr [String] => Int
       agent fn mode env (EVar fname) bound_locals
-        | (lookup_local bound_locals fname) < 0 AND (env_fn_is_heavy env fname) = 3
-        | (lookup_local bound_locals fname) < 0 AND (env_fn_arity env fname) == 2 = 4
+        | (lookup local bound_locals fname) < 0 AND (env fn is heavy env fname) = 3
+        | (lookup local bound_locals fname) < 0 AND (env fn arity env fname) == 2 = 4
         | otherwise = 1
       agent fn mode _ _ _ = 1
 
 fn :: stateful agent mode RNativeEnv RExpr [String] => Int
       stateful agent mode env (EVar fname) bound_locals
-        | (lookup_local bound_locals fname) < 0 AND (env_fn_is_heavy env fname) = 1
+        | (lookup local bound_locals fname) < 0 AND (env fn is heavy env fname) = 1
         | otherwise = 0
       stateful agent mode _ _ _ = 0
 
 fn :: lower agent call RNativeEnv String [RExpr] [String] Int RNativeCode => RNativeCode
       lower agent call env "agent" (fn_e:[]) bound_locals sp st =
-        ag_mode = agent_fn_mode env fn_e bound_locals
-        st1 = lower_expr env fn_e bound_locals sp st
+        ag_mode = agent fn mode env fn_e bound_locals
+        st1 = lower expr env fn_e bound_locals sp st
         ins = [NStoreSlot sp, NCallBuiltin 1 (sp + 1) 0, NStoreSlot (sp + 1), NCallBuiltin 1 (sp + 2) 0, NStoreSlot (sp + 2), NLoadImmInt ag_mode, NStoreSlot (sp + 3), NMakeList (sp + 4) 0, NStoreSlot (sp + 4), NMakeTuple (sp + 3) 2, NStoreSlot (sp + 3), NCloneSlot (sp + 1), NStoreSlot (sp + 4), NCallBuiltin 50 (sp + 3) 2, NDropVal, NMakeTuple sp 3]
-        nc_emit_list st1 ins (sp + 5)
+        nc emit list st1 ins (sp + 5)
       lower agent call env "agent" (fn_e:init_e:[]) bound_locals sp st =
-        st_flag = stateful_agent_mode env fn_e bound_locals
-        st1 = lower_expr env fn_e bound_locals sp st
-        st2 = nc_emit st1 (NStoreSlot sp) (sp + 1)
-        st3 = lower_expr env init_e bound_locals (sp + 4) st2
+        st_flag = stateful agent mode env fn_e bound_locals
+        st1 = lower expr env fn_e bound_locals sp st
+        st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
+        st3 = lower expr env init_e bound_locals (sp + 4) st2
         ins = [NStoreSlot (sp + 4), NLoadImmInt st_flag, NStoreSlot (sp + 5), NMakeTuple (sp + 4) 2, NStoreSlot (sp + 4), NCallBuiltin 1 (sp + 1) 0, NStoreSlot (sp + 1), NCallBuiltin 1 (sp + 2) 0, NStoreSlot (sp + 2), NLoadImmInt 2, NStoreSlot (sp + 3), NMakeTuple (sp + 3) 2, NStoreSlot (sp + 3), NCloneSlot (sp + 1), NStoreSlot (sp + 4), NCallBuiltin 50 (sp + 3) 2, NDropVal, NMakeTuple sp 3]
-        nc_emit_list st3 ins (sp + 6)
+        nc emit list st3 ins (sp + 6)
       lower agent call env "send_to" (msg_e:ag_e:[]) bound_locals sp st =
-        st1 = lower_expr env msg_e bound_locals sp st
-        st2 = nc_emit st1 (NStoreSlot sp) (sp + 1)
-        st3 = lower_expr env ag_e bound_locals (sp + 1) st2
-        st4 = nc_emit st3 (NStoreSlot (sp + 1)) (sp + 2)
-        stopped_lbl = nc_lbl st4
+        st1 = lower expr env msg_e bound_locals sp st
+        st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
+        st3 = lower expr env ag_e bound_locals (sp + 1) st2
+        st4 = nc emit st3 (NStoreSlot (sp + 1)) (sp + 2)
+        stopped_lbl = nc lbl st4
         stateful_lbl = stopped_lbl + 1
         heavy_lbl = stopped_lbl + 2
         same_res_lbl = stopped_lbl + 3
@@ -1793,22 +1793,22 @@ fn :: lower agent call RNativeEnv String [RExpr] [String] Int RNativeCode => RNa
         same_sync_lbl = stopped_lbl + 11
         split_sync_lbl = stopped_lbl + 12
         save_sync_lbl = stopped_lbl + 13
-        st5 = nc_set_lbl st4 (stopped_lbl + 14)
+        st5 = nc set lbl st4 (stopped_lbl + 14)
         ins_unpack = [NTupleGet (sp + 1) 0, NStoreSlot (sp + 2), NTupleGet (sp + 1) 1, NStoreSlot (sp + 3), NTupleGet (sp + 1) 2, NStoreSlot (sp + 4), NCloneSlot (sp + 3), NStoreSlot (sp + 5), NCallBuiltin 32 (sp + 5) 1, NStoreSlot (sp + 5), NTupleGet (sp + 5) 0, NStoreSlot (sp + 6), NTupleGet (sp + 5) 1, NStoreSlot (sp + 7)]
         ins_stateless = [NMatchInt (sp + 6) 1, NJumpIfZero stateless2_lbl, NCloneSlot sp, NStoreSlot (sp + 8), NCallIndirect1 (sp + 2) (sp + 8), NStoreSlot (sp + 8), NCloneSlot (sp + 5), NStoreSlot (sp + 9), NCloneSlot (sp + 3), NStoreSlot (sp + 10), NCallBuiltin 50 (sp + 9) 2, NDropVal, NCloneSlot (sp + 8), NStoreSlot (sp + 9), NCloneSlot (sp + 4), NStoreSlot (sp + 10), NCallBuiltin 50 (sp + 9) 2, NDropVal, NJump done_lbl]
         ins_stateless2 = [NLabel stateless2_lbl, NMatchInt (sp + 6) 4, NJumpIfZero stateful_lbl, NTupleGet sp 0, NStoreSlot (sp + 8), NTupleGet sp 1, NStoreSlot (sp + 9), NCallIndirect2 (sp + 2) (sp + 8), NStoreSlot (sp + 8), NCloneSlot (sp + 5), NStoreSlot (sp + 9), NCloneSlot (sp + 3), NStoreSlot (sp + 10), NCallBuiltin 50 (sp + 9) 2, NDropVal, NCloneSlot (sp + 8), NStoreSlot (sp + 9), NCloneSlot (sp + 4), NStoreSlot (sp + 10), NCallBuiltin 50 (sp + 9) 2, NDropVal, NJump done_lbl]
         ins_stateful = [NLabel stateful_lbl, NMatchInt (sp + 6) 2, NJumpIfZero heavy_lbl, NTupleGet (sp + 7) 0, NStoreSlot (sp + 8), NTupleGet (sp + 7) 1, NStoreSlot (sp + 9), NMatchInt (sp + 9) 0, NJumpIfZero st_async_lbl, NCloneSlot (sp + 8), NStoreSlot (sp + 9), NCloneSlot sp, NStoreSlot (sp + 10), NCallIndirect2 (sp + 2) (sp + 9), NStoreSlot (sp + 10), NMatchTuple (sp + 10) 2, NJumpIfZero same_sync_lbl, NMatchTuple (sp + 8) 2, NJumpIfZero split_sync_lbl, NLabel same_sync_lbl, NCloneSlot (sp + 10), NStoreSlot (sp + 8), NCloneSlot (sp + 10), NStoreSlot (sp + 11), NJump save_sync_lbl, NLabel split_sync_lbl, NTupleGet (sp + 10) 0, NStoreSlot (sp + 8), NTupleGet (sp + 10) 1, NStoreSlot (sp + 11), NLabel save_sync_lbl, NCloneSlot (sp + 4), NStoreSlot (sp + 12), NCallBuiltin 50 (sp + 11) 2, NDropVal, NLoadImmInt 0, NStoreSlot (sp + 9), NMakeTuple (sp + 8) 2, NStoreSlot (sp + 9), NLoadImmInt 2, NStoreSlot (sp + 8), NMakeTuple (sp + 8) 2, NStoreSlot (sp + 8), NCloneSlot (sp + 3), NStoreSlot (sp + 9), NCallBuiltin 50 (sp + 8) 2, NDropVal, NJump done_lbl, NLabel st_async_lbl, NMatchInt (sp + 9) 1, NJumpIfZero flush_prev_lbl, NJump spawn_stateful_lbl, NLabel flush_prev_lbl, NCallBuiltin 59 (sp + 9) 1, NStoreSlot (sp + 10), NMatchTuple (sp + 10) 2, NJumpIfZero same_res_lbl, NMatchTuple (sp + 8) 2, NJumpIfZero split_pair_lbl, NLabel same_res_lbl, NCloneSlot (sp + 10), NStoreSlot (sp + 8), NCloneSlot (sp + 10), NStoreSlot (sp + 11), NJump store_state_lbl, NLabel split_pair_lbl, NTupleGet (sp + 10) 0, NStoreSlot (sp + 8), NTupleGet (sp + 10) 1, NStoreSlot (sp + 11), NLabel store_state_lbl, NCloneSlot (sp + 4), NStoreSlot (sp + 12), NCallBuiltin 50 (sp + 11) 2, NDropVal, NLabel spawn_stateful_lbl, NCloneSlot (sp + 8), NStoreSlot (sp + 10), NCloneSlot sp, NStoreSlot (sp + 11), NMakeTuple (sp + 10) 2, NStoreSlot (sp + 10), NCloneSlot (sp + 2), NStoreSlot (sp + 9), NCallBuiltin 57 (sp + 9) 2, NStoreSlot (sp + 9), NMakeTuple (sp + 8) 2, NStoreSlot (sp + 9), NLoadImmInt 2, NStoreSlot (sp + 8), NMakeTuple (sp + 8) 2, NStoreSlot (sp + 8), NCloneSlot (sp + 3), NStoreSlot (sp + 9), NCallBuiltin 50 (sp + 8) 2, NDropVal, NJump done_lbl]
         ins_heavy = [NLabel heavy_lbl, NMatchInt (sp + 6) 3, NJumpIfZero stopped_lbl, NCloneSlot (sp + 2), NStoreSlot (sp + 8), NCloneSlot sp, NStoreSlot (sp + 9), NCallBuiltin 57 (sp + 8) 2, NStoreSlot (sp + 9), NMoveSlot (sp + 7), NStoreSlot (sp + 8), NMakeList (sp + 9) 1, NBinOp 14 (sp + 8), NStoreSlot (sp + 9), NLoadImmInt 3, NStoreSlot (sp + 8), NMakeTuple (sp + 8) 2, NStoreSlot (sp + 9), NCloneSlot (sp + 3), NStoreSlot (sp + 10), NCallBuiltin 50 (sp + 9) 2, NDropVal, NJump done_lbl]
         ins_stopped = [NLabel stopped_lbl, NCloneSlot (sp + 5), NStoreSlot (sp + 9), NCloneSlot (sp + 3), NStoreSlot (sp + 10), NCallBuiltin 50 (sp + 9) 2, NDropVal, NLabel done_lbl, NClearLocals sp (sp + 13), NLoadImmRaw 0]
-        nc_emit_list st5 (ins_unpack :: ins_stateless :: ins_stateless2 :: ins_stateful :: ins_heavy :: ins_stopped) (sp + 13)
+        nc emit list st5 (ins_unpack :: ins_stateless :: ins_stateless2 :: ins_stateful :: ins_heavy :: ins_stopped) (sp + 13)
       lower agent call env "ask_to" (msg_e:ag_e:[]) bound_locals sp st =
-        st1 = lower_agent_call env "send_to" [msg_e, ag_e] bound_locals sp st
-        st2 = nc_emit st1 NDropVal sp
-        lower_agent_call env "receive_from" [ag_e] bound_locals sp st2
+        st1 = lower agent call env "send_to" [msg_e, ag_e] bound_locals sp st
+        st2 = nc emit st1 NDropVal sp
+        lower agent call env "receive_from" [ag_e] bound_locals sp st2
       lower agent call env "receive_from" (target_e:[]) bound_locals sp st =
-        st1 = lower_expr env target_e bound_locals sp st
-        st2 = nc_emit st1 (NStoreSlot sp) (sp + 1)
-        not_ag_lbl = nc_lbl st2
+        st1 = lower expr env target_e bound_locals sp st
+        st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
+        not_ag_lbl = nc lbl st2
         no_job_lbl = not_ag_lbl + 1
         done_lbl = not_ag_lbl + 2
         check_st_lbl = not_ag_lbl + 3
@@ -1818,17 +1818,17 @@ fn :: lower agent call RNativeEnv String [RExpr] [String] Int RNativeCode => RNa
         st_split_lbl = not_ag_lbl + 7
         st_save_lbl = not_ag_lbl + 8
         st_has_job_lbl2 = not_ag_lbl + 9
-        st3 = nc_set_lbl st2 (not_ag_lbl + 10)
-        ok_off = env_str_off env "Ok"
+        st3 = nc set lbl st2 (not_ag_lbl + 10)
+        ok_off = env str off env "Ok"
         ins_check = [NMatchTuple sp 3, NJumpIfZero not_ag_lbl, NTupleGet sp 1, NStoreSlot (sp + 1), NTupleGet sp 2, NStoreSlot sp, NCloneSlot (sp + 1), NStoreSlot (sp + 2), NCallBuiltin 32 (sp + 2) 1, NStoreSlot (sp + 2), NTupleGet (sp + 2) 0, NStoreSlot (sp + 3), NTupleGet (sp + 2) 1, NStoreSlot (sp + 4), NMatchInt (sp + 3) 3, NJumpIfZero check_st_lbl, NMatchNonEmpty (sp + 4), NJumpIfZero no_job_lbl]
         ins_pop = [NListHead (sp + 4), NStoreSlot (sp + 5), NListTail (sp + 4), NStoreSlot (sp + 6), NLoadImmInt 3, NStoreSlot (sp + 7), NMoveSlot (sp + 6), NStoreSlot (sp + 8), NMakeTuple (sp + 7) 2, NStoreSlot (sp + 7), NCloneSlot (sp + 1), NStoreSlot (sp + 8), NCallBuiltin 50 (sp + 7) 2, NDropVal, NClearLocals sp (sp + 5), NCallBuiltin 59 (sp + 5) 1, NJump done_lbl]
         ins_st = [NLabel check_st_lbl, NMatchInt (sp + 3) 2, NJumpIfZero no_job_lbl, NCloneSlot sp, NStoreSlot (sp + 5), NCallBuiltin 33 (sp + 5) 1, NStoreSlot (sp + 5), NMatchAdt (sp + 5) ok_off 2 1, NJumpIfZero st_await_lbl, NMoveSlot (sp + 2), NStoreSlot (sp + 7), NCloneSlot (sp + 1), NStoreSlot (sp + 8), NCallBuiltin 50 (sp + 7) 2, NDropVal, NAdtField (sp + 5) 0, NStoreSlot (sp + 6), NClearLocals sp (sp + 6), NMoveSlot (sp + 6), NJump done_lbl, NLabel st_await_lbl, NTupleGet (sp + 4) 0, NStoreSlot (sp + 5), NTupleGet (sp + 4) 1, NStoreSlot (sp + 6), NMatchInt (sp + 6) 0, NJumpIfZero st_has_job_lbl, NJump no_job_lbl, NLabel st_has_job_lbl, NMatchInt (sp + 6) 1, NJumpIfZero st_has_job_lbl2, NJump no_job_lbl, NLabel st_has_job_lbl2, NCallBuiltin 59 (sp + 6) 1, NStoreSlot (sp + 7), NMatchTuple (sp + 7) 2, NJumpIfZero st_same_lbl, NMatchTuple (sp + 5) 2, NJumpIfZero st_split_lbl, NLabel st_same_lbl, NCloneSlot (sp + 7), NStoreSlot (sp + 8), NCloneSlot (sp + 7), NStoreSlot (sp + 9), NJump st_save_lbl, NLabel st_split_lbl, NTupleGet (sp + 7) 0, NStoreSlot (sp + 8), NTupleGet (sp + 7) 1, NStoreSlot (sp + 9), NLabel st_save_lbl, NLoadImmInt 1, NStoreSlot (sp + 10), NMoveSlot (sp + 8), NStoreSlot (sp + 11), NMoveSlot (sp + 10), NStoreSlot (sp + 12), NMakeTuple (sp + 11) 2, NStoreSlot (sp + 11), NLoadImmInt 2, NStoreSlot (sp + 10), NMakeTuple (sp + 10) 2, NStoreSlot (sp + 10), NCloneSlot (sp + 1), NStoreSlot (sp + 11), NCallBuiltin 50 (sp + 10) 2, NDropVal, NClearLocals sp (sp + 9), NMoveSlot (sp + 9), NJump done_lbl]
         ins_no_job = [NLabel no_job_lbl, NMoveSlot (sp + 2), NStoreSlot (sp + 7), NCloneSlot (sp + 1), NStoreSlot (sp + 8), NCallBuiltin 50 (sp + 7) 2, NDropVal, NClearLocals (sp + 1) (sp + 13), NLabel not_ag_lbl, NCallBuiltin 32 sp 1, NLabel done_lbl]
-        nc_emit_list st3 (ins_check :: ins_pop :: ins_st :: ins_no_job) (sp + 13)
+        nc emit list st3 (ins_check :: ins_pop :: ins_st :: ins_no_job) (sp + 13)
       lower agent call env "try_receive_from" (target_e:[]) bound_locals sp st =
-        st1 = lower_expr env target_e bound_locals sp st
-        st2 = nc_emit st1 (NStoreSlot sp) (sp + 1)
-        not_ag_lbl = nc_lbl st2
+        st1 = lower expr env target_e bound_locals sp st
+        st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
+        not_ag_lbl = nc lbl st2
         no_job_lbl = not_ag_lbl + 1
         not_ready_lbl = not_ag_lbl + 2
         chan_none_lbl = not_ag_lbl + 3
@@ -1840,171 +1840,171 @@ fn :: lower agent call RNativeEnv String [RExpr] [String] Int RNativeCode => RNa
         try_st_split_lbl = not_ag_lbl + 9
         try_st_save_lbl = not_ag_lbl + 10
         try_st_has_job_lbl2 = not_ag_lbl + 11
-        st3 = nc_set_lbl st2 (not_ag_lbl + 12)
-        ok_off = env_str_off env "Ok"
-        some_off = env_str_off env "Some"
-        none_off = env_str_off env "None"
+        st3 = nc set lbl st2 (not_ag_lbl + 12)
+        ok_off = env str off env "Ok"
+        some_off = env str off env "Some"
+        none_off = env str off env "None"
         ins_check = [NMatchTuple sp 3, NJumpIfZero not_ag_lbl, NTupleGet sp 1, NStoreSlot (sp + 1), NTupleGet sp 2, NStoreSlot sp, NCloneSlot (sp + 1), NStoreSlot (sp + 2), NCallBuiltin 32 (sp + 2) 1, NStoreSlot (sp + 2), NTupleGet (sp + 2) 0, NStoreSlot (sp + 3), NTupleGet (sp + 2) 1, NStoreSlot (sp + 4), NMatchInt (sp + 3) 3, NJumpIfZero try_st_lbl, NMatchNonEmpty (sp + 4), NJumpIfZero no_job_lbl, NListHead (sp + 4), NStoreSlot (sp + 5), NCloneSlot (sp + 5), NStoreSlot (sp + 6), NCallBuiltin 58 (sp + 6) 1, NAsBool, NJumpIfZero not_ready_lbl]
         ins_ready = [NListTail (sp + 4), NStoreSlot (sp + 6), NLoadImmInt 3, NStoreSlot (sp + 7), NMoveSlot (sp + 6), NStoreSlot (sp + 8), NMakeTuple (sp + 7) 2, NStoreSlot (sp + 7), NCloneSlot (sp + 1), NStoreSlot (sp + 8), NCallBuiltin 50 (sp + 7) 2, NDropVal, NCallBuiltin 59 (sp + 5) 1, NStoreSlot (sp + 5), NMakeAdt some_off 4 (sp + 5) 1, NStoreSlot (sp + 5), NClearLocals sp (sp + 5), NMoveSlot (sp + 5), NJump done_lbl]
         ins_try_st = [NLabel try_st_lbl, NMatchInt (sp + 3) 2, NJumpIfZero no_job_lbl, NCloneSlot sp, NStoreSlot (sp + 5), NCallBuiltin 33 (sp + 5) 1, NStoreSlot (sp + 5), NMatchAdt (sp + 5) ok_off 2 1, NJumpIfZero try_st_poll_lbl, NMoveSlot (sp + 2), NStoreSlot (sp + 7), NCloneSlot (sp + 1), NStoreSlot (sp + 8), NCallBuiltin 50 (sp + 7) 2, NDropVal, NAdtField (sp + 5) 0, NStoreSlot (sp + 6), NMakeAdt some_off 4 (sp + 6) 1, NStoreSlot (sp + 6), NClearLocals sp (sp + 6), NMoveSlot (sp + 6), NJump done_lbl, NLabel try_st_poll_lbl, NTupleGet (sp + 4) 0, NStoreSlot (sp + 5), NTupleGet (sp + 4) 1, NStoreSlot (sp + 6), NMatchInt (sp + 6) 0, NJumpIfZero try_st_has_job_lbl, NJump not_ready_lbl, NLabel try_st_has_job_lbl, NMatchInt (sp + 6) 1, NJumpIfZero try_st_has_job_lbl2, NJump not_ready_lbl, NLabel try_st_has_job_lbl2, NCloneSlot (sp + 6), NStoreSlot (sp + 7), NCallBuiltin 58 (sp + 7) 1, NAsBool, NJumpIfZero not_ready_lbl, NCallBuiltin 59 (sp + 6) 1, NStoreSlot (sp + 7), NMatchTuple (sp + 7) 2, NJumpIfZero try_st_same_lbl, NMatchTuple (sp + 5) 2, NJumpIfZero try_st_split_lbl, NLabel try_st_same_lbl, NCloneSlot (sp + 7), NStoreSlot (sp + 8), NCloneSlot (sp + 7), NStoreSlot (sp + 9), NJump try_st_save_lbl, NLabel try_st_split_lbl, NTupleGet (sp + 7) 0, NStoreSlot (sp + 8), NTupleGet (sp + 7) 1, NStoreSlot (sp + 9), NLabel try_st_save_lbl, NLoadImmInt 1, NStoreSlot (sp + 10), NMoveSlot (sp + 8), NStoreSlot (sp + 11), NMoveSlot (sp + 10), NStoreSlot (sp + 12), NMakeTuple (sp + 11) 2, NStoreSlot (sp + 11), NLoadImmInt 2, NStoreSlot (sp + 10), NMakeTuple (sp + 10) 2, NStoreSlot (sp + 10), NCloneSlot (sp + 1), NStoreSlot (sp + 11), NCallBuiltin 50 (sp + 10) 2, NDropVal, NMakeAdt some_off 4 (sp + 9) 1, NStoreSlot (sp + 9), NClearLocals sp (sp + 9), NMoveSlot (sp + 9), NJump done_lbl]
         ins_not_ready = [NLabel not_ready_lbl, NMoveSlot (sp + 2), NStoreSlot (sp + 7), NCloneSlot (sp + 1), NStoreSlot (sp + 8), NCallBuiltin 50 (sp + 7) 2, NDropVal, NClearLocals sp (sp + 13), NLoadAdt0 none_off 4, NJump done_lbl]
         ins_chan = [NLabel no_job_lbl, NMoveSlot (sp + 2), NStoreSlot (sp + 7), NCloneSlot (sp + 1), NStoreSlot (sp + 8), NCallBuiltin 50 (sp + 7) 2, NDropVal, NClearLocals (sp + 1) (sp + 13), NLabel not_ag_lbl, NCallBuiltin 33 sp 1, NStoreSlot sp, NMatchAdt sp ok_off 2 1, NJumpIfZero chan_none_lbl, NAdtField sp 0, NStoreSlot (sp + 1), NMakeAdt some_off 4 (sp + 1) 1, NStoreSlot (sp + 1), NClearLocals sp (sp + 1), NMoveSlot (sp + 1), NJump done_lbl, NLabel chan_none_lbl, NClearLocals sp (sp + 2), NLoadAdt0 none_off 4, NLabel done_lbl]
-        nc_emit_list st3 (ins_check :: ins_ready :: ins_try_st :: ins_not_ready :: ins_chan) (sp + 13)
+        nc emit list st3 (ins_check :: ins_ready :: ins_try_st :: ins_not_ready :: ins_chan) (sp + 13)
       lower agent call env "stop" (ag_e:[]) bound_locals sp st =
-        st1 = lower_expr env ag_e bound_locals sp st
-        st2 = nc_emit st1 (NStoreSlot sp) (sp + 1)
-        no_jobs_lbl = nc_lbl st2
+        st1 = lower expr env ag_e bound_locals sp st
+        st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
+        no_jobs_lbl = nc lbl st2
         loop_lbl = no_jobs_lbl + 1
         st_stop_lbl = no_jobs_lbl + 2
         st_stop_await_lbl = no_jobs_lbl + 3
         st_stop_await_lbl2 = no_jobs_lbl + 4
-        st3 = nc_set_lbl st2 (no_jobs_lbl + 5)
+        st3 = nc set lbl st2 (no_jobs_lbl + 5)
         ins_open = [NTupleGet sp 1, NStoreSlot (sp + 1), NCloneSlot (sp + 1), NStoreSlot (sp + 2), NCallBuiltin 32 (sp + 2) 1, NStoreSlot (sp + 2), NTupleGet (sp + 2) 0, NStoreSlot (sp + 3), NTupleGet (sp + 2) 1, NStoreSlot (sp + 4), NMatchInt (sp + 3) 3, NJumpIfZero st_stop_lbl]
         ins_loop = [NLabel loop_lbl, NMatchNonEmpty (sp + 4), NJumpIfZero no_jobs_lbl, NListHead (sp + 4), NStoreSlot (sp + 5), NListTail (sp + 4), NStoreSlot (sp + 4), NCallBuiltin 59 (sp + 5) 1, NDropVal, NJump loop_lbl]
         ins_st_stop = [NLabel st_stop_lbl, NMatchInt (sp + 3) 2, NJumpIfZero no_jobs_lbl, NTupleGet (sp + 4) 1, NStoreSlot (sp + 5), NMatchInt (sp + 5) 0, NJumpIfZero st_stop_await_lbl, NJump no_jobs_lbl, NLabel st_stop_await_lbl, NMatchInt (sp + 5) 1, NJumpIfZero st_stop_await_lbl2, NJump no_jobs_lbl, NLabel st_stop_await_lbl2, NCallBuiltin 59 (sp + 5) 1, NDropVal]
         ins_close = [NLabel no_jobs_lbl, NLoadImmInt 0, NStoreSlot (sp + 2), NLoadImmInt 0, NStoreSlot (sp + 3), NMakeTuple (sp + 2) 2, NStoreSlot (sp + 2), NCloneSlot (sp + 1), NStoreSlot (sp + 3), NCallBuiltin 50 (sp + 2) 2, NDropVal, NClearLocals sp (sp + 6), NLoadImmRaw 0]
-        nc_emit_list st3 (ins_open :: ins_loop :: ins_st_stop :: ins_close) (sp + 6)
+        nc emit list st3 (ins_open :: ins_loop :: ins_st_stop :: ins_close) (sp + 6)
       lower agent call env "agent_alive" (ag_e:[]) bound_locals sp st =
-        alive_lbl = nc_lbl st
+        alive_lbl = nc lbl st
         done_lbl = alive_lbl + 1
-        st1 = nc_set_lbl st (alive_lbl + 2)
-        st2 = lower_expr env ag_e bound_locals sp st1
+        st1 = nc set lbl st (alive_lbl + 2)
+        st2 = lower expr env ag_e bound_locals sp st1
         ins = [NStoreSlot sp, NTupleGet sp 1, NStoreSlot (sp + 1), NCloneSlot (sp + 1), NStoreSlot (sp + 2), NCallBuiltin 32 (sp + 2) 1, NStoreSlot (sp + 2), NTupleGet (sp + 2) 0, NStoreSlot (sp + 3), NCloneSlot (sp + 2), NStoreSlot (sp + 4), NCloneSlot (sp + 1), NStoreSlot (sp + 5), NCallBuiltin 50 (sp + 4) 2, NDropVal, NMatchInt (sp + 3) 0, NJumpIfZero alive_lbl, NClearLocals sp (sp + 6), NLoadImmRaw 2, NJump done_lbl, NLabel alive_lbl, NClearLocals sp (sp + 6), NLoadImmRaw 6, NLabel done_lbl]
-        nc_emit_list st2 ins (sp + 6)
+        nc emit list st2 ins (sp + 6)
       lower agent call _ _ _ _ _ st = st
 
 fn :: select par collection builtin RNativeEnv String [RExpr] [String] => Int
       select par collection builtin env fname ((EVar callee_fn):_:[]) bound_locals
-        | (fname == "||map" OR fname == "par_map") AND (lookup_local bound_locals callee_fn) < 0 AND (env_fn_arity env callee_fn) > 0 AND (NOT (env_fn_is_heavy env callee_fn)) = 53
-        | (fname == "||filter" OR fname == "par_filter") AND (lookup_local bound_locals callee_fn) < 0 AND (env_fn_arity env callee_fn) > 0 AND (NOT (env_fn_is_heavy env callee_fn)) = 55
-      select par collection builtin _ fname _ _ = builtin_call_id fname
+        | (fname == "||map" OR fname == "par_map") AND (lookup local bound_locals callee_fn) < 0 AND (env fn arity env callee_fn) > 0 AND (NOT (env fn is heavy env callee_fn)) = 53
+        | (fname == "||filter" OR fname == "par_filter") AND (lookup local bound_locals callee_fn) < 0 AND (env fn arity env callee_fn) > 0 AND (NOT (env fn is heavy env callee_fn)) = 55
+      select par collection builtin _ fname _ _ = builtin call id fname
 
 fn :: lower plain indirect call RNativeEnv Int [RExpr] [String] Int RNativeCode => RNativeCode
       lower plain indirect call _ fn_slot [] _ sp st =
-        nc_emit st (NCloneSlot fn_slot) sp
+        nc emit st (NCloneSlot fn_slot) sp
       lower plain indirect call env fn_slot (a1:[]) bound_locals sp st =
-        st1 = lower_expr env a1 bound_locals sp st
-        st2 = nc_emit st1 (NStoreSlot sp) (sp + 1)
-        nc_emit st2 (NCallIndirect1 fn_slot sp) (sp + 1)
+        st1 = lower expr env a1 bound_locals sp st
+        st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
+        nc emit st2 (NCallIndirect1 fn_slot sp) (sp + 1)
       lower plain indirect call env fn_slot (a1:a2:[]) bound_locals sp st =
-        st1 = lower_expr_list_to_slots env [a1, a2] bound_locals sp 0 st
-        nc_emit st1 (NCallIndirect2 fn_slot sp) (sp + 2)
+        st1 = lower expr list to slots env [a1, a2] bound_locals sp 0 st
+        nc emit st1 (NCallIndirect2 fn_slot sp) (sp + 2)
       lower plain indirect call env fn_slot (a1:rest) bound_locals sp st =
-        rem_count = rexpr_list_len rest
-        st1 = lower_expr env a1 bound_locals sp st
-        st2 = nc_emit st1 (NStoreSlot sp) (sp + 1)
-        st3 = lower_expr_list_to_slots env rest bound_locals (sp + 1) 0 st2
-        st4 = nc_emit_list st3 [NMakeTuple (sp + 1) rem_count, NStoreSlot (sp + 1)] (sp + rem_count + 2)
-        nc_emit st4 (NCallIndirect2 fn_slot sp) (sp + rem_count + 2)
+        rem_count = rexpr list len rest
+        st1 = lower expr env a1 bound_locals sp st
+        st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
+        st3 = lower expr list to slots env rest bound_locals (sp + 1) 0 st2
+        st4 = nc emit list st3 [NMakeTuple (sp + 1) rem_count, NStoreSlot (sp + 1)] (sp + rem_count + 2)
+        nc emit st4 (NCallIndirect2 fn_slot sp) (sp + rem_count + 2)
 
 fn :: lower indirect call slots RNativeEnv Int [RExpr] [String] Int RNativeCode => RNativeCode
       lower indirect call slots _ fn_slot [] _ sp st =
-        nc_emit st (NCloneSlot fn_slot) sp
+        nc emit st (NCloneSlot fn_slot) sp
       lower indirect call slots env fn_slot args bound_locals sp st =
-        count = rexpr_list_len args
-        plain_lbl = nc_lbl st
+        count = rexpr list len args
+        plain_lbl = nc lbl st
         done_lbl = plain_lbl + 1
-        st0 = nc_set_lbl st (plain_lbl + 2)
-        st1 = nc_emit_list st0 [NMatchTuple fn_slot 2, NJumpIfZero plain_lbl, NTupleGet fn_slot 0, NStoreSlot sp, NTupleGet fn_slot 1, NStoreSlot (sp + 1)] (sp + 2)
-        st2 = lower_expr_list_to_slots env args bound_locals (sp + 2) 0 st1
+        st0 = nc set lbl st (plain_lbl + 2)
+        st1 = nc emit list st0 [NMatchTuple fn_slot 2, NJumpIfZero plain_lbl, NTupleGet fn_slot 0, NStoreSlot sp, NTupleGet fn_slot 1, NStoreSlot (sp + 1)] (sp + 2)
+        st2 = lower expr list to slots env args bound_locals (sp + 2) 0 st1
         ins_clos = [NMakeList (sp + 2) count, NBinOp 14 (sp + 1), NStoreSlot (sp + 1), NListHead (sp + 1), NStoreSlot (sp + 2), NListTail (sp + 1), NStoreSlot (sp + 3), NMoveSlot (sp + 2), NStoreSlot (sp + 1), NMoveSlot (sp + 3), NStoreSlot (sp + 2), NCallIndirect2 sp (sp + 1), NStoreSlot (sp + 1), NClearLocals sp (sp + 1), NMoveSlot (sp + 1), NJump done_lbl, NLabel plain_lbl]
-        st3 = nc_emit_list st2 ins_clos (sp + count + 4)
+        st3 = nc emit list st2 ins_clos (sp + count + 4)
         st4 = lower plain indirect call env fn_slot args bound_locals sp st3
-        nc_emit st4 (NLabel done_lbl) (sp + count + 4)
+        nc emit st4 (NLabel done_lbl) (sp + count + 4)
 
 fn :: lower map or closure map RNativeEnv String [RExpr] [String] Int RNativeCode => RNativeCode
       lower map or closure map env fname (fn_e:list_e:[]) bound_locals sp st =
-        bid = select_par_collection_builtin env fname [fn_e, list_e] bound_locals
-        plain_lbl = nc_lbl st
+        bid = select par collection builtin env fname [fn_e, list_e] bound_locals
+        plain_lbl = nc lbl st
         loop_lbl = plain_lbl + 1
         done_lbl = plain_lbl + 2
         after_lbl = plain_lbl + 3
-        st0 = nc_set_lbl st (plain_lbl + 4)
-        st1 = lower_expr_list_to_slots env [fn_e, list_e] bound_locals sp 0 st0
+        st0 = nc set lbl st (plain_lbl + 4)
+        st1 = lower expr list to slots env [fn_e, list_e] bound_locals sp 0 st0
         ins_clos = [NMatchTuple sp 2, NJumpIfZero plain_lbl, NMakeList (sp + 2) 0, NStoreSlot (sp + 2), NLabel loop_lbl, NMatchNonEmpty (sp + 1), NJumpIfZero done_lbl, NTupleGet sp 0, NStoreSlot (sp + 3), NTupleGet sp 1, NStoreSlot (sp + 4), NListHead (sp + 1), NStoreSlot (sp + 5), NMakeList (sp + 5) 1, NBinOp 14 (sp + 4), NStoreSlot (sp + 4), NListHead (sp + 4), NStoreSlot (sp + 5), NListTail (sp + 4), NStoreSlot (sp + 6), NMoveSlot (sp + 5), NStoreSlot (sp + 4), NMoveSlot (sp + 6), NStoreSlot (sp + 5), NCallIndirect2 (sp + 3) (sp + 4), NStoreSlot (sp + 5), NMakeList (sp + 5) 1, NBinOp 14 (sp + 2), NStoreSlot (sp + 2), NListTail (sp + 1), NStoreSlot (sp + 1), NJump loop_lbl, NLabel done_lbl, NClearLocals sp (sp + 2), NClearLocals (sp + 3) (sp + 7), NMoveSlot (sp + 2), NJump after_lbl, NLabel plain_lbl, NCallBuiltin bid sp 2, NLabel after_lbl]
-        nc_emit_list st1 ins_clos (sp + 7)
+        nc emit list st1 ins_clos (sp + 7)
       lower map or closure map env fname args bound_locals sp st =
-        count = rexpr_list_len args
-        bid = select_par_collection_builtin env fname args bound_locals
-        st1 = lower_expr_list_to_slots env args bound_locals sp 0 st
-        nc_emit st1 (NCallBuiltin bid sp count) (sp + count + 1)
+        count = rexpr list len args
+        bid = select par collection builtin env fname args bound_locals
+        st1 = lower expr list to slots env args bound_locals sp 0 st
+        nc emit st1 (NCallBuiltin bid sp count) (sp + count + 1)
 
 fn :: lower filter or closure filter RNativeEnv String [RExpr] [String] Int RNativeCode => RNativeCode
       lower filter or closure filter env fname (fn_e:list_e:[]) bound_locals sp st =
-        bid = select_par_collection_builtin env fname [fn_e, list_e] bound_locals
-        plain_lbl = nc_lbl st
+        bid = select par collection builtin env fname [fn_e, list_e] bound_locals
+        plain_lbl = nc lbl st
         loop_lbl = plain_lbl + 1
         skip_lbl = plain_lbl + 2
         done_lbl = plain_lbl + 3
         after_lbl = plain_lbl + 4
-        st0 = nc_set_lbl st (plain_lbl + 5)
-        st1 = lower_expr_list_to_slots env [fn_e, list_e] bound_locals sp 0 st0
+        st0 = nc set lbl st (plain_lbl + 5)
+        st1 = lower expr list to slots env [fn_e, list_e] bound_locals sp 0 st0
         ins_clos = [NMatchTuple sp 2, NJumpIfZero plain_lbl, NMakeList (sp + 2) 0, NStoreSlot (sp + 2), NLabel loop_lbl, NMatchNonEmpty (sp + 1), NJumpIfZero done_lbl, NTupleGet sp 0, NStoreSlot (sp + 3), NTupleGet sp 1, NStoreSlot (sp + 4), NListHead (sp + 1), NStoreSlot (sp + 5), NMakeList (sp + 5) 1, NBinOp 14 (sp + 4), NStoreSlot (sp + 4), NListHead (sp + 4), NStoreSlot (sp + 5), NListTail (sp + 4), NStoreSlot (sp + 6), NMoveSlot (sp + 5), NStoreSlot (sp + 4), NMoveSlot (sp + 6), NStoreSlot (sp + 5), NCallIndirect2 (sp + 3) (sp + 4), NAsBool, NJumpIfZero skip_lbl, NListHead (sp + 1), NStoreSlot (sp + 5), NMakeList (sp + 5) 1, NBinOp 14 (sp + 2), NStoreSlot (sp + 2), NLabel skip_lbl, NListTail (sp + 1), NStoreSlot (sp + 1), NJump loop_lbl, NLabel done_lbl, NClearLocals sp (sp + 2), NClearLocals (sp + 3) (sp + 7), NMoveSlot (sp + 2), NJump after_lbl, NLabel plain_lbl, NCallBuiltin bid sp 2, NLabel after_lbl]
-        nc_emit_list st1 ins_clos (sp + 7)
+        nc emit list st1 ins_clos (sp + 7)
       lower filter or closure filter env fname args bound_locals sp st =
-        count = rexpr_list_len args
-        bid = select_par_collection_builtin env fname args bound_locals
-        st1 = lower_expr_list_to_slots env args bound_locals sp 0 st
-        nc_emit st1 (NCallBuiltin bid sp count) (sp + count + 1)
+        count = rexpr list len args
+        bid = select par collection builtin env fname args bound_locals
+        st1 = lower expr list to slots env args bound_locals sp 0 st
+        nc emit st1 (NCallBuiltin bid sp count) (sp + count + 1)
 
 fn :: lower fold or closure fold RNativeEnv [RExpr] [String] Int RNativeCode => RNativeCode
       lower fold or closure fold env (fn_e:init_e:list_e:[]) bound_locals sp st =
-        plain_lbl = nc_lbl st
+        plain_lbl = nc lbl st
         loop_lbl = plain_lbl + 1
         done_lbl = plain_lbl + 2
         after_lbl = plain_lbl + 3
-        st0 = nc_set_lbl st (plain_lbl + 4)
-        st1 = lower_expr_list_to_slots env [fn_e, init_e, list_e] bound_locals sp 0 st0
+        st0 = nc set lbl st (plain_lbl + 4)
+        st1 = lower expr list to slots env [fn_e, init_e, list_e] bound_locals sp 0 st0
         ins_clos = [NMatchTuple sp 2, NJumpIfZero plain_lbl, NLabel loop_lbl, NMatchNonEmpty (sp + 2), NJumpIfZero done_lbl, NTupleGet sp 0, NStoreSlot (sp + 3), NTupleGet sp 1, NStoreSlot (sp + 4), NMoveSlot (sp + 1), NStoreSlot (sp + 5), NListHead (sp + 2), NStoreSlot (sp + 6), NMakeList (sp + 5) 2, NBinOp 14 (sp + 4), NStoreSlot (sp + 4), NListHead (sp + 4), NStoreSlot (sp + 5), NListTail (sp + 4), NStoreSlot (sp + 6), NMoveSlot (sp + 5), NStoreSlot (sp + 4), NMoveSlot (sp + 6), NStoreSlot (sp + 5), NCallIndirect2 (sp + 3) (sp + 4), NStoreSlot (sp + 1), NListTail (sp + 2), NStoreSlot (sp + 2), NJump loop_lbl, NLabel done_lbl, NCmmDropSlot sp, NClearLocals (sp + 2) (sp + 7), NMoveSlot (sp + 1), NJump after_lbl, NLabel plain_lbl, NCallBuiltin 61 sp 3, NLabel after_lbl]
-        nc_emit_list st1 ins_clos (sp + 7)
+        nc emit list st1 ins_clos (sp + 7)
       lower fold or closure fold env args bound_locals sp st =
-        count = rexpr_list_len args
-        st1 = lower_expr_list_to_slots env args bound_locals sp 0 st
-        nc_emit st1 (NCallBuiltin 61 sp count) (sp + count + 1)
+        count = rexpr list len args
+        st1 = lower expr list to slots env args bound_locals sp 0 st
+        nc emit st1 (NCallBuiltin 61 sp count) (sp + count + 1)
 
 fn :: lower direct or partial call RNativeEnv String [RExpr] Int Int [String] Int RNativeCode => RNativeCode
       lower direct or partial call env fname args count fn_ar bound_locals sp st
         | count > 0 and fn_ar > count =
-          off = env_str_off env fname
-          slen = str_len fname
-          st1 = nc_emit_list st [NLoadStrLit off slen, NStoreSlot sp] (sp + 1)
-          st2 = lower_expr_list_to_slots env args bound_locals (sp + 1) 0 st1
-          nc_emit_list st2 [NMakeList (sp + 1) count, NStoreSlot (sp + 1), NMakeTuple sp 2] (sp + count + 2)
+          off = env str off env fname
+          slen = str len fname
+          st1 = nc emit list st [NLoadStrLit off slen, NStoreSlot sp] (sp + 1)
+          st2 = lower expr list to slots env args bound_locals (sp + 1) 0 st1
+          nc emit list st2 [NMakeList (sp + 1) count, NStoreSlot (sp + 1), NMakeTuple sp 2] (sp + count + 2)
         | otherwise =
-          st1 = lower_expr_list_to_slots env args bound_locals sp 0 st
-          nc_emit st1 (NCallFn (env_fn_id env fname) sp count) (sp + count + 1)
+          st1 = lower expr list to slots env args bound_locals sp 0 st
+          nc emit st1 (NCallFn (env fn id env fname) sp count) (sp + count + 1)
 
 fn :: lower call expr RNativeEnv String [RExpr] [String] Int RNativeCode => RNativeCode
       lower call expr env "__chain__" (fn_e:call_args) bound_locals sp st =
-        st1 = lower_expr env fn_e bound_locals sp st
-        st2 = nc_emit st1 (NStoreSlot sp) (sp + 1)
+        st1 = lower expr env fn_e bound_locals sp st
+        st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
         lower indirect call slots env sp call_args bound_locals (sp + 1) st2
       lower call expr env fname args bound_locals sp st
-        | is_agent_call_name fname = lower_agent_call env fname args bound_locals sp st
+        | is agent call name fname = lower agent call env fname args bound_locals sp st
         | is tensor helper name fname = lower tensor helper env fname args bound_locals sp st
-        | (lookup_local bound_locals fname) >= 0 =
-          lower indirect call slots env (env_var_slot env fname) args bound_locals sp st
+        | (lookup local bound_locals fname) >= 0 =
+          lower indirect call slots env (env var slot env fname) args bound_locals sp st
       lower call expr env fname [] _ sp st
         | fname == "sys_os" =
-          nc_emit st (NLoadAdt0 (env_str_off env "Linux") 5) sp
+          nc emit st (NLoadAdt0 (env str off env "Linux") 5) sp
         | fname == "sys_arch" =
-          nc_emit st (NLoadAdt0 (0 - 1) 0) sp
+          nc emit st (NLoadAdt0 (0 - 1) 0) sp
       lower call expr env fname (a1:[]) bound_locals sp st
-        | (prim_type_tag_id fname) > 0 =
-          lower_expr env a1 bound_locals sp st
+        | (prim type tag id fname) > 0 =
+          lower expr env a1 bound_locals sp st
       lower call expr env fname (rec_e:call_args) bound_locals sp st
-        | (env has field env fname) and (env_fn_arity env fname) == 1 and (rexpr_list_len call_args) >= 1 =
-          fidx = env_field_idx env fname
-          st1 = lower_expr env rec_e bound_locals sp st
-          st2 = nc_emit_list st1 [NStoreSlot sp, NAdtField sp fidx, NStoreSlot sp] (sp + 1)
+        | (env has field env fname) and (env fn arity env fname) == 1 and (rexpr list len call_args) >= 1 =
+          fidx = env field idx env fname
+          st1 = lower expr env rec_e bound_locals sp st
+          st2 = nc emit list st1 [NStoreSlot sp, NAdtField sp fidx, NStoreSlot sp] (sp + 1)
           lower indirect call slots env sp call_args bound_locals (sp + 1) st2
       lower call expr env fname args bound_locals sp st
-        | is_upper_ident fname =
-          count = rexpr_list_len args
-          c_tag = ident_base_name fname
-          off = env_str_off env c_tag
-          slen = str_len c_tag
-          lower_adt_ctor_call env args bound_locals off slen count sp st
+        | is upper ident fname =
+          count = rexpr list len args
+          c_tag = ident base name fname
+          off = env str off env c_tag
+          slen = str len c_tag
+          lower adt ctor call env args bound_locals off slen count sp st
         | fname == "map" or fname == "||map" or fname == "seq_map" or fname == "par_map" =
           lower map or closure map env fname args bound_locals sp st
         | fname == "filter" or fname == "||filter" or fname == "seq_filter" or fname == "par_filter" =
@@ -2012,540 +2012,540 @@ fn :: lower call expr RNativeEnv String [RExpr] [String] Int RNativeCode => RNat
         | fname == "fold" =
           lower fold or closure fold env args bound_locals sp st
       lower call expr env "sha256_raw" ((EBin OpAdd a b):[]) bound_locals sp st
-        | (lookup_local bound_locals "sha256_raw") < 0 =
-          st1 = lower_expr_list_to_slots env [a, b] bound_locals sp 0 st
-          nc_emit st1 (NCallBuiltin 89 sp 2) (sp + 3)
+        | (lookup local bound_locals "sha256_raw") < 0 =
+          st1 = lower expr list to slots env [a, b] bound_locals sp 0 st
+          nc emit st1 (NCallBuiltin 89 sp 2) (sp + 3)
       lower call expr env "str_char_at" ((EVar s_var):idx_e:[]) bound_locals sp st
-        | (lookup_local bound_locals "str_char_at") < 0 and (lookup_local bound_locals s_var) >= 0 =
-          s_slot = env_var_slot env s_var
-          st1 = lower_expr env idx_e bound_locals sp st
-          nc_emit st1 (NCallBuiltin 91 s_slot 0) sp
+        | (lookup local bound_locals "str_char_at") < 0 and (lookup local bound_locals s_var) >= 0 =
+          s_slot = env var slot env s_var
+          st1 = lower expr env idx_e bound_locals sp st
+          nc emit st1 (NCallBuiltin 91 s_slot 0) sp
       lower call expr env fname args bound_locals sp st
-        | (builtin_call_id fname) >= 0 =
-          count = rexpr_list_len args
-          bid = select_par_collection_builtin env fname args bound_locals
-          st1 = lower_expr_list_to_slots env args bound_locals sp 0 st
-          nc_emit st1 (NCallBuiltin bid sp count) (sp + count + 1)
+        | (builtin call id fname) >= 0 =
+          count = rexpr list len args
+          bid = select par collection builtin env fname args bound_locals
+          st1 = lower expr list to slots env args bound_locals sp 0 st
+          nc emit st1 (NCallBuiltin bid sp count) (sp + count + 1)
         | otherwise =
-          count = rexpr_list_len args
-          fn_ar = env_fn_arity env fname
+          count = rexpr list len args
+          fn_ar = env fn arity env fname
           lower direct or partial call env fname args count fn_ar bound_locals sp st
 
 fn :: lower adt ctor call RNativeEnv [RExpr] [String] Int Int Int Int RNativeCode => RNativeCode
       lower adt ctor call _ [] _ off slen 0 sp st =
-        nc_emit st (NLoadAdt0 off slen) sp
+        nc emit st (NLoadAdt0 off slen) sp
       lower adt ctor call env args bound_locals off slen count sp st =
-        st1 = lower_expr_list_to_slots env args bound_locals sp 0 st
-        nc_emit st1 (NMakeAdt off slen sp count) (sp + count + 1)
+        st1 = lower expr list to slots env args bound_locals sp 0 st
+        nc emit st1 (NMakeAdt off slen sp count) (sp + count + 1)
 
 fn :: lower expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
       lower expr _ (EInt n) _ sp st =
-        nc_emit st (NLoadImmInt n) sp
+        nc emit st (NLoadImmInt n) sp
       lower expr env (EReal r) _ sp st =
-        off = env_str_off env r
-        nc_emit st (NLoadRealLit off (str_len r)) sp
+        off = env str off env r
+        nc emit st (NLoadRealLit off (str len r)) sp
       lower expr env (EStr s) _ sp st =
-        off = env_str_off env s
-        nc_emit st (NLoadStrLit off (str_len s)) sp
+        off = env str off env s
+        nc emit st (NLoadStrLit off (str len s)) sp
       lower expr env (EStrInterp parts) bound_locals sp st =
-        count = rexpr_list_len parts
-        st1 = lower_expr_list_to_slots env parts bound_locals sp 0 st
-        nc_emit st1 (NStrInterp sp count) (sp + count + 1)
+        count = rexpr list len parts
+        st1 = lower expr list to slots env parts bound_locals sp 0 st
+        nc emit st1 (NStrInterp sp count) (sp + count + 1)
       lower expr _ (EBool True) _ sp st =
-        nc_emit st (NLoadImmRaw 6) sp
+        nc emit st (NLoadImmRaw 6) sp
       lower expr _ (EBool False) _ sp st =
-        nc_emit st (NLoadImmRaw 2) sp
+        nc emit st (NLoadImmRaw 2) sp
       lower expr _ EUnit _ sp st =
-        nc_emit st (NLoadImmRaw 0) sp
+        nc emit st (NLoadImmRaw 0) sp
       lower expr env (EVar name) bound_locals sp st =
-        lower_var_expr env name bound_locals sp st
+        lower var expr env name bound_locals sp st
       lower expr env (ENot inner) bound_locals sp st =
-        st1 = lower_expr env inner bound_locals sp st
-        nc_emit st1 NNot sp
+        st1 = lower expr env inner bound_locals sp st
+        nc emit st1 NNot sp
       lower expr env (EOut inner) bound_locals sp st =
-        st1 = lower_expr env inner bound_locals sp st
-        nc_emit st1 NOut sp
+        st1 = lower expr env inner bound_locals sp st
+        nc emit st1 NOut sp
       lower expr env (EBin bop l r) bound_locals sp st =
-        st1 = lower_expr env l bound_locals sp st
-        st2 = nc_emit st1 (NStoreSlot sp) (sp + 1)
-        st3 = lower_expr env r bound_locals (sp + 1) st2
-        nc_emit st3 (NBinOp (binop_id bop) sp) (sp + 1)
+        st1 = lower expr env l bound_locals sp st
+        st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
+        st3 = lower expr env r bound_locals (sp + 1) st2
+        nc emit st3 (NBinOp (binop id bop) sp) (sp + 1)
       lower expr env (ECall "__record_update__" (base_e:rest_args)) bound_locals sp st =
-        st1 = lower_expr env base_e bound_locals sp st
-        lower_record_updates env rest_args bound_locals sp st1
+        st1 = lower expr env base_e bound_locals sp st
+        lower record updates env rest_args bound_locals sp st1
       lower expr env (ECall "__unpack2__" ((EVar fn_target):single_arg:[])) bound_locals sp st =
-        st1 = lower_expr env single_arg bound_locals sp st
-        fid = env_fn_id env fn_target
+        st1 = lower expr env single_arg bound_locals sp st
+        fid = env fn id env fn_target
         ins_list = [NStoreSlot sp, NTupleGet sp 0, NStoreSlot (sp + 1), NTupleGet sp 1, NStoreSlot (sp + 2), NClearLocals sp (sp + 1), NCallFn fid (sp + 1) 2]
-        nc_emit_list st1 ins_list (sp + 3)
+        nc emit list st1 ins_list (sp + 3)
       lower expr env (ECall fname args) bound_locals sp st =
-        lower_call_expr env fname args bound_locals sp st
+        lower call expr env fname args bound_locals sp st
       lower expr env (EEcho args) bound_locals sp st =
-        count = rexpr_list_len args
-        st1 = lower_expr_list_to_slots env args bound_locals sp 0 st
-        nc_emit st1 (NEcho sp count) (sp + count + 1)
+        count = rexpr list len args
+        st1 = lower expr list to slots env args bound_locals sp 0 st
+        nc emit st1 (NEcho sp count) (sp + count + 1)
       lower expr env (EList elems) bound_locals sp st =
-        count = rexpr_list_len elems
-        st1 = lower_expr_list_to_slots env elems bound_locals sp 0 st
-        nc_emit st1 (NMakeList sp count) (sp + count + 1)
+        count = rexpr list len elems
+        st1 = lower expr list to slots env elems bound_locals sp 0 st
+        nc emit st1 (NMakeList sp count) (sp + count + 1)
       lower expr env (ETuple elems) bound_locals sp st =
-        count = rexpr_list_len elems
-        st1 = lower_expr_list_to_slots env elems bound_locals sp 0 st
-        nc_emit st1 (NMakeTuple sp count) (sp + count + 1)
+        count = rexpr list len elems
+        st1 = lower expr list to slots env elems bound_locals sp 0 st
+        nc emit st1 (NMakeTuple sp count) (sp + count + 1)
       lower expr env (ETensor elems) bound_locals sp st =
-        count = rexpr_list_len elems
-        st1 = lower_expr_list_to_slots env elems bound_locals sp 0 st
-        nc_emit st1 (NMakeTensor sp count) (sp + count + 1)
+        count = rexpr list len elems
+        st1 = lower expr list to slots env elems bound_locals sp 0 st
+        nc emit st1 (NMakeTensor sp count) (sp + count + 1)
       lower expr env (EEinsum es subs) bound_locals sp st =
-        count = rexpr_list_len es
-        spec = join_comma subs
-        off = env_str_off env spec
-        st1 = lower_expr_list_to_slots env es bound_locals sp 0 st
-        nc_emit st1 (NEinsum sp count off (str_len spec)) (sp + count + 1)
+        count = rexpr list len es
+        spec = join comma subs
+        off = env str off env spec
+        st1 = lower expr list to slots env es bound_locals sp 0 st
+        nc emit st1 (NEinsum sp count off (str len spec)) (sp + count + 1)
       lower expr env (EHadamard bop l s1 r s2) bound_locals sp st
         | (bop == OpXor OR bop == OpAnd OR bop == OpOr) OR (s1 == s2 AND (bop == OpAdd OR bop == OpSub OR bop == OpMul)) =
           lower bitwise hadamard env bop l r bound_locals sp st
         | otherwise =
           subs = s1 + "," + s2
-          off = env_str_off env subs
-          st1 = lower_expr env l bound_locals sp st
-          st2 = nc_emit st1 (NStoreSlot sp) (sp + 1)
-          st3 = lower_expr env r bound_locals (sp + 1) st2
-          nc_emit st3 (NHadamard (binop_id bop) sp off (str_len subs)) (sp + 1)
+          off = env str off env subs
+          st1 = lower expr env l bound_locals sp st
+          st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
+          st3 = lower expr env r bound_locals (sp + 1) st2
+          nc emit st3 (NHadamard (binop id bop) sp off (str len subs)) (sp + 1)
       lower expr env (EIndex (EVar v) ((EInt idx):[])) _ sp st
-        | (str_starts_with v ":tup-") OR (str_starts_with v ":idx-tup-") =
-          nc_emit st (NTupleGet (env_var_slot env v) idx) sp
+        | (str starts with v ":tup-") OR (str starts with v ":idx-tup-") =
+          nc emit st (NTupleGet (env var slot env v) idx) sp
       lower expr env (EIndex (EVar v) idxs) bound_locals sp st
-        | (lookup_local bound_locals v) >= 0 AND ((rexpr_list_len idxs) == 1 OR (rexpr_list_len idxs) == 2) =
-          count = rexpr_list_len idxs
-          vslot = env_var_slot env v
-          st1 = lower_expr_list_to_slots env idxs bound_locals sp 0 st
-          nc_emit st1 (NIndex vslot sp (0 - count)) (sp + count + 1)
+        | (lookup local bound_locals v) >= 0 AND ((rexpr list len idxs) == 1 OR (rexpr list len idxs) == 2) =
+          count = rexpr list len idxs
+          vslot = env var slot env v
+          st1 = lower expr list to slots env idxs bound_locals sp 0 st
+          nc emit st1 (NIndex vslot sp (0 - count)) (sp + count + 1)
       lower expr env (EIndex base idxs) bound_locals sp st =
-        count = rexpr_list_len idxs
-        st1 = lower_expr env base bound_locals sp st
-        st2 = nc_emit st1 (NStoreSlot sp) (sp + 1)
-        st3 = lower_expr_list_to_slots env idxs bound_locals (sp + 1) 0 st2
-        nc_emit st3 (NIndex sp (sp + 1) count) (sp + count + 2)
+        count = rexpr list len idxs
+        st1 = lower expr env base bound_locals sp st
+        st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
+        st3 = lower expr list to slots env idxs bound_locals (sp + 1) 0 st2
+        nc emit st3 (NIndex sp (sp + 1) count) (sp + count + 2)
       lower expr env (EIndexAssign target idxs val_e) bound_locals sp st =
-        count = rexpr_list_len idxs
-        tslot = env_var_slot env target
-        st1 = lower_expr_list_to_slots env idxs bound_locals sp 0 st
-        st2 = lower_expr env val_e bound_locals (sp + count) st1
-        nc_emit_list st2 [NIndexSet tslot sp count, NStoreSlot tslot, NCloneSlot tslot] (sp + count + 1)
+        count = rexpr list len idxs
+        tslot = env var slot env target
+        st1 = lower expr list to slots env idxs bound_locals sp 0 st
+        st2 = lower expr env val_e bound_locals (sp + count) st1
+        nc emit list st2 [NIndexSet tslot sp count, NStoreSlot tslot, NCloneSlot tslot] (sp + count + 1)
       lower expr env (ESeqSelect base mask) bound_locals sp st =
-        off = env_str_off env mask
-        st1 = lower_expr env base bound_locals sp st
-        nc_emit st1 (NSeqSelect off (str_len mask)) sp
+        off = env str off env mask
+        st1 = lower expr env base bound_locals sp st
+        nc emit st1 (NSeqSelect off (str len mask)) sp
       lower expr env (EBlock stmts) bound_locals sp st =
-        lower_stmts_cmm env stmts bound_locals [] sp st
+        lower stmts cmm env stmts bound_locals [] sp st
       lower expr env (EGuard guards) bound_locals sp st =
-        end_lbl = nc_lbl st
-        st1 = nc_set_lbl st (end_lbl + 1)
-        lower_expr_guards env guards bound_locals end_lbl sp st1
+        end_lbl = nc lbl st
+        st1 = nc set lbl st (end_lbl + 1)
+        lower expr guards env guards bound_locals end_lbl sp st1
       lower expr env (EWhere body binds) bound_locals sp st =
-        lower_where_cmm env binds body bound_locals [] sp st
+        lower where cmm env binds body bound_locals [] sp st
       lower expr env (EParPipe branches) bound_locals sp st
-        | (rexpr_list_len branches) >= 2 AND (all_exprs_par_eval env branches bound_locals) =
-          count = rexpr_list_len branches
-          par_off = env_str_off env "__rg_par_eval__"
-          st1 = lower_par_eval_list env branches bound_locals sp 0 st
-          st2 = nc_emit_list st1 [NMakeList sp count, NStoreSlot (sp + 1), NLoadStrLit par_off 15, NStoreSlot sp, NCallBuiltin 54 sp 2, NStoreSlot sp] (sp + count + 2)
-          st3 = unpack_par_list_to_slots sp count 0 st2
-          nc_emit_list st3 [NClearLocals sp (sp + 1), NMakeTuple (sp + 1) count] (sp + count + 2)
+        | (rexpr list len branches) >= 2 AND (all exprs par eval env branches bound_locals) =
+          count = rexpr list len branches
+          par_off = env str off env "__rg_par_eval__"
+          st1 = lower par eval list env branches bound_locals sp 0 st
+          st2 = nc emit list st1 [NMakeList sp count, NStoreSlot (sp + 1), NLoadStrLit par_off 15, NStoreSlot sp, NCallBuiltin 54 sp 2, NStoreSlot sp] (sp + count + 2)
+          st3 = unpack par list to slots sp count 0 st2
+          nc emit list st3 [NClearLocals sp (sp + 1), NMakeTuple (sp + 1) count] (sp + count + 2)
         | otherwise =
-          count = rexpr_list_len branches
-          st1 = lower_expr_list_to_slots env branches bound_locals sp 0 st
-          nc_emit st1 (NMakeTuple sp count) (sp + count + 1)
+          count = rexpr list len branches
+          st1 = lower expr list to slots env branches bound_locals sp 0 st
+          nc emit st1 (NMakeTuple sp count) (sp + count + 1)
       lower expr env (EWithCtx _ val_e body) bound_locals sp st =
-        st1 = lower_expr env val_e bound_locals sp st
-        st2 = nc_emit_list st1 [NStoreSlot sp, NCallBuiltin 84 sp 1] (sp + 1)
-        st3 = lower_expr env body bound_locals sp st2
-        nc_emit_list st3 [NStoreSlot sp, NCallBuiltin 85 sp 1] (sp + 1)
+        st1 = lower expr env val_e bound_locals sp st
+        st2 = nc emit list st1 [NStoreSlot sp, NCallBuiltin 84 sp 1] (sp + 1)
+        st3 = lower expr env body bound_locals sp st2
+        nc emit list st3 [NStoreSlot sp, NCallBuiltin 85 sp 1] (sp + 1)
       lower expr env (EWithRegion quota body) bound_locals sp st =
-        st1 = nc_emit st NEnterRegion sp
-        st2 = lower_expr env body bound_locals sp st1
-        nc_emit st2 (NExitRegion quota) sp
+        st1 = nc emit st NEnterRegion sp
+        st2 = lower expr env body bound_locals sp st1
+        nc emit st2 (NExitRegion quota) sp
 
 fn :: lower expr guards RNativeEnv [RGuard] [String] Int Int RNativeCode => RNativeCode
       lower expr guards _ [] _ end_lbl sp st =
-        nc_emit_list st [NLoadImmRaw 0, NLabel end_lbl] sp
+        nc emit list st [NLoadImmRaw 0, NLabel end_lbl] sp
       lower expr guards env ((GuardBranch cond body):gs) bound_locals end_lbl sp st =
-        next_lbl = nc_lbl st
-        st1 = nc_set_lbl st (next_lbl + 1)
-        st2 = lower_expr env cond bound_locals sp st1
-        st3 = nc_emit_list st2 [NAsBool, NJumpIfZero next_lbl] sp
-        st4 = lower_expr env body bound_locals sp st3
-        st5 = nc_emit_list st4 [NJump end_lbl, NLabel next_lbl] sp
-        lower_expr_guards env gs bound_locals end_lbl sp st5
+        next_lbl = nc lbl st
+        st1 = nc set lbl st (next_lbl + 1)
+        st2 = lower expr env cond bound_locals sp st1
+        st3 = nc emit list st2 [NAsBool, NJumpIfZero next_lbl] sp
+        st4 = lower expr env body bound_locals sp st3
+        st5 = nc emit list st4 [NJump end_lbl, NLabel next_lbl] sp
+        lower expr guards env gs bound_locals end_lbl sp st5
 
 fn :: lower final block expr RNativeEnv RExpr [String] [String] Int RNativeCode => RNativeCode
       lower final block expr env (EVar v) bound_locals _ sp st
-        | (lookup_local bound_locals v) >= 0 =
-          nc_emit st (NMoveSlot (env_var_slot env v)) sp
+        | (lookup local bound_locals v) >= 0 =
+          nc emit st (NMoveSlot (env var slot env v)) sp
       lower final block expr env e bound_locals [] sp st =
-        lower_expr env e bound_locals sp st
+        lower expr env e bound_locals sp st
       lower final block expr env e bound_locals dead_vars sp st =
-        st1 = lower_expr env e bound_locals sp st
-        st2 = nc_emit st1 (NStoreSlot sp) (sp + 1)
-        st3 = lower_cmm_drops env dead_vars (sp + 1) st2
-        nc_emit st3 (NMoveSlot sp) (sp + 1)
+        st1 = lower expr env e bound_locals sp st
+        st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
+        st3 = lower cmm drops env dead_vars (sp + 1) st2
+        nc emit st3 (NMoveSlot sp) (sp + 1)
 
 fn :: lower let binding stmt RNativeEnv String RExpr [String] [String] [RStmt] Int RNativeCode => RNativeCode
       lower let binding stmt env v e bound_locals scope_vars rest sp st =
-        used_in_e = cmm_filter_in_list (cmm_expr_vars e []) scope_vars
-        live_after = cmm_stmts_vars rest []
-        live_with_v = add_unique_str v live_after
-        dead_inputs = cmm_filter_not_in_list (cmm_remove_str v used_in_e) live_with_v
-        st1 = lower_expr env e bound_locals sp st
-        st2 = lower_let_var_store env v bound_locals sp st1
-        st3 = lower_cmm_drops env dead_inputs sp st2
-        st4 = lower_unused_let_drop env v live_after sp st3
-        lower_stmts_cmm env rest (add_unique_str v bound_locals) (add_unique_str v scope_vars) sp st4
+        used_in_e = cmm filter in list (cmm expr vars e []) scope_vars
+        live_after = cmm stmts vars rest []
+        live_with_v = add unique str v live_after
+        dead_inputs = cmm filter not in list (cmm remove str v used_in_e) live_with_v
+        st1 = lower expr env e bound_locals sp st
+        st2 = lower let var store env v bound_locals sp st1
+        st3 = lower cmm drops env dead_inputs sp st2
+        st4 = lower unused let drop env v live_after sp st3
+        lower stmts cmm env rest (add unique str v bound_locals) (add unique str v scope_vars) sp st4
 
 fn :: lower stmts cmm RNativeEnv [RStmt] [String] [String] Int RNativeCode => RNativeCode
       lower stmts cmm _ [] _ _ sp st =
-        nc_emit st (NLoadImmRaw 0) sp
+        nc emit st (NLoadImmRaw 0) sp
       lower stmts cmm env ((StmtExpr e):[]) bound_locals scope_vars sp st =
-        used = cmm_filter_in_list (cmm_expr_vars e []) scope_vars
-        lower_final_block_expr env e bound_locals used sp st
+        used = cmm filter in list (cmm expr vars e []) scope_vars
+        lower final block expr env e bound_locals used sp st
       lower stmts cmm env ((StmtIndexAssign t idxs e):[]) bound_locals scope_vars sp st =
-        count = rexpr_list_len idxs
-        tslot = env_var_slot env t
-        st1 = lower_expr_list_to_slots env idxs bound_locals sp 0 st
-        st2 = lower_expr env e bound_locals (sp + count) st1
-        st3 = nc_emit_list st2 [NIndexSet tslot sp count, NStoreSlot tslot] (sp + count + 1)
-        st4 = lower_cmm_drops env (cmm_remove_str t scope_vars) (sp + count + 1) st3
-        nc_emit st4 (NCloneSlot tslot) (sp + count + 1)
+        count = rexpr list len idxs
+        tslot = env var slot env t
+        st1 = lower expr list to slots env idxs bound_locals sp 0 st
+        st2 = lower expr env e bound_locals (sp + count) st1
+        st3 = nc emit list st2 [NIndexSet tslot sp count, NStoreSlot tslot] (sp + count + 1)
+        st4 = lower cmm drops env (cmm remove str t scope_vars) (sp + count + 1) st3
+        nc emit st4 (NCloneSlot tslot) (sp + count + 1)
       lower stmts cmm env ((StmtLet v e):[]) bound_locals scope_vars sp st
         | v == "_" =
-          used = cmm_filter_in_list (cmm_expr_vars e []) scope_vars
-          st1 = lower_expr env e bound_locals sp st
-          st2 = nc_emit st1 NDropVal sp
-          st3 = lower_cmm_drops env used sp st2
-          nc_emit st3 (NLoadImmRaw 0) sp
+          used = cmm filter in list (cmm expr vars e []) scope_vars
+          st1 = lower expr env e bound_locals sp st
+          st2 = nc emit st1 NDropVal sp
+          st3 = lower cmm drops env used sp st2
+          nc emit st3 (NLoadImmRaw 0) sp
         | otherwise =
-          used = cmm_remove_str v (cmm_filter_in_list (cmm_expr_vars e []) scope_vars)
-          st1 = lower_expr env e bound_locals sp st
-          st2 = lower_let_var_store env v bound_locals sp st1
-          st3 = lower_cmm_drops env used sp st2
-          nc_emit st3 (NMoveSlot (env_var_slot env v)) sp
+          used = cmm remove str v (cmm filter in list (cmm expr vars e []) scope_vars)
+          st1 = lower expr env e bound_locals sp st
+          st2 = lower let var store env v bound_locals sp st1
+          st3 = lower cmm drops env used sp st2
+          nc emit st3 (NMoveSlot (env var slot env v)) sp
       lower stmts cmm env ((StmtMut v e):[]) bound_locals scope_vars sp st =
-        lower_stmts_cmm env [StmtLet v e] bound_locals scope_vars sp st
+        lower stmts cmm env [StmtLet v e] bound_locals scope_vars sp st
       lower stmts cmm env ((StmtLet v e):rest) bound_locals scope_vars sp st
         | v == "_" =
-          used_in_e = cmm_filter_in_list (cmm_expr_vars e []) scope_vars
-          live_after = cmm_stmts_vars rest []
-          dead_now = cmm_filter_not_in_list used_in_e live_after
-          st1 = lower_expr env e bound_locals sp st
-          st2 = nc_emit st1 NDropVal sp
-          st3 = lower_cmm_drops env dead_now sp st2
-          lower_stmts_cmm env rest bound_locals scope_vars sp st3
+          used_in_e = cmm filter in list (cmm expr vars e []) scope_vars
+          live_after = cmm stmts vars rest []
+          dead_now = cmm filter not in list used_in_e live_after
+          st1 = lower expr env e bound_locals sp st
+          st2 = nc emit st1 NDropVal sp
+          st3 = lower cmm drops env dead_now sp st2
+          lower stmts cmm env rest bound_locals scope_vars sp st3
         | otherwise =
-          lower_let_binding_stmt env v e bound_locals scope_vars rest sp st
+          lower let binding stmt env v e bound_locals scope_vars rest sp st
       lower stmts cmm env ((StmtMut v e):rest) bound_locals scope_vars sp st =
-        lower_let_binding_stmt env v e bound_locals scope_vars rest sp st
+        lower let binding stmt env v e bound_locals scope_vars rest sp st
       lower stmts cmm env ((StmtIndexAssign t idxs e):rest) bound_locals scope_vars sp st =
-        used_in_e = cmm_filter_in_list (cmm_expr_vars e (cmm_expr_list_vars idxs [])) scope_vars
-        live_after = add_unique_str t (cmm_stmts_vars rest [])
-        dead_now = cmm_filter_not_in_list used_in_e live_after
-        count = rexpr_list_len idxs
-        tslot = env_var_slot env t
-        st1 = lower_expr_list_to_slots env idxs bound_locals sp 0 st
-        st2 = lower_expr env e bound_locals (sp + count) st1
-        st3 = nc_emit_list st2 [NIndexSet tslot sp count, NStoreSlot tslot] (sp + count + 1)
-        st4 = lower_cmm_drops env dead_now (sp + count + 1) st3
-        lower_stmts_cmm env rest bound_locals scope_vars sp st4
+        used_in_e = cmm filter in list (cmm expr vars e (cmm expr list vars idxs [])) scope_vars
+        live_after = add unique str t (cmm stmts vars rest [])
+        dead_now = cmm filter not in list used_in_e live_after
+        count = rexpr list len idxs
+        tslot = env var slot env t
+        st1 = lower expr list to slots env idxs bound_locals sp 0 st
+        st2 = lower expr env e bound_locals (sp + count) st1
+        st3 = nc emit list st2 [NIndexSet tslot sp count, NStoreSlot tslot] (sp + count + 1)
+        st4 = lower cmm drops env dead_now (sp + count + 1) st3
+        lower stmts cmm env rest bound_locals scope_vars sp st4
       lower stmts cmm env ((StmtExpr e):rest) bound_locals scope_vars sp st =
-        used_in_e = cmm_filter_in_list (cmm_expr_vars e []) scope_vars
-        live_after = cmm_stmts_vars rest []
-        dead_now = cmm_filter_not_in_list used_in_e live_after
-        st1 = lower_expr env e bound_locals sp st
-        st2 = nc_emit st1 NDropVal sp
-        st3 = lower_cmm_drops env dead_now sp st2
-        lower_stmts_cmm env rest bound_locals scope_vars sp st3
+        used_in_e = cmm filter in list (cmm expr vars e []) scope_vars
+        live_after = cmm stmts vars rest []
+        dead_now = cmm filter not in list used_in_e live_after
+        st1 = lower expr env e bound_locals sp st
+        st2 = nc emit st1 NDropVal sp
+        st3 = lower cmm drops env dead_now sp st2
+        lower stmts cmm env rest bound_locals scope_vars sp st3
 
 fn :: can par eval expr RNativeEnv RExpr [String] => Bool
       can par eval expr env (ECall fname args) bound_locals =
-        arity = env_fn_arity env fname
-        nargs = rexpr_list_len args
-        (lookup_local bound_locals fname) < 0 AND (NOT (is_upper_ident fname)) AND (builtin_call_id fname) < 0 AND (NOT (is_agent_call_name fname)) AND fname != "sys_os" AND fname != "sys_arch" AND fname != "__record_update__" AND fname != "__unpack2__" AND arity >= 0 AND arity <= 3 AND nargs == arity AND (env_fn_is_heavy env fname)
+        arity = env fn arity env fname
+        nargs = rexpr list len args
+        (lookup local bound_locals fname) < 0 AND (NOT (is upper ident fname)) AND (builtin call id fname) < 0 AND (NOT (is agent call name fname)) AND fname != "sys_os" AND fname != "sys_arch" AND fname != "__record_update__" AND fname != "__unpack2__" AND arity >= 0 AND arity <= 3 AND nargs == arity AND (env fn is heavy env fname)
       can par eval expr _ _ _ = False
 
 fn :: all exprs par eval RNativeEnv [RExpr] [String] => Bool
       all exprs par eval _ [] _ = True
       all exprs par eval env (e:es) bound_locals
-        | can_par_eval_expr env e bound_locals = all_exprs_par_eval env es bound_locals
+        | can par eval expr env e bound_locals = all exprs par eval env es bound_locals
         | otherwise = False
 
 fn :: lower par eval arg RNativeEnv [RExpr] [String] Int RNativeCode => RNativeCode
       lower par eval arg _ [] _ slot st =
-        nc_emit_list st [NLoadImmInt 0, NStoreSlot slot] (slot + 1)
+        nc emit list st [NLoadImmInt 0, NStoreSlot slot] (slot + 1)
       lower par eval arg env (a1:[]) bound_locals slot st =
-        st1 = lower_expr env a1 bound_locals slot st
-        nc_emit st1 (NStoreSlot slot) (slot + 1)
+        st1 = lower expr env a1 bound_locals slot st
+        nc emit st1 (NStoreSlot slot) (slot + 1)
       lower par eval arg env args bound_locals slot st =
-        count = rexpr_list_len args
-        st1 = lower_expr_list_to_slots env args bound_locals slot 0 st
-        nc_emit_list st1 [NMakeTuple slot count, NStoreSlot slot] (slot + count + 1)
+        count = rexpr list len args
+        st1 = lower expr list to slots env args bound_locals slot 0 st
+        nc emit list st1 [NMakeTuple slot count, NStoreSlot slot] (slot + count + 1)
 
 fn :: lower par eval item RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
       lower par eval item env (ECall fname args) bound_locals slot st =
-        off = env_str_off env fname
-        st1 = nc_emit_list st [NLoadStrLit off (str_len fname), NStoreSlot slot] (slot + 1)
-        st2 = lower_par_eval_arg env args bound_locals (slot + 1) st1
-        nc_emit_list st2 [NMakeTuple slot 2, NStoreSlot slot] (slot + 2)
+        off = env str off env fname
+        st1 = nc emit list st [NLoadStrLit off (str len fname), NStoreSlot slot] (slot + 1)
+        st2 = lower par eval arg env args bound_locals (slot + 1) st1
+        nc emit list st2 [NMakeTuple slot 2, NStoreSlot slot] (slot + 2)
       lower par eval item _ _ _ _ st = st
 
 fn :: lower par eval list RNativeEnv [RExpr] [String] Int Int RNativeCode => RNativeCode
       lower par eval list _ [] _ _ _ st = st
       lower par eval list env (e:es) bound_locals sp idx st =
-        st1 = lower_par_eval_item env e bound_locals (sp + idx) st
-        lower_par_eval_list env es bound_locals sp (idx + 1) st1
+        st1 = lower par eval item env e bound_locals (sp + idx) st
+        lower par eval list env es bound_locals sp (idx + 1) st1
 
 fn :: unpack par list to slots Int Int Int RNativeCode => RNativeCode
       unpack par list to slots _ count idx st
         | idx >= count = st
       unpack par list to slots list_slot count idx st =
         dst = list_slot + 1 + idx
-        st1 = nc_emit_list st [NListHead list_slot, NStoreSlot dst, NListTail list_slot, NStoreSlot list_slot] (dst + 1)
-        unpack_par_list_to_slots list_slot count (idx + 1) st1
+        st1 = nc emit list st [NListHead list_slot, NStoreSlot dst, NListTail list_slot, NStoreSlot list_slot] (dst + 1)
+        unpack par list to slots list_slot count (idx + 1) st1
 
 fn :: can par where pair RNativeEnv RExpr String RExpr String [String] => Bool
       can par where pair env e1 v1 e2 v2 bound_locals =
-        v1 != "_" AND v2 != "_" AND v1 != v2 AND (can_par_eval_expr env e1 bound_locals) AND (can_par_eval_expr env e2 bound_locals) AND (NOT (str_in_list v1 (cmm_expr_vars e2 [])))
+        v1 != "_" AND v2 != "_" AND v1 != v2 AND (can par eval expr env e1 bound_locals) AND (can par eval expr env e2 bound_locals) AND (NOT (str in list v1 (cmm expr vars e2 [])))
 
 fn :: emit par where pair RNativeEnv RExpr String RExpr String [RWhereBind] RExpr [String] [String] Int RNativeCode => RNativeCode
       emit par where pair env e1 v1 e2 v2 wbs body bound_locals scope_vars sp st =
-        used_in_pair = cmm_filter_in_list (cmm_expr_vars e2 (cmm_expr_vars e1 [])) scope_vars
-        live_after = cmm_where_vars wbs body []
-        live_with_vs = add_unique_str v1 (add_unique_str v2 live_after)
-        dead_inputs = cmm_filter_not_in_list (cmm_remove_str v1 (cmm_remove_str v2 used_in_pair)) live_with_vs
-        par_off = env_str_off env "__rg_par_eval__"
-        st1 = lower_par_eval_list env [e1, e2] bound_locals sp 0 st
-        st2 = nc_emit_list st1 [NMakeList sp 2, NStoreSlot (sp + 1), NLoadStrLit par_off 15, NStoreSlot sp, NCallBuiltin 54 sp 2, NStoreSlot sp, NListHead sp] (sp + 4)
-        st3 = lower_let_var_store env v1 bound_locals (sp + 4) st2
-        st4 = nc_emit_list st3 [NListTail sp, NStoreSlot sp, NListHead sp] (sp + 4)
-        locals1 = add_unique_str v1 bound_locals
-        st5 = lower_let_var_store env v2 locals1 (sp + 4) st4
-        st6 = nc_emit st5 (NClearLocals sp (sp + 1)) (sp + 4)
-        st7 = lower_cmm_drops env dead_inputs sp st6
-        st8 = lower_unused_let_drop env v1 (add_unique_str v2 live_after) sp st7
-        lower_unused_let_drop env v2 live_after sp st8
+        used_in_pair = cmm filter in list (cmm expr vars e2 (cmm expr vars e1 [])) scope_vars
+        live_after = cmm where vars wbs body []
+        live_with_vs = add unique str v1 (add unique str v2 live_after)
+        dead_inputs = cmm filter not in list (cmm remove str v1 (cmm remove str v2 used_in_pair)) live_with_vs
+        par_off = env str off env "__rg_par_eval__"
+        st1 = lower par eval list env [e1, e2] bound_locals sp 0 st
+        st2 = nc emit list st1 [NMakeList sp 2, NStoreSlot (sp + 1), NLoadStrLit par_off 15, NStoreSlot sp, NCallBuiltin 54 sp 2, NStoreSlot sp, NListHead sp] (sp + 4)
+        st3 = lower let var store env v1 bound_locals (sp + 4) st2
+        st4 = nc emit list st3 [NListTail sp, NStoreSlot sp, NListHead sp] (sp + 4)
+        locals1 = add unique str v1 bound_locals
+        st5 = lower let var store env v2 locals1 (sp + 4) st4
+        st6 = nc emit st5 (NClearLocals sp (sp + 1)) (sp + 4)
+        st7 = lower cmm drops env dead_inputs sp st6
+        st8 = lower unused let drop env v1 (add unique str v2 live_after) sp st7
+        lower unused let drop env v2 live_after sp st8
 
 fn :: lower where cmm RNativeEnv [RWhereBind] RExpr [String] [String] Int RNativeCode => RNativeCode
       lower where cmm env [] body bound_locals scope_vars sp st =
-        used = cmm_filter_in_list (cmm_expr_vars body []) scope_vars
-        lower_final_block_expr env body bound_locals used sp st
+        used = cmm filter in list (cmm expr vars body []) scope_vars
+        lower final block expr env body bound_locals used sp st
       lower where cmm env ((WhereBind e1 v1 []):(WhereBind e2 v2 []):wbs) body bound_locals scope_vars sp st
-        | can_par_where_pair env e1 v1 e2 v2 bound_locals =
-          st1 = emit_par_where_pair env e1 v1 e2 v2 wbs body bound_locals scope_vars sp st
-          locals2 = add_unique_str v2 (add_unique_str v1 bound_locals)
-          scope2 = add_unique_str v2 (add_unique_str v1 scope_vars)
-          lower_where_cmm env wbs body locals2 scope2 sp st1
+        | can par where pair env e1 v1 e2 v2 bound_locals =
+          st1 = emit par where pair env e1 v1 e2 v2 wbs body bound_locals scope_vars sp st
+          locals2 = add unique str v2 (add unique str v1 bound_locals)
+          scope2 = add unique str v2 (add unique str v1 scope_vars)
+          lower where cmm env wbs body locals2 scope2 sp st1
       lower where cmm env ((WhereBind e v []):wbs) body bound_locals scope_vars sp st =
-        used_in_e = cmm_filter_in_list (cmm_expr_vars e []) scope_vars
-        live_after = cmm_where_vars wbs body []
-        live_with_v = add_unique_str v live_after
-        dead_inputs = cmm_filter_not_in_list (cmm_remove_str v used_in_e) live_with_v
-        st1 = lower_expr env e bound_locals sp st
-        st2 = lower_let_var_store env v bound_locals sp st1
-        st3 = lower_cmm_drops env dead_inputs sp st2
-        st4 = lower_unused_let_drop env v live_after sp st3
-        lower_where_cmm env wbs body (add_unique_str v bound_locals) (add_unique_str v scope_vars) sp st4
+        used_in_e = cmm filter in list (cmm expr vars e []) scope_vars
+        live_after = cmm where vars wbs body []
+        live_with_v = add unique str v live_after
+        dead_inputs = cmm filter not in list (cmm remove str v used_in_e) live_with_v
+        st1 = lower expr env e bound_locals sp st
+        st2 = lower let var store env v bound_locals sp st1
+        st3 = lower cmm drops env dead_inputs sp st2
+        st4 = lower unused let drop env v live_after sp st3
+        lower where cmm env wbs body (add unique str v bound_locals) (add unique str v scope_vars) sp st4
       lower where cmm env ((WhereBind e v idxs):wbs) body bound_locals scope_vars sp st =
-        count = int_list_len idxs
-        tslot = env_var_slot env v
-        st1 = lower_int_list_to_slots idxs sp 0 st
-        st2 = lower_expr env e bound_locals (sp + count) st1
-        st3 = nc_emit_list st2 [NIndexSet tslot sp count, NStoreSlot tslot] (sp + count + 1)
-        lower_where_cmm env wbs body bound_locals scope_vars sp st3
+        count = int list len idxs
+        tslot = env var slot env v
+        st1 = lower int list to slots idxs sp 0 st
+        st2 = lower expr env e bound_locals (sp + count) st1
+        st3 = nc emit list st2 [NIndexSet tslot sp count, NStoreSlot tslot] (sp + count + 1)
+        lower where cmm env wbs body bound_locals scope_vars sp st3
 
 -- ── Tail-Call Optimization (TCO) & Tail Return Lowering ─────
 
 fn :: expr has self tail call String RExpr => Bool
       expr has self tail call target (ECall fname _) = fname == target
-      expr has self tail call target (EBlock stmts) = stmts_have_self_tail_call target stmts
-      expr has self tail call target (EGuard guards) = guards_have_self_tail_call target guards
-      expr has self tail call target (EWhere body _) = expr_has_self_tail_call target body
+      expr has self tail call target (EBlock stmts) = stmts have self tail call target stmts
+      expr has self tail call target (EGuard guards) = guards have self tail call target guards
+      expr has self tail call target (EWhere body _) = expr has self tail call target body
       expr has self tail call _ _ = False
 
 fn :: stmts have self tail call String [RStmt] => Bool
       stmts have self tail call _ [] = False
-      stmts have self tail call target ((StmtExpr e):[]) = expr_has_self_tail_call target e
-      stmts have self tail call target (_:rest) = stmts_have_self_tail_call target rest
+      stmts have self tail call target ((StmtExpr e):[]) = expr has self tail call target e
+      stmts have self tail call target (_:rest) = stmts have self tail call target rest
 
 fn :: guards have self tail call String [RGuard] => Bool
       guards have self tail call _ [] = False
       guards have self tail call target ((GuardBranch _ body):gs)
-        | expr_has_self_tail_call target body = True
-        | otherwise = guards_have_self_tail_call target gs
+        | expr has self tail call target body = True
+        | otherwise = guards have self tail call target gs
 
 fn :: can move param var String [String] [String] [String] => Bool
       can move param var v locals scope_vars later_vars =
-        ((lookup_local locals v) >= 0) AND (NOT (str_in_list v scope_vars)) AND (NOT (str_in_list v later_vars))
+        ((lookup local locals v) >= 0) AND (NOT (str in list v scope_vars)) AND (NOT (str in list v later_vars))
 
 fn :: lower tco arg expr RNativeEnv RExpr [RExpr] [String] [String] Int RNativeCode => RNativeCode
       lower tco arg expr env (EVar v) es bound_locals scope_vars sp st
-        | can_move_param_var v bound_locals scope_vars (cmm_expr_list_vars es []) =
-          nc_emit st (NMoveSlot (env_var_slot env v)) sp
+        | can move param var v bound_locals scope_vars (cmm expr list vars es []) =
+          nc emit st (NMoveSlot (env var slot env v)) sp
       lower tco arg expr env (EBin OpConcat l r) es bound_locals scope_vars sp st =
-        st1 = lower_tco_arg_expr env l ([r] :: es) bound_locals scope_vars sp st
-        st2 = nc_emit st1 (NStoreSlot sp) (sp + 1)
-        st3 = lower_tco_arg_expr env r es bound_locals scope_vars (sp + 1) st2
-        nc_emit st3 (NBinOp 14 sp) (sp + 1)
+        st1 = lower tco arg expr env l ([r] :: es) bound_locals scope_vars sp st
+        st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
+        st3 = lower tco arg expr env r es bound_locals scope_vars (sp + 1) st2
+        nc emit st3 (NBinOp 14 sp) (sp + 1)
       lower tco arg expr env (ETuple elems) es bound_locals scope_vars sp st =
-        count = rexpr_list_len elems
-        st1 = lower_tco_arg_list_to_slots env elems es bound_locals scope_vars sp 0 st
-        nc_emit st1 (NMakeTuple sp count) (sp + count + 1)
+        count = rexpr list len elems
+        st1 = lower tco arg list to slots env elems es bound_locals scope_vars sp 0 st
+        nc emit st1 (NMakeTuple sp count) (sp + count + 1)
       lower tco arg expr env (ECall fname args) es bound_locals scope_vars sp st
-        | (lookup_local bound_locals fname) < 0 AND (NOT (is_upper_ident fname)) AND (builtin_call_id fname) < 0 AND (NOT (is_agent_call_name fname)) AND (NOT (is tensor helper name fname)) AND fname != "sys_os" AND fname != "sys_arch" AND fname != "__record_update__" AND fname != "__unpack2__" AND fname != "__chain__" AND (rexpr_list_len args) == (env_fn_arity env fname) AND (NOT ((env has field env fname) AND (env_fn_arity env fname) == 1 AND (rexpr_list_len args) > 1)) =
-          count = rexpr_list_len args
-          st1 = lower_tco_arg_list_to_slots env args es bound_locals scope_vars sp 0 st
-          nc_emit st1 (NCallFn (env_fn_id env fname) sp count) (sp + count + 1)
+        | (lookup local bound_locals fname) < 0 AND (NOT (is upper ident fname)) AND (builtin call id fname) < 0 AND (NOT (is agent call name fname)) AND (NOT (is tensor helper name fname)) AND fname != "sys_os" AND fname != "sys_arch" AND fname != "__record_update__" AND fname != "__unpack2__" AND fname != "__chain__" AND (rexpr list len args) == (env fn arity env fname) AND (NOT ((env has field env fname) AND (env fn arity env fname) == 1 AND (rexpr list len args) > 1)) =
+          count = rexpr list len args
+          st1 = lower tco arg list to slots env args es bound_locals scope_vars sp 0 st
+          nc emit st1 (NCallFn (env fn id env fname) sp count) (sp + count + 1)
       lower tco arg expr env e _ bound_locals _ sp st =
-        lower_expr env e bound_locals sp st
+        lower expr env e bound_locals sp st
 
 fn :: lower tco arg list to slots RNativeEnv [RExpr] [RExpr] [String] [String] Int Int RNativeCode => RNativeCode
       lower tco arg list to slots _ [] _ _ _ _ _ st = st
       lower tco arg list to slots env (e:es) after bound_locals scope_vars sp idx st =
         cur_slot = sp + idx
-        st1 = lower_tco_arg_expr env e (es :: after) bound_locals scope_vars cur_slot st
-        st2 = nc_emit st1 (NStoreSlot cur_slot) (cur_slot + 1)
-        lower_tco_arg_list_to_slots env es after bound_locals scope_vars sp (idx + 1) st2
+        st1 = lower tco arg expr env e (es :: after) bound_locals scope_vars cur_slot st
+        st2 = nc emit st1 (NStoreSlot cur_slot) (cur_slot + 1)
+        lower tco arg list to slots env es after bound_locals scope_vars sp (idx + 1) st2
 
 fn :: lower tail return RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
       lower tail return env expr bound_locals sp st =
-        lower_tail_return_cmm env expr bound_locals [] sp st
+        lower tail return cmm env expr bound_locals [] sp st
 
 fn :: lower tail return cmm RNativeEnv RExpr [String] [String] Int RNativeCode => RNativeCode
       lower tail return cmm env (ECall fname args) bound_locals scope_vars sp st
-        | fname == (env_fn_name env) AND (rexpr_list_len args) == (env_arity env) AND (lookup_local bound_locals fname) < 0 =
-          arity = env_arity env
-          st1 = lower_tco_arg_list_to_slots env args [] bound_locals scope_vars sp 0 st
-          st2 = lower_cmm_drops env scope_vars (sp + arity + 1) st1
-          nc_emit st2 (NTailCall sp arity) (sp + arity + 1)
+        | fname == (env fn name env) AND (rexpr list len args) == (env arity env) AND (lookup local bound_locals fname) < 0 =
+          arity = env arity env
+          st1 = lower tco arg list to slots env args [] bound_locals scope_vars sp 0 st
+          st2 = lower cmm drops env scope_vars (sp + arity + 1) st1
+          nc emit st2 (NTailCall sp arity) (sp + arity + 1)
       lower tail return cmm env (EBlock stmts) bound_locals scope_vars sp st =
-        lower_tail_stmts_cmm env stmts bound_locals scope_vars sp st
+        lower tail stmts cmm env stmts bound_locals scope_vars sp st
       lower tail return cmm env (EGuard guards) bound_locals scope_vars sp st
-        | guards_have_self_tail_call (env_fn_name env) guards =
-          lower_tail_guards_cmm env guards bound_locals scope_vars sp st
+        | guards have self tail call (env fn name env) guards =
+          lower tail guards cmm env guards bound_locals scope_vars sp st
       lower tail return cmm env (EWhere body binds) bound_locals scope_vars sp st =
-        lower_tail_where_cmm env binds body bound_locals scope_vars sp st
+        lower tail where cmm env binds body bound_locals scope_vars sp st
       lower tail return cmm env (EVar v) bound_locals _ sp st
-        | (lookup_local bound_locals v) >= 0 =
-          nc_emit_list st [NMoveSlot (env_var_slot env v), NReturn] sp
+        | (lookup local bound_locals v) >= 0 =
+          nc emit list st [NMoveSlot (env var slot env v), NReturn] sp
       lower tail return cmm env expr bound_locals scope_vars sp st =
-        used = cmm_filter_in_list (cmm_expr_vars expr []) scope_vars
-        lower_tail_return_expr env expr bound_locals scope_vars used sp st
+        used = cmm filter in list (cmm expr vars expr []) scope_vars
+        lower tail return expr env expr bound_locals scope_vars used sp st
 
 fn :: lower tail return expr RNativeEnv RExpr [String] [String] [String] Int RNativeCode => RNativeCode
       lower tail return expr env expr bound_locals scope_vars [] sp st =
-        st1 = lower_tco_arg_expr env expr [] bound_locals scope_vars sp st
-        nc_emit st1 NReturn sp
+        st1 = lower tco arg expr env expr [] bound_locals scope_vars sp st
+        nc emit st1 NReturn sp
       lower tail return expr env expr bound_locals scope_vars used sp st =
-        st1 = lower_tco_arg_expr env expr [] bound_locals scope_vars sp st
-        st2 = nc_emit st1 (NStoreSlot sp) (sp + 1)
-        st3 = lower_cmm_drops env used (sp + 1) st2
-        nc_emit_list st3 [NMoveSlot sp, NReturn] (sp + 1)
+        st1 = lower tco arg expr env expr [] bound_locals scope_vars sp st
+        st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
+        st3 = lower cmm drops env used (sp + 1) st2
+        nc emit list st3 [NMoveSlot sp, NReturn] (sp + 1)
 
 fn :: lower tail guards cmm RNativeEnv [RGuard] [String] [String] Int RNativeCode => RNativeCode
       lower tail guards cmm env [] _ scope_vars sp st =
-        st1 = lower_cmm_drops env scope_vars sp st
-        nc_emit_list st1 [NLoadImmRaw 0, NReturn] sp
+        st1 = lower cmm drops env scope_vars sp st
+        nc emit list st1 [NLoadImmRaw 0, NReturn] sp
       lower tail guards cmm env ((GuardBranch cond body):gs) bound_locals scope_vars sp st =
-        next_lbl = nc_lbl st
-        st1 = nc_set_lbl st (next_lbl + 1)
-        st2 = lower_expr env cond bound_locals sp st1
-        st3 = nc_emit_list st2 [NAsBool, NJumpIfZero next_lbl] sp
-        st4 = lower_tail_return_cmm env body bound_locals scope_vars sp st3
-        st5 = nc_emit st4 (NLabel next_lbl) sp
-        lower_tail_guards_cmm env gs bound_locals scope_vars sp st5
+        next_lbl = nc lbl st
+        st1 = nc set lbl st (next_lbl + 1)
+        st2 = lower expr env cond bound_locals sp st1
+        st3 = nc emit list st2 [NAsBool, NJumpIfZero next_lbl] sp
+        st4 = lower tail return cmm env body bound_locals scope_vars sp st3
+        st5 = nc emit st4 (NLabel next_lbl) sp
+        lower tail guards cmm env gs bound_locals scope_vars sp st5
 
 fn :: lower tail let stmt RNativeEnv String RExpr [String] [String] [RStmt] Int RNativeCode => RNativeCode
       lower tail let stmt env v e bound_locals scope_vars rest sp st =
-        used_in_e = cmm_filter_in_list (cmm_expr_vars e []) scope_vars
-        live_after = cmm_stmts_vars rest []
-        live_with_v = add_unique_str v live_after
-        dead_inputs = cmm_filter_not_in_list (cmm_remove_str v used_in_e) live_with_v
-        st1 = lower_expr env e bound_locals sp st
-        st2 = lower_let_var_store env v bound_locals sp st1
-        st3 = lower_cmm_drops env dead_inputs sp st2
-        st4 = lower_unused_let_drop env v live_after sp st3
-        lower_tail_stmts_cmm env rest (add_unique_str v bound_locals) (add_unique_str v scope_vars) sp st4
+        used_in_e = cmm filter in list (cmm expr vars e []) scope_vars
+        live_after = cmm stmts vars rest []
+        live_with_v = add unique str v live_after
+        dead_inputs = cmm filter not in list (cmm remove str v used_in_e) live_with_v
+        st1 = lower expr env e bound_locals sp st
+        st2 = lower let var store env v bound_locals sp st1
+        st3 = lower cmm drops env dead_inputs sp st2
+        st4 = lower unused let drop env v live_after sp st3
+        lower tail stmts cmm env rest (add unique str v bound_locals) (add unique str v scope_vars) sp st4
 
 fn :: lower tail stmts cmm RNativeEnv [RStmt] [String] [String] Int RNativeCode => RNativeCode
       lower tail stmts cmm _ [] _ _ sp st =
-        nc_emit_list st [NLoadImmRaw 0, NReturn] sp
+        nc emit list st [NLoadImmRaw 0, NReturn] sp
       lower tail stmts cmm env ((StmtExpr e):[]) bound_locals scope_vars sp st =
-        lower_tail_return_cmm env e bound_locals scope_vars sp st
+        lower tail return cmm env e bound_locals scope_vars sp st
       lower tail stmts cmm env ((StmtLet v e):rest) bound_locals scope_vars sp st
         | v == "_" =
-          used_in_e = cmm_filter_in_list (cmm_expr_vars e []) scope_vars
-          live_after = cmm_stmts_vars rest []
-          dead_now = cmm_filter_not_in_list used_in_e live_after
-          st1 = lower_expr env e bound_locals sp st
-          st2 = nc_emit st1 NDropVal sp
-          st3 = lower_cmm_drops env dead_now sp st2
-          lower_tail_stmts_cmm env rest bound_locals scope_vars sp st3
+          used_in_e = cmm filter in list (cmm expr vars e []) scope_vars
+          live_after = cmm stmts vars rest []
+          dead_now = cmm filter not in list used_in_e live_after
+          st1 = lower expr env e bound_locals sp st
+          st2 = nc emit st1 NDropVal sp
+          st3 = lower cmm drops env dead_now sp st2
+          lower tail stmts cmm env rest bound_locals scope_vars sp st3
         | otherwise =
-          lower_tail_let_stmt env v e bound_locals scope_vars rest sp st
+          lower tail let stmt env v e bound_locals scope_vars rest sp st
       lower tail stmts cmm env ((StmtMut v e):rest) bound_locals scope_vars sp st =
-        lower_tail_let_stmt env v e bound_locals scope_vars rest sp st
+        lower tail let stmt env v e bound_locals scope_vars rest sp st
       lower tail stmts cmm env ((StmtIndexAssign t idxs e):[]) bound_locals scope_vars sp st =
-        count = rexpr_list_len idxs
-        tslot = env_var_slot env t
-        st1 = lower_expr_list_to_slots env idxs bound_locals sp 0 st
-        st2 = lower_expr env e bound_locals (sp + count) st1
-        st3 = nc_emit_list st2 [NIndexSet tslot sp count, NStoreSlot tslot] (sp + count + 1)
-        st4 = lower_cmm_drops env (cmm_remove_str t scope_vars) (sp + count + 1) st3
-        nc_emit_list st4 [NMoveSlot tslot, NReturn] (sp + count + 1)
+        count = rexpr list len idxs
+        tslot = env var slot env t
+        st1 = lower expr list to slots env idxs bound_locals sp 0 st
+        st2 = lower expr env e bound_locals (sp + count) st1
+        st3 = nc emit list st2 [NIndexSet tslot sp count, NStoreSlot tslot] (sp + count + 1)
+        st4 = lower cmm drops env (cmm remove str t scope_vars) (sp + count + 1) st3
+        nc emit list st4 [NMoveSlot tslot, NReturn] (sp + count + 1)
       lower tail stmts cmm env ((StmtIndexAssign t idxs e):rest) bound_locals scope_vars sp st =
-        used_in_e = cmm_filter_in_list (cmm_expr_vars e (cmm_expr_list_vars idxs [])) scope_vars
-        live_after = add_unique_str t (cmm_stmts_vars rest [])
-        dead_now = cmm_filter_not_in_list used_in_e live_after
-        count = rexpr_list_len idxs
-        tslot = env_var_slot env t
-        st1 = lower_expr_list_to_slots env idxs bound_locals sp 0 st
-        st2 = lower_expr env e bound_locals (sp + count) st1
-        st3 = nc_emit_list st2 [NIndexSet tslot sp count, NStoreSlot tslot] (sp + count + 1)
-        st4 = lower_cmm_drops env dead_now (sp + count + 1) st3
-        lower_tail_stmts_cmm env rest bound_locals scope_vars sp st4
+        used_in_e = cmm filter in list (cmm expr vars e (cmm expr list vars idxs [])) scope_vars
+        live_after = add unique str t (cmm stmts vars rest [])
+        dead_now = cmm filter not in list used_in_e live_after
+        count = rexpr list len idxs
+        tslot = env var slot env t
+        st1 = lower expr list to slots env idxs bound_locals sp 0 st
+        st2 = lower expr env e bound_locals (sp + count) st1
+        st3 = nc emit list st2 [NIndexSet tslot sp count, NStoreSlot tslot] (sp + count + 1)
+        st4 = lower cmm drops env dead_now (sp + count + 1) st3
+        lower tail stmts cmm env rest bound_locals scope_vars sp st4
       lower tail stmts cmm env ((StmtExpr e):rest) bound_locals scope_vars sp st =
-        used_in_e = cmm_filter_in_list (cmm_expr_vars e []) scope_vars
-        live_after = cmm_stmts_vars rest []
-        dead_now = cmm_filter_not_in_list used_in_e live_after
-        st1 = lower_expr env e bound_locals sp st
-        st2 = nc_emit st1 NDropVal sp
-        st3 = lower_cmm_drops env dead_now sp st2
-        lower_tail_stmts_cmm env rest bound_locals scope_vars sp st3
+        used_in_e = cmm filter in list (cmm expr vars e []) scope_vars
+        live_after = cmm stmts vars rest []
+        dead_now = cmm filter not in list used_in_e live_after
+        st1 = lower expr env e bound_locals sp st
+        st2 = nc emit st1 NDropVal sp
+        st3 = lower cmm drops env dead_now sp st2
+        lower tail stmts cmm env rest bound_locals scope_vars sp st3
 
 fn :: lower tail where cmm RNativeEnv [RWhereBind] RExpr [String] [String] Int RNativeCode => RNativeCode
       lower tail where cmm env [] body bound_locals scope_vars sp st =
-        lower_tail_return_cmm env body bound_locals scope_vars sp st
+        lower tail return cmm env body bound_locals scope_vars sp st
       lower tail where cmm env ((WhereBind e1 v1 []):(WhereBind e2 v2 []):wbs) body bound_locals scope_vars sp st
-        | can_par_where_pair env e1 v1 e2 v2 bound_locals =
-          st1 = emit_par_where_pair env e1 v1 e2 v2 wbs body bound_locals scope_vars sp st
-          locals2 = add_unique_str v2 (add_unique_str v1 bound_locals)
-          scope2 = add_unique_str v2 (add_unique_str v1 scope_vars)
-          lower_tail_where_cmm env wbs body locals2 scope2 sp st1
+        | can par where pair env e1 v1 e2 v2 bound_locals =
+          st1 = emit par where pair env e1 v1 e2 v2 wbs body bound_locals scope_vars sp st
+          locals2 = add unique str v2 (add unique str v1 bound_locals)
+          scope2 = add unique str v2 (add unique str v1 scope_vars)
+          lower tail where cmm env wbs body locals2 scope2 sp st1
       lower tail where cmm env ((WhereBind e v []):wbs) body bound_locals scope_vars sp st =
-        used_in_e = cmm_filter_in_list (cmm_expr_vars e []) scope_vars
-        live_after = cmm_where_vars wbs body []
-        live_with_v = add_unique_str v live_after
-        dead_inputs = cmm_filter_not_in_list (cmm_remove_str v used_in_e) live_with_v
-        st1 = lower_expr env e bound_locals sp st
-        st2 = lower_let_var_store env v bound_locals sp st1
-        st3 = lower_cmm_drops env dead_inputs sp st2
-        st4 = lower_unused_let_drop env v live_after sp st3
-        lower_tail_where_cmm env wbs body (add_unique_str v bound_locals) (add_unique_str v scope_vars) sp st4
+        used_in_e = cmm filter in list (cmm expr vars e []) scope_vars
+        live_after = cmm where vars wbs body []
+        live_with_v = add unique str v live_after
+        dead_inputs = cmm filter not in list (cmm remove str v used_in_e) live_with_v
+        st1 = lower expr env e bound_locals sp st
+        st2 = lower let var store env v bound_locals sp st1
+        st3 = lower cmm drops env dead_inputs sp st2
+        st4 = lower unused let drop env v live_after sp st3
+        lower tail where cmm env wbs body (add unique str v bound_locals) (add unique str v scope_vars) sp st4
       lower tail where cmm env ((WhereBind e v idxs):wbs) body bound_locals scope_vars sp st =
-        count = int_list_len idxs
-        tslot = env_var_slot env v
-        st1 = lower_int_list_to_slots idxs sp 0 st
-        st2 = lower_expr env e bound_locals (sp + count) st1
-        st3 = nc_emit_list st2 [NIndexSet tslot sp count, NStoreSlot tslot] (sp + count + 1)
-        lower_tail_where_cmm env wbs body bound_locals scope_vars sp st3
+        count = int list len idxs
+        tslot = env var slot env v
+        st1 = lower int list to slots idxs sp 0 st
+        st2 = lower expr env e bound_locals (sp + count) st1
+        st3 = nc emit list st2 [NIndexSet tslot sp count, NStoreSlot tslot] (sp + count + 1)
+        lower tail where cmm env wbs body bound_locals scope_vars sp st3
 
 -- ── Pattern Matching & Binding Lowering ──────────────────────
 
@@ -2558,58 +2558,58 @@ fn :: pat needs check RPattern       => Bool
 fn :: pat has vars RPattern         => Bool
       pat has vars (PatVar _)       =  True
       pat has vars (PatSeqBind _)   =  True
-      pat has vars (PatCons h t)    =  (pat_has_vars h) OR (pat_has_vars t)
-      pat has vars (PatTuple ps)    =  pat_list_has_vars ps
-      pat has vars (PatCtor _ args) =  pat_list_has_vars args
+      pat has vars (PatCons h t)    =  (pat has vars h) OR (pat has vars t)
+      pat has vars (PatTuple ps)    =  pat list has vars ps
+      pat has vars (PatCtor _ args) =  pat list has vars args
       pat has vars _                =  False
 
 fn :: pat list has vars [RPattern] => Bool
       pat list has vars []         =  False
       pat list has vars (p:ps)
-        | pat_has_vars p = True
-        | otherwise = pat_list_has_vars ps
+        | pat has vars p = True
+        | otherwise = pat list has vars ps
 
 fn :: lower pat cond RNativeEnv RPattern Int Int Int RNativeCode => RNativeCode
       lower pat cond _ PatWild _ _ _ st = st
       lower pat cond _ (PatVar _) _ _ _ st = st
       lower pat cond _ (PatSeqBind _) _ _ _ st = st
       lower pat cond _ (PatInt n) slot fail_lbl sp st =
-        nc_emit_list st [NMatchInt slot n, NJumpIfZero fail_lbl] sp
+        nc emit list st [NMatchInt slot n, NJumpIfZero fail_lbl] sp
       lower pat cond env (PatReal r) slot fail_lbl sp st =
-        off = env_str_off env r
-        nc_emit_list st [NMatchReal slot off (str_len r), NJumpIfZero fail_lbl] sp
+        off = env str off env r
+        nc emit list st [NMatchReal slot off (str len r), NJumpIfZero fail_lbl] sp
       lower pat cond env (PatStr s) slot fail_lbl sp st =
-        off = env_str_off env s
-        nc_emit_list st [NMatchStr slot off (str_len s), NJumpIfZero fail_lbl] sp
+        off = env str off env s
+        nc emit list st [NMatchStr slot off (str len s), NJumpIfZero fail_lbl] sp
       lower pat cond _ (PatBool True) slot fail_lbl sp st =
-        nc_emit_list st [NMatchBool slot 1, NJumpIfZero fail_lbl] sp
+        nc emit list st [NMatchBool slot 1, NJumpIfZero fail_lbl] sp
       lower pat cond _ (PatBool False) slot fail_lbl sp st =
-        nc_emit_list st [NMatchBool slot 0, NJumpIfZero fail_lbl] sp
+        nc emit list st [NMatchBool slot 0, NJumpIfZero fail_lbl] sp
       lower pat cond _ PatEmpty slot fail_lbl sp st =
-        nc_emit_list st [NMatchEmpty slot, NJumpIfZero fail_lbl] sp
+        nc emit list st [NMatchEmpty slot, NJumpIfZero fail_lbl] sp
       lower pat cond env (PatCons h t) slot fail_lbl sp st =
-        st1 = nc_emit_list st [NMatchNonEmpty slot, NJumpIfZero fail_lbl] sp
-        st2 = lower_pat_cons_sub env h slot True fail_lbl sp st1
-        lower_pat_cons_sub env t slot False fail_lbl sp st2
+        st1 = nc emit list st [NMatchNonEmpty slot, NJumpIfZero fail_lbl] sp
+        st2 = lower pat cons sub env h slot True fail_lbl sp st1
+        lower pat cons sub env t slot False fail_lbl sp st2
       lower pat cond env (PatTuple ps) slot fail_lbl sp st =
-        arity = pat_list_len ps
-        st1 = nc_emit_list st [NMatchTuple slot arity, NJumpIfZero fail_lbl] sp
-        lower_tuple_pat_conds env ps slot 0 fail_lbl sp st1
+        arity = pat list len ps
+        st1 = nc emit list st [NMatchTuple slot arity, NJumpIfZero fail_lbl] sp
+        lower tuple pat conds env ps slot 0 fail_lbl sp st1
       lower pat cond env (PatCtor ":tensor-pat:" (t_pat:rank_pat:dim_pats)) slot fail_lbl sp st =
         st1 = nc emit list st [NMatchAdt slot 0 0 (0 - 5), NJumpIfZero fail_lbl] sp
         st2 = lower pat cond env t_pat slot fail_lbl sp st1
         st3 = lower tensor dim cond env rank_pat slot (0 - 1) fail_lbl sp st2
         lower tensor dims cond list env dim_pats slot 0 fail_lbl sp st3
       lower pat cond env (PatCtor c (sub_p:[])) slot fail_lbl sp st
-        | (prim_type_tag_id c) > 0 =
-          st1 = nc_emit_list st [NMatchAdt slot 0 0 (0 - (prim_type_tag_id c)), NJumpIfZero fail_lbl] sp
-          lower_pat_cond env sub_p slot fail_lbl sp st1
+        | (prim type tag id c) > 0 =
+          st1 = nc emit list st [NMatchAdt slot 0 0 (0 - (prim type tag id c)), NJumpIfZero fail_lbl] sp
+          lower pat cond env sub_p slot fail_lbl sp st1
       lower pat cond env (PatCtor c args) slot fail_lbl sp st =
-        arity = pat_list_len args
-        c_tag = ident_base_name c
-        off = env_str_off env c_tag
-        st1 = nc_emit_list st [NMatchAdt slot off (str_len c_tag) arity, NJumpIfZero fail_lbl] sp
-        lower_adt_pat_conds env args slot 0 fail_lbl sp st1
+        arity = pat list len args
+        c_tag = ident base name c
+        off = env str off env c_tag
+        st1 = nc emit list st [NMatchAdt slot off (str len c_tag) arity, NJumpIfZero fail_lbl] sp
+        lower adt pat conds env args slot 0 fail_lbl sp st1
 
 fn :: lower tensor dim cond RNativeEnv RPattern Int Int Int Int RNativeCode => RNativeCode
       lower tensor dim cond env p slot field_code fail_lbl sp st
@@ -2627,65 +2627,65 @@ fn :: lower tensor dims cond list RNativeEnv [RPattern] Int Int Int Int RNativeC
 
 fn :: lower pat cons sub RNativeEnv RPattern Int Bool Int Int RNativeCode => RNativeCode
       lower pat cons sub env sub_p slot is_head fail_lbl sp st
-        | NOT (pat_needs_check sub_p) = st
+        | NOT (pat needs check sub_p) = st
         | is_head =
-          st1 = nc_emit_list st [NListHead slot, NStoreSlot sp] (sp + 1)
-          st2 = lower_pat_cond env sub_p sp fail_lbl (sp + 1) st1
-          nc_emit st2 (NClearLocals sp (sp + 1)) (sp + 1)
+          st1 = nc emit list st [NListHead slot, NStoreSlot sp] (sp + 1)
+          st2 = lower pat cond env sub_p sp fail_lbl (sp + 1) st1
+          nc emit st2 (NClearLocals sp (sp + 1)) (sp + 1)
         | otherwise =
-          st1 = nc_emit_list st [NListTail slot, NStoreSlot sp] (sp + 1)
-          st2 = lower_pat_cond env sub_p sp fail_lbl (sp + 1) st1
-          nc_emit st2 (NClearLocals sp (sp + 1)) (sp + 1)
+          st1 = nc emit list st [NListTail slot, NStoreSlot sp] (sp + 1)
+          st2 = lower pat cond env sub_p sp fail_lbl (sp + 1) st1
+          nc emit st2 (NClearLocals sp (sp + 1)) (sp + 1)
 
 fn :: lower tuple pat conds RNativeEnv [RPattern] Int Int Int Int RNativeCode => RNativeCode
       lower tuple pat conds _ [] _ _ _ _ st = st
       lower tuple pat conds env (p:ps) slot idx fail_lbl sp st
-        | NOT (pat_needs_check p) = lower_tuple_pat_conds env ps slot (idx + 1) fail_lbl sp st
+        | NOT (pat needs check p) = lower tuple pat conds env ps slot (idx + 1) fail_lbl sp st
         | otherwise =
-          st1 = nc_emit_list st [NTupleGet slot idx, NStoreSlot sp] (sp + 1)
-          st2 = lower_pat_cond env p sp fail_lbl (sp + 1) st1
-          st3 = nc_emit st2 (NClearLocals sp (sp + 1)) (sp + 1)
-          lower_tuple_pat_conds env ps slot (idx + 1) fail_lbl sp st3
+          st1 = nc emit list st [NTupleGet slot idx, NStoreSlot sp] (sp + 1)
+          st2 = lower pat cond env p sp fail_lbl (sp + 1) st1
+          st3 = nc emit st2 (NClearLocals sp (sp + 1)) (sp + 1)
+          lower tuple pat conds env ps slot (idx + 1) fail_lbl sp st3
 
 fn :: lower adt pat conds RNativeEnv [RPattern] Int Int Int Int RNativeCode => RNativeCode
       lower adt pat conds _ [] _ _ _ _ st = st
       lower adt pat conds env (p:ps) slot idx fail_lbl sp st
-        | NOT (pat_needs_check p) = lower_adt_pat_conds env ps slot (idx + 1) fail_lbl sp st
+        | NOT (pat needs check p) = lower adt pat conds env ps slot (idx + 1) fail_lbl sp st
         | otherwise =
-          st1 = nc_emit_list st [NAdtField slot idx, NStoreSlot sp] (sp + 1)
-          st2 = lower_pat_cond env p sp fail_lbl (sp + 1) st1
-          st3 = nc_emit st2 (NClearLocals sp (sp + 1)) (sp + 1)
-          lower_adt_pat_conds env ps slot (idx + 1) fail_lbl sp st3
+          st1 = nc emit list st [NAdtField slot idx, NStoreSlot sp] (sp + 1)
+          st2 = lower pat cond env p sp fail_lbl (sp + 1) st1
+          st3 = nc emit st2 (NClearLocals sp (sp + 1)) (sp + 1)
+          lower adt pat conds env ps slot (idx + 1) fail_lbl sp st3
 
 fn :: lower pat list cond RNativeEnv [RPattern] Int Int Int RNativeCode => RNativeCode
       lower pat list cond _ [] _ _ _ st = st
       lower pat list cond env (p:ps) idx fail_lbl sp st =
-        st1 = lower_pat_cond env p idx fail_lbl sp st
-        lower_pat_list_cond env ps (idx + 1) fail_lbl sp st1
+        st1 = lower pat cond env p idx fail_lbl sp st
+        lower pat list cond env ps (idx + 1) fail_lbl sp st1
 
 fn :: lower pat binds RNativeEnv RPattern Int Bool Int RNativeCode => RNativeCode
       lower pat binds env (PatVar v) slot True sp st =
-        nc_emit_list st [NMoveSlot slot, NStoreSlot (env_var_slot env v)] sp
+        nc emit list st [NMoveSlot slot, NStoreSlot (env var slot env v)] sp
       lower pat binds env (PatVar v) slot False sp st =
-        nc_emit_list st [NCloneSlot slot, NStoreSlot (env_var_slot env v)] sp
+        nc emit list st [NCloneSlot slot, NStoreSlot (env var slot env v)] sp
       lower pat binds env (PatSeqBind v) slot True sp st =
-        nc_emit_list st [NMoveSlot slot, NStoreSlot (env_var_slot env v)] sp
+        nc emit list st [NMoveSlot slot, NStoreSlot (env var slot env v)] sp
       lower pat binds env (PatSeqBind v) slot False sp st =
-        nc_emit_list st [NCloneSlot slot, NStoreSlot (env_var_slot env v)] sp
+        nc emit list st [NCloneSlot slot, NStoreSlot (env var slot env v)] sp
       lower pat binds env (PatCons h t) slot _ sp st =
-        st1 = lower_pat_cons_bind env h slot True sp st
-        lower_pat_cons_bind env t slot False sp st1
+        st1 = lower pat cons bind env h slot True sp st
+        lower pat cons bind env t slot False sp st1
       lower pat binds env (PatTuple ps) slot _ sp st =
-        lower_tuple_pat_binds env ps slot 0 sp st
+        lower tuple pat binds env ps slot 0 sp st
       lower pat binds env (PatCtor ":tensor-pat:" (t_pat:rank_pat:dim_pats)) slot move_ok sp st =
         st1 = lower tensor dim bind env rank_pat slot (0 - 1) sp st
         st2 = lower tensor dims bind list env dim_pats slot 0 sp st1
         lower pat binds env t_pat slot move_ok sp st2
       lower pat binds env (PatCtor c (sub_p:[])) slot move_ok sp st
-        | (prim_type_tag_id c) > 0 =
-          lower_pat_binds env sub_p slot move_ok sp st
+        | (prim type tag id c) > 0 =
+          lower pat binds env sub_p slot move_ok sp st
       lower pat binds env (PatCtor _ args) slot _ sp st =
-        lower_adt_pat_binds env args slot 0 sp st
+        lower adt pat binds env args slot 0 sp st
       lower pat binds _ _ _ _ _ st = st
 
 fn :: lower tensor dim bind RNativeEnv RPattern Int Int Int RNativeCode => RNativeCode
@@ -2704,234 +2704,234 @@ fn :: lower tensor dims bind list RNativeEnv [RPattern] Int Int Int RNativeCode 
 
 fn :: lower pat cons bind RNativeEnv RPattern Int Bool Int RNativeCode => RNativeCode
       lower pat cons bind env sub_p slot is_head sp st
-        | NOT (pat_has_vars sub_p) = st
+        | NOT (pat has vars sub_p) = st
         | is_head =
-          st1 = nc_emit_list st [NListHead slot, NStoreSlot sp] (sp + 1)
-          st2 = lower_pat_binds env sub_p sp True (sp + 1) st1
-          nc_emit st2 (NClearLocals sp (sp + 1)) (sp + 1)
+          st1 = nc emit list st [NListHead slot, NStoreSlot sp] (sp + 1)
+          st2 = lower pat binds env sub_p sp True (sp + 1) st1
+          nc emit st2 (NClearLocals sp (sp + 1)) (sp + 1)
         | otherwise =
-          st1 = nc_emit_list st [NListTail slot, NStoreSlot sp] (sp + 1)
-          st2 = lower_pat_binds env sub_p sp True (sp + 1) st1
-          nc_emit st2 (NClearLocals sp (sp + 1)) (sp + 1)
+          st1 = nc emit list st [NListTail slot, NStoreSlot sp] (sp + 1)
+          st2 = lower pat binds env sub_p sp True (sp + 1) st1
+          nc emit st2 (NClearLocals sp (sp + 1)) (sp + 1)
 
 fn :: lower tuple pat binds RNativeEnv [RPattern] Int Int Int RNativeCode => RNativeCode
       lower tuple pat binds _ [] _ _ _ st = st
       lower tuple pat binds env (p:ps) slot idx sp st
-        | NOT (pat_has_vars p) = lower_tuple_pat_binds env ps slot (idx + 1) sp st
+        | NOT (pat has vars p) = lower tuple pat binds env ps slot (idx + 1) sp st
         | otherwise =
-          st1 = nc_emit_list st [NTupleGet slot idx, NStoreSlot sp] (sp + 1)
-          st2 = lower_pat_binds env p sp True (sp + 1) st1
-          st3 = nc_emit st2 (NClearLocals sp (sp + 1)) (sp + 1)
-          lower_tuple_pat_binds env ps slot (idx + 1) sp st3
+          st1 = nc emit list st [NTupleGet slot idx, NStoreSlot sp] (sp + 1)
+          st2 = lower pat binds env p sp True (sp + 1) st1
+          st3 = nc emit st2 (NClearLocals sp (sp + 1)) (sp + 1)
+          lower tuple pat binds env ps slot (idx + 1) sp st3
 
 fn :: lower adt pat binds RNativeEnv [RPattern] Int Int Int RNativeCode => RNativeCode
       lower adt pat binds _ [] _ _ _ st = st
       lower adt pat binds env (p:ps) slot idx sp st
-        | NOT (pat_has_vars p) = lower_adt_pat_binds env ps slot (idx + 1) sp st
+        | NOT (pat has vars p) = lower adt pat binds env ps slot (idx + 1) sp st
         | otherwise =
-          st1 = nc_emit_list st [NAdtField slot idx, NStoreSlot sp] (sp + 1)
-          st2 = lower_pat_binds env p sp True (sp + 1) st1
-          st3 = nc_emit st2 (NClearLocals sp (sp + 1)) (sp + 1)
-          lower_adt_pat_binds env ps slot (idx + 1) sp st3
+          st1 = nc emit list st [NAdtField slot idx, NStoreSlot sp] (sp + 1)
+          st2 = lower pat binds env p sp True (sp + 1) st1
+          st3 = nc emit st2 (NClearLocals sp (sp + 1)) (sp + 1)
+          lower adt pat binds env ps slot (idx + 1) sp st3
 
 fn :: lower pat list binds RNativeEnv [RPattern] Int Int Bool Int RNativeCode => RNativeCode
       lower pat list binds _ [] _ _ _ _ st = st
       lower pat list binds env ((PatSeqBind v):[]) _ arity _ sp st =
-        nc_emit_list st [NPackSeq arity, NStoreSlot (env_var_slot env v)] sp
+        nc emit list st [NPackSeq arity, NStoreSlot (env var slot env v)] sp
       lower pat list binds env ((PatVar v):ps) idx arity True sp st =
-        st1 = nc_emit_list st [NMoveSlot idx, NStoreSlot (env_var_slot env v)] sp
-        lower_pat_list_binds env ps (idx + 1) arity True sp st1
+        st1 = nc emit list st [NMoveSlot idx, NStoreSlot (env var slot env v)] sp
+        lower pat list binds env ps (idx + 1) arity True sp st1
       lower pat list binds env (p:ps) idx arity move_args sp st =
-        st1 = lower_pat_binds env p idx False sp st
-        lower_pat_list_binds env ps (idx + 1) arity move_args sp st1
+        st1 = lower pat binds env p idx False sp st
+        lower pat list binds env ps (idx + 1) arity move_args sp st1
 
 fn :: guards have otherwise [RGuard] => Bool
       guards have otherwise []       =  False
       guards have otherwise ((GuardBranch (EBool True) _):_) = True
-      guards have otherwise (_:gs)   =  guards_have_otherwise gs
+      guards have otherwise (_:gs)   =  guards have otherwise gs
 
 fn :: lower case guards RNativeEnv [RGuard] [String] Int RNativeCode => RNativeCode
       lower case guards _ [] _ _ st = st
       lower case guards env ((GuardBranch cond body):gs) bound_locals sp st =
-        next_lbl = nc_lbl st
-        st1 = nc_set_lbl st (next_lbl + 1)
-        st2 = lower_expr env cond bound_locals sp st1
-        st3 = nc_emit_list st2 [NAsBool, NJumpIfZero next_lbl] sp
-        st4 = lower_tail_return env body bound_locals sp st3
-        st5 = nc_emit st4 (NLabel next_lbl) sp
-        lower_case_guards env gs bound_locals sp st5
+        next_lbl = nc lbl st
+        st1 = nc set lbl st (next_lbl + 1)
+        st2 = lower expr env cond bound_locals sp st1
+        st3 = nc emit list st2 [NAsBool, NJumpIfZero next_lbl] sp
+        st4 = lower tail return env body bound_locals sp st3
+        st5 = nc emit st4 (NLabel next_lbl) sp
+        lower case guards env gs bound_locals sp st5
 
 fn :: lower single case RNativeEnv RFnCase Bool Int RNativeCode => RNativeCode
       lower single case env (FnCase pats [] body) _ sp st =
-        arity = env_arity env
-        fail_lbl = nc_lbl st
-        bound_locals = collect_pat_list_vars pats []
-        st -> nc_set_lbl (fail_lbl + 1)
-          -> lower_pat_list_cond env pats 0 fail_lbl sp _
-          -> lower_pat_list_binds env pats 0 arity True sp _
-          -> lower_tail_return env body bound_locals sp _
+        arity = env arity env
+        fail_lbl = nc lbl st
+        bound_locals = collect pat list vars pats []
+        st -> nc set lbl (fail_lbl + 1)
+          -> lower pat list cond env pats 0 fail_lbl sp _
+          -> lower pat list binds env pats 0 arity True sp _
+          -> lower tail return env body bound_locals sp _
           -> st4
-        st4 -> nc_emit_list [NLabel fail_lbl, NClearLocals arity (nc_max_sp st4)] sp
+        st4 -> nc emit list [NLabel fail_lbl, NClearLocals arity (nc max sp st4)] sp
       lower single case env (FnCase pats guards _) is_last sp st =
-        arity = env_arity env
-        fail_lbl = nc_lbl st
-        move_args = is_last OR (guards_have_otherwise guards)
-        bound_locals = collect_pat_list_vars pats []
-        st -> nc_set_lbl (fail_lbl + 1)
-          -> lower_pat_list_cond env pats 0 fail_lbl sp _
-          -> lower_pat_list_binds env pats 0 arity move_args sp _
-          -> lower_case_guards env guards bound_locals sp _
+        arity = env arity env
+        fail_lbl = nc lbl st
+        move_args = is_last OR (guards have otherwise guards)
+        bound_locals = collect pat list vars pats []
+        st -> nc set lbl (fail_lbl + 1)
+          -> lower pat list cond env pats 0 fail_lbl sp _
+          -> lower pat list binds env pats 0 arity move_args sp _
+          -> lower case guards env guards bound_locals sp _
           -> st4
-        st4 -> nc_emit_list [NLabel fail_lbl, NClearLocals arity (nc_max_sp st4)] sp
+        st4 -> nc emit list [NLabel fail_lbl, NClearLocals arity (nc max sp st4)] sp
 
 fn :: lower cases list RNativeEnv [RFnCase] Int RNativeCode => RNativeCode
       lower cases list _ [] _ st = st
-      lower cases list env (c:[]) sp st = lower_single_case env c True sp st
+      lower cases list env (c:[]) sp st = lower single case env c True sp st
       lower cases list env (c:cs) sp st =
-        st1 = lower_single_case env c False sp st
-        lower_cases_list env cs sp st1
+        st1 = lower single case env c False sp st
+        lower cases list env cs sp st1
 
 fn :: lower fndef RFnDef [RStrEntry] [RFnEntry] [RFieldEntry] => RNativeFn
       lower fndef (FnDef name params _ cases) str_tbl fn_tbl field_tbl =
-        fid = lookup_fn_id fn_tbl name
-        arity = infer_fndef_arity params cases
-        all_locals = collect_cases_all_locals cases []
-        base_sp = arity + (list_str_len all_locals)
+        fid = lookup fn id fn_tbl name
+        arity = infer fndef arity params cases
+        all_locals = collect cases all locals cases []
+        base_sp = arity + (list str len all_locals)
         env = NativeEnv name arity all_locals str_tbl fn_tbl field_tbl
-        init_st = NativeCode [] 1 (max_int (base_sp + 1) 2)
-        st1 = lower_cases_list env cases base_sp init_st
-        st2 = nc_emit_list st1 [NLoadImmRaw 0, NReturn] (base_sp + 1)
-        NativeFn fid name arity (nc_max_sp st2) (nc_instrs st2)
+        init_st = NativeCode [] 1 (max int (base_sp + 1) 2)
+        st1 = lower cases list env cases base_sp init_st
+        st2 = nc emit list st1 [NLoadImmRaw 0, NReturn] (base_sp + 1)
+        NativeFn fid name arity (nc max sp st2) (nc instrs st2)
 
 fn :: lower fndef list [RFnDef] [RStrEntry] [RFnEntry] [RFieldEntry] => [RNativeFn]
       lower fndef list [] _ _ _ = []
       lower fndef list (f:fs) str_tbl fn_tbl field_tbl =
-        [lower_fndef f str_tbl fn_tbl field_tbl] :: (lower_fndef_list fs str_tbl fn_tbl field_tbl)
+        [lower fndef f str_tbl fn_tbl field_tbl] :: (lower fndef list fs str_tbl fn_tbl field_tbl)
 
 fn :: lower field getter fns [RFieldEntry] [String] [RFnEntry] => [RNativeFn]
       lower field getter fns [] _ _ = []
       lower field getter fns ((FieldEntry fname idx):rest) fn_names fn_tbl
-        | str_in_list fname fn_names = lower_field_getter_fns rest fn_names fn_tbl
+        | str in list fname fn_names = lower field getter fns rest fn_names fn_tbl
         | otherwise =
-          fid = lookup_fn_id fn_tbl fname
-          [NativeFn fid fname 1 2 [NAdtField 0 idx, NReturn]] :: (lower_field_getter_fns rest fn_names fn_tbl)
+          fid = lookup fn id fn_tbl fname
+          [NativeFn fid fname 1 2 [NAdtField 0 idx, NReturn]] :: (lower field getter fns rest fn_names fn_tbl)
 
 -- ── Call-Graph Tree-Shaking & Dispatch Function Synthesis ────
 
 fn :: collect refs expr RExpr              [String] => [String]
-      collect refs expr (EVar name)        acc      =  add_unique_str name acc
-      collect refs expr (ENot inner)       acc      =  collect_refs_expr inner acc
-      collect refs expr (EOut inner)       acc      =  collect_refs_expr inner acc
-      collect refs expr (EBin bop l r)     acc      =  acc -> add_unique_str (binop_op_tag bop) _ -> collect_refs_expr l _ -> collect_refs_expr r _
-      collect refs expr (ECall fname args) acc      =  acc -> add_unique_str fname _ -> collect_refs_expr_list args _
-      collect refs expr (EEcho args)       acc      =  collect_refs_expr_list args acc
-      collect refs expr (EStrInterp parts) acc      =  collect_refs_expr_list parts acc
-      collect refs expr (EList elems)      acc      =  collect_refs_expr_list elems acc
-      collect refs expr (ETuple elems)     acc      =  collect_refs_expr_list elems acc
-      collect refs expr (ETensor elems)    acc      =  collect_refs_expr_list elems acc
-      collect refs expr (EEinsum es _)     acc      =  collect_refs_expr_list es acc
-      collect refs expr (EHadamard _ l _ r _) acc   =  acc -> collect_refs_expr l _ -> collect_refs_expr r _
-      collect refs expr (EIndex base idxs) acc      =  acc -> collect_refs_expr base _ -> collect_refs_expr_list idxs _
-      collect refs expr (EIndexAssign _ idxs v) acc =  acc -> collect_refs_expr_list idxs _ -> collect_refs_expr v _
-      collect refs expr (ESeqSelect b _)   acc      =  collect_refs_expr b acc
-      collect refs expr (EBlock stmts)     acc      =  collect_refs_stmts stmts acc
-      collect refs expr (EGuard guards)    acc      =  collect_refs_guards guards acc
-      collect refs expr (EWhere body binds) acc     =  acc -> collect_refs_expr body _ -> collect_refs_where binds _
-      collect refs expr (EParPipe branches) acc     =  collect_refs_expr_list branches acc
-      collect refs expr (EWithCtx _ v b)   acc      =  acc -> collect_refs_expr v _ -> collect_refs_expr b _
-      collect refs expr (EWithRegion _ b)  acc      =  collect_refs_expr b acc
+      collect refs expr (EVar name)        acc      =  add unique str name acc
+      collect refs expr (ENot inner)       acc      =  collect refs expr inner acc
+      collect refs expr (EOut inner)       acc      =  collect refs expr inner acc
+      collect refs expr (EBin bop l r)     acc      =  acc -> add unique str (binop op tag bop) _ -> collect refs expr l _ -> collect refs expr r _
+      collect refs expr (ECall fname args) acc      =  acc -> add unique str fname _ -> collect refs expr list args _
+      collect refs expr (EEcho args)       acc      =  collect refs expr list args acc
+      collect refs expr (EStrInterp parts) acc      =  collect refs expr list parts acc
+      collect refs expr (EList elems)      acc      =  collect refs expr list elems acc
+      collect refs expr (ETuple elems)     acc      =  collect refs expr list elems acc
+      collect refs expr (ETensor elems)    acc      =  collect refs expr list elems acc
+      collect refs expr (EEinsum es _)     acc      =  collect refs expr list es acc
+      collect refs expr (EHadamard _ l _ r _) acc   =  acc -> collect refs expr l _ -> collect refs expr r _
+      collect refs expr (EIndex base idxs) acc      =  acc -> collect refs expr base _ -> collect refs expr list idxs _
+      collect refs expr (EIndexAssign _ idxs v) acc =  acc -> collect refs expr list idxs _ -> collect refs expr v _
+      collect refs expr (ESeqSelect b _)   acc      =  collect refs expr b acc
+      collect refs expr (EBlock stmts)     acc      =  collect refs stmts stmts acc
+      collect refs expr (EGuard guards)    acc      =  collect refs guards guards acc
+      collect refs expr (EWhere body binds) acc     =  acc -> collect refs expr body _ -> collect refs where binds _
+      collect refs expr (EParPipe branches) acc     =  collect refs expr list branches acc
+      collect refs expr (EWithCtx _ v b)   acc      =  acc -> collect refs expr v _ -> collect refs expr b _
+      collect refs expr (EWithRegion _ b)  acc      =  collect refs expr b acc
       collect refs expr _                  acc      =  acc
 
 fn :: collect refs expr list [RExpr] [String] => [String]
       collect refs expr list [] acc = acc
-      collect refs expr list (e:es) acc = acc -> collect_refs_expr e _ -> collect_refs_expr_list es _
+      collect refs expr list (e:es) acc = acc -> collect refs expr e _ -> collect refs expr list es _
 
 fn :: collect refs stmts [RStmt]            [String] => [String]
       collect refs stmts []                 acc      =  acc
-      collect refs stmts ((StmtLet _ e):ss) acc      =  acc -> collect_refs_expr e _ -> collect_refs_stmts ss _
-      collect refs stmts ((StmtMut _ e):ss) acc      =  acc -> collect_refs_expr e _ -> collect_refs_stmts ss _
-      collect refs stmts ((StmtExpr e):ss)  acc      =  acc -> collect_refs_expr e _ -> collect_refs_stmts ss _
+      collect refs stmts ((StmtLet _ e):ss) acc      =  acc -> collect refs expr e _ -> collect refs stmts ss _
+      collect refs stmts ((StmtMut _ e):ss) acc      =  acc -> collect refs expr e _ -> collect refs stmts ss _
+      collect refs stmts ((StmtExpr e):ss)  acc      =  acc -> collect refs expr e _ -> collect refs stmts ss _
       collect refs stmts ((StmtIndexAssign _ idxs e):ss) acc =
-        acc -> collect_refs_expr_list idxs _ -> collect_refs_expr e _ -> collect_refs_stmts ss _
+        acc -> collect refs expr list idxs _ -> collect refs expr e _ -> collect refs stmts ss _
 
 fn :: collect refs where [RWhereBind] [String] => [String]
       collect refs where []           acc      =  acc
-      collect refs where ((WhereBind e _ _):wbs) acc = acc -> collect_refs_expr e _ -> collect_refs_where wbs _
+      collect refs where ((WhereBind e _ _):wbs) acc = acc -> collect refs expr e _ -> collect refs where wbs _
 
 fn :: collect refs guards [RGuard] [String] => [String]
       collect refs guards []       acc      =  acc
       collect refs guards ((GuardBranch c b):gs) acc =
-        acc -> collect_refs_expr c _ -> collect_refs_expr b _ -> collect_refs_guards gs _
+        acc -> collect refs expr c _ -> collect refs expr b _ -> collect refs guards gs _
 
 fn :: collect refs cases [RFnCase] [String] => [String]
       collect refs cases []        acc      =  acc
       collect refs cases ((FnCase _ guards body):cs) acc =
-        acc -> collect_refs_guards guards _ -> collect_refs_expr body _ -> collect_refs_cases cs _
+        acc -> collect refs guards guards _ -> collect refs expr body _ -> collect refs cases cs _
 
 fn :: find fndef cases [RFnDef] String => [RFnCase]
       find fndef cases []       _      =  []
       find fndef cases ((FnDef name _ _ cases):fs) target
         | name == target = cases
-        | otherwise = find_fndef_cases fs target
+        | otherwise = find fndef cases fs target
 
 fn :: expand reachable worklist [String] [RFnDef] [String] => [String]
 expand reachable worklist []       _        visited  =  visited
 expand reachable worklist (w:ws)   all_fns  visited
-| str_in_list w visited = expand_reachable_worklist ws all_fns visited
-        | otherwise = expand_reachable_worklist (ws :: (collect_refs_cases (find_fndef_cases all_fns w) [])) all_fns (visited :: [w])
+| str in list w visited = expand reachable worklist ws all_fns visited
+        | otherwise = expand reachable worklist (ws :: (collect refs cases (find fndef cases all_fns w) [])) all_fns (visited :: [w])
 
 fn :: filter reachable fndefs [RFnDef] [String]  => [RFnDef]
       filter reachable fndefs []       _         =  []
       filter reachable fndefs ((FnDef name params ret cases):fs) reachable
-        | str_in_list name reachable = [FnDef name params ret cases] :: (filter_reachable_fndefs fs reachable)
-        | otherwise = filter_reachable_fndefs fs reachable
+        | str in list name reachable = [FnDef name params ret cases] :: (filter reachable fndefs fs reachable)
+        | otherwise = filter reachable fndefs fs reachable
 
 fn :: collect fn names [RFnDef] => [String]
       collect fn names []       =  []
-      collect fn names ((FnDef name _ _ _):fs) = [name] :: (collect_fn_names fs)
+      collect fn names ((FnDef name _ _ _):fs) = [name] :: (collect fn names fs)
 
 fn :: find entry fn name [RFnDef] String => String
       find entry fn name [] fallback = fallback
       find entry fn name ((FnDef name params _ cases):fs) fallback
         | name == "main" = "main"
         | name == "demo_all" = "demo_all"
-        | (infer_fndef_arity params cases) == 0 = find_entry_fn_name fs name
-        | otherwise = find_entry_fn_name fs fallback
+        | (infer fndef arity params cases) == 0 = find entry fn name fs name
+        | otherwise = find entry fn name fs fallback
 
 fn :: build spawn dispatch entry [RFnEntry] [RStrEntry] => [RNativeInstr]
       build spawn dispatch entry fn_tbl str_tbl =
-        par_off = lookup_str_off str_tbl "__rg_par_eval__"
+        par_off = lookup str off str_tbl "__rg_par_eval__"
         par_hdr = [NMatchStr 0 par_off 15, NJumpIfZero 1, NTupleGet 1 0, NStoreSlot 2, NTupleGet 1 1, NStoreSlot 1, NMoveSlot 2, NStoreSlot 0, NLabel 1]
-        build_spawn_dispatch_instrs fn_tbl str_tbl 2 par_hdr
+        build spawn dispatch instrs fn_tbl str_tbl 2 par_hdr
 
 fn :: build spawn dispatch instrs [RFnEntry] [RStrEntry] Int [RNativeInstr] => [RNativeInstr]
       build spawn dispatch instrs [] _ _ acc =
         acc :: [NLoadImmRaw 0, NReturn]
       build spawn dispatch instrs ((FnEntry name fid arity):rest) str_tbl lbl acc
         | arity == 0 =
-          off = lookup_str_off str_tbl name
-          arm = [NMatchStr 0 off (str_len name), NJumpIfZero lbl, NCallFn fid 2 0, NReturn, NLabel lbl]
-          build_spawn_dispatch_instrs rest str_tbl (lbl + 1) (acc :: arm)
+          off = lookup str off str_tbl name
+          arm = [NMatchStr 0 off (str len name), NJumpIfZero lbl, NCallFn fid 2 0, NReturn, NLabel lbl]
+          build spawn dispatch instrs rest str_tbl (lbl + 1) (acc :: arm)
         | arity == 1 =
-          off = lookup_str_off str_tbl name
-          arm = [NMatchStr 0 off (str_len name), NJumpIfZero lbl, NMoveSlot 1, NStoreSlot 2, NCallFn fid 2 1, NReturn, NLabel lbl]
-          build_spawn_dispatch_instrs rest str_tbl (lbl + 1) (acc :: arm)
+          off = lookup str off str_tbl name
+          arm = [NMatchStr 0 off (str len name), NJumpIfZero lbl, NMoveSlot 1, NStoreSlot 2, NCallFn fid 2 1, NReturn, NLabel lbl]
+          build spawn dispatch instrs rest str_tbl (lbl + 1) (acc :: arm)
         | arity == 2 =
-          off = lookup_str_off str_tbl name
-          arm = [NMatchStr 0 off (str_len name), NJumpIfZero lbl, NTupleGet 1 0, NStoreSlot 2, NTupleGet 1 1, NStoreSlot 3, NCallFn fid 2 2, NReturn, NLabel lbl]
-          build_spawn_dispatch_instrs rest str_tbl (lbl + 1) (acc :: arm)
+          off = lookup str off str_tbl name
+          arm = [NMatchStr 0 off (str len name), NJumpIfZero lbl, NTupleGet 1 0, NStoreSlot 2, NTupleGet 1 1, NStoreSlot 3, NCallFn fid 2 2, NReturn, NLabel lbl]
+          build spawn dispatch instrs rest str_tbl (lbl + 1) (acc :: arm)
         | arity == 3 =
-          off = lookup_str_off str_tbl name
+          off = lookup str off str_tbl name
           lbl2 = lbl + 1
-          arm = [NMatchStr 0 off (str_len name), NJumpIfZero lbl2, NMatchTuple 1 2, NJumpIfZero lbl, NTupleGet 1 0, NStoreSlot 2, NTupleGet 1 1, NStoreSlot 5, NTupleGet 5 0, NStoreSlot 3, NTupleGet 5 1, NStoreSlot 4, NCallFn fid 2 3, NReturn, NLabel lbl, NTupleGet 1 0, NStoreSlot 2, NTupleGet 1 1, NStoreSlot 3, NTupleGet 1 2, NStoreSlot 4, NCallFn fid 2 3, NReturn, NLabel lbl2]
-          build_spawn_dispatch_instrs rest str_tbl (lbl + 2) (acc :: arm)
+          arm = [NMatchStr 0 off (str len name), NJumpIfZero lbl2, NMatchTuple 1 2, NJumpIfZero lbl, NTupleGet 1 0, NStoreSlot 2, NTupleGet 1 1, NStoreSlot 5, NTupleGet 5 0, NStoreSlot 3, NTupleGet 5 1, NStoreSlot 4, NCallFn fid 2 3, NReturn, NLabel lbl, NTupleGet 1 0, NStoreSlot 2, NTupleGet 1 1, NStoreSlot 3, NTupleGet 1 2, NStoreSlot 4, NCallFn fid 2 3, NReturn, NLabel lbl2]
+          build spawn dispatch instrs rest str_tbl (lbl + 2) (acc :: arm)
         | otherwise =
-          build_spawn_dispatch_instrs rest str_tbl lbl acc
+          build spawn dispatch instrs rest str_tbl lbl acc
 
 fn :: highest entry arity [RFnEntry] => Int
       highest entry arity []         =  0
       highest entry arity ((FnEntry _ _ arity):rest) =
-        max_int arity (highest entry arity rest)
+        max int arity (highest entry arity rest)
 
 fn :: build call2 unpack tuple Int Int => [RNativeInstr]
       build call2 unpack tuple idx count
@@ -2950,21 +2950,21 @@ fn :: build call2 dispatch instrs [RFnEntry] [RStrEntry] Int [RNativeInstr] => [
         acc :: [NLoadImmRaw 0, NReturn]
       build call2 dispatch instrs ((FnEntry name fid arity):rest) str_tbl lbl acc
         | arity == 2 =
-          off = lookup_str_off str_tbl name
+          off = lookup str off str_tbl name
           lbl_plain = lbl + 1
           lbl_next = lbl + 2
-          arm = [NMatchStr 0 off (str_len name), NJumpIfZero lbl_next, NMoveSlot 1, NStoreSlot 3, NMatchNonEmpty 2, NJumpIfZero lbl_plain, NListHead 2, NStoreSlot 4, NJump lbl, NLabel lbl_plain, NMoveSlot 2, NStoreSlot 4, NLabel lbl, NCallFn fid 3 2, NReturn, NLabel lbl_next]
-          build_call2_dispatch_instrs rest str_tbl (lbl + 3) (acc :: arm)
+          arm = [NMatchStr 0 off (str len name), NJumpIfZero lbl_next, NMoveSlot 1, NStoreSlot 3, NMatchNonEmpty 2, NJumpIfZero lbl_plain, NListHead 2, NStoreSlot 4, NJump lbl, NLabel lbl_plain, NMoveSlot 2, NStoreSlot 4, NLabel lbl, NCallFn fid 3 2, NReturn, NLabel lbl_next]
+          build call2 dispatch instrs rest str_tbl (lbl + 3) (acc :: arm)
         | arity >= 3 =
-          off = lookup_str_off str_tbl name
+          off = lookup str off str_tbl name
           lbl_tuple = lbl + 1
           lbl_next = lbl + 2
           unpack_list = build call2 unpack list 0 (arity - 1)
           unpack_tup = build call2 unpack tuple 0 (arity - 1)
-          arm = [NMatchStr 0 off (str_len name), NJumpIfZero lbl_next, NMoveSlot 1, NStoreSlot 3, NMatchNonEmpty 2, NJumpIfZero lbl_tuple] :: unpack_list :: [NJump lbl, NLabel lbl_tuple] :: unpack_tup :: [NLabel lbl, NCallFn fid 3 arity, NReturn, NLabel lbl_next]
-          build_call2_dispatch_instrs rest str_tbl (lbl + 3) (acc :: arm)
+          arm = [NMatchStr 0 off (str len name), NJumpIfZero lbl_next, NMoveSlot 1, NStoreSlot 3, NMatchNonEmpty 2, NJumpIfZero lbl_tuple] :: unpack_list :: [NJump lbl, NLabel lbl_tuple] :: unpack_tup :: [NLabel lbl, NCallFn fid 3 arity, NReturn, NLabel lbl_next]
+          build call2 dispatch instrs rest str_tbl (lbl + 3) (acc :: arm)
         | otherwise =
-          build_call2_dispatch_instrs rest str_tbl lbl acc
+          build call2 dispatch instrs rest str_tbl lbl acc
 
 fn :: is overloadable binop name String => Bool
       is overloadable binop name "+"    =  True
@@ -2978,37 +2978,37 @@ fn :: build binop dispatch instrs [RFnEntry] [RStrEntry] Int [RNativeInstr] => [
       build binop dispatch instrs [] _ _ acc =
         acc :: [NLoadImmRaw 0, NReturn]
       build binop dispatch instrs ((FnEntry name fid arity):rest) str_tbl lbl acc
-        | arity == 2 AND (is_overloadable_binop_name name) =
-          off = lookup_str_off str_tbl name
-          arm = [NMatchStr 0 off (str_len name), NJumpIfZero lbl, NMoveSlot 1, NStoreSlot 3, NMoveSlot 2, NStoreSlot 4, NCallFn fid 3 2, NReturn, NLabel lbl]
-          build_binop_dispatch_instrs rest str_tbl (lbl + 1) (acc :: arm)
+        | arity == 2 AND (is overloadable binop name name) =
+          off = lookup str off str_tbl name
+          arm = [NMatchStr 0 off (str len name), NJumpIfZero lbl, NMoveSlot 1, NStoreSlot 3, NMoveSlot 2, NStoreSlot 4, NCallFn fid 3 2, NReturn, NLabel lbl]
+          build binop dispatch instrs rest str_tbl (lbl + 1) (acc :: arm)
         | otherwise =
-          build_binop_dispatch_instrs rest str_tbl lbl acc
+          build binop dispatch instrs rest str_tbl lbl acc
 
 fn :: lower program to native RProgram => RNativeProg
       lower program to native (Program raw_fns tys) =
-        field_tbl = collect_typedef_fields tys []
-        raw_fn_names = collect_fn_names raw_fns
-        sigs = (build_cg_sigs raw_fns) :: (build_field_cg_sigs field_tbl raw_fn_names)
-        all_fns = opt fndef list (prep_fndef_list raw_fns sigs)
-        entry_name = find_entry_fn_name all_fns "main"
-        reachable = expand_reachable_worklist [entry_name] all_fns []
-        fns = filter_reachable_fndefs all_fns reachable
-        fn_names = collect_fn_names fns
-        str_pool = build_str_pool fns (collect_field_names field_tbl)
-        rodata_str = pool_rodata str_pool
-        str_tbl = pool_entries str_pool
-        fn_tbl1 = build_fn_table_fndefs fns 5 []
-        fn_tbl2 = build_fn_table_fields field_tbl fn_names (5 + (list_str_len fn_names)) fn_tbl1
-        fn_tbl = attach_heavy_fn_entries fns fn_names fn_tbl2
-        entry_fid = lookup_fn_id fn_tbl entry_name
+        field_tbl = collect typedef fields tys []
+        raw_fn_names = collect fn names raw_fns
+        sigs = (build cg sigs raw_fns) :: (build field cg sigs field_tbl raw_fn_names)
+        all_fns = opt fndef list (prep fndef list raw_fns sigs)
+        entry_name = find entry fn name all_fns "main"
+        reachable = expand reachable worklist [entry_name] all_fns []
+        fns = filter reachable fndefs all_fns reachable
+        fn_names = collect fn names fns
+        str_pool = build str pool fns (collect field names field_tbl)
+        rodata_str = pool rodata str_pool
+        str_tbl = pool entries str_pool
+        fn_tbl1 = build fn table fndefs fns 5 []
+        fn_tbl2 = build fn table fields field_tbl fn_names (5 + (list str len fn_names)) fn_tbl1
+        fn_tbl = attach heavy fn entries fns fn_names fn_tbl2
+        entry_fid = lookup fn id fn_tbl entry_name
         main_wrapper = NativeFn 1 "__rg_entry_main" 0 2 [NCallFn entry_fid 0 0, NReturn]
-        spawn_disp = NativeFn 2 "__rg_dispatch_spawn" 2 6 (build_spawn_dispatch_entry fn_tbl str_tbl)
-        call2_slots = max_int 7 (4 + (highest entry arity fn_tbl))
-        call2_disp = NativeFn 3 "__rg_dispatch_call2" 3 call2_slots (build_call2_dispatch_instrs fn_tbl str_tbl 1 [])
-        binop_disp = NativeFn 4 "__rg_dispatch_binop" 3 6 (build_binop_dispatch_instrs fn_tbl str_tbl 1 [])
-        user_native_fns = lower_fndef_list fns str_tbl fn_tbl field_tbl
-        field_native_fns = lower_field_getter_fns field_tbl fn_names fn_tbl
+        spawn_disp = NativeFn 2 "__rg_dispatch_spawn" 2 6 (build spawn dispatch entry fn_tbl str_tbl)
+        call2_slots = max int 7 (4 + (highest entry arity fn_tbl))
+        call2_disp = NativeFn 3 "__rg_dispatch_call2" 3 call2_slots (build call2 dispatch instrs fn_tbl str_tbl 1 [])
+        binop_disp = NativeFn 4 "__rg_dispatch_binop" 3 6 (build binop dispatch instrs fn_tbl str_tbl 1 [])
+        user_native_fns = lower fndef list fns str_tbl fn_tbl field_tbl
+        field_native_fns = lower field getter fns field_tbl fn_names fn_tbl
         all_native_fns = [main_wrapper, spawn_disp, call2_disp, binop_disp] :: user_native_fns :: field_native_fns
         NativeProg 1 2 3 4 all_native_fns rodata_str
 
@@ -3018,25 +3018,25 @@ fn :: build lib entry wrapper Int       => RNativeFn
 
 fn :: lower library to native RProgram => RNativeProg
       lower library to native (Program raw_fns tys) =
-        field_tbl = collect_typedef_fields tys []
-        raw_fn_names = collect_fn_names raw_fns
-        sigs = (build_cg_sigs raw_fns) :: (build_field_cg_sigs field_tbl raw_fn_names)
-        fns = opt fndef list (prep_fndef_list raw_fns sigs)
-        fn_names = collect_fn_names fns
-        str_pool = build_str_pool fns (collect_field_names field_tbl)
-        rodata_str = pool_rodata str_pool
-        str_tbl = pool_entries str_pool
-        fn_tbl1 = build_fn_table_fndefs fns 5 []
-        fn_tbl2 = build_fn_table_fields field_tbl fn_names (5 + (list_str_len fn_names)) fn_tbl1
-        fn_tbl = attach_heavy_fn_entries fns fn_names fn_tbl2
-        entry_fid = lookup_fn_id fn_tbl "main"
-        main_wrapper = build_lib_entry_wrapper entry_fid
-        spawn_disp = NativeFn 2 "__rg_dispatch_spawn" 2 6 (build_spawn_dispatch_entry fn_tbl str_tbl)
-        call2_slots = max_int 7 (4 + (highest entry arity fn_tbl))
-        call2_disp = NativeFn 3 "__rg_dispatch_call2" 3 call2_slots (build_call2_dispatch_instrs fn_tbl str_tbl 1 [])
-        binop_disp = NativeFn 4 "__rg_dispatch_binop" 3 6 (build_binop_dispatch_instrs fn_tbl str_tbl 1 [])
-        user_native_fns = lower_fndef_list fns str_tbl fn_tbl field_tbl
-        field_native_fns = lower_field_getter_fns field_tbl fn_names fn_tbl
+        field_tbl = collect typedef fields tys []
+        raw_fn_names = collect fn names raw_fns
+        sigs = (build cg sigs raw_fns) :: (build field cg sigs field_tbl raw_fn_names)
+        fns = opt fndef list (prep fndef list raw_fns sigs)
+        fn_names = collect fn names fns
+        str_pool = build str pool fns (collect field names field_tbl)
+        rodata_str = pool rodata str_pool
+        str_tbl = pool entries str_pool
+        fn_tbl1 = build fn table fndefs fns 5 []
+        fn_tbl2 = build fn table fields field_tbl fn_names (5 + (list str len fn_names)) fn_tbl1
+        fn_tbl = attach heavy fn entries fns fn_names fn_tbl2
+        entry_fid = lookup fn id fn_tbl "main"
+        main_wrapper = build lib entry wrapper entry_fid
+        spawn_disp = NativeFn 2 "__rg_dispatch_spawn" 2 6 (build spawn dispatch entry fn_tbl str_tbl)
+        call2_slots = max int 7 (4 + (highest entry arity fn_tbl))
+        call2_disp = NativeFn 3 "__rg_dispatch_call2" 3 call2_slots (build call2 dispatch instrs fn_tbl str_tbl 1 [])
+        binop_disp = NativeFn 4 "__rg_dispatch_binop" 3 6 (build binop dispatch instrs fn_tbl str_tbl 1 [])
+        user_native_fns = lower fndef list fns str_tbl fn_tbl field_tbl
+        field_native_fns = lower field getter fns field_tbl fn_names fn_tbl
         all_native_fns = [main_wrapper, spawn_disp, call2_disp, binop_disp] :: user_native_fns :: field_native_fns
         NativeProg 1 2 3 4 all_native_fns rodata_str
 
@@ -3044,72 +3044,72 @@ fn :: lower library to native RProgram => RNativeProg
 
 fn :: join summaries [String] => String
       join summaries []       =  ""
-      join summaries (s:ss)   =  "-- SUMMARY: {s}\n" + (join_summaries ss)
+      join summaries (s:ss)   =  "-- SUMMARY: {s}\n" + (join summaries ss)
 
 fn :: emit rgc payload RProgram String  => String
       emit rgc payload prog     raw_src =
-        prog -> count_fn_defs -> fn_count
-        prog -> count_type_defs -> ty_count
-        prog -> analyze_rprogram -> join_summaries -> summaries
+        prog -> count fn defs -> fn_count
+        prog -> count type defs -> ty_count
+        prog -> analyze rprogram -> join summaries -> summaries
         "RGC1\n-- SELF_HOSTED_COMPILER: ridgunc v0.9.8\n-- FUNCTIONS: {fn_count}\n-- TYPES: {ty_count}\n{summaries}{raw_src}"
 
 fn :: emit rgc file String     String      => Int
       emit rgc file input_path output_path =
-        input_path -> load_rg_with_libs -> emit_rgc_file_loaded input_path output_path _
+        input_path -> load rg with libs -> emit rgc file loaded input_path output_path _
 
 fn :: emit rgc file loaded String String String => Int
       emit rgc file loaded input_path _ "" =
         echo "[ridgunc compile] Error: empty or missing source file: {input_path}"
         -1
       emit rgc file loaded _ output_path raw_src =
-        raw_src -> tokenize_src -> parse_tokens -> prog
-        prog -> typecheck_program -> errs
-        emit_rgc_after_check prog raw_src output_path errs
+        raw_src -> tokenize src -> parse tokens -> prog
+        prog -> typecheck program -> errs
+        emit rgc after check prog raw_src output_path errs
 
 fn :: emit rgc after check RProgram String String [RTypeError] => Int
       emit rgc after check prog raw_src output_path []
-        | ((count_fn_defs prog) == 0) AND ((count_type_defs prog) == 0) =
+        | ((count fn defs prog) == 0) AND ((count type defs prog) == 0) =
           echo "[ridgunc compile] Error: no functions or types found in source"
           -1
         | otherwise =
-          prog -> emit_rgc_payload raw_src -> write_file output_path _
-          count_fn_defs prog
+          prog -> emit rgc payload raw_src -> write file output_path _
+          count fn defs prog
       emit rgc after check _ _ _ errs =
-        echo (format_type_errors errs)
-        0 - (type_err_count errs)
+        echo (format type errors errs)
+        0 - (type err count errs)
 
 fn :: emit rglib payload RProgram String  => String
       emit rglib payload prog     raw_src =
-        prog -> count_fn_defs -> fn_count
-        prog -> count_type_defs -> ty_count
-        prog -> analyze_rprogram -> join_summaries -> summaries
+        prog -> count fn defs -> fn_count
+        prog -> count type defs -> ty_count
+        prog -> analyze rprogram -> join summaries -> summaries
         "-- RGLIB1\n-- SELF_HOSTED_COMPILER: ridgunc v0.9.8\n-- FUNCTIONS: {fn_count}\n-- TYPES: {ty_count}\n{summaries}{raw_src}"
 
 fn :: emit rglib file String     String      => Int
       emit rglib file input_path output_path =
-        input_path -> load_rg_own_source -> own_src
-        input_path -> load_rg_with_libs -> full_src
-        emit_rglib_file_loaded input_path output_path own_src full_src
+        input_path -> load rg own source -> own_src
+        input_path -> load rg with libs -> full_src
+        emit rglib file loaded input_path output_path own_src full_src
 
 fn :: emit rglib file loaded String String String String => Int
       emit rglib file loaded input_path _ "" _ =
         echo "[ridgunc build --lib] Error: empty or missing source file: {input_path}"
         1
       emit rglib file loaded _ output_path own_src full_src =
-        full_src -> tokenize_src -> parse_tokens -> typecheck_program -> errs
-        own_src -> tokenize_src -> parse_tokens -> own_prog
-        emit_rglib_after_check own_prog own_src output_path errs
+        full_src -> tokenize src -> parse tokens -> typecheck program -> errs
+        own_src -> tokenize src -> parse tokens -> own_prog
+        emit rglib after check own_prog own_src output_path errs
 
 fn :: emit rglib after check RProgram String String [RTypeError] => Int
       emit rglib after check prog raw_src output_path []
-        | ((count_fn_defs prog) == 0) AND ((count_type_defs prog) == 0) =
+        | ((count fn defs prog) == 0) AND ((count type defs prog) == 0) =
           echo "[ridgunc build --lib] Error: no functions or types found in source"
           1
         | otherwise =
-          prog -> emit_rglib_payload raw_src -> write_file output_path _
+          prog -> emit rglib payload raw_src -> write file output_path _
           0
       emit rglib after check _ _ _ errs =
-        echo (format_type_errors errs)
+        echo (format type errors errs)
         1
 
 fn :: emit elf for target RNativeProg String => [Int]
@@ -3146,50 +3146,50 @@ fn :: build native so for arch RNativeProg String String => Int
 
 fn :: build native target executable String String String => Int
       build native target executable input_path output_bin target_arch =
-        input_path -> load_rg_with_libs -> build native target loaded input_path output_bin target_arch _
+        input_path -> load rg with libs -> build native target loaded input_path output_bin target_arch _
 
 fn :: build native target loaded String String String String => Int
       build native target loaded input_path _ _ "" =
         echo "[ridgunc build] Error: empty or missing source file: {input_path}"
         1
       build native target loaded _ output_bin target_arch raw_src =
-        raw_src -> tokenize_src -> parse_tokens -> prog
-        prog -> typecheck_program -> errs
+        raw_src -> tokenize src -> parse tokens -> prog
+        prog -> typecheck program -> errs
         build native target after check prog output_bin target_arch errs
 
 fn :: build native target after check RProgram String String [RTypeError] => Int
       build native target after check prog output_bin target_arch []
-        | (count_fn_defs prog) == 0 =
+        | (count fn defs prog) == 0 =
           echo "[ridgunc build] Error: no functions found in source"
           1
         | otherwise =
-          prog -> lower_program_to_native -> build native target for arch output_bin target_arch
+          prog -> lower program to native -> build native target for arch output_bin target_arch
       build native target after check _ _ _ errs =
-        echo (format_type_errors errs)
+        echo (format type errors errs)
         1
 
 fn :: build native target so library String String String => Int
       build native target so library input_path output_so target_arch =
-        input_path -> load_rg_with_libs -> build native so loaded input_path output_so target_arch _
+        input_path -> load rg with libs -> build native so loaded input_path output_so target_arch _
 
 fn :: build native so loaded String String String String => Int
       build native so loaded input_path _ _ "" =
         echo "[ridgunc build --so] Error: empty or missing source file: {input_path}"
         1
       build native so loaded _ output_so target_arch raw_src =
-        raw_src -> tokenize_src -> parse_tokens -> prog
-        prog -> typecheck_program -> errs
+        raw_src -> tokenize src -> parse tokens -> prog
+        prog -> typecheck program -> errs
         build native so after check prog output_so target_arch errs
 
 fn :: build native so after check RProgram String String [RTypeError] => Int
       build native so after check prog output_so target_arch []
-        | ((count_fn_defs prog) == 0) AND ((count_type_defs prog) == 0) =
+        | ((count fn defs prog) == 0) AND ((count type defs prog) == 0) =
           echo "[ridgunc build --so] Error: no functions or types found in source"
           1
         | otherwise =
-          prog -> lower_library_to_native -> build native so for arch output_so target_arch
+          prog -> lower library to native -> build native so for arch output_so target_arch
       build native so after check _ _ _ errs =
-        echo (format_type_errors errs)
+        echo (format type errors errs)
         1
 
 fn :: build native so library String String => Int

@@ -19,17 +19,17 @@ fn :: add Int Int => Int
 
 fn :: show ints [Int] => String
       show ints []     =  "[]"
-      show ints (x:xs) =  "[" + (int_to_str x) + (show rest xs) + "]"
+      show ints (x:xs) =  "[" + (int to str x) + (show rest xs) + "]"
 
 fn :: show rest [Int] => String
       show rest []     =  ""
-      show rest (x:xs) =  ", " + (int_to_str x) + (show rest xs)
+      show rest (x:xs) =  ", " + (int to str x) + (show rest xs)
 
 fn :: main => ()
       main =
-        _ = echo (show_ints (map square [1, 2, 3, 4]))
-        _ = echo (show_ints (filter is_even [1, 2, 3, 4]))
-        _ = echo (int_to_str (fold add 0 [1, 2, 3, 4]))
-        _ = echo (show_ints (map square []))
-        _ = echo (show_ints (filter is_even [1, 3, 5]))
-        echo (int_to_str (fold add 7 []))
+        echo (show ints (map square [1, 2, 3, 4]))
+        echo (show ints (filter is even [1, 2, 3, 4]))
+        echo (int to str (fold add 0 [1, 2, 3, 4]))
+        echo (show ints (map square []))
+        echo (show ints (filter is even [1, 3, 5]))
+        echo (int to str (fold add 7 []))

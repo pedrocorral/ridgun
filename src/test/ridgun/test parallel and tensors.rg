@@ -389,9 +389,9 @@ fn :: main => ()
         -- RG-069 regression test: 5,000 round-trip messages on a stateless agent must leak 0 CMM blocks
         ag_noleak = agent (eco ligero)
         bombear agente ag_noleak 0 10
-        live_ag0 = cmm_live_blocks
+        live_ag0 = cmm live blocks
         bombear agente ag_noleak 0 5000
-        live_ag1 = cmm_live_blocks
+        live_ag1 = cmm live blocks
         assert equals live_ag1 live_ag0
         stop ag_noleak
         echo "=== FR-COMP-010: Typed Tensors, Subscript Views, Axis Map & Bitwise Ops ==="
@@ -439,9 +439,9 @@ fn :: main => ()
         assert equals (call box3 box3 "x" "y" "z") "xyz"
         assert equals ((cb3 box3) "1" "2" "3") "123"
         assert equals (cb3 box3 "p" "q" "r") "pqr"
-        live0 = cmm_live_blocks
+        live0 = cmm live blocks
         run closure mem scope "ok"
-        assert equals cmm_live_blocks live0
+        assert equals (cmm live blocks) live0
         echo "=== Speed & Zero-Leak Benchmarks: sha256 raw & BlaMka Tensor Permutations ==="
         raw_empty = sha256 raw ""
         bytes_empty = sha256 bytes ""
@@ -451,7 +451,7 @@ fn :: main => ()
         assert equals (str char at raw_empty 1) 176
         assert equals (str char at raw_empty 31) 85
         tb0 = sys time ms
-        live_sha0 = cmm_live_blocks
+        live_sha0 = cmm live blocks
         final_digest = bench sha256 raw loop "ridgun-bench-seed" 10000
         assert equals (str len final_digest) 32
         tb1 = sys time ms
@@ -461,12 +461,12 @@ fn :: main => ()
         mut bv = Tensor[U64 * 1 * 16]
         bv_(0, 0) = 1
         bv_(0, 1) = 2
-        live_bl0 = cmm_live_blocks
+        live_bl0 = cmm live blocks
         tb2 = sys time ms
         bv = bench blamka loop bv 2000
         tb3 = sys time ms
         bl_ms = tb3 - tb2
-        assert equals cmm_live_blocks live_bl0
+        assert equals (cmm live blocks) live_bl0
         assert true (bv_(0, 0) != 1)
         echo "  [bench] 2,000 x blamka p16 (16,000 x blamka g 4-tuple unpacks):" bl_ms "ms (0 heap leaks)"
         assert true (bl_ms < 500)
@@ -495,7 +495,7 @@ fn :: main => ()
         s_b = "world"
         s_ab = "hello-world"
         assert equals (sha256 raw (s_a + s_b)) (sha256 raw s_ab)
-        live_hm0 = cmm_live_blocks
+        live_hm0 = cmm live blocks
         ipad64 = "6666666666666666666666666666666666666666666666666666666666666666"
         opad64 = "\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\"
         seed32 = sha256 raw "pbkdf2-seed"
@@ -507,7 +507,7 @@ fn :: main => ()
         th1 = sys time ms
         hm_ms = th1 - th0
         assert equals (str len hm_out) 32
-        assert equals cmm_live_blocks live_hm0
+        assert equals (cmm live blocks) live_hm0
         echo "  [bench] 10,000 x HMAC-SHA256 (20,000 x fused sha256 raw (pad64 + u)):" hm_ms "ms (0 heap leaks)"
         assert true (hm_ms < 200)
         echo "=== All parallel & tensor tests passed ==="

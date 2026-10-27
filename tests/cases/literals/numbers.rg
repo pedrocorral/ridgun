@@ -11,10 +11,10 @@
 
 fn :: main => ()
       main =
-        _ = echo (int_to_str (-100))
-        _ = echo (int_to_str 0xFF00)
-        _ = echo (int_to_str 1_000_000)
-        _ = echo (int_to_str 64_KB)
-        _ = echo (int_to_str 16_MB)
-        _ = echo (int_to_str 0xFF_00)
-        echo (int_to_str 1_GB)
+        echo (int to str (-100))
+        echo (int to str 0xFF00)
+        echo (int to str 1_000_000)
+        echo (int to str 64_KB)
+        echo (int to str 16_MB)
+        echo (int to str 0xFF_00)
+        echo (int to str 1_GB)

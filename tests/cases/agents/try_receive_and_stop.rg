@@ -23,10 +23,10 @@ fn :: bool text Bool => String
 fn :: main => ()
       main =
         sq = agent (square)
-        _ = echo (int_to_str (unwrap (try receive from sq)))
+        echo (int to str (unwrap (try receive from sq)))
         send 6 to sq
-        _ = echo (int_to_str (receive from sq))
-        _ = echo (int_to_str (unwrap (try receive from sq)))
-        _ = echo (bool_text (agent alive sq))
+        echo (int to str (receive from sq))
+        echo (int to str (unwrap (try receive from sq)))
+        echo (bool text (agent alive sq))
         stop sq
-        echo (bool_text (agent alive sq))
+        echo (bool text (agent alive sq))

@@ -13,6 +13,6 @@ op :: clamp Int between Int and Int => Int
 
 fn :: main => ()
       main =
-        _ = echo (int_to_str (clamp (0 - 3) between 0 and 10))
-        _ = echo (int_to_str (clamp 42 between 0 and 10))
-        echo (int_to_str (clamp 5 between 0 and 10))
+        echo (int to str (clamp (0 - 3) between 0 and 10))
+        echo (int to str (clamp 42 between 0 and 10))
+        echo (int to str (clamp 5 between 0 and 10))

@@ -12,7 +12,7 @@ fn :: b Bool => String
 
 fn :: main => ()
       main =
-        _ = echo ("and: " + (b (False and False)) + " " + (b (False and True)) + " " + (b (True and False)) + " " + (b (True and True)))
-        _ = echo ("or: " + (b (False or False)) + " " + (b (False or True)) + " " + (b (True or False)) + " " + (b (True or True)))
-        _ = echo ("xor: " + (b (False xor False)) + " " + (b (False xor True)) + " " + (b (True xor False)) + " " + (b (True xor True)))
+        echo ("and: " + (b (False and False)) + " " + (b (False and True)) + " " + (b (True and False)) + " " + (b (True and True)))
+        echo ("or: " + (b (False or False)) + " " + (b (False or True)) + " " + (b (True or False)) + " " + (b (True or True)))
+        echo ("xor: " + (b (False xor False)) + " " + (b (False xor True)) + " " + (b (True xor False)) + " " + (b (True xor True)))
         echo ("not: " + (b (not False)) + " " + (b (not True)))

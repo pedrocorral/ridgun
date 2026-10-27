@@ -29,20 +29,20 @@ fn :: take three [Int] => [Int]
 
 fn :: show ints [Int] => String
       show ints []     =  "[]"
-      show ints (x:xs) =  "[" + (int_to_str x) + (show rest xs) + "]"
+      show ints (x:xs) =  "[" + (int to str x) + (show rest xs) + "]"
 
 fn :: show rest [Int] => String
       show rest []     =  ""
-      show rest (x:xs) =  ", " + (int_to_str x) + (show rest xs)
+      show rest (x:xs) =  ", " + (int to str x) + (show rest xs)
 
 fn :: main => ()
       main =
         xs = upto 0 2000 []
-        _ = echo (show_ints (||map square [1, 2, 3, 4]))
-        _ = echo (show_ints (||filter is_even [1, 2, 3, 4]))
-        _ = echo ("same map: " + (bool_text (same (||map square xs) (map square xs))))
-        _ = echo ("same filter: " + (bool_text (same (||filter is_even xs) (filter is_even xs))))
-        echo ("first 3 of ||map: " + (show_ints (take_three (||map square xs))))
+        echo (show ints (||map square [1, 2, 3, 4]))
+        echo (show ints (||filter is even [1, 2, 3, 4]))
+        echo ("same map: " + (bool text (same (||map square xs) (map square xs))))
+        echo ("same filter: " + (bool text (same (||filter is even xs) (filter is even xs))))
+        echo ("first 3 of ||map: " + (show ints (take three (||map square xs))))
 
 fn :: bool text Bool => String
       bool text True  =  "True"

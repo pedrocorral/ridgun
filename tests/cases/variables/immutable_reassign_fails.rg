@@ -6,4 +6,4 @@ fn :: main => ()
       main =
         x = 1
         x = 2
-        echo (int_to_str x)
+        echo (int to str x)

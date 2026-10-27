@@ -70,7 +70,7 @@ fn :: run pal timeout block String   => Int
 
 fn :: main => ()
       main =
-        root_dir = sys_getcwd
+        root_dir = sys getcwd
         stable_bin = root_dir + "/" + (resolve stable bin)
         ridgunc_bin = root_dir + "/" + (resolve ridgunc bin)
         echo "=== FR-COMP-006: Reusable Library Compilation (.rglib & ELF64 ET_DYN .so) ==="
@@ -197,7 +197,7 @@ fn :: main => ()
         shell exec "rm -rf target/test_lib_work/web_proj && mkdir -p target/test_lib_work/web_proj/plugins"
         web_build = "fn :: project name => String\n      project name =  \"demo_web\"\n\nfn :: project version => String\n      project version =  \"0.1.0\"\n\nfn :: plugins => [String]\n      plugins =  [\"router\"]\n\nfn :: task serve => String\n      task serve =  \"printf SERVE_OK > target_serve.txt\"\n\nfn :: task db migrate => String\n      task db migrate =  \"printf MIGRATE_OK > target_migrate.txt\"\n"
         router_plugin = "fn :: task routes => String\n      task routes =  \"printf ROUTES_OK > target_routes.txt\"\n"
-        gen_plugin = "fn :: main => ()\n      main =  write_file \"target_exec_plugin.txt\" \"EXEC_PLUGIN_OK\" -> ()\n"
+        gen_plugin = "fn :: main => ()\n      main =  write file \"target_exec_plugin.txt\" \"EXEC_PLUGIN_OK\" -> ()\n"
         write file "target/test_lib_work/web_proj/build.rg" web_build
         write file "target/test_lib_work/web_proj/plugins/router.rg" router_plugin
         write file "target/test_lib_work/web_proj/plugins/codegen.rg" gen_plugin
@@ -289,7 +289,7 @@ fn :: main => ()
         shell exec "cp -f target/test_lib_work/mathkit/target/mathkit.rglib target/test_lib_work/ext_solstice/.stable/deps/mathkit.rglib"
         ext_base_src = "type ExtMode = ModeFast | ModeSafe\n\ntype ExtCfg = ext_port: Int, ext_tag: String\n\nop :: String trim ext => String\n      s      trim ext =  s + \"_ok\"\n"
         ext_mid_src = "import ext_base\n\nfn :: build ext cfg Int => ExtCfg\n      build ext cfg p   =  ExtCfg p (\"p\" trim ext)\n"
-        local_hlp_src = "import ext_mid\nimport mathkit\n\nfn :: check mode ExtMode => Bool\n      check mode ModeFast = True\n      check mode ModeSafe = False\n\nfn :: format helper ExtCfg Bool => String\n      format helper cfg True = (greet (ext_tag cfg)) + \":\" + (int_to_str (ext_port cfg))\n      format helper _ False = \"bad\"\n\nfn :: run helper Int => String\n      run helper p   =\n        cfg = build ext cfg p\n        ok_m = check mode ModeFast\n        format helper cfg ok_m\n"
+        local_hlp_src = "import ext_mid\nimport mathkit\n\nfn :: check mode ExtMode => Bool\n      check mode ModeFast = True\n      check mode ModeSafe = False\n\nfn :: format helper ExtCfg Bool => String\n      format helper cfg True = (greet (ext_tag cfg)) + \":\" + (int to str (ext_port cfg))\n      format helper _ False = \"bad\"\n\nfn :: run helper Int => String\n      run helper p   =\n        cfg = build ext cfg p\n        ok_m = check mode ModeFast\n        format helper cfg ok_m\n"
         ext_main_src = "import local_helper\nimport ext_base\n\nfn :: main => ()\n      main =  echo (run helper 8080)\n"
         write file "target/test_lib_work/ext_solstice/.stable/deps/ridgun-libs/src/main/ridgun/lib/ext_base.rg" ext_base_src
         write file "target/test_lib_work/ext_solstice/.stable/deps/ext_mid.rg" ext_mid_src
@@ -329,7 +329,7 @@ fn :: main => ()
         st_repl = shell exec ("cd target/test_lib_work/multi_app && \"" + stable_bin + "\" < repl_in.txt > repl_out.txt")
         assert int equals st_repl 0 "interactive REPL session exits cleanly with 0"
         repl_out = read file "target/test_lib_work/multi_app/repl_out.txt"
-        assert ok (str contains repl_out "Welcome to stable 0.9.22")
+        assert ok (str contains repl_out "Welcome to stable 0.9.23")
         assert ok (str contains repl_out "Reloaded build.rg — current project is 'alpha'")
         assert ok (str contains repl_out "Exiting stable.")
         echo "=== FR-COMP-007: Cross-Platform PAL Descriptor/Poll/Process Primitives & with timeout ==="
@@ -455,8 +455,8 @@ fn :: main => ()
         -- 8. RG-095 regression test: multi-file module (`module :: modlib` across `modlib.rg` and `modlib_extra.rg`)
         --    imported by an app that defines its own `type Changeset` (both source and `.rglib` bundle)
         write file "target/test_lib_work/modlib_extra.rg" "module :: modlib\n\nfn :: trim field String => String\n      trim field s = s\n"
-        write file "target/test_lib_work/modlib.rg" "module :: modlib\nimport modlib_extra\n\ntype Changeset = cs_field: String\n\nfn :: validate required String => Changeset\n      validate required s = Changeset (trim_field s)\n"
-        write file "target/test_lib_work/modapp.rg" "import modlib\n\ntype Changeset = app_a: String, app_b: String\n\nfn :: app cs val Changeset => String\n      app cs val c = (app_a c) + (app_b c)\n\nfn :: lib cs val modlib.Changeset => String\n      lib cs val c = modlib.cs_field c\n\nfn :: main => ()\n      main =\n        lc = modlib.validate_required \"ok\"\n        ac = Changeset \"1\" \"2\"\n        echo ((lib_cs_val lc) + \":\" + (app_cs_val ac))\n"
+        write file "target/test_lib_work/modlib.rg" "module :: modlib\nimport modlib_extra\n\ntype Changeset = cs_field: String\n\nfn :: validate required String => Changeset\n      validate required s = Changeset (trim field s)\n"
+        write file "target/test_lib_work/modapp.rg" "import modlib\n\ntype Changeset = app_a: String, app_b: String\n\nfn :: app cs val Changeset => String\n      app cs val c = (app_a c) + (app_b c)\n\nfn :: lib cs val modlib.Changeset => String\n      lib cs val c = modlib.cs_field c\n\nfn :: main => ()\n      main =\n        lc = modlib.validate required \"ok\"\n        ac = Changeset \"1\" \"2\"\n        echo ((lib cs val lc) + \":\" + (app cs val ac))\n"
         rc_modapp = shell exec ("\"" + ridgunc_bin + "\" run --strict target/test_lib_work/modapp.rg > target/test_lib_work/modapp_out.txt 2>&1")
         assert int equals rc_modapp 0 "RG-095 multi-file module source run"
         assert str eq (str trim (read file "target/test_lib_work/modapp_out.txt")) "ok:12" "RG-095 multi-file module output"
@@ -467,7 +467,7 @@ fn :: main => ()
         assert int equals rc_modapp_bundle 0 "RG-095 multi-file .rglib bundle run"
         assert str eq (str trim (read file "target/test_lib_work/modapp_bundle_out.txt")) "ok:12" "RG-095 multi-file .rglib bundle output"
         -- 9. RG-094 regression test: Argon2id OWASP (m=19456, t=2, p=1) must execute in < 1,100 ms with LLVM opt -O2
-        write file "target/test_lib_work/bench_a2.rg" "import argon2id\n\nfn :: report a2 Int String => String\n      report a2 elapsed h\n        | elapsed < 1100 and (str_len h) > 32 = \"argon2id_ok\"\n        | otherwise = \"argon2id_slow\"\n\nfn :: main => ()\n      main =\n        t0 = sys_time_ms\n        res = argon2id_hash \"correct horse battery staple\" \"saltsaltsaltsalt\" 19456 2 1\n        t1 = sys_time_ms\n        echo (report_a2 (t1 - t0) res)\n"
+        write file "target/test_lib_work/bench_a2.rg" "import argon2id\n\nfn :: report a2 Int String => String\n      report a2 elapsed h\n        | elapsed < 1100 and (str len h) > 32 = \"argon2id_ok\"\n        | otherwise = \"argon2id_slow\"\n\nfn :: main => ()\n      main =\n        t0 = sys time ms\n        res = argon2id hash \"correct horse battery staple\" \"saltsaltsaltsalt\" 19456 2 1\n        t1 = sys time ms\n        echo (report a2 (t1 - t0) res)\n"
         rc_a2_build = shell exec ("\"" + ridgunc_bin + "\" build target/test_lib_work/bench_a2.rg -o target/test_lib_work/bench_a2 >/dev/null 2>&1")
         assert int equals rc_a2_build 0 "RG-094 Argon2id build"
         rc_a2_run = shell exec "target/test_lib_work/bench_a2 > target/test_lib_work/bench_a2_out.txt 2>&1"
@@ -477,18 +477,18 @@ fn :: main => ()
         --     (a) orm imports db_abstract (Conn, Value, query) while solstice and root app also define Conn, Value, Changeset, query
         --     (b) web_sdk imports codec_hlp (json_get_str :: String String => String) while root app imports web_sdk and json_lib (json_get_str :: JsonDoc String => String)
         --     (c) unimported sibling module mod_b is invisible inside mod_a
-        write file "target/test_lib_work/db_abstract.rg" "module :: db_abstract\n\ntype Conn = db_fd: Int\ntype Value = VInt Int | VText String\n\nfn :: query Conn String [Value] => String\n      query c sql _ = \"db:\" + (int_to_str (db_fd c)) + \":\" + sql\n"
+        write file "target/test_lib_work/db_abstract.rg" "module :: db_abstract\n\ntype Conn = db_fd: Int\ntype Value = VInt Int | VText String\n\nfn :: query Conn String [Value] => String\n      query c sql _ = \"db:\" + (int to str (db_fd c)) + \":\" + sql\n"
         write file "target/test_lib_work/orm.rg" "module :: orm\nimport db_abstract\n\ntype Changeset = orm_valid: Bool\n\nfn :: find by id Conn String Int => String\n      find by id c tbl id = query c tbl [VInt id]\n"
         write file "target/test_lib_work/codec_hlp.rg" "module :: codec_hlp\n\nfn :: json get str String String => String\n      json get str raw key = \"codec:\" + raw + \":\" + key\n"
-        write file "target/test_lib_work/solstice.rg" "module :: solstice\nimport codec_hlp\n\ntype Conn = http_status: Int\ntype Value = SVal String\ntype Changeset = sol_ok: Bool\n\nfn :: query Conn => Int\n      query c = http_status c\n\nfn :: extract token String => String\n      extract token body = json_get_str body \"tok\"\n"
+        write file "target/test_lib_work/solstice.rg" "module :: solstice\nimport codec_hlp\n\ntype Conn = http_status: Int\ntype Value = SVal String\ntype Changeset = sol_ok: Bool\n\nfn :: query Conn => Int\n      query c = http_status c\n\nfn :: extract token String => String\n      extract token body = json get str body \"tok\"\n"
         write file "target/test_lib_work/json_lib.rg" "module :: json_lib\n\ntype JsonDoc = JDoc String\n\nfn :: json get str JsonDoc String => String\n      json get str (JDoc s) k = \"json:\" + s + \":\" + k\n"
-        write file "target/test_lib_work/vis_app.rg" "import db_abstract\nimport orm\nimport solstice\nimport json_lib\n\ntype Conn = app_tag: String\n\nfn :: main => ()\n      main =\n        dbc = db_abstract.Conn 7\n        r1 = orm.find_by_id dbc \"users\" 42\n        sc = solstice.Conn 200\n        r2 = solstice.query sc\n        r3 = solstice.extract_token \"payload\"\n        r4 = json_get_str (JDoc \"doc\") \"id\"\n        ac = Conn \"local\"\n        echo (r1 + \"|\" + (int_to_str r2) + \"|\" + r3 + \"|\" + r4 + \"|\" + (app_tag ac))\n"
+        write file "target/test_lib_work/vis_app.rg" "import db_abstract\nimport orm\nimport solstice\nimport json_lib\n\ntype Conn = app_tag: String\n\nfn :: main => ()\n      main =\n        dbc = db_abstract.Conn 7\n        r1 = orm.find by id dbc \"users\" 42\n        sc = solstice.Conn 200\n        r2 = solstice.query sc\n        r3 = solstice.extract token \"payload\"\n        r4 = json get str (JDoc \"doc\") \"id\"\n        ac = Conn \"local\"\n        echo (r1 + \"|\" + (int to str r2) + \"|\" + r3 + \"|\" + r4 + \"|\" + (app_tag ac))\n"
         rc_vis_app = shell exec ("\"" + ridgunc_bin + "\" run --strict target/test_lib_work/vis_app.rg > target/test_lib_work/vis_app_out.txt 2>&1")
         assert int equals rc_vis_app 0 "FR-COMP-012 per-module import visibility run"
         assert str eq (str trim (read file "target/test_lib_work/vis_app_out.txt")) "db:7:users|200|codec:payload:tok|json:doc:id|local" "FR-COMP-012 per-module import visibility output"
         write file "target/test_lib_work/mod_b.rg" "module :: mod_b\n\nfn :: secret b only Int => Int\n      secret b only x = x + 99\n"
-        write file "target/test_lib_work/mod_a.rg" "module :: mod_a\n\nfn :: leak attempt Int => Int\n      leak attempt x = secret_b_only x\n"
-        write file "target/test_lib_work/leak_app.rg" "import mod_b\nimport mod_a\n\nfn :: main => ()\n      main =\n        echo (int_to_str (mod_a.leak_attempt 1))\n"
+        write file "target/test_lib_work/mod_a.rg" "module :: mod_a\n\nfn :: leak attempt Int => Int\n      leak attempt x = secret b only x\n"
+        write file "target/test_lib_work/leak_app.rg" "import mod_b\nimport mod_a\n\nfn :: main => ()\n      main =\n        echo (int to str (mod_a.leak attempt 1))\n"
         rc_leak = shell exec ("\"" + ridgunc_bin + "\" check target/test_lib_work/leak_app.rg > target/test_lib_work/leak_out.txt 2>&1")
         assert true (rc_leak != 0)
         shell exec "rm -rf target/test_lib_work"

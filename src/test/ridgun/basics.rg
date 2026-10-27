@@ -25,7 +25,7 @@ fn :: reverse [Int]  => [Int]
 -- Length of a list
 fn :: list length [Int]  => Int
       list length []     =  0
-      list length (_:xs) =  1 + list_length xs
+      list length (_:xs) =  1 + (list length xs)
 
 -- Sequence selector: extract first element via seq binding
 fn :: first of seq Int Int => Int

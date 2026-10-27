@@ -16,18 +16,18 @@ type Counter = hits: Int
 fn :: hit Counter String => Counter String
       hit c _ =
         c2 = (c with hits = (hits c) + 1)
-        (c2, "hits " + (int_to_str (hits c2)))
+        (c2, "hits " + (int to str (hits c2)))
 
 fn :: main => ()
       main =
         acc = agent (add visit) 10
         send 5 to acc
-        _ = echo (int_to_str (receive from acc))
+        echo (int to str (receive from acc))
         send 7 to acc
-        _ = echo (int_to_str (receive from acc))
-        _ = echo (int_to_str (ask acc 8))
-        _ = echo (int_to_str (ask 12 to acc))
+        echo (int to str (receive from acc))
+        echo (int to str (ask acc 8))
+        echo (int to str (ask 12 to acc))
         stop acc
         ctr = agent (hit) (Counter 0)
-        _ = echo (ask ctr "a")
+        echo (ask ctr "a")
         echo (ask ctr "b")

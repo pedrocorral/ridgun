@@ -21,11 +21,11 @@ fn :: factorial Int => Int
 fn :: main => ()
       main =
         name = "Ridgun"
-        _ = echo "Hello, {name}!"
-        _ = echo "Sum is {sum 3 4}"
-        _ = echo "Nested: {factorial 5} done"
-        _ = echo "Shell expansion: \$\{VAR:-default\}"
-        _ = echo "This is {{not interpolated}}"
-        _ = echo "Use \{ \} or {{}} for literal braces"
-        _ = echo 'Hello, {name}!'
+        echo "Hello, {name}!"
+        echo "Sum is {sum 3 4}"
+        echo "Nested: {factorial 5} done"
+        echo "Shell expansion: \$\{VAR:-default\}"
+        echo "This is {{not interpolated}}"
+        echo "Use \{ \} or {{}} for literal braces"
+        echo 'Hello, {name}!'
         echo '{this is just pure chars}'

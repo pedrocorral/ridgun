@@ -9,22 +9,22 @@ type OptionInt = Some Int | None
 
 fn :: slow Int => Int
       slow n =
-        _ = sys_sleep_ms 400
+        sys sleep ms 400
         n
 
 fn :: poll (Agent Int Int) Int => Int
-      poll ag tries =  poll_result ag tries (try receive from ag)
+      poll ag tries =  poll result ag tries (try receive from ag)
 
 fn :: poll result (Agent Int Int) Int OptionInt => Int
       poll result _  _     (Some n) =  n
       poll result ag tries None
         | tries <= 0 = 0 - 1
         | otherwise  =
-            _ = sys_sleep_ms 5
+            sys sleep ms 5
             poll ag (tries - 1)
 
 fn :: main => ()
       main =
         ag = agent (slow)
         send 7 to ag
-        echo (int_to_str (poll ag 1000))
+        echo (int to str (poll ag 1000))

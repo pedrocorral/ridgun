@@ -16,17 +16,17 @@ fn :: describe Something => String
       describe "admin"      =  "admin string"
       describe 0            =  "zero"
       describe (String s)   =  "string " + s
-      describe (Int n)      =  "int " + (int_to_str n)
+      describe (Int n)      =  "int " + (int to str n)
       describe (Bool True)  =  "bool True"
       describe (Bool False) =  "bool False"
-      describe (MyStruct _ n) =  "struct " + (int_to_str n)
+      describe (MyStruct _ n) =  "struct " + (int to str n)
 
 fn :: main => ()
       main =
-        _ = echo (describe "admin")
-        _ = echo (describe "hello")
-        _ = echo (describe 0)
-        _ = echo (describe 42)
-        _ = echo (describe (Int 7))
-        _ = echo (describe True)
+        echo (describe "admin")
+        echo (describe "hello")
+        echo (describe 0)
+        echo (describe 42)
+        echo (describe (Int 7))
+        echo (describe True)
         echo (describe (MyStruct 2.5 3))

@@ -10,7 +10,7 @@ Every expected value comes from the language's own documents, and each case says
 ./bin/ridgunc run tests/run.rg agents lists     # cases whose path contains "agents" or "lists"
 ./bin/ridgunc run tests/run.rg --no-toolchain   # cases only
 ```
-- Every build is `ridgunc build --strict`. The cases use the canonical style: spaced names in declarations, and tuples written `=> Int Int`. Calls may keep `_`.
+- Every build is `ridgunc build --strict`. The cases use the canonical style: spaced names in declarations and calls (no `_` in function names or calls), and tuples written `=> Int Int`. Local variables and parameters may contain `_`.
 - `RIDGUNC=/path/to/ridgunc` tests another build. The default is `bin/ridgunc`.
 - Work folders go to `~/.cache/ridgun-compiler-tests/work`. They never go to `/tmp`, which is a tmpfs with limited inodes, and never inside a repository.
 - Builds and runs are capped at 4 GB of address space and a time limit.
@@ -57,7 +57,7 @@ fn :: main => ()
 | `files/` | `read_file` gives back exactly what `write_file` wrote, for every byte value | consistency; Solstice register RG-089 |
 | `removed/` | `global ::` and `spawn` / `join` must not compile | FR-COMP-009 §5, AC-4 |
 | `syntax/` | a top-level line that is no known declaration must not build (today it is dropped silently) | spec.md (a file is a sequence of declarations); Solstice register RG-090 |
-| `strict/` | `--strict` refuses `_` in declared names and `(Int, Int)` returns | book 02:193-197; FR-COMP-008 |
+| `strict/` | `--strict` refuses `_` in declared names and function calls, and `(Int, Int)` returns; `" "` and `"_"` never resolve to the same function name | book 02:193-197; FR-COMP-005 §5; FR-COMP-008 |
 | `runtime/` | `sys_exit n` exits with n and stops there | FR-VM-002:32,45 |
 | `perf/` | **Proposals** (`-- kind: proposal`): building a 20 000-element list at either end in under 1 s; 8 agents on 8 equal jobs at once take no longer than one thread doing them in turn | Solstice register RG-085, RG-079 |
 
@@ -73,7 +73,6 @@ The documents leave these points open, or say different things in different plac
 - **Short-circuit `and` / `or`.** Unspecified. FR-COMP-010:26 also makes them bitwise on Int.
 - **Record update syntax.** spec.md:517, book 06:42 and the harness show `r with f: v`. The compiler and the owner's decision (2026-10-23) use `r with f = v`, so those documents are stale.
 - **Clause merging versus duplicate definitions.** FR-COMP-005 §3 says a second `fn ::` declaration merges its clauses. Since 0.9.17, the same name defined in two imported modules is reported as a duplicate definition. When each one applies needs saying.
-- **`_` aliases of spaced names.** spec.md:126 and FR-COMP-005:58 promise them for built-ins and test functions. That a user's `foo bar` is also callable as `foo_bar` is relied on everywhere but not written down.
 - **Local tuple destructuring.** Book 03:84 shows `q, r = divmod 17 5`; the harness skill:36 says it is invalid.
 - **Runtime errors.** The exit status and message for division by zero, a failed match, an out-of-range access or a stack overflow are unspecified.
 - **Mutual recursion.** Tail calls between different functions aren't promised to be eliminated (Solstice register RG-047).
