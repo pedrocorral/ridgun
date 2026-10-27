@@ -1,6 +1,6 @@
 -- ============================================================
 -- src/main/ridgun/ridgunc/main.rg
--- Self-Hosted Ridgun Compiler CLI Driver (ridgunc v0.9.21)
+-- Self-Hosted Ridgun Compiler CLI Driver (ridgunc v0.9.22)
 -- Shared Library (`src/main/ridgun/lib/`): ast.rg, lexer.rg,
 -- parser.rg, analyzer.rg, typecheck.rg, compiler.rg, vm.rg,
 -- elf64.rg, x86_64.rg, arm64.rg, llvm.rg
@@ -172,16 +172,22 @@ fn :: report build status String String Int => ()
         echo "[ridgunc build] Failed to build {output_bin} (exit code {code})"
         sys_exit 1
 
-fn :: run cli run Bool        String     => ()
-      run cli run strict_mode input_path =
+fn :: quote shell args [String] => String
+      quote shell args []       =  ""
+      quote shell args (a:as)   =  " \"" + a + "\"" + (quote_shell_args as)
+
+fn :: run cli run Bool        String     [String] => ()
+      run cli run strict_mode input_path run_args =
         verify strict if enabled strict_mode input_path
         sys_mkdir "target" 493
-        build native fast executable input_path "target/.ridgunc_run_bin" -> exec_built_run
+        build native fast executable input_path "target/.ridgunc_run_bin" -> status
+        exec_built_run status (quote_shell_args run_args)
 
-fn :: exec built run Int => ()
-      exec built run 0   =
-        shell_exec "./target/.ridgunc_run_bin; _st=$?; rm -f target/.ridgunc_run_bin; exit $_st" -> ()
-      exec built run _   =  sys_exit 1
+fn :: exec built run Int String => ()
+      exec built run 0   q_args =
+        shell_exec ("./target/.ridgunc_run_bin" + q_args + "; _st=$?; rm -f target/.ridgunc_run_bin; exit $_st") -> code
+        sys_exit code
+      exec built run _   _      =  sys_exit 1
 
 fn :: run self hosted pipeline demo => ()
       run self hosted pipeline demo =
@@ -204,7 +210,7 @@ fn :: run self hosted pipeline demo => ()
 
 fn :: run cli version => ()
       run cli version =
-        echo "ridgunc 0.9.21 (self-hosted Ridgun compiler, x86_64-unknown-linux-gnu)"
+        echo "ridgunc 0.9.22 (self-hosted Ridgun compiler, x86_64-unknown-linux-gnu)"
 
 fn :: run cli help => ()
       run cli help =
@@ -228,7 +234,7 @@ fn :: dispatch cli Bool        [String]        => ()
       dispatch cli _           ("help":_)      =  run_cli_help
       dispatch cli _           ("-h":_)        =  run_cli_help
       dispatch cli _           ("--help":_)    =  run_cli_help
-      dispatch cli strict_mode ("run":input_path:_) = run_cli_run strict_mode input_path
+      dispatch cli strict_mode ("run":input_path:run_args) = run_cli_run strict_mode input_path run_args
       dispatch cli strict_mode ("check":input_path:_) = run_cli_check strict_mode input_path
       dispatch cli strict_mode ("compile":input_path:"-o":output_rgc:_) = run_cli_compile strict_mode input_path output_rgc
       dispatch cli strict_mode ("compile":input_path:_) = run_cli_compile strict_mode input_path "{input_path}c"

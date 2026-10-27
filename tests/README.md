@@ -6,9 +6,9 @@ Every expected value comes from the language's own documents, and each case says
 
 ## Run them
 ```bash
-python3 tests/run.py                  # every case under tests/cases/ and the toolchain checks
-python3 tests/run.py agents strings   # cases whose path contains "agents" or "strings"
-python3 tests/run.py --no-toolchain   # cases only
+./bin/ridgunc run tests/run.rg                  # every case under tests/cases/ and the toolchain checks
+./bin/ridgunc run tests/run.rg agents lists     # cases whose path contains "agents" or "lists"
+./bin/ridgunc run tests/run.rg --no-toolchain   # cases only
 ```
 - Every build is `ridgunc build --strict`. The cases use the canonical style: spaced names in declarations, and tuples written `=> Int Int`. Calls may keep `_`.
 - `RIDGUNC=/path/to/ridgunc` tests another build. The default is `bin/ridgunc`.
@@ -34,10 +34,11 @@ fn :: main => ()
 ```
 `-- expect-build-error: TEXT` makes the case pass only when the build fails and its output contains TEXT. An empty TEXT accepts any build failure, for removed or forbidden constructs whose message the documents don't fix. `-- uses-libs` copies the ridgun-libs bundles next to the case; no case needs them yet.
 
-`run.py` also holds three toolchain checks that no single program can express:
+`run.rg` also holds four toolchain checks that no single program can express:
 - `-o` into a folder that doesn't exist either creates the folder or fails. It never reports success without writing the file (FR-COMP-004: build writes the ELF; Solstice register RG-081).
 - A type error exits with a non-zero status and writes no binary.
 - Build time stays near-linear in the number of functions: 200 → 800 functions takes at most 8× as long. The documents promise nothing here; Solstice register RG-075 measured 26 s for any program importing Solstice.
+- Building a program that imports standard libraries (`str`, `io`, `list`, `cli`) completes in under 3 000 ms (RG-075).
 
 ## What the cases cover
 | Folder | Cases | Sources |
@@ -89,4 +90,4 @@ The documents leave these points open, or say different things in different plac
 1. Put a program under the matching `tests/cases/<area>/` folder.
 2. Write the `-- case:` and `-- source:` lines, then the expectations. The source is a document and a line or section. When nothing promises the behaviour, say so ("no promise in the docs (proposal)") and put the case under `perf/` or a folder that says it.
 3. Derive the expected output from that source by hand, never from running the compiler.
-4. Check that it builds with `--strict`: `python3 tests/run.py <its path>`.
+4. Check that it builds with `--strict`: `./bin/ridgunc run tests/run.rg <its path>`.

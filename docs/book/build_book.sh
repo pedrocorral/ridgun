@@ -1,199 +1,50 @@
-#!/usr/bin/env python3
-"""Build the standalone interactive HTML books (docs/book/index.html and en/pt/sv editions) from the Markdown chapters."""
+#!/usr/bin/env bash
+# Build the standalone interactive HTML books (docs/book/index.html and es/ca/gl/eu/en/pt/sv editions) from the Markdown chapters.
+set -euo pipefail
 
-import glob
-import json
-import os
-import re
+BOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ALL_LANGS=("es" "ca" "gl" "eu" "en" "pt" "sv")
 
-BOOK_DIR = os.path.dirname(os.path.abspath(__file__))
+make_lang_bar_html() {
+  local active_code="$1"
+  local is_root="$2"
+  local html=""
+  for code in "${ALL_LANGS[@]}"; do
+    local label="${code^^}"
+    local href=""
+    if [[ "$is_root" == "true" ]]; then
+      href="${code}/index.html"
+    elif [[ "$code" == "$active_code" ]]; then
+      href="index.html"
+    else
+      href="../${code}/index.html"
+    fi
+    if [[ "$code" == "$active_code" ]]; then
+      html+="<a class=\"lang-link active\" href=\"${href}\">${label}</a>"
+    else
+      html+="<a class=\"lang-link\" href=\"${href}\">${label}</a>"
+    fi
+  done
+  printf '%s' "$html"
+}
 
-ALL_LANGS = ["es", "ca", "gl", "eu", "en", "pt", "sv"]
+write_template_prefix() {
+  local html_lang="$1"
+  local page_title="$2"
+  local lang_bar_html="$3"
+  local brand_title="$4"
+  local brand_subtitle="$5"
+  local search_placeholder="$6"
+  local footer_text="$7"
+  local theme_label="$8"
 
-
-def make_lang_links(active_code, is_root=False):
-    links = []
-    for code in ALL_LANGS:
-        label = code.upper()
-        if is_root:
-            href = f"{code}/index.html"
-        elif code == active_code:
-            href = "index.html"
-        else:
-            href = f"../{code}/index.html"
-        links.append((label, href, code == active_code))
-    return links
-
-
-EDITIONS = [
-    {
-        "code": "es",
-        "dir": os.path.join(BOOK_DIR, "es"),
-        "out_path": os.path.join(BOOK_DIR, "es", "index.html"),
-        "html_lang": "es",
-        "page_title": "El Libro de Ridgun — Guía Completa del Lenguaje",
-        "brand_title": "El Libro de Ridgun",
-        "brand_subtitle": "De cero a experto en programación funcional tabular y de sistemas",
-        "search_placeholder": "Buscar en el libro (ej. ||, Tensor, RMM2, TCO...)",
-        "footer_text": "9 capítulos (00–08) · Español",
-        "theme_label": "☀️ / 🌙 Tema",
-        "copy_label": "Copiar",
-        "copied_label": "¡Copiado!",
-        "prev_label": "&larr; Capítulo anterior",
-        "next_label": "Siguiente capítulo &rarr;",
-        "search_hits_label": "Resultados para",
-        "search_empty_label": "No se encontraron coincidencias para",
-        "chapter_prefix_re": r"^Cap[íi]tulo\s+\d+\s*[:—-]\s*",
-        "lang_links": make_lang_links("es"),
-    },
-    {
-        "code": "ca",
-        "dir": os.path.join(BOOK_DIR, "ca"),
-        "out_path": os.path.join(BOOK_DIR, "ca", "index.html"),
-        "html_lang": "ca",
-        "page_title": "El Llibre de Ridgun — Guia Completa del Llenguatge",
-        "brand_title": "El Llibre de Ridgun",
-        "brand_subtitle": "De zero a expert en programació funcional tabular i de sistemes",
-        "search_placeholder": "Cerca al llibre (ex. ||, Tensor, RMM2, TCO...)",
-        "footer_text": "9 capítols (00–08) · Català",
-        "theme_label": "☀️ / 🌙 Tema",
-        "copy_label": "Copia",
-        "copied_label": "Copiat!",
-        "prev_label": "&larr; Capítol anterior",
-        "next_label": "Capítol següent &rarr;",
-        "search_hits_label": "Resultats per a",
-        "search_empty_label": "No s'han trobat coincidències per a",
-        "chapter_prefix_re": r"^Cap[íi]tol\s+\d+\s*[:—-]\s*",
-        "lang_links": make_lang_links("ca"),
-    },
-    {
-        "code": "gl",
-        "dir": os.path.join(BOOK_DIR, "gl"),
-        "out_path": os.path.join(BOOK_DIR, "gl", "index.html"),
-        "html_lang": "gl",
-        "page_title": "O Libro de Ridgun — Guía Completa da Linguaxe",
-        "brand_title": "O Libro de Ridgun",
-        "brand_subtitle": "De cero a experto en programación funcional tabular e de sistemas",
-        "search_placeholder": "Buscar no libro (ex. ||, Tensor, RMM2, TCO...)",
-        "footer_text": "9 capítulos (00–08) · Galego",
-        "theme_label": "☀️ / 🌙 Tema",
-        "copy_label": "Copiar",
-        "copied_label": "Copiado!",
-        "prev_label": "&larr; Capítulo anterior",
-        "next_label": "Seguinte capítulo &rarr;",
-        "search_hits_label": "Resultados para",
-        "search_empty_label": "Non se atoparon coincidencias para",
-        "chapter_prefix_re": r"^Cap[íi]tulo\s+\d+\s*[:—-]\s*",
-        "lang_links": make_lang_links("gl"),
-    },
-    {
-        "code": "eu",
-        "dir": os.path.join(BOOK_DIR, "eu"),
-        "out_path": os.path.join(BOOK_DIR, "eu", "index.html"),
-        "html_lang": "eu",
-        "page_title": "Ridgun Liburua — Lengoaiaren Gida Osoa",
-        "brand_title": "Ridgun Liburua",
-        "brand_subtitle": "Hutsetik aditura taula bidezko programazio funtzional eta sistemikoan",
-        "search_placeholder": "Bilatu liburuan (adib. ||, Tensor, RMM2, TCO...)",
-        "footer_text": "9 kapitulu (00–08) · Euskara",
-        "theme_label": "☀️ / 🌙 Gaia",
-        "copy_label": "Kopiatu",
-        "copied_label": "Kopiatuta!",
-        "prev_label": "&larr; Aurreko kapitulua",
-        "next_label": "Hurrengo kapitulua &rarr;",
-        "search_hits_label": "Emaitzak honentzat:",
-        "search_empty_label": "Ez da bat-etortzerik aurkitu honentzat:",
-        "chapter_prefix_re": r"^(?:\d+\.\s*kapitulua|Kapitulua\s+\d+)\s*[:—-]\s*",
-        "lang_links": make_lang_links("eu"),
-    },
-    {
-        "code": "en",
-        "dir": os.path.join(BOOK_DIR, "en"),
-        "out_path": os.path.join(BOOK_DIR, "en", "index.html"),
-        "html_lang": "en",
-        "page_title": "The Ridgun Book — Complete Language Guide",
-        "brand_title": "The Ridgun Book",
-        "brand_subtitle": "From zero to expert in tabular functional and systems programming",
-        "search_placeholder": "Search the book (e.g. ||, Tensor, RMM2, TCO...)",
-        "footer_text": "9 chapters (00–08) · English",
-        "theme_label": "☀️ / 🌙 Theme",
-        "copy_label": "Copy",
-        "copied_label": "Copied!",
-        "prev_label": "&larr; Previous chapter",
-        "next_label": "Next chapter &rarr;",
-        "search_hits_label": "Results for",
-        "search_empty_label": "No matches found for",
-        "chapter_prefix_re": r"^Chapter\s+\d+\s*[:—-]\s*",
-        "lang_links": make_lang_links("en"),
-    },
-    {
-        "code": "pt",
-        "dir": os.path.join(BOOK_DIR, "pt"),
-        "out_path": os.path.join(BOOK_DIR, "pt", "index.html"),
-        "html_lang": "pt",
-        "page_title": "O Livro do Ridgun — Guia Completo da Linguagem",
-        "brand_title": "O Livro do Ridgun",
-        "brand_subtitle": "Do zero a especialista em programação funcional tabular e de sistemas",
-        "search_placeholder": "Pesquisar no livro (ex. ||, Tensor, RMM2, TCO...)",
-        "footer_text": "9 capítulos (00–08) · Português",
-        "theme_label": "☀️ / 🌙 Tema",
-        "copy_label": "Copiar",
-        "copied_label": "Copiado!",
-        "prev_label": "&larr; Capítulo anterior",
-        "next_label": "Próximo capítulo &rarr;",
-        "search_hits_label": "Resultados para",
-        "search_empty_label": "Nenhuma correspondência encontrada para",
-        "chapter_prefix_re": r"^Cap[íi]tulo\s+\d+\s*[:—-]\s*",
-        "lang_links": make_lang_links("pt"),
-    },
-    {
-        "code": "sv",
-        "dir": os.path.join(BOOK_DIR, "sv"),
-        "out_path": os.path.join(BOOK_DIR, "sv", "index.html"),
-        "html_lang": "sv",
-        "page_title": "Boken om Ridgun — Komplett Språkguide",
-        "brand_title": "Boken om Ridgun",
-        "brand_subtitle": "Från noll till expert på tabulär funktionell och systemprogrammering",
-        "search_placeholder": "Sök i boken (t.ex. ||, Tensor, RMM2, TCO...)",
-        "footer_text": "9 kapitel (00–08) · Svenska",
-        "theme_label": "☀️ / 🌙 Tema",
-        "copy_label": "Kopiera",
-        "copied_label": "Kopierad!",
-        "prev_label": "&larr; Föregående kapitel",
-        "next_label": "Nästa kapitel &rarr;",
-        "search_hits_label": "Resultat för",
-        "search_empty_label": "Inga träffar hittades för",
-        "chapter_prefix_re": r"^Kapitel\s+\d+\s*[:—-]\s*",
-        "lang_links": make_lang_links("sv"),
-    },
-    {
-        "code": "root",
-        "dir": os.path.join(BOOK_DIR, "es"),
-        "out_path": os.path.join(BOOK_DIR, "index.html"),
-        "html_lang": "es",
-        "page_title": "El Libro de Ridgun — Guía Completa del Lenguaje",
-        "brand_title": "El Libro de Ridgun",
-        "brand_subtitle": "De cero a experto en programación funcional tabular y de sistemas",
-        "search_placeholder": "Buscar en el libro (ej. ||, Tensor, RMM2, TCO...)",
-        "footer_text": "9 capítulos (00–08) · Español",
-        "theme_label": "☀️ / 🌙 Tema",
-        "copy_label": "Copiar",
-        "copied_label": "¡Copiado!",
-        "prev_label": "&larr; Capítulo anterior",
-        "next_label": "Siguiente capítulo &rarr;",
-        "search_hits_label": "Resultados para",
-        "search_empty_label": "No se encontraron coincidencias para",
-        "chapter_prefix_re": r"^Cap[íi]tulo\s+\d+\s*[:—-]\s*",
-        "lang_links": make_lang_links("es", is_root=True),
-    },
-]
-
-HTML_TEMPLATE = """<!DOCTYPE html>
-<html lang="__HTML_LANG__" data-theme="dark">
+  cat <<EOF
+<!DOCTYPE html>
+<html lang="${html_lang}" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>__PAGE_TITLE__</title>
+  <title>${page_title}</title>
   <style>
     :root, [data-theme="dark"] {
       --bg: #0f141c;
@@ -582,18 +433,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <div class="brand">
       <div class="brand-top">
         <span class="brand-badge">Ridgun v0.9.3</span>
-        <div class="lang-bar">__LANG_BAR_HTML__</div>
+        <div class="lang-bar">${lang_bar_html}</div>
       </div>
-      <h1>__BRAND_TITLE__</h1>
-      <p>__BRAND_SUBTITLE__</p>
+      <h1>${brand_title}</h1>
+      <p>${brand_subtitle}</p>
     </div>
     <div class="search-box">
-      <input type="search" id="searchInput" placeholder="__SEARCH_PLACEHOLDER__" />
+      <input type="search" id="searchInput" placeholder="${search_placeholder}" />
     </div>
     <ul class="nav-list" id="navList"></ul>
     <div class="sidebar-footer">
-      <span>__FOOTER_TEXT__</span>
-      <button class="theme-btn" id="themeBtn" type="button">__THEME_LABEL__</button>
+      <span>${footer_text}</span>
+      <button class="theme-btn" id="themeBtn" type="button">${theme_label}</button>
     </div>
   </aside>
 
@@ -602,8 +453,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   </main>
 
   <script>
-    const CHAPTERS = __CHAPTERS_JSON__;
-    const UI_STRINGS = __UI_STRINGS_JSON__;
+EOF
+}
+
+write_template_suffix() {
+  cat <<'EOF'
     let currentIdx = 0;
 
     function escapeHtml(s) {
@@ -611,11 +465,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
 
     function highlightRidgun(code) {
-      return code.split("\\n").map(line => {
+      return code.split("\n").map(line => {
         const comIdx = (() => {
           let inD = false, inS = false;
           for (let i = 0; i < line.length - 1; i++) {
-            if (line[i] === "\\\\") { i++; continue; }
+            if (line[i] === "\\") { i++; continue; }
             if (line[i] === '"' && !inS) inD = !inD;
             else if (line[i] === "'" && !inD) inS = !inS;
             else if (!inD && !inS && line[i] === "-" && line[i+1] === "-") return i;
@@ -626,37 +480,37 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         const comPart = comIdx >= 0 ? line.slice(comIdx) : "";
         let html = escapeHtml(codePart);
         // Strings
-        html = html.replace(/("([^"\\\\]|\\\\.)*"|'[^']*')/g, '<span class="rg-str">$1</span>');
+        html = html.replace(/("([^"\\]|\\.)*"|'[^']*')/g, '<span class="rg-str">$1</span>');
         // Keywords
-        html = html.replace(/\\b(fn|op|type|import|mut|otherwise|with|region|do|global|context|shared|atomic|hardware|echo|and|or|xor|not)\\b/g, '<span class="rg-kw">$1</span>');
+        html = html.replace(/\b(fn|op|type|import|mut|otherwise|with|region|do|global|context|shared|atomic|hardware|echo|and|or|xor|not)\b/g, '<span class="rg-kw">$1</span>');
         // Types & constructors
-        html = html.replace(/\\b(Int|Real|String|Char|Bool|Tensor|Option|Result|Some|None|Ok|Err|OutOfMemory|Timeout|True|False)\\b/g, '<span class="rg-ty">$1</span>');
+        html = html.replace(/\b(Int|Real|String|Char|Bool|Tensor|Option|Result|Some|None|Ok|Err|OutOfMemory|Timeout|True|False)\b/g, '<span class="rg-ty">$1</span>');
         // Operators
-        html = html.replace(/(::|=&gt;|-&gt;|&lt;-|\\|\\|\\.|\\|\\||\\|\\.)/g, '<span class="rg-op">$1</span>');
+        html = html.replace(/(::|=&gt;|-&gt;|&lt;-|\|\|\.|\|\||\|\.)/g, '<span class="rg-op">$1</span>');
         // Numbers & byte units
-        html = html.replace(/\\b(0x[0-9a-fA-F_]+|[0-9][0-9_]*(_KB|_MB|_GB)?(\\.[0-9]+)?)\\b/g, '<span class="rg-num">$1</span>');
+        html = html.replace(/\b(0x[0-9a-fA-F_]+|[0-9][0-9_]*(_KB|_MB|_GB)?(\.[0-9]+)?)\b/g, '<span class="rg-num">$1</span>');
         if (comPart) {
           html += '<span class="rg-com">' + escapeHtml(comPart) + '</span>';
         }
         return html;
-      }).join("\\n");
+      }).join("\n");
     }
 
     function formatInline(text) {
       let out = escapeHtml(text);
       out = out.replace(/`([^`]+)`/g, "<code>$1</code>");
-      out = out.replace(/\\*\\*([^*]+)\\*\\*/g, "<strong>$1</strong>");
-      out = out.replace(/\\*([^*]+)\\*/g, "<em>$1</em>");
-      out = out.replace(/\\$O\\(([^)]+)\\)\\$/g, "<code>O($1)</code>");
-      out = out.replace(/\\$\\\\rightarrow\\$/g, "&rarr;");
-      out = out.replace(/\\$1024\\^2\\$/g, "1024<sup>2</sup>");
-      out = out.replace(/\\$1024\\^3\\$/g, "1024<sup>3</sup>");
-      out = out.replace(/\\$1024\\$/g, "1024");
+      out = out.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+      out = out.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+      out = out.replace(/\$O\(([^)]+)\)\$/g, "<code>O($1)</code>");
+      out = out.replace(/\$\\rightarrow\$/g, "&rarr;");
+      out = out.replace(/\$1024\^2\$/g, "1024<sup>2</sup>");
+      out = out.replace(/\$1024\^3\$/g, "1024<sup>3</sup>");
+      out = out.replace(/\$1024\$/g, "1024");
       return out;
     }
 
     function renderMarkdown(md) {
-      const lines = md.split("\\n");
+      const lines = md.split("\n");
       let html = "";
       let i = 0;
       while (i < lines.length) {
@@ -671,7 +525,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             i++;
           }
           i++; // skip closing ```
-          const rawCode = buf.join("\\n");
+          const rawCode = buf.join("\n");
           const bodyHtml = (lang === "ridgun" || lang === "") ? highlightRidgun(rawCode) : escapeHtml(rawCode);
           html += `<div class="code-wrapper"><div class="code-header"><span>${escapeHtml(lang)}</span><button class="copy-btn" onclick="copyCode(this)">${escapeHtml(UI_STRINGS.copy_label)}</button></div><pre data-raw="${ encodeURIComponent(rawCode) }"><code>${bodyHtml}</code></pre></div>`;
           continue;
@@ -699,7 +553,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           continue;
         }
         // Table
-        if (line.trim().startsWith("|") && i + 1 < lines.length && /^\\|[\\s:-]+\\|/.test(lines[i+1].trim())) {
+        if (line.trim().startsWith("|") && i + 1 < lines.length && /^\|[\s:-]+\|/.test(lines[i+1].trim())) {
           const headers = line.trim().slice(1, -1).split("|").map(c => formatInline(c.trim()));
           i += 2;
           const rows = [];
@@ -715,27 +569,27 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         if (line.startsWith(">")) {
           const qLines = [];
           while (i < lines.length && lines[i].startsWith(">")) {
-            qLines.push(lines[i].replace(/^>\\s?/, ""));
+            qLines.push(lines[i].replace(/^>\s?/, ""));
             i++;
           }
           html += `<blockquote><p>${qLines.map(formatInline).join("<br/>")}</p></blockquote>`;
           continue;
         }
         // Unordered list
-        if (/^\\s*-\\s+/.test(line)) {
+        if (/^\s*-\s+/.test(line)) {
           const items = [];
-          while (i < lines.length && /^\\s*-\\s+/.test(lines[i])) {
-            items.push(formatInline(lines[i].replace(/^\\s*-\\s+/, "")));
+          while (i < lines.length && /^\s*-\s+/.test(lines[i])) {
+            items.push(formatInline(lines[i].replace(/^\s*-\s+/, "")));
             i++;
           }
           html += "<ul>" + items.map(it => `<li>${it}</li>`).join("") + "</ul>";
           continue;
         }
         // Ordered list
-        if (/^\\s*\\d+\\.\\s+/.test(line)) {
+        if (/^\s*\d+\.\s+/.test(line)) {
           const items = [];
-          while (i < lines.length && /^\\s*\\d+\\.\\s+/.test(lines[i])) {
-            items.push(formatInline(lines[i].replace(/^\\s*\\d+\\.\\s+/, "")));
+          while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) {
+            items.push(formatInline(lines[i].replace(/^\s*\d+\.\s+/, "")));
             i++;
           }
           html += "<ol>" + items.map(it => `<li>${it}</li>`).join("") + "</ol>";
@@ -748,7 +602,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
         // Paragraph
         const pLines = [];
-        while (i < lines.length && lines[i].trim() && !lines[i].startsWith("#") && !lines[i].startsWith("```") && !lines[i].startsWith(">") && !lines[i].trim().startsWith("|") && !/^---+$/.test(lines[i].trim()) && !/^\\s*(-|\\d+\\.)\\s+/.test(lines[i])) {
+        while (i < lines.length && lines[i].trim() && !lines[i].startsWith("#") && !lines[i].startsWith("```") && !lines[i].startsWith(">") && !lines[i].trim().startsWith("|") && !/^---+$/.test(lines[i].trim()) && !/^\s*(-\s+|\d+\.\s+)/.test(lines[i])) {
           pLines.push(formatInline(lines[i]));
           i++;
         }
@@ -805,10 +659,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       }
       const hits = [];
       CHAPTERS.forEach((ch, idx) => {
-        const lines = ch.markdown.split("\\n");
+        const lines = ch.markdown.split("\n");
         for (const l of lines) {
           if (l.toLowerCase().includes(q)) {
-            hits.push({ idx, title: ch.title, snippet: l.replace(/^[#>*-]+\\s*/, "").slice(0, 140) });
+            hits.push({ idx, title: ch.title, snippet: l.replace(/^[#>*-]+\s*/, "").slice(0, 140) });
             break;
           }
         }
@@ -833,63 +687,172 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   </script>
 </body>
 </html>
-"""
+EOF
+}
 
+build_edition() {
+  local code="$1"
+  local target_dir="$2"
+  local out_path="$3"
+  local html_lang="$4"
+  local page_title="$5"
+  local brand_title="$6"
+  local brand_subtitle="$7"
+  local search_placeholder="$8"
+  local footer_text="$9"
+  local theme_label="${10}"
+  local copy_label="${11}"
+  local copied_label="${12}"
+  local prev_label="${13}"
+  local next_label="${14}"
+  local search_hits_label="${15}"
+  local search_empty_label="${16}"
+  local chapter_prefix_re="${17}"
+  local is_root="${18}"
 
-def build_edition(ed):
-    target_dir = ed["dir"]
-    if not os.path.isdir(target_dir):
-        return
-    chapter_files = sorted(glob.glob(os.path.join(target_dir, "[0-9][0-9]-*.md")))
-    if not chapter_files:
-        return
-    chapters = []
-    for idx, path in enumerate(chapter_files, start=0):
-        with open(path, "r", encoding="utf-8") as f:
-            md = f.read()
-        first_line = md.splitlines()[0] if md.splitlines() else f"Chapter {idx:02d}"
-        title = first_line.lstrip("# ").strip()
-        short_title = re.sub(ed["chapter_prefix_re"], "", title)
-        slug = os.path.basename(path).replace(".md", "")
-        chapters.append({
-            "num": f"{idx:02d}",
-            "slug": slug,
-            "file": os.path.basename(path),
-            "title": title,
-            "short_title": short_title,
-            "markdown": md,
-        })
-    lang_bar_html = "".join(
-        f'<a class="lang-link{" active" if active else ""}" href="{href}">{label}</a>'
-        for label, href, active in ed["lang_links"]
-    )
-    ui_strings = {
-        "copy_label": ed["copy_label"],
-        "copied_label": ed["copied_label"],
-        "prev_label": ed["prev_label"],
-        "next_label": ed["next_label"],
-        "search_hits_label": ed["search_hits_label"],
-        "search_empty_label": ed["search_empty_label"],
-    }
-    out_html = (
-        HTML_TEMPLATE
-        .replace("__HTML_LANG__", ed["html_lang"])
-        .replace("__PAGE_TITLE__", ed["page_title"])
-        .replace("__LANG_BAR_HTML__", lang_bar_html)
-        .replace("__BRAND_TITLE__", ed["brand_title"])
-        .replace("__BRAND_SUBTITLE__", ed["brand_subtitle"])
-        .replace("__SEARCH_PLACEHOLDER__", ed["search_placeholder"])
-        .replace("__FOOTER_TEXT__", ed["footer_text"])
-        .replace("__THEME_LABEL__", ed["theme_label"])
-        .replace("__CHAPTERS_JSON__", json.dumps(chapters, ensure_ascii=False))
-        .replace("__UI_STRINGS_JSON__", json.dumps(ui_strings, ensure_ascii=False))
-    )
-    out_path = ed["out_path"]
-    with open(out_path, "w", encoding="utf-8") as f:
-        f.write(out_html)
-    print(f"[build_book] Generated {out_path} ({len(out_html)} bytes, {len(chapters)} chapters)")
+  [[ -d "$target_dir" ]] || return 0
+  shopt -s nullglob
+  local chapter_files=("$target_dir"/[0-9][0-9]-*.md)
+  shopt -u nullglob
+  [[ ${#chapter_files[@]} -gt 0 ]] || return 0
 
+  # Also regenerate concatenated BOOK.md when present
+  if [[ -f "$target_dir/BOOK.md" ]]; then
+    cat "${chapter_files[@]}" > "$target_dir/BOOK.md"
+  fi
 
-if __name__ == "__main__":
-    for edition in EDITIONS:
-        build_edition(edition)
+  local chapters_json="["
+  local idx=0
+  for path in "${chapter_files[@]}"; do
+    local num
+    printf -v num "%02d" "$idx"
+    local base
+    base="$(basename "$path")"
+    local slug="${base%.md}"
+    local first_line
+    first_line="$(head -n 1 "$path")"
+    local title="${first_line#\# }"
+    local short_title
+    short_title="$(printf '%s' "$title" | sed -E "s/${chapter_prefix_re}//")"
+    local item_json
+    item_json="$(jq -c -Rs \
+      --arg num "$num" \
+      --arg slug "$slug" \
+      --arg file "$base" \
+      --arg title "$title" \
+      --arg short_title "$short_title" \
+      '{num: $num, slug: $slug, file: $file, title: $title, short_title: $short_title, markdown: .}' < "$path")"
+    if [[ $idx -gt 0 ]]; then
+      chapters_json+=", "
+    fi
+    chapters_json+="$item_json"
+    idx=$((idx + 1))
+  done
+  chapters_json+="]"
+
+  local ui_strings_json
+  ui_strings_json="$(jq -c -n \
+    --arg copy_label "$copy_label" \
+    --arg copied_label "$copied_label" \
+    --arg prev_label "$prev_label" \
+    --arg next_label "$next_label" \
+    --arg search_hits_label "$search_hits_label" \
+    --arg search_empty_label "$search_empty_label" \
+    '{copy_label: $copy_label, copied_label: $copied_label, prev_label: $prev_label, next_label: $next_label, search_hits_label: $search_hits_label, search_empty_label: $search_empty_label}')"
+
+  local active_lang="$code"
+  [[ "$code" == "root" ]] && active_lang="es"
+  local lang_bar_html
+  lang_bar_html="$(make_lang_bar_html "$active_lang" "$is_root")"
+
+  {
+    write_template_prefix "$html_lang" "$page_title" "$lang_bar_html" "$brand_title" "$brand_subtitle" "$search_placeholder" "$footer_text" "$theme_label"
+    printf '    const CHAPTERS = %s;\n' "$chapters_json"
+    printf '    const UI_STRINGS = %s;\n' "$ui_strings_json"
+    write_template_suffix
+  } > "$out_path"
+
+  local bytes
+  bytes="$(wc -c < "$out_path")"
+  echo "[build_book] Generated ${out_path} (${bytes} bytes, ${idx} chapters)"
+}
+
+build_edition "es" "$BOOK_DIR/es" "$BOOK_DIR/es/index.html" "es" \
+  "El Libro de Ridgun — Guía Completa del Lenguaje" \
+  "El Libro de Ridgun" \
+  "De cero a experto en programación funcional tabular y de sistemas" \
+  "Buscar en el libro (ej. ||, Tensor, RMM2, TCO...)" \
+  "9 capítulos (00–08) · Español" \
+  "☀️ / 🌙 Tema" "Copiar" "¡Copiado!" "&larr; Capítulo anterior" "Siguiente capítulo &rarr;" \
+  "Resultados para" "No se encontraron coincidencias para" \
+  "^Cap(í|i)tulo[[:space:]]+[0-9]+[[:space:]]*[:—-][[:space:]]*" "false"
+
+build_edition "ca" "$BOOK_DIR/ca" "$BOOK_DIR/ca/index.html" "ca" \
+  "El Llibre de Ridgun — Guia Completa del Llenguatge" \
+  "El Llibre de Ridgun" \
+  "De zero a expert en programació funcional tabular i de sistemes" \
+  "Cerca al llibre (ex. ||, Tensor, RMM2, TCO...)" \
+  "9 capítols (00–08) · Català" \
+  "☀️ / 🌙 Tema" "Copia" "Copiat!" "&larr; Capítol anterior" "Capítol següent &rarr;" \
+  "Resultats per a" "No s'han trobat coincidències per a" \
+  "^Cap(í|i)tol[[:space:]]+[0-9]+[[:space:]]*[:—-][[:space:]]*" "false"
+
+build_edition "gl" "$BOOK_DIR/gl" "$BOOK_DIR/gl/index.html" "gl" \
+  "O Libro de Ridgun — Guía Completa da Linguaxe" \
+  "O Libro de Ridgun" \
+  "De cero a experto en programación funcional tabular e de sistemas" \
+  "Buscar no libro (ex. ||, Tensor, RMM2, TCO...)" \
+  "9 capítulos (00–08) · Galego" \
+  "☀️ / 🌙 Tema" "Copiar" "Copiado!" "&larr; Capítulo anterior" "Seguinte capítulo &rarr;" \
+  "Resultados para" "Non se atoparon coincidencias para" \
+  "^Cap(í|i)tulo[[:space:]]+[0-9]+[[:space:]]*[:—-][[:space:]]*" "false"
+
+build_edition "eu" "$BOOK_DIR/eu" "$BOOK_DIR/eu/index.html" "eu" \
+  "Ridgun Liburua — Lengoaiaren Gida Osoa" \
+  "Ridgun Liburua" \
+  "Hutsetik aditura taula bidezko programazio funtzional eta sistemikoan" \
+  "Bilatu liburuan (adib. ||, Tensor, RMM2, TCO...)" \
+  "9 kapitulu (00–08) · Euskara" \
+  "☀️ / 🌙 Gaia" "Kopiatu" "Kopiatuta!" "&larr; Aurreko kapitulua" "Hurrengo kapitulua &rarr;" \
+  "Emaitzak honentzat:" "Ez da bat-etortzerik aurkitu honentzat:" \
+  "^([0-9]+\\.[[:space:]]*kapitulua|Kapitulua[[:space:]]+[0-9]+)[[:space:]]*[:—-][[:space:]]*" "false"
+
+build_edition "en" "$BOOK_DIR/en" "$BOOK_DIR/en/index.html" "en" \
+  "The Ridgun Book — Complete Language Guide" \
+  "The Ridgun Book" \
+  "From zero to expert in tabular functional and systems programming" \
+  "Search the book (e.g. ||, Tensor, RMM2, TCO...)" \
+  "9 chapters (00–08) · English" \
+  "☀️ / 🌙 Theme" "Copy" "Copied!" "&larr; Previous chapter" "Next chapter &rarr;" \
+  "Results for" "No matches found for" \
+  "^Chapter[[:space:]]+[0-9]+[[:space:]]*[:—-][[:space:]]*" "false"
+
+build_edition "pt" "$BOOK_DIR/pt" "$BOOK_DIR/pt/index.html" "pt" \
+  "O Livro do Ridgun — Guia Completo da Linguagem" \
+  "O Livro do Ridgun" \
+  "Do zero a especialista em programação funcional tabular e de sistemas" \
+  "Pesquisar no livro (ex. ||, Tensor, RMM2, TCO...)" \
+  "9 capítulos (00–08) · Português" \
+  "☀️ / 🌙 Tema" "Copiar" "Copiado!" "&larr; Capítulo anterior" "Próximo capítulo &rarr;" \
+  "Resultados para" "Nenhuma correspondência encontrada para" \
+  "^Cap(í|i)tulo[[:space:]]+[0-9]+[[:space:]]*[:—-][[:space:]]*" "false"
+
+build_edition "sv" "$BOOK_DIR/sv" "$BOOK_DIR/sv/index.html" "sv" \
+  "Boken om Ridgun — Komplett Språkguide" \
+  "Boken om Ridgun" \
+  "Från noll till expert på tabulär funktionell och systemprogrammering" \
+  "Sök i boken (t.ex. ||, Tensor, RMM2, TCO...)" \
+  "9 kapitel (00–08) · Svenska" \
+  "☀️ / 🌙 Tema" "Kopiera" "Kopierad!" "&larr; Föregående kapitel" "Nästa kapitel &rarr;" \
+  "Resultat för" "Inga träffar hittades för" \
+  "^Kapitel[[:space:]]+[0-9]+[[:space:]]*[:—-][[:space:]]*" "false"
+
+build_edition "root" "$BOOK_DIR/es" "$BOOK_DIR/index.html" "es" \
+  "El Libro de Ridgun — Guía Completa del Lenguaje" \
+  "El Libro de Ridgun" \
+  "De cero a experto en programación funcional tabular y de sistemas" \
+  "Buscar en el libro (ej. ||, Tensor, RMM2, TCO...)" \
+  "9 capítulos (00–08) · Español" \
+  "☀️ / 🌙 Tema" "Copiar" "¡Copiado!" "&larr; Capítulo anterior" "Siguiente capítulo &rarr;" \
+  "Resultados para" "No se encontraron coincidencias para" \
+  "^Cap(í|i)tulo[[:space:]]+[0-9]+[[:space:]]*[:—-][[:space:]]*" "true"

@@ -1,23 +1,23 @@
 ---
-updated: 2026-10-27T12:56
+updated: 2026-10-27T15:37
 active_task: none
 agent_runtime: antigravity
 ---
 # Session state — read this first when resuming
 
 ## Where we are (3 lines max)
-- `TASK-0035` is complete: implemented idiomatic Ridgun pipeline chaining (`->`), left-operand `op`/`fn` invocation (`xs map f -> filter g -> compact l -> results`), sequence mask stages (`-> (+ _ _ +) ->`), explicit unit discarding (`-> ()`), and `_ =`-free side-effect statements (`FR-COMP-014`).
-- Refactored `ridgunc`, `stable`, and all test suites to use `->` pipelines and zero `_ =` bindings, removed the legacy string-mask notation `["+--+"]` / `s["-+-"]` in favor of `(+ _ _ +)` and `s(_ + _)`, and updated `docs/lang/spec.md`, all 7 language editions of the book (`docs/book/*`), and Ridgun instructions/skills.
+- Completed `TASK-0036`: optimized `.rglib` / `module ::` compile-time performance in `src/main/ridgun/lib/parser.rg` (reducing `stable/main.rg` check time from 10.1 s to 3.4 s and library-importing builds to ~220 ms), replaced `docs/book/build_book.py` with `docs/book/build_book.sh`, and replaced `tests/run.py` with pure Ridgun `tests/run.rg`.
 
 ## Files to load for the active task (nothing else)
-- `docs/road-map/completed/2026-10/TASK-0035-implement-idiomatic-ridgun-pipeline-chaining-infix.md`
+- None (no active task).
 
 ## Last verified facts (tests green? migrations applied? env?)
-- `bin/ridgunc` and `bin/stable` (v0.9.21) bootstrapped in 2 stages and installed.
-- `./bin/stable check` (14/14 modules), `./bin/stable test` (6/6 suites), `python3 tests/run.py` (40/40 promised behaviours), and `aix docs validate` pass with 0 errors.
+- `bin/ridgunc` and `bin/stable` (v0.9.22) bootstrapped in 2 stages and installed.
+- `./bin/stable check` (14/14 modules), `./bin/stable test` (6/6 suites), `./bin/ridgunc run tests/run.rg` (41/41 promised behaviours + 2/2 proposals), and `aix docs validate` pass with 0 errors.
+- Zero `.py` files remain in the repository.
 
 ## Immediate next action
-- Pick the next task from `docs/road-map/pending/next/INDEX.md` or await user instructions.
+- Await next user request or select next task from `docs/road-map/pending/next/INDEX.md`.
 
 ## Blockers / questions for the user
 - None.

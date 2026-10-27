@@ -3,7 +3,7 @@
 | Path | What | Read when |
 |---|---|---|
 | `index.html` | Root interactive HTML book entry point (defaults to Spanish with ES/CA/GL/EU/EN/PT/SV language selector) | Opening the book from the root `docs/book/` folder |
-| `build_book.py` | Builder script that generates `es/index.html`, `ca/index.html`, `gl/index.html`, `eu/index.html`, `en/index.html`, `pt/index.html`, `sv/index.html`, and root `index.html` | After editing any book chapter in `es/`, `ca/`, `gl/`, `eu/`, `en/`, `pt/`, or `sv/` |
+| `build_book.sh` | Pure Bash builder script that generates `es/index.html`, `ca/index.html`, `gl/index.html`, `eu/index.html`, `en/index.html`, `pt/index.html`, `sv/index.html`, and root `index.html` | After editing any book chapter in `es/`, `ca/`, `gl/`, `eu/`, `en/`, `pt/`, or `sv/` |
 | `es/INDEX.md` | El Libro de Ridgun — Edición en Español (Capítulos 00–08 + `es/index.html`) | Reading or updating the Spanish edition of the book |
 | `ca/INDEX.md` | El Llibre de Ridgun — Edició en Català (Capítols 00–08 + `ca/index.html`) | Reading or updating the Catalan edition of the book |
 | `gl/INDEX.md` | O Libro de Ridgun — Edición en Galego (Capítulos 00–08 + `gl/index.html`) | Reading or updating the Galician edition of the book |

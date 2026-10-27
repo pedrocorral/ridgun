@@ -12,7 +12,7 @@ fn :: strict mode => Bool
       strict mode =  True
 
 fn :: project version => String
-      project version =  "0.9.21"
+      project version =  "0.9.22"
 
 fn :: main entry => String
       main entry =  "src/main/ridgun/ridgunc/main.rg"
@@ -34,3 +34,6 @@ fn :: task check all => String
 
 fn :: task verify docs => String
       task verify docs =  "aix docs validate"
+
+fn :: task acceptance => String
+      task acceptance =  "./bin/ridgunc run tests/run.rg"
