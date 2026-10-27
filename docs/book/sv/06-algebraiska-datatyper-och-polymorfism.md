@@ -213,7 +213,7 @@ fn :: beskriv nagot Something => String
 ```
 
 ### 5. Egna generiska typer (`type Result T E`, `type Page T`) och modulnamnrymder (`import ... as`, `mod.Typ`)
-Utöver polymorfa funktioner kan du deklarera **egna generiska summatyper och posttyper** med typparametrar (`A`..`Z`), samt organisera typer med samma namn i olika moduler utan namnkrockar (`module ::`, `import db as d`, `http.Config`, `d.Config`):
+Utöver polymorfa funktioner kan du deklarera **egna generiska summatyper och posttyper** med typparametrar (`A`..`Z`), samt organisera typer, konstruktorer, fält och funktioner med samma namn i olika moduler utan namnkrockar (`module ::`, `import db as d`, `http.Config`, `d.Config`). Varje modul har **strikt importsynlighet i 3 nivåer**: okvalificerade namn slås upp först i **(1) modulens egna deklarationer** (inklusive flera filer som delar `module :: namn`), därefter i **(2) dess direkta `import`-moduler** och sist i **(3) dess transitiva importer**, så att syskonmoduler eller huvudapplikationen aldrig läcker in i importerade bibliotek:
 
 ```ridgun
 type Result T E = Ok T | Err E

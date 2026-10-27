@@ -628,6 +628,21 @@ type AppConfig        = host: String, port: Int
 expand type AppConfig = tls: Bool
 ```
 
+#### Module Namespaces, Qualified Access & Strict Per-Module Import Visibility (`FR-COMP-012`)
+
+Every `.rg` file or `.rglib` bundle defines a module namespace (derived from its file stem or an explicit `module :: <name>` header) and may import other modules via `import <mod>` or `import <mod> as <alias>`.
+
+1. **Multi-File Modules (`module :: <name>`)**:
+   - Multiple files declaring the same `module :: <name>` header (for example, `orm.rg` and `orm_changeset.rg` both starting with `module :: orm`) share a single logical module namespace `orm` and see each other's types, constructors, record fields, and functions directly.
+2. **Qualified Access (`mod.Type`, `mod.Constructor`, `mod.field`, `mod.fn`)**:
+   - Exported types, Sum ADT constructors, Product Record field accessors, record updates (`with`), and functions can be referenced with a `<mod_or_alias>.` prefix (`http.Config`, `db.Status`, `http.Ok 200`, `http.port cfg`, `http.check status cfg`).
+3. **Strict 3-Tier Per-Module Unqualified Name Resolution**:
+   - Each module `M` (including the root application module) resolves unqualified types, constructors, record fields, functions, and multi-word calls strictly against `M`'s own import graph in three priority tiers:
+     - **Tier 1 — Own Module (`M`)**: Declarations in `M` itself (across all files sharing `module :: M`) always take highest priority.
+     - **Tier 2 — Direct Imports of `M`**: If `M` does not define the name, `ridgunc` searches modules directly imported by `M` (`import D`). If a single direct import `D` defines the name, it resolves unambiguously to `D`'s declaration even if other modules in the compilation unit (transitive dependencies, sibling modules, or the root application) also define the same name. If two or more direct imports of `M` define the same name and `M` does not define it, unqualified references are rejected as ambiguous (`__ambiguous__.<name>`) and must be qualified (`d1.<name>` vs `d2.<name>`).
+     - **Tier 3 — Transitive Imports of `M`**: Consulted only when neither Tier 1 nor Tier 2 defines the name. Consequently, a direct import in `M` (`import json`) cleanly shadows a transitive helper (`codec.json_get_str` imported internally by `solstice`) without forcing `solstice` or `M` to rename or qualify its calls.
+   - **Isolation from Unimported Sibling Modules and the Root Application**: Declarations defined only in modules that `M` has not imported (neither directly nor transitively) — including sibling libraries imported by the root application or declarations in the root application itself when compiling an imported library `M` — are invisible to unqualified lookup inside `M` (`__unimported__.<name>`).
+
 ---
 
 ## Unified `=` Grammar (`(none)`, `|`, `||`) & Local Variables (`FR-COMP-003`)

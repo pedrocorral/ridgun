@@ -213,7 +213,7 @@ fn :: deskribatu zerbait Something => String
 ```
 
 ### 5. Mota generiko propioak (`type Result T E`, `type Page T`) eta moduluen izen-espazioak (`import ... as`, `mod.Mota`)
-Funtzio polimorfikoez gain, **zure batura-mota eta erregistro generiko propioak** deklara ditzakezu mota-parametroekin (`A`..`Z`), baita izen bereko motak modulu ezberdinetan talkarik gabe antolatu ere (`module ::`, `import db as d`, `http.Config`, `d.Config`):
+Funtzio polimorfikoez gain, **zure batura-mota eta erregistro generiko propioak** deklara ditzakezu mota-parametroekin (`A`..`Z`), baita izen bereko motak, eraikitzaileak, eremuak eta funtzioak modulu ezberdinetan talkarik gabe antolatu ere (`module ::`, `import db as d`, `http.Config`, `d.Config`). Modulu bakoitzak **3 mailako inportazio-ikusgarritasun zorrotza** du: aurrizkirik gabeko izenak lehenik **(1) bere deklarazioetan** bilatzen ditu (`module :: izena` partekatzen duten fitxategi guztiak barne), ondoren **(2) bere `import` zuzenen artean** eta azkenik **(3) inportazio iragankorretan**, inportatu gabeko moduluek edo aplikazio nagusiak liburutegi bat inoiz kutsa ez dezaten:
 
 ```ridgun
 type Emaitza T E = Arrakasta T | Hutsegitea E

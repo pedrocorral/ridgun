@@ -213,7 +213,7 @@ fn :: descriure algo Something => String
 ```
 
 ### 5. Tipus genèrics propis (`type Result T E`, `type Page T`) i espais de noms de mòdul (`import ... as`, `mod.Tipus`)
-A més de funcions polimòrfiques, pots declarar **els teus propis tipus suma i registres genèrics** amb paràmetres de tipus (`A`..`Z`), així com organitzar tipus amb el mateix nom en diferents mòduls sense col·lisió (`module ::`, `import db as d`, `http.Config`, `d.Config`):
+A més de funcions polimòrfiques, pots declarar **els teus propis tipus suma i registres genèrics** amb paràmetres de tipus (`A`..`Z`), així com organitzar tipus, constructors, camps i funcions amb el mateix nom en diferents mòduls sense col·lisió (`module ::`, `import db as d`, `http.Config`, `d.Config`). Cada mòdul té **visibilitat estricta per importació en 3 nivells**: resol els noms sense prefix cercant primer en **(1) les seves pròpies declaracions** (incloent múltiples fitxers amb el mateix `module :: nom`), després en **(2) els seus `import` directes** i només en últim lloc en **(3) els seus `import` transitius**, de manera que altres mòduls germans o l'aplicació principal mai contaminen una llibreria importada:
 
 ```ridgun
 type Resultat T E = Exit T | Fallada E

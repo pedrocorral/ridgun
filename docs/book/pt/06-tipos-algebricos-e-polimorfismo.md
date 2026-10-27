@@ -213,7 +213,7 @@ fn :: descrever algo Something => String
 ```
 
 ### 5. Tipos genéricos próprios (`type Result T E`, `type Page T`) e espaços de nomes de módulo (`import ... as`, `mod.Tipo`)
-Além de funções polimórficas, pode declarar **os seus próprios tipos soma e registos genéricos** com parâmetros de tipo (`A`..`Z`), bem como organizar tipos com o mesmo nome em diferentes módulos sem colisão (`module ::`, `import db as d`, `http.Config`, `d.Config`):
+Além de funções polimórficas, pode declarar **os seus próprios tipos soma e registos genéricos** com parâmetros de tipo (`A`..`Z`), bem como organizar tipos, construtores, campos e funções com o mesmo nome em diferentes módulos sem colisão (`module ::`, `import db as d`, `http.Config`, `d.Config`). Cada módulo possui **visibilidade estrita por importação em 3 níveis**: resolve os nomes sem prefixo procurando primeiro em **(1) as suas próprias declarações** (incluindo múltiplos ficheiros que partilham `module :: nome`), depois em **(2) os seus `import` diretos** e apenas em último lugar em **(3) os seus `import` transitivos**, garantindo que módulos irmãos ou a aplicação principal nunca contaminam uma biblioteca importada:
 
 ```ridgun
 type Resultado T E = Sucesso T | Falha E

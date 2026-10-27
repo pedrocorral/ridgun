@@ -213,7 +213,7 @@ fn :: describe something Something => String
 ```
 
 ### 5. User-Defined Generic Types (`type Result T E`, `type Page T`) and Module Namespaces (`import ... as`, `mod.Type`)
-Beyond polymorphic functions, you can declare **your own generic sum types and generic product records** with uppercase type parameters (`A`..`Z`), and scope identically named types across modules without collision (`module ::`, `import db as d`, `http.Config`, `d.Config`):
+Beyond polymorphic functions, you can declare **your own generic sum types and generic product records** with uppercase type parameters (`A`..`Z`), and scope identically named types, constructors, fields, and functions across modules without collision (`module ::`, `import db as d`, `http.Config`, `d.Config`). Every module has **strict 3-tier per-module import visibility**: it resolves unqualified names first in **(1) its own declarations** (including multi-file modules sharing `module :: name`), next in **(2) its direct `import` modules**, and only last in **(3) its transitive imports**, ensuring sibling modules or the main application never leak into imported libraries:
 
 ```ridgun
 type Result T E = Ok T | Err E

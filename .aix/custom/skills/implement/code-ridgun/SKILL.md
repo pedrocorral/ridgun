@@ -159,8 +159,10 @@ Every `=` (in `fn ::`, `op ::`, local bindings `x =` / `mut x =`, and guard bran
           unwrap result (Err _)           d =  d
     ```
   - `type Option A = Some A | None` is pre-registered as a built-in polymorphic ADT (`RG-062`), so `try receive from ag` works out of the box without redeclaring `Option`.
-- **Module Namespaces, Aliased Imports, and Qualified Types (`FR-COMP-012`)**:
-  - `import http`, `import db as d`, or `module :: http` scopes types, records, constructors, fields, and functions to their module namespace so multiple modules can define `type Config = ...` or `type Status = ...` without collision (`http.Config`, `d.Config`, `http.port cfg`, `http.check status cfg`).
+- **Module Namespaces, Aliased Imports, Qualified Types, and Strict Per-Module Import Visibility (`FR-COMP-012`)**:
+  - `import http`, `import db as d`, or `module :: http` scopes types, records, constructors, fields, and functions to their module namespace so multiple modules can define `type Config = ...`, `type Conn = ...`, or `type Status = ...` without collision (`http.Config`, `d.Config`, `http.port cfg`, `http.check status cfg`).
+  - Multiple files declaring the same `module :: <name>` header share a single logical module namespace.
+  - Each module `M` resolves unqualified names strictly in 3 priority tiers: **Tier 1** (`M`'s own declarations) -> **Tier 2** (`M`'s direct `import` modules; a collision between two direct imports requires `<mod>.<name>`) -> **Tier 3** (`M`'s transitive imports). Unimported sibling modules and the root application never leak into `M`.
 - **Sum ADTs, Shared Constructor Names & Type-Name Variants (`FR-COMP-005`)**:
   - `type Shape = Circle Int | Rect Int Int` or polymorphic `type Option A = None | Some A`.
   - Multiple `type` declarations can share variant constructor names (such as `Error`, `Var`, `Lit`, `None`) with the same or different arities; the typechecker resolves them by expected column type and argument types.

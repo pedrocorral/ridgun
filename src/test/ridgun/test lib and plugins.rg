@@ -473,5 +473,23 @@ fn :: main => ()
         rc_a2_run = shell exec "target/test_lib_work/bench_a2 > target/test_lib_work/bench_a2_out.txt 2>&1"
         assert int equals rc_a2_run 0 "RG-094 Argon2id run"
         assert str eq (str trim (read file "target/test_lib_work/bench_a2_out.txt")) "argon2id_ok" "RG-094 Argon2id < 1100 ms"
+        -- 10. FR-COMP-012 strict per-module import visibility:
+        --     (a) orm imports db_abstract (Conn, Value, query) while solstice and root app also define Conn, Value, Changeset, query
+        --     (b) web_sdk imports codec_hlp (json_get_str :: String String => String) while root app imports web_sdk and json_lib (json_get_str :: JsonDoc String => String)
+        --     (c) unimported sibling module mod_b is invisible inside mod_a
+        _ = write file "target/test_lib_work/db_abstract.rg" "module :: db_abstract\n\ntype Conn = db_fd: Int\ntype Value = VInt Int | VText String\n\nfn :: query Conn String [Value] => String\n      query c sql _ = \"db:\" + (int_to_str (db_fd c)) + \":\" + sql\n"
+        _ = write file "target/test_lib_work/orm.rg" "module :: orm\nimport db_abstract\n\ntype Changeset = orm_valid: Bool\n\nfn :: find by id Conn String Int => String\n      find by id c tbl id = query c tbl [VInt id]\n"
+        _ = write file "target/test_lib_work/codec_hlp.rg" "module :: codec_hlp\n\nfn :: json get str String String => String\n      json get str raw key = \"codec:\" + raw + \":\" + key\n"
+        _ = write file "target/test_lib_work/solstice.rg" "module :: solstice\nimport codec_hlp\n\ntype Conn = http_status: Int\ntype Value = SVal String\ntype Changeset = sol_ok: Bool\n\nfn :: query Conn => Int\n      query c = http_status c\n\nfn :: extract token String => String\n      extract token body = json_get_str body \"tok\"\n"
+        _ = write file "target/test_lib_work/json_lib.rg" "module :: json_lib\n\ntype JsonDoc = JDoc String\n\nfn :: json get str JsonDoc String => String\n      json get str (JDoc s) k = \"json:\" + s + \":\" + k\n"
+        _ = write file "target/test_lib_work/vis_app.rg" "import db_abstract\nimport orm\nimport solstice\nimport json_lib\n\ntype Conn = app_tag: String\n\nfn :: main => ()\n      main =\n        dbc = db_abstract.Conn 7\n        r1 = orm.find_by_id dbc \"users\" 42\n        sc = solstice.Conn 200\n        r2 = solstice.query sc\n        r3 = solstice.extract_token \"payload\"\n        r4 = json_get_str (JDoc \"doc\") \"id\"\n        ac = Conn \"local\"\n        echo (r1 + \"|\" + (int_to_str r2) + \"|\" + r3 + \"|\" + r4 + \"|\" + (app_tag ac))\n"
+        rc_vis_app = shell exec ("\"" + ridgunc_bin + "\" run --strict target/test_lib_work/vis_app.rg > target/test_lib_work/vis_app_out.txt 2>&1")
+        assert int equals rc_vis_app 0 "FR-COMP-012 per-module import visibility run"
+        assert str eq (str trim (read file "target/test_lib_work/vis_app_out.txt")) "db:7:users|200|codec:payload:tok|json:doc:id|local" "FR-COMP-012 per-module import visibility output"
+        _ = write file "target/test_lib_work/mod_b.rg" "module :: mod_b\n\nfn :: secret b only Int => Int\n      secret b only x = x + 99\n"
+        _ = write file "target/test_lib_work/mod_a.rg" "module :: mod_a\n\nfn :: leak attempt Int => Int\n      leak attempt x = secret_b_only x\n"
+        _ = write file "target/test_lib_work/leak_app.rg" "import mod_b\nimport mod_a\n\nfn :: main => ()\n      main =\n        echo (int_to_str (mod_a.leak_attempt 1))\n"
+        rc_leak = shell exec ("\"" + ridgunc_bin + "\" check target/test_lib_work/leak_app.rg > target/test_lib_work/leak_out.txt 2>&1")
+        assert true (rc_leak != 0)
         _ = shell exec "rm -rf target/test_lib_work"
         echo "=== All library compilation, stable plugin & PAL timeout tests passed ==="
