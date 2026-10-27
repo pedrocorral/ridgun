@@ -27,6 +27,11 @@ fn :: arch word bits SysArch => Int
       arch word bits X86_64  =  64
       arch word bits Arm64   =  64
 
+fn :: col tag String String => String
+      col tag tag    code   =
+        esc = char from code 27
+        "[" + esc + "[" + code + "m" + tag + esc + "[0m]"
+
 fn :: resolve stable bin => String
       resolve stable bin
         | is file "target/stable_candidate" = "target/stable_candidate"
@@ -112,7 +117,7 @@ fn :: main => ()
         -- 2. `stable new <app>`: scaffold, check, test, format, compile, built, run, clean, duplicate guard
         st_new_app = shell exec ("cd target/test_lib_work && \"" + stable_bin + "\" new hello_app > new_app.txt")
         assert int equals st_new_app 0 "stable new hello_app"
-        assert ok (str contains (read file "target/test_lib_work/new_app.txt") "[success] Scaffolded Ridgun project 'hello_app'")
+        assert ok (str contains (read file "target/test_lib_work/new_app.txt") ((col tag "success" "32") + " Scaffolded Ridgun project 'hello_app'"))
         assert ok (is file "target/test_lib_work/hello_app/build.rg")
         assert ok (is file "target/test_lib_work/hello_app/src/main/ridgun/hello_app/main.rg")
         assert ok (is file "target/test_lib_work/hello_app/src/test/ridgun/test.rg")
@@ -120,26 +125,26 @@ fn :: main => ()
         -- Duplicate `stable new hello_app` must fail cleanly with [error]
         st_dup_app = shell exec ("cd target/test_lib_work && \"" + stable_bin + "\" new hello_app > dup_app.txt")
         assert int equals st_dup_app 1 "duplicate stable new hello_app returns 1"
-        assert ok (str contains (read file "target/test_lib_work/dup_app.txt") "[error] Project 'hello_app' already exists")
+        assert ok (str contains (read file "target/test_lib_work/dup_app.txt") ((col tag "error" "31") + " Project 'hello_app' already exists"))
         -- `stable check` inside hello_app
         st_chk_app = shell exec ("cd target/test_lib_work/hello_app && \"" + stable_bin + "\" check > chk.txt")
         assert int equals st_chk_app 0 "stable check hello_app"
         chk_out = read file "target/test_lib_work/hello_app/chk.txt"
-        assert ok (str contains chk_out "[info] Checking project 'hello_app'")
-        assert ok (str contains chk_out "[ok]")
-        assert ok (str contains chk_out "[success] Checked 1 module(s) — 0 errors.")
+        assert ok (str contains chk_out ((col tag "info" "36") + " Checking project 'hello_app'"))
+        assert ok (str contains chk_out (col tag "ok" "32"))
+        assert ok (str contains chk_out ((col tag "success" "32") + " Checked 1 module(s) — 0 errors."))
         -- `stable test` inside hello_app
         st_tst_app = shell exec ("cd target/test_lib_work/hello_app && \"" + stable_bin + "\" test > tst.txt")
         assert int equals st_tst_app 0 "stable test hello_app"
         tst_out = read file "target/test_lib_work/hello_app/tst.txt"
-        assert ok (str contains tst_out "[PASS]")
-        assert ok (str contains tst_out "[success] Passed 1/1 test suite(s) — 0 failures.")
+        assert ok (str contains tst_out (col tag "PASS" "32"))
+        assert ok (str contains tst_out ((col tag "success" "32") + " Passed 1/1 test suite(s) — 0 failures."))
         -- `stable format` on an unaligned file + idempotence check
         unaligned_src = "fn :: add pair Int Int => Int\n      add pair x y = x + y\n      add pair 0 y = y\n"
         write file "target/test_lib_work/hello_app/src/main/ridgun/lib/math_util.rg" unaligned_src
         st_fmt1 = shell exec ("cd target/test_lib_work/hello_app && \"" + stable_bin + "\" format src/main/ridgun/lib/math_util.rg > fmt1.txt")
         assert int equals st_fmt1 0 "stable format first pass"
-        assert ok (str contains (read file "target/test_lib_work/hello_app/fmt1.txt") "[fmt]")
+        assert ok (str contains (read file "target/test_lib_work/hello_app/fmt1.txt") (col tag "fmt" "36"))
         formatted_once = read file "target/test_lib_work/hello_app/src/main/ridgun/lib/math_util.rg"
         st_fmt2 = shell exec ("cd target/test_lib_work/hello_app && \"" + stable_bin + "\" format src/main/ridgun/lib/math_util.rg > fmt2.txt")
         assert int equals st_fmt2 0 "stable format second pass (idempotent)"
@@ -148,7 +153,7 @@ fn :: main => ()
         -- `stable compile` (.rgc bytecode emission) and `stable clean`
         st_comp_app = shell exec ("cd target/test_lib_work/hello_app && \"" + stable_bin + "\" compile > comp.txt")
         assert int equals st_comp_app 0 "stable compile hello_app"
-        assert ok (str contains (read file "target/test_lib_work/hello_app/comp.txt") "[rgc]")
+        assert ok (str contains (read file "target/test_lib_work/hello_app/comp.txt") (col tag "rgc" "36"))
         assert ok (is file "target/test_lib_work/hello_app/target/hello_app_main.rgc")
         assert ok (is file "target/test_lib_work/hello_app/target/math_util.rgc")
         st_clean_app = shell exec ("cd target/test_lib_work/hello_app && \"" + stable_bin + "\" clean > clean.txt")
@@ -188,11 +193,11 @@ fn :: main => ()
         -- Add `mathkit` as a local dependency of `hello_app` via `stable add` & `stable deps`
         st_add_dep = shell exec ("cd target/test_lib_work/hello_app && \"" + stable_bin + "\" add ../mathkit > add_dep.txt")
         assert int equals st_add_dep 0 "stable add ../mathkit"
-        assert ok (str contains (read file "target/test_lib_work/hello_app/add_dep.txt") "[dep]")
+        assert ok (str contains (read file "target/test_lib_work/hello_app/add_dep.txt") (col tag "dep" "36"))
         assert ok (is file "target/test_lib_work/hello_app/.stable/deps/mathkit.rglib")
         st_deps_sync = shell exec ("cd target/test_lib_work/hello_app && \"" + stable_bin + "\" deps > deps.txt")
         assert int equals st_deps_sync 0 "stable deps sync"
-        assert ok (str contains (read file "target/test_lib_work/hello_app/deps.txt") "[success] Dependencies synchronized.")
+        assert ok (str contains (read file "target/test_lib_work/hello_app/deps.txt") ((col tag "success" "32") + " Dependencies synchronized."))
         -- 5. Custom Tasks, Multi-Word Tasks, Plugins, and Executable Plugins (`FR-TOOL-003`)
         shell exec "rm -rf target/test_lib_work/web_proj && mkdir -p target/test_lib_work/web_proj/plugins"
         web_build = "fn :: project name => String\n      project name =  \"demo_web\"\n\nfn :: project version => String\n      project version =  \"0.1.0\"\n\nfn :: plugins => [String]\n      plugins =  [\"router\"]\n\nfn :: task serve => String\n      task serve =  \"printf SERVE_OK > target_serve.txt\"\n\nfn :: task db migrate => String\n      task db migrate =  \"printf MIGRATE_OK > target_migrate.txt\"\n"
@@ -234,7 +239,7 @@ fn :: main => ()
         assert ok (str contains info_out "demo_web")
         st_unknown = shell exec ("cd target/test_lib_work/web_proj && \"" + stable_bin + "\" nonexistent_cmd > target_unknown.txt")
         assert int equals st_unknown 1 "unknown command returns exit code 1"
-        assert ok (str contains (read file "target/test_lib_work/web_proj/target_unknown.txt") "[error] Unknown command: 'nonexistent_cmd'")
+        assert ok (str contains (read file "target/test_lib_work/web_proj/target_unknown.txt") ((col tag "error" "31") + " Unknown command: 'nonexistent_cmd'"))
         -- 6. Creative Multi-Angle Stress & Edge-Case Tests for `stable`
         -- 6a. Longest-prefix task disambiguation (`task db` vs `task db migrate` vs `task db migrate rollback`) + extra arg forwarding
         disambig_build = "fn :: project name => String\n      project name =  \"disambig_proj\"\n\nfn :: task db => String\n      task db =  \"echo DB_ROOT:\"\n\nfn :: task db migrate => String\n      task db migrate =  \"echo DB_MIG:\"\n\nfn :: task db migrate rollback => String\n      task db migrate rollback =  \"echo DB_ROLLBACK:\"\n"
@@ -250,6 +255,7 @@ fn :: main => ()
         st_db3 = shell exec ("cd target/test_lib_work/disambig_proj && \"" + stable_bin + "\" db migrate rollback --step=2 > db3.txt")
         assert int equals st_db3 0 "task db migrate rollback with extra args"
         db3_out = read file "target/test_lib_work/disambig_proj/db3.txt"
+        assert ok (str contains db3_out (col tag "task:db migrate rollback" "36"))
         assert ok (str contains db3_out "DB_ROLLBACK: --step=2")
         -- Hidden `.stable/plugins/*.rg` auto-discovery & multi-word task execution
         st_sec = shell exec ("cd target/test_lib_work/disambig_proj && \"" + stable_bin + "\" secret deploy")
@@ -307,7 +313,7 @@ fn :: main => ()
         write file "target/test_lib_work/broken_proj/src/main/ridgun/broken/main.rg" "fn :: bad fn Int => Int\n      bad fn x   =  \"not_an_int\"\n\nfn :: main => ()\n      main =  ()\n"
         st_bad_chk = shell exec ("cd target/test_lib_work/broken_proj && \"" + stable_bin + "\" check > bad_chk.txt")
         assert int equals st_bad_chk 1 "stable check on broken module returns exit code 1"
-        assert ok (str contains (read file "target/test_lib_work/broken_proj/bad_chk.txt") "[err]")
+        assert ok (str contains (read file "target/test_lib_work/broken_proj/bad_chk.txt") (col tag "err" "31"))
         -- Fix source module, add a failing test suite using `test.rg`, and verify `stable test` returns exit code 1
         write file "target/test_lib_work/broken_proj/src/main/ridgun/broken/main.rg" "fn :: main => ()\n      main =  ()\n"
         shell exec "cp -f src/test/ridgun/test.rg target/test_lib_work/broken_proj/src/test/ridgun/test.rg"
@@ -315,8 +321,8 @@ fn :: main => ()
         st_bad_tst = shell exec ("cd target/test_lib_work/broken_proj && \"" + stable_bin + "\" test > bad_tst.txt")
         assert int equals st_bad_tst 1 "stable test on failing assertion returns exit code 1"
         bad_tst_out = read file "target/test_lib_work/broken_proj/bad_tst.txt"
-        assert ok (str contains bad_tst_out "[FAIL]")
-        assert ok (str contains bad_tst_out "[error] Passed 0/1 test suite(s) — 1 failed.")
+        assert ok (str contains bad_tst_out (col tag "FAIL" "31"))
+        assert ok (str contains bad_tst_out ((col tag "error" "31") + " Passed 0/1 test suite(s) — 1 failed."))
         -- 6e. `stable install` with isolated HOME into `$HOME/.local/bin/` and `./bin/`
         shell exec "mkdir -p target/test_lib_work/fake_home"
         st_inst = shell exec ("cd target/test_lib_work/multi_app && HOME=\"$PWD/../fake_home\" \"" + stable_bin + "\" install alpha > inst.txt")
@@ -329,7 +335,7 @@ fn :: main => ()
         st_repl = shell exec ("cd target/test_lib_work/multi_app && \"" + stable_bin + "\" < repl_in.txt > repl_out.txt")
         assert int equals st_repl 0 "interactive REPL session exits cleanly with 0"
         repl_out = read file "target/test_lib_work/multi_app/repl_out.txt"
-        assert ok (str contains repl_out "Welcome to stable 0.9.25")
+        assert ok (str contains repl_out "Welcome to stable 0.9.26")
         assert ok (str contains repl_out "Reloaded build.rg — current project is 'alpha'")
         assert ok (str contains repl_out "Exiting stable.")
         echo "=== FR-COMP-007: Cross-Platform PAL Descriptor/Poll/Process Primitives & with timeout ==="

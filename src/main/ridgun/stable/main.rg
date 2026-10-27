@@ -1,6 +1,6 @@
 -- ============================================================
 -- src/main/ridgun/stable/main.rg
--- `stable` v0.9.25 — The Interactive Build Tool for Ridgun (100% Ridgun)
+-- `stable` v0.9.26 — The Interactive Build Tool for Ridgun (100% Ridgun)
 -- Written in Ridgun's natural-language mixfix operator style (`op :: ...`).
 -- Decoupled from `ridgunc` internals per ADR-0001: delegates `check`,
 -- `compile`, `build`, `build lib`, and test/plugin compilation to the
@@ -123,19 +123,41 @@ op :: list test files in String => [String]
 
 -- ── Structured Console Logging Functions ─────────────────────
 
+fn :: tag ansi code String => String
+      tag ansi code "ok"      =  "32"
+      tag ansi code "success" =  "32"
+      tag ansi code "PASS"    =  "32"
+      tag ansi code "error"   =  "31"
+      tag ansi code "err"     =  "31"
+      tag ansi code "FAIL"    =  "31"
+      tag ansi code _         =  "36"
+
+fn :: colorize tag String => String
+      colorize tag tag    =
+        esc = char from code 27
+        code = tag ansi code tag
+        "[" + esc + "[" + code + "m" + tag + esc + "[0m]"
+
 fn :: log info String => ()
-      log info msg    =  echo "[info] {msg}"
+      log info msg    =
+        ctag = colorize tag "info"
+        echo "{ctag} {msg}"
 
 fn :: log success String => ()
-      log success msg    =  echo "[success] {msg}"
+      log success msg    =
+        ctag = colorize tag "success"
+        echo "{ctag} {msg}"
 
 fn :: log error String => ()
-      log error msg    =  echo "[error] {msg}"
+      log error msg    =
+        ctag = colorize tag "error"
+        echo "{ctag} {msg}"
 
 fn :: log step String String => ()
       log step tag    msg    =
-        padded = str pad right "[{tag}]" 7 " "
-        echo "  {padded}{msg}"
+        ctag = colorize tag tag
+        vis_pad = str repeat " " (7 - ((str len tag) + 2))
+        echo "  {ctag}{vis_pad}{msg}"
 
 fn :: log ok String => ()
       log ok msg    =  log step "ok" msg
@@ -1048,12 +1070,14 @@ op :: report plugin file list [String] => Int
 
 op :: run custom shell task String command String extra [String]   => Int
       run custom shell task disp   command cmd    extra []         =
-        echo "[task:{disp}] {cmd}"
+        ctag = colorize tag ("task:" + disp)
+        echo "{ctag} {cmd}"
         shell exec cmd
       run custom shell task disp   command cmd    extra extra_args =
         arg_str = join words extra_args with spaces
         full_cmd = cmd + " " + arg_str
-        echo "[task:{disp}] {full_cmd}"
+        ctag = colorize tag ("task:" + disp)
+        echo "{ctag} {full_cmd}"
         shell exec full_cmd
 
 op :: run executable plugin String args [String]   => Int
@@ -1155,7 +1179,7 @@ op :: dispatch command StableCommand on StableConfig => Bool StableConfig Int
       dispatch command CmdExit on cfg = (False, cfg, 0)
       dispatch command CmdHelp on cfg = (True, cfg, run task help)
       dispatch command CmdVersion on cfg =
-        echo "stable 0.9.25 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
+        echo "stable 0.9.26 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
         (True, cfg, 0)
       dispatch command CmdInfo on cfg = (True, cfg, run task info on cfg)
       dispatch command CmdReload on _ =
@@ -1237,12 +1261,12 @@ op :: report reload config StableConfig name String => Bool StableConfig Int
 
 op :: start interactive shell for StableConfig => ()
       start interactive shell for (ProjectConfig "" ver main_ep sdir tdir out_dir) =
-        log info "Welcome to stable 0.9.25 (Ridgun Build Tool — 100% Ridgun)"
+        log info "Welcome to stable 0.9.26 (Ridgun Build Tool — 100% Ridgun)"
         log info "No build.rg found in current directory. Run 'init' or 'new <name>' to create a project."
         log info "Commands: 'new', 'init', 'help', 'exit'"
         repl loop for (ProjectConfig "" ver main_ep sdir tdir out_dir)
       start interactive shell for (ProjectConfig name_str ver main_ep sdir tdir out_dir) =
-        log info "Welcome to stable 0.9.25 (Ridgun Build Tool — 100% Ridgun)"
+        log info "Welcome to stable 0.9.26 (Ridgun Build Tool — 100% Ridgun)"
         log info "Loading project definition from build.rg ..."
         log info "Set current project to '{name_str}' v{ver} (main: {main_ep})"
         log info "Commands: 'built' (or 'build'), 'run', 'test', 'check', 'compile', 'clean', 'info', 'exit'"
