@@ -453,12 +453,21 @@ fn :: prep var String (Bool, Int, Bool) => RExpr
       prep var v      (True, 0, False)  =  ECall v []
       prep var v      _                 =  EVar v
 
+fn :: is tuple unpack arg RExpr              => Bool
+      is tuple unpack arg (ESeqSelect _ _)   =  True
+      is tuple unpack arg (ETuple _)         =  True
+      is tuple unpack arg (EParPipe _)       =  True
+      is tuple unpack arg _                  =  False
+
 fn :: prep call String [RExpr]         (Bool, Int, Bool) => RExpr
       prep call fname  args            (True, arity, True)
         | arity <= 1 = ECall fname [EList args]
         | otherwise = ECall fname ((take exprs args (arity - 1)) :: [EList (drop exprs args (arity - 1))])
       prep call fname  (single_arg:[]) (True, 2, False)
         | NOT (str starts with fname "__rg_lambda_") =
+          ECall "__unpack2__" [EVar fname, single_arg]
+      prep call fname  (single_arg:[]) (True, arity, False)
+        | arity > 2 AND (is tuple unpack arg single_arg) AND (NOT (str starts with fname "__rg_lambda_")) =
           ECall "__unpack2__" [EVar fname, single_arg]
       prep call fname  args            _                 =  ECall fname args
 
@@ -2031,6 +2040,12 @@ fn :: lower call expr RNativeEnv String [RExpr] [String] Int RNativeCode => RNat
           fn_ar = env fn arity env fname
           lower direct or partial call env fname args count fn_ar bound_locals sp st
 
+fn :: build tuple unpack instrs Int Int Int => [RNativeInstr]
+      build tuple unpack instrs tup_slot count idx
+        | idx >= count = []
+        | otherwise =
+          [NTupleGet tup_slot idx, NStoreSlot (tup_slot + 1 + idx)] :: (build tuple unpack instrs tup_slot count (idx + 1))
+
 fn :: lower adt ctor call RNativeEnv [RExpr] [String] Int Int Int Int RNativeCode => RNativeCode
       lower adt ctor call _ [] _ off slen 0 sp st =
         nc emit st (NLoadAdt0 off slen) sp
@@ -2076,8 +2091,10 @@ fn :: lower expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
       lower expr env (ECall "__unpack2__" ((EVar fn_target):single_arg:[])) bound_locals sp st =
         st1 = lower expr env single_arg bound_locals sp st
         fid = env fn id env fn_target
-        ins_list = [NStoreSlot sp, NTupleGet sp 0, NStoreSlot (sp + 1), NTupleGet sp 1, NStoreSlot (sp + 2), NClearLocals sp (sp + 1), NCallFn fid (sp + 1) 2]
-        nc emit list st1 ins_list (sp + 3)
+        arity = max int (env fn arity env fn_target) 2
+        unpack_ins = build tuple unpack instrs sp arity 0
+        ins_list = [NStoreSlot sp] :: unpack_ins :: [NClearLocals sp (sp + 1), NCallFn fid (sp + 1) arity]
+        nc emit list st1 ins_list (sp + arity + 1)
       lower expr env (ECall fname args) bound_locals sp st =
         lower call expr env fname args bound_locals sp st
       lower expr env (EEcho args) bound_locals sp st =
@@ -2791,8 +2808,47 @@ fn :: lower cases list RNativeEnv [RFnCase] Int RNativeCode => RNativeCode
         st1 = lower single case env c False sp st
         lower cases list env cs sp st1
 
+fn :: wrap unit return stmts String [RStmt] => [RStmt]
+      wrap unit return stmts _ [] = [StmtExpr EUnit]
+      wrap unit return stmts _ ((StmtExpr EUnit):[]) = [StmtExpr EUnit]
+      wrap unit return stmts name ((StmtExpr e):[])
+        | expr has self tail call name e = [StmtExpr (wrap unit return expr name e)]
+        | otherwise = [StmtExpr e, StmtExpr EUnit]
+      wrap unit return stmts _ (last_s:[]) = [last_s, StmtExpr EUnit]
+      wrap unit return stmts name (s:rest) = [s] :: (wrap unit return stmts name rest)
+
+fn :: wrap unit return guards String [RGuard] => [RGuard]
+      wrap unit return guards _ [] = []
+      wrap unit return guards name ((GuardBranch c b):gs) =
+        [GuardBranch c (wrap unit return expr name b)] :: (wrap unit return guards name gs)
+
+fn :: wrap unit return expr String RExpr => RExpr
+      wrap unit return expr _ EUnit = EUnit
+      wrap unit return expr name (EBlock stmts) =
+        EBlock (wrap unit return stmts name stmts)
+      wrap unit return expr name (EGuard guards) =
+        EGuard (wrap unit return guards name guards)
+      wrap unit return expr name (EWhere body binds) =
+        EWhere (wrap unit return expr name body) binds
+      wrap unit return expr name e
+        | expr has self tail call name e = e
+        | otherwise = EBlock [StmtExpr e, StmtExpr EUnit]
+
+fn :: wrap unit return cases String [RFnCase] => [RFnCase]
+      wrap unit return cases _ [] = []
+      wrap unit return cases name ((FnCase pats [] body):cs) =
+        [FnCase pats [] (wrap unit return expr name body)] :: (wrap unit return cases name cs)
+      wrap unit return cases name ((FnCase pats guards body):cs) =
+        [FnCase pats (wrap unit return guards name guards) body] :: (wrap unit return cases name cs)
+
+fn :: maybe wrap unit cases String String [RFnCase] => [RFnCase]
+      maybe wrap unit cases name ret cases
+        | ret == "()" OR ret == "Unit" = wrap unit return cases name cases
+        | otherwise = cases
+
 fn :: lower fndef RFnDef [RStrEntry] [RFnEntry] [RFieldEntry] => RNativeFn
-      lower fndef (FnDef name params _ cases) str_tbl fn_tbl field_tbl =
+      lower fndef (FnDef name params ret raw_cases) str_tbl fn_tbl field_tbl =
+        cases = maybe wrap unit cases name ret raw_cases
         fid = lookup fn id fn_tbl name
         arity = infer fndef arity params cases
         all_locals = collect cases all locals cases []

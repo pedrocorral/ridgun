@@ -27,7 +27,7 @@ The Ridgun language and `ridgunc` compiler SHALL provide left-to-right operator/
    - In an expression `left_e -> rhs_e` (including multi-line pipelines where indented continuation lines begin with `->`), the result of `left_e` SHALL be passed into `rhs_e` as its leading input:
      - **Collection combinators (`-> map f`, `-> ||map f`, `-> filter g`, `-> ||filter g`, `-> fold f init`)**: `left_e` supplies the collection argument.
      - **Agent message passing (`-> send to ag`, `-> ask to ag`)**: `left_e` supplies the message sent to agent `ag` (`send left_e to ag`, `ask left_e to ag`).
-     - **Sequence mask filtering (`-> (+ _ _ +)`)**: applies `ESeqSelect left_e mask` (`left_e(+ _ _ +)`) to filter/select tuple elements in transit along the pipeline.
+     - **Sequence mask filtering (`-> (+ _ _ +)`)**: applies `ESeqSelect left_e mask` (`left_e(+ _ _ +)`) to filter/select tuple elements in transit along the pipeline, verifying at compile time that the mask length matches the tuple arity and preserving the exact types of the selected elements.
      - **Explicit unit discard (`-> ()`)**: evaluates `left_e`, discards its value, and yields `()` (`TyUnit`).
      - **Explicit placeholder (`-> fn a _ c`)**: if `rhs_e` contains `_`, `left_e` replaces `_`.
      - **General `op ::` and `fn ::` calls (`-> fn a b` or `-> fn_1_arg`)**: `left_e` is passed as the **first argument** (`fn left_e a b` or `fn_1_arg left_e`), or matched against any declared mixfix `op ::` starting with `[left_e, fn, a, b]`.

@@ -555,9 +555,21 @@ fn :: is channel send call String => Bool
       is channel send call callee =
         callee == "send" OR callee == "send_to" OR callee == "send_through" OR callee == "chan_send"
 
+fn :: mark sent expr vars RExpr [String] => [String]
+      mark sent expr vars (EVar sent_var) moved = add unique str sent_var moved
+      mark sent expr vars (ETuple es) moved = mark sent expr list vars es moved
+      mark sent expr vars _ moved = moved
+
+fn :: mark sent expr list vars [RExpr] [String] => [String]
+      mark sent expr list vars [] moved = moved
+      mark sent expr list vars (e:es) moved =
+        mark sent expr list vars es (mark sent expr vars e moved)
+
 fn :: mark channel sent String [RExpr] [String] [String] => [String]
-      mark channel sent callee ((EVar sent_var):_) mut_vars moved
-        | (is channel send call callee) AND (str in list sent_var mut_vars) = add unique str sent_var moved
+      mark channel sent "chan_send" (_:msg_e:_) _ moved =
+        mark sent expr vars msg_e moved
+      mark channel sent callee (msg_e:_) _ moved
+        | is channel send call callee = mark sent expr vars msg_e moved
       mark channel sent _ _ _ moved = moved
 
 fn :: check expr safety RExpr String [String] [RFnSummary] [String] => [String] [RAnalysisError]
@@ -567,6 +579,22 @@ fn :: check expr safety RExpr String [String] [RFnSummary] [String] => [String] 
       check expr safety (ECall callee args) fn_name mut_vars summaries moved =
         r_args = check expr list safety args fn_name mut_vars summaries moved
         finish call safety callee args mut_vars r_args
+      check expr safety (EEcho args) fn_name mut_vars summaries moved =
+        check expr list safety args fn_name mut_vars summaries moved
+      check expr safety (EList elems) fn_name mut_vars summaries moved =
+        check expr list safety elems fn_name mut_vars summaries moved
+      check expr safety (ETuple elems) fn_name mut_vars summaries moved =
+        check expr list safety elems fn_name mut_vars summaries moved
+      check expr safety (ETensor elems) fn_name mut_vars summaries moved =
+        check expr list safety elems fn_name mut_vars summaries moved
+      check expr safety (ESeqSelect base _) fn_name mut_vars summaries moved =
+        check expr safety base fn_name mut_vars summaries moved
+      check expr safety (EParPipe branches) fn_name mut_vars summaries moved =
+        check expr list safety branches fn_name mut_vars summaries moved
+      check expr safety (EIndexAssign t idxs val_e) fn_name mut_vars summaries moved =
+        r0 = check expr safety (EVar t) fn_name mut_vars summaries moved
+        r1 = check expr list safety tuple idxs fn_name mut_vars summaries r0
+        check expr safety tuple val_e fn_name mut_vars summaries r1
       check expr safety (EWhere body binds) fn_name mut_vars summaries moved =
         check where block safety fn_name body binds mut_vars summaries moved
       check expr safety (EBlock stmts) fn_name mut_vars summaries moved =
@@ -624,11 +652,11 @@ fn :: check guards safety [RGuard] String [String] [RFnSummary] [String] => [Str
       check guards safety ((GuardBranch c b):gs) fn_name mut_vars summaries moved =
         r1 = check expr safety c fn_name mut_vars summaries moved
         r2 = check expr safety tuple b fn_name mut_vars summaries r1
-        check guards safety tuple gs fn_name mut_vars summaries r2
+        check guards safety branch gs fn_name mut_vars summaries moved r2
 
-fn :: check guards safety tuple [RGuard] String [String] [RFnSummary] ([String], [RAnalysisError]) => [String] [RAnalysisError]
-      check guards safety tuple gs fn_name mut_vars summaries (moved, errs) =
-        merge moved errs errs (check guards safety gs fn_name mut_vars summaries moved)
+fn :: check guards safety branch [RGuard] String [String] [RFnSummary] [String] ([String], [RAnalysisError]) => [String] [RAnalysisError]
+      check guards safety branch gs fn_name mut_vars summaries orig_moved (_, errs1) =
+        merge moved errs errs1 (check guards safety gs fn_name mut_vars summaries orig_moved)
 
 fn :: check stmt list safety [RStmt] String [String] [RFnSummary] [String] => [String] [RAnalysisError]
       check stmt list safety [] _ _ _ moved = (moved, [])
@@ -640,8 +668,9 @@ fn :: check stmt list safety [RStmt] String [String] [RFnSummary] [String] => [S
       check stmt list safety ((StmtExpr e):ss) fn_name mut_vars summaries moved =
         r1 = check expr safety e fn_name mut_vars summaries moved
         check stmt list safety tuple ss fn_name mut_vars summaries r1
-      check stmt list safety ((StmtIndexAssign _ idxs e):ss) fn_name mut_vars summaries moved =
-        r1 = check expr list safety idxs fn_name mut_vars summaries moved
+      check stmt list safety ((StmtIndexAssign t idxs e):ss) fn_name mut_vars summaries moved =
+        r0 = check expr safety (EVar t) fn_name mut_vars summaries moved
+        r1 = check expr list safety tuple idxs fn_name mut_vars summaries r0
         r2 = check expr safety tuple e fn_name mut_vars summaries r1
         check stmt list safety tuple ss fn_name mut_vars summaries r2
 
@@ -659,10 +688,11 @@ fn :: collect mutable params [String]   [RPattern]        => [String]
 
 fn :: check cases safety [RFnCase] String [String] [RFnSummary] => [RAnalysisError]
       check cases safety [] _ _ _ = []
-      check cases safety ((FnCase pats _ body):cs) fn_name param_types summaries =
+      check cases safety ((FnCase pats guards body):cs) fn_name param_types summaries =
         mut_params = collect mutable params param_types pats
-        res = check expr safety body fn_name mut_params summaries []
-        extract analysis errs res (check cases safety cs fn_name param_types summaries)
+        res_g = check guards safety guards fn_name mut_params summaries []
+        res_b = check expr safety body fn_name mut_params summaries []
+        extract analysis errs res_g (extract analysis errs res_b (check cases safety cs fn_name param_types summaries))
 
 fn :: extract analysis errs ([String], [RAnalysisError]) [RAnalysisError] => [RAnalysisError]
       extract analysis errs (_, errs) more = errs :: more

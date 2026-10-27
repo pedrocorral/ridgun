@@ -16,3 +16,5 @@ Tasks completed this month, newest last.
 | `TASK-0034-enforce-strict-per-module-import-visibility-each-m.md` | Enforce strict per-module import visibility (each module sees only its own names and its explicit imports) | `FR-COMP-012` |
 | `TASK-0035-implement-idiomatic-ridgun-pipeline-chaining-infix.md` | Implement idiomatic Ridgun pipeline chaining (`->`, infix start, `-> (+ _ _ +) ->`, `-> ()`, and `_ =` removal) across compiler, books, and skills | `FR-COMP-014` |
 | `TASK-0036-optimize-library-compile-time-performance-and-repl.md` | Optimize library compile-time performance and replace Python scripts with Ridgun and Bash | `FR-COMP-004`, `FR-COMP-012`, `FR-STABLE-003` |
+| `TASK-0037-enforce-strict-space-vs-underscore-distinction-in-.md` | Enforce strict space vs underscore distinction in function names and calls | `FR-COMP-005`, `FR-COMP-008` |
+| `TASK-0038-fix-sequence-mask-length-and-type-checking-errusea.md` | Fix sequence mask length and type checking, `ErrUseAfterSend` on pipelines, automatic `=> ()` discard, and `ask to` skill docs | `FR-COMP-008`, `FR-COMP-009`, `FR-COMP-014` |

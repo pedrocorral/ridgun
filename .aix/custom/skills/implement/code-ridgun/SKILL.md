@@ -152,8 +152,9 @@ Every `=` (in `fn ::`, `op ::`, local bindings `x =` / `mut x =`, and guard bran
     xs map (x => x * 2) -> filter (x => x > 6) -> compact limit 14 -> results
     parse header packet "v0.9.9" -> (+ _ _ +) -> combine code msg -> status_line
     [5, 10, 15] -> sum int list -> send to worker_ag
+    [1, 2, 3, 4] -> sum int list -> ask to worker_ag -> total
     ```
-    Any value piped from the left of `->` (or left of an infix call) enters as the **1st argument** of the right-hand `fn ::` or `op ::` (`x -> f a b` $\equiv$ `x f a b` $\equiv$ `f x a b`, or use `_` placeholder for another slot: `payload -> write_file path _`). All four forms (`xs map f -> filter g -> results`, `xs -> map f -> filter g -> results`, `xs map f filter g -> results`, and `map f xs -> filter g -> results`) normalize to the same AST.
+    Any value piped from the left of `->` (or left of an infix call) enters as the **1st argument** of the right-hand `fn ::` or `op ::` (`x -> f a b` $\equiv$ `x f a b` $\equiv$ `f x a b`, or use `_` placeholder for another slot: `payload -> write file path _`). All four forms (`xs map f -> filter g -> results`, `xs -> map f -> filter g -> results`, `xs map f filter g -> results`, and `map f xs -> filter g -> results`) normalize to the same AST. In functions returning `=> ()`, a non-`()` final expression is automatically discarded and `()` is returned (or `-> ()` can be written explicitly).
 
 ### 3.5 Types, User-Defined Generics (`FR-COMP-013`), Module Namespaces (`FR-COMP-012`), ADTs, Record Updates (`with`), and Natural-Language Mixfix (`op ::`)
 - **User-Defined Generic Sum ADTs and Product Records (`FR-COMP-013`)**:
@@ -237,15 +238,18 @@ Ridgun achieves deterministic memory management with **zero Garbage Collector pa
   - Compile-time dimension verification: `fn :: linear Tensor[B, In] Tensor[In, Out] => Tensor[B, Out]`.
   - Creation & indexing: `m = zeros [2, 2]`, `m[0, 1] = 3.5`, `v = m[0, 1]`.
   - Einstein summation (`A_ik @ B_kj` or `einsum "ik,kj->ij" a b`) and Hadamard element-wise ops (`a @+ b`, `a @- b`, `a @* b`, `a @/ b`).
-- **Native Agent Model (`agent`, `send ... to`, `receive from`, `try receive from`, `stop`) (`FR-COMP-009`)**:
+- **Native Agent Model (`agent`, `send ... to`, `ask ... to`, `receive from`, `try receive from`, `stop`) (`FR-COMP-009`)**:
   - Any `fn ::` or `op ::` function can be wrapped into an isolated agent:
     - Stateless agent: `ag = agent (procesar mensaje con tiempo)` (`M1 ... Mn => R` $\to$ `Agent (M1 ... Mn) R`).
     - Stateful agent: `ag = agent (sumar visita) 0` (`S M => S` or `S M => S R` $\to$ `Agent M S` or `Agent M R`, with `RMM1`/`RMM2` automatic state release on every transition).
-  - Operations: `send msg to ag` (or `msg -> send to ag`, `msg -> ask to ag -> res`, or multi-argument `send a b to ag`), `receive from ag -> res`, `try receive from ag -> opt` (`Some res | None`), `stop ag`, `agent alive ag` (`Bool`).
+  - Operations:
+    - Asynchronous send: `send msg to ag`, `msg -> send to ag`, or multi-argument `send a b to ag`.
+    - Synchronous request-reply (`send` + `receive`): `ask msg to ag`, `ask ag msg`, or pipeline `msg -> ask to ag -> res`.
+    - Receive & lifecycle: `receive from ag -> res`, `try receive from ag -> opt` (`Some res | None`), `stop ag`, `agent alive ag` (`Bool`).
   - Legacy `spawn` and `join` are retired: use `||` / `||map` / `||filter` for computational fork-join parallelism and `agent` for decoupled stateful/service processes.
-- **Affine Channels (`new channel`, `send through`, `receive from`)**:
+- **Affine Channels & Agent Sends (`new channel`, `send through`, `send ... to`, `receive from`)**:
   - `new channel -> ch`, `send through msg ch`, `receive from ch -> out` (no `_ =` needed).
-  - Reading a `mut` variable `msg` after `send msg to ag` or `send through msg ch` is rejected at compile time (`ErrUseAfterSend`).
+  - Reading a variable `msg` after `send msg to ag`, `msg -> send to ag`, or `send through msg ch` is rejected at compile time (`ErrUseAfterSend`).
 
 ---
 

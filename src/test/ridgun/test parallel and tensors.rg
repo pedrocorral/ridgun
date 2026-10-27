@@ -131,7 +131,7 @@ fn :: bombear agente (Agent Int Int) Int Int => Int
         | otherwise =
           send i to ag
           r = receive from ag
-          bombear agente ag (i + (r - i)) n
+          bombear agente ag r n
 
 type OptionInt = Some Int | None
 

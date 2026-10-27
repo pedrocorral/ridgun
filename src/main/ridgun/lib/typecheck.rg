@@ -483,6 +483,8 @@ fn :: bind tuple pats [RPattern] [RType] Int [RTypeBind] [RTypeBind] => [RTypeBi
 
 fn :: bind case patterns [RPattern] [RType] Bool Int [RTypeBind] [RTypeBind] => [RTypeBind]
       bind case patterns [] _ _ _ locals _ = locals
+      bind case patterns ((PatSeqBind v):[]) param_tys True _ locals _ =
+        put type bind locals v (TyTuple param_tys)
       bind case patterns (p:ps) param_tys True idx locals fns =
         locals1 = bind pattern p TyInt locals fns
         bind case patterns ps param_tys True (idx + 1) locals1 fns
@@ -675,6 +677,82 @@ fn :: decide seq select type Int Int => RType
         | plus_c > 1 = TyVar "_seq"
         | plus_c == 0 AND space_c >= 1 = TyVar "_seq"
         | otherwise = TyInt
+
+fn :: select positional mask tys [RType] String Int Int => [RType]
+      select positional mask tys elem_tys mask pos limit
+        | pos >= limit = []
+        | (str char at mask pos) == 43 =
+          [rtype at elem_tys pos] :: (select positional mask tys elem_tys mask (pos + 1) limit)
+        | otherwise =
+          select positional mask tys elem_tys mask (pos + 1) limit
+
+fn :: select tail tys [RType] Int Int => [RType]
+      select tail tys elem_tys pos tup_len
+        | pos >= tup_len = []
+        | otherwise =
+          [rtype at elem_tys pos] :: (select tail tys elem_tys (pos + 1) tup_len)
+
+fn :: wrap selected mask tys [RType] => RType
+      wrap selected mask tys [] = TyUnit
+      wrap selected mask tys (single_ty:[]) = single_ty
+      wrap selected mask tys multi_tys = TyTuple multi_tys
+
+fn :: check one index mask [RType] Int Int String => RType [RTypeError]
+      check one index mask elem_tys idx tup_len fn_name
+        | idx < 0 OR idx >= tup_len =
+          (TyInt, [TypeError fn_name ("sequence mask index " + (int to str idx) + " is out of range for tuple of length " + (int to str tup_len))])
+        | otherwise =
+          (rtype at elem_tys idx, [])
+
+fn :: scan index mask tys [RType] String Int Int Int Int String [RType] [RTypeError] => RType [RTypeError]
+      scan index mask tys elem_tys mask start pos len tup_len fn_name acc_tys acc_errs
+        | pos >= len AND start >= len =
+          (wrap selected mask tys acc_tys, acc_errs)
+        | pos >= len =
+          idx = str to int (str slice mask start len)
+          one_res = check one index mask elem_tys idx tup_len fn_name
+          (wrap selected mask tys (acc_tys :: [fst ty one_res]), acc_errs :: (snd errs one_res))
+        | (str char at mask pos) == 32 AND pos > start =
+          idx = str to int (str slice mask start pos)
+          one_res = check one index mask elem_tys idx tup_len fn_name
+          scan index mask tys elem_tys mask (pos + 1) (pos + 1) len tup_len fn_name (acc_tys :: [fst ty one_res]) (acc_errs :: (snd errs one_res))
+        | (str char at mask pos) == 32 =
+          scan index mask tys elem_tys mask (pos + 1) (pos + 1) len tup_len fn_name acc_tys acc_errs
+        | otherwise =
+          scan index mask tys elem_tys mask start (pos + 1) len tup_len fn_name acc_tys acc_errs
+
+fn :: check tuple spread mask [RType] String Int Int [RTypeError] String => RType [RTypeError]
+      check tuple spread mask elem_tys mask prefix_len tup_len b_errs fn_name
+        | prefix_len > tup_len =
+          (TyVar "_seq", b_errs :: [TypeError fn_name ("sequence spread mask has " + (int to str prefix_len) + " leading position(s), expected at most " + (int to str tup_len) + " for tuple of type " + (rtype to str (TyTuple elem_tys)))])
+        | otherwise =
+          sel_tys = (select positional mask tys elem_tys mask 0 prefix_len) :: (select tail tys elem_tys prefix_len tup_len)
+          (wrap selected mask tys sel_tys, b_errs)
+
+fn :: check tuple pos mask [RType] String Int Int [RTypeError] String => RType [RTypeError]
+      check tuple pos mask elem_tys mask mask_len tup_len b_errs fn_name
+        | mask_len != tup_len =
+          (TyVar "_seq", b_errs :: [TypeError fn_name ("sequence mask has " + (int to str mask_len) + " position(s), expected " + (int to str tup_len) + " for tuple of type " + (rtype to str (TyTuple elem_tys)))])
+        | otherwise =
+          sel_tys = select positional mask tys elem_tys mask 0 mask_len
+          (wrap selected mask tys sel_tys, b_errs)
+
+fn :: check tuple seq mask [RType] String [RTypeError] String => RType [RTypeError]
+      check tuple seq mask elem_tys mask b_errs fn_name
+        | (str len mask) >= 2 AND (str slice mask ((str len mask) - 2) (str len mask)) == " +" =
+          check tuple spread mask elem_tys mask ((str len mask) - 2) (rtype list len elem_tys) b_errs fn_name
+        | NOT (str contains mask " ") =
+          check tuple pos mask elem_tys mask (str len mask) (rtype list len elem_tys) b_errs fn_name
+        | otherwise =
+          scan index mask tys elem_tys mask 0 0 (str len mask) (rtype list len elem_tys) fn_name [] b_errs
+
+fn :: check seq select (RType, [RTypeError]) String String => RType [RTypeError]
+      check seq select ((TyTuple elem_tys), b_errs) mask fn_name =
+        check tuple seq mask elem_tys mask b_errs fn_name
+      check seq select ((TyVar _), b_errs) mask _ =
+        (seq select type mask, b_errs)
+      check seq select (other_ty, b_errs) _ fn_name =
+        (TyVar "_seq", b_errs :: [TypeError fn_name ("sequence mask requires a tuple, got " + (rtype to str other_ty))])
 
 fn :: lookup var type String String [RTypeBind] [RTypeBind] => RType [RTypeError]
       lookup var type name fn_name locals fns =
@@ -1003,7 +1081,7 @@ fn :: check expr RExpr String [RTypeBind] [RTypeBind] => RType [RTypeError]
         (TyUnit, (snd list errs i_res) :: (snd errs v_res))
       check expr (ESeqSelect base mask) fn_name locals fns =
         b_res = check expr base fn_name locals fns
-        (seq select type mask, snd errs b_res)
+        check seq select b_res mask fn_name
       check expr (EWhere body binds) fn_name locals fns =
         check where expr body binds fn_name locals fns
       check expr (EParPipe branches) fn_name locals fns =
@@ -1299,14 +1377,18 @@ fn :: check guard cond ty RType String Int => [RTypeError]
       check guard cond ty c_ty fn_name idx =
         [TypeError fn_name ("guard #" + (int to str idx) + " condition has type " + (rtype to str c_ty) + ", expected Bool")]
 
+fn :: is unit type RType  => Bool
+      is unit type TyUnit =  True
+      is unit type _      =  False
+
 fn :: check guard body ty RType RType String Int => [RTypeError]
       check guard body ty b_ty ret_ty fn_name idx
-        | (types compatible b_ty ret_ty) OR (is empty list return compat b_ty ret_ty) = []
+        | (is unit type ret_ty) OR (types compatible b_ty ret_ty) OR (is empty list return compat b_ty ret_ty) = []
         | otherwise = [TypeError fn_name ("guard #" + (int to str idx) + " body has type " + (rtype to str b_ty) + ", expected " + (rtype to str ret_ty))]
 
 fn :: check case body ty (RType, [RTypeError]) RType String => [RTypeError]
       check case body ty (b_ty, b_errs) ret_ty fn_name
-        | (types compatible b_ty ret_ty) OR (is empty list return compat b_ty ret_ty) = b_errs
+        | (is unit type ret_ty) OR (types compatible b_ty ret_ty) OR (is empty list return compat b_ty ret_ty) = b_errs
         | otherwise = b_errs :: [TypeError fn_name ("body has type " + (rtype to str b_ty) + ", expected " + (rtype to str ret_ty))]
 
 fn :: pat count [RPattern] => Int
