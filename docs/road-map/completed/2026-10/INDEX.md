@@ -14,3 +14,4 @@ Tasks completed this month, newest last.
 | `TASK-0032-canonicalize-lambda-syntax-to-x-expr-and-a-b-expr.md` | Canonicalize lambda syntax to `(x => expr)` and `(a b => expr)` | `FR-COMP-013` |
 | `TASK-0033-fix-rg-093-blocking-agent-waits-rg-094-argon2id-ll.md` | Fix `RG-093` blocking agent waits, `RG-094` Argon2id LLVM `opt -O2`, and `RG-095` multi-file module namespaces | `FR-COMP-009`, `FR-COMP-012` |
 | `TASK-0034-enforce-strict-per-module-import-visibility-each-m.md` | Enforce strict per-module import visibility (each module sees only its own names and its explicit imports) | `FR-COMP-012` |
+| `TASK-0035-implement-idiomatic-ridgun-pipeline-chaining-infix.md` | Implement idiomatic Ridgun pipeline chaining (`->`, infix start, `-> (+ _ _ +) ->`, `-> ()`, and `_ =` removal) across compiler, books, and skills | `FR-COMP-014` |

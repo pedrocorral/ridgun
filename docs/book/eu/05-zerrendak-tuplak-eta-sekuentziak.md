@@ -5,7 +5,7 @@ Aldi bakoitzean zenbaki bat edo testu bat bakarrik mugitzen duen programa batek 
 Horretarako, Ridgunek hiru ontzi desberdin ematen dizkizu, bakoitza lan oso zehatz baterako pentsatua:
 1. **Zerrendak (`[T]`)**: *"Mota bereko elementu asko ditut (edo bat ere ez) eta zeharkatu egin nahi ditut"*.
 2. **Tuplak (`(A, B)`)**: *"Gauza desberdinen bikote edo hirukote bat elkarrekin itzuli nahi dut mota berri bat sortu gabe"*.
-3. **Sekuentziak eta maskarak (`s["-+-"]`)**: *"Argumentuak hegaldian iragazi edo berrantolatu nahi ditut iragazki matematiko bat banu bezala"*.
+3. **Sekuentziak eta maskarak (`s(_ + _)`, `(+ _ _ +)`)**: *"Argumentuak hegaldian iragazi edo berrantolatu nahi ditut iragazki matematiko bat banu bezala"*.
 
 Goazen banan-banan.
 
@@ -127,31 +127,39 @@ main =
 
 ---
 
-## 5.4. Ninja trikimailua: Sekuentziak eta Maskara Posizionalak (`s["-+-"]`)
+## 5.4. Ninja trikimailua: Sekuentziak eta Maskara Posizionalak (`s(_ + _)`, `(+ _ _ +)`)
 
 Hemen dator Ridgunen bitxirik originalenetako bat, J eta APL bezalako lengoaia bektorialetatik zuzenean oinordetzan hartua.
 
-Imajinatu argumentu-sorta bat jasotzen duzula **`(s)`** sekuentzia-ereduarekin eta batzuekin bakarrik geratu nahi duzula eta besteak bota, asmatutako izenak dituzten bost aldagai deklaratu gabe (`_a`, `b`, `_c`, `d`...).
+Imajinatu argumentu-sorta bat jasotzen duzula **`(s)`** sekuentzia-ereduarekin eta batzuekin bakarrik geratu nahi duzula eta besteak baztertu, asmatutako izenak dituzten bost aldagai deklaratu gabe (`_a`, `b`, `_c`, `d`...).
 
-`s`-ri **`+` (geratu horrekin) eta `-` (bota ezazu) ikurren maskara bat** aplikatzen diozu:
+`s`-ri **`+` (geratu horrekin) eta `_` (baztertu) tupla-maskara bat** aplikatzen diozu:
 
-- **`s["-+-"]`**: 3 elementutik, bota lehenengoa (`-`), geratu bigarrenarekin (`+`) eta bota hirugarrena (`-`).
-- **`s["+-+"]`**: geratu lehenengoarekin eta hirugarrenarekin; itzuli bi horiek dituen sekuentzia.
-- **`s["-- +"]`** (adi azken `+` aurreko zuriuneari): bota lehenengo biak (`--`) eta aplikatu `+` **atzetik datozen gainerako guztiei**, edozein izanda ere haien kopurua.
+- **`s(_ + _)`**: 3 elementutik, baztertu lehenengoa (`_`), geratu bigarrenarekin (`+`) eta baztertu hirugarrena (`_`).
+- **`s(+ _ +)`**: geratu lehenengoarekin eta hirugarrenarekin; itzuli bi horiek dituen sekuentzia.
+- **`s(_ _ +...)`**: baztertu lehenengo biak (`_ _`) eta aplikatu `+...` **atzetik datozen gainerako guztiei**, edozein izanda ere haien kopurua.
 
 Begira nola funtzionatzen duen:
 
 ```ridgun
 erdikoa Int Int Int => Int
-erdikoa (s)         =  s["-+-"]
+erdikoa (s)         =  s(_ + _)
 
 baztertu_lehen_biak Int... => [Int]
-baztertu_lehen_biak (s)    =  s["-- +"]
+baztertu_lehen_biak (s)    =  s(_ _ +...)
 
 main => ()
 main =
   echo (erdikoa 100 42 999)              -- 42 inprimatzen du
   echo (baztertu_lehen_biak 1 2 10 20 30) -- [10, 20, 30] inprimatzen du
+```
+
+Eta onena: **`(+ _ _ +)`** maskara posizional bat **zuzenean `->` hodi baten erdian** tartean sar dezakezu! Funtzio batek hainbat baliotako tupla bat itzultzen badu eta hurrengo funtzioak horietako bi bakarrik behar baditu, tupla hegaldian iragazten duzu eta Ridgunek bizirik atera diren elementuak hurrengo urratseko argumentu bereizi gisa desegituratuko ditu:
+
+```ridgun
+-- parseatu paketea-k 4 balio itzultzen ditu: (Int, Int, [String String], String)
+-- (+ _ _ +)-k 1.a (code) eta 4.a (msg) gordetzen ditu, eta konbinatu kodea-ri pasatzen dizkio:
+parseatu paketea "v0.9.9" -> (+ _ _ +) -> konbinatu kodea -> laburpena
 ```
 
 Gainera, parentesietatik kanpo `,` koma eragilea erabiltzen baduzu (`zerrenda1 , zerrenda2`), Ridgunek bi bildumak sekuentzia jarraitu bakar batean lautzen ditu.

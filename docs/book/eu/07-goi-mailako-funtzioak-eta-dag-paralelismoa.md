@@ -76,7 +76,22 @@ exekutatu_bi_aldiz (A => A) A => A
 exekutatu_bi_aldiz f        x =  f (f x)
 ```
 
-### 4. Itxitura lexikoak eta funtzio anonimoak (`(x => expr)`, `(acc x => expr)`)
+### 4. Ezkerretik eskuinerako hodi arinak (`->`) — % 100 Ridgun estiloa!
+Hainbat eraldaketa kateatzen dituzunean (`map`, `filter`, `fold` edo zure funtzio eta `op ::` eragile propioak), parentesiak eskuinetik ezkerrera habiaratzeak (`compact l (filter g (map f xs))`) barrutik kanpora irakurtzera behartzen zaitu.
+
+Ridgunen, **gomendatutako estilo idiomatikoa (`2b`)** ezkerretik eskuinera irakurtzen da **`->`** hodi-eragilearekin, non **ezkerretik datorrena beti hurrengo funtzioaren edo `op ::`-aren lehen argumentu gisa sartzen den**:
+
+```ridgun
+-- Ridgunen gomendatutako estilo idiomatikoa (2b):
+xs map (x => x * 2) -> filter (x => x > 10) -> fold (acc x => acc + x) 0 -> emaitza
+
+-- Eta funtzio batek tupla bat itzultzen badu, maskara batekin iragazi eta berez desegituratzen da:
+parseatu paketea "v0.9.9" -> (+ _ _ +) -> konbinatu kodea -> laburpena
+```
+
+Gainera, albo-ondorioak dituen edozein adierazpen (fitxategi bat idatzi, sistemari deitu) bere lerroan bakarrik jar daiteke `echo` edo `_ =` aldagai muturik gabe, edo `-> ()`-n amaitu bere itzulera esplizituki baztertu nahi baduzu.
+
+### 5. Itxitura lexikoak eta funtzio anonimoak (`(x => expr)`, `(acc x => expr)`)
 Unean bertan funtzio labur bat pasa nahi duzunean edo uneko esparruko aldagai lokalak (desplazamendu bat, aurrizki bat edo saio aktibo bat) atzeman nahi dituzunean funtzio global laguntzaile bat deklaratu gabe, **itxitura lexiko** bat erabiltzen duzu parentesi artean **`=>`**-rekin:
 
 ```ridgun

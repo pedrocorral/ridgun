@@ -76,7 +76,22 @@ run_twice (A => A) A => A
 run_twice f        x =  f (f x)
 ```
 
-### 4. Lexical Closures and Anonymous Functions (`(x => expr)`, `(acc x => expr)`)
+### 4. Idiomatic Left-to-Right Pipelines (`->`) — The 100% Ridgun Way!
+When you chain several transformations (`map`, `filter`, `fold`, or your own functions and `op ::` operators), nesting parentheses from right to left (`compact l (filter g (map f xs))`) forces you to read inside-out.
+
+In Ridgun, the **recommended idiomatic style (`2b`)** reads from left to right using the pipeline operator **`->`**, where **whatever comes from the left always enters as the first argument** of the next function or `op ::`:
+
+```ridgun
+-- Recommended idiomatic Ridgun style (2b):
+xs map (x => x * 2) -> filter (x => x > 10) -> fold (acc x => acc + x) 0 -> total
+
+-- And if a function returns a tuple, filter it with a mask and unpack it into the next stage:
+parse packet "v0.9.9" -> (+ _ _ +) -> combine code -> summary
+```
+
+Plus, any expression with side effects (writing a file, invoking a system call) can stand on its own line without `echo` or dummy `_ =` variables—or end with `-> ()` when you want to discard its return value explicitly.
+
+### 5. Lexical Closures and Anonymous Functions (`(x => expr)`, `(acc x => expr)`)
 When you want to pass a short function on the fly or capture local variables from the enclosing scope (such as an offset, a prefix, or an active session) without declaring a separate top-level helper, use a parenthesized **lexical closure** with **`=>`**:
 
 ```ridgun

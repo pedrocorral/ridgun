@@ -108,7 +108,7 @@ Ridgun doesn't try to reinvent the flat tire; it unapologetically borrows the be
 | From Whom | What Ridgun Borrows | What It Leaves Behind (For Your Sanity) |
 |---|---|---|
 | **Haskell / ML** | Pure functions, case-by-case *pattern matching*, algebraic data types (`Option`, `Result`), and polymorphism (`A`..`Z`). | Abstract monad transformers, 40 `LANGUAGE` pragmas, and the garbage collector. |
-| **J / APL** | Obsession with tabular code layout, native tensors, and sequence masks (`s["-+-"]`). | Hieroglyphic symbols that are impossible to type on a normal keyboard. |
+| **J / APL** | Obsession with tabular code layout, native tensors, and sequence masks (`s(_ + _)`). | Hieroglyphic symbols that are impossible to type on a normal keyboard. |
 | **Rust / C** | Tiny native ELF binaries, zero GC, deterministic memory control (`with region`), and POSIX system calls. | Constant battles with the *borrow checker*, `'a` *lifetimes*, and syntactic verbosity. |
 | **Erlang / Go** | Isolated agents (`agent`, `send ... to`, `receive from`) and channel-based concurrency (`new bounded channel`). | `nil` pointers and accidental shared mutable state. |
 
@@ -166,11 +166,11 @@ op :: Int clamped_between Int and_max Int => Int
 ```
 And then in your code you write `speed clamped_between 0 and_max 120`. It reads like plain English, yet it is 100% statically typed and compiled to native machine code.
 
-### 5. Visual sequence masks (`s(+ _)` and `s["-+-"]`)
-Have you ever had to write an index salad like `filter(\(i, x) -> i % 2 == 0)` just to keep even elements or extract a rhythmic pattern from a list?
+### 5. Visual sequence masks (`s(_ + _)` and `-> (+ _ _ +) ->`)
+Have you ever had to write an index salad like `filter(\(i, x) -> i % 2 == 0)` or unpack a tuple with dummy variables just to keep two specific positions?
 In Ridgun you pass a **visual mask** directly:
-- `data["-+-"]`: drops the first (`-`), keeps the second (`+`), drops the third (`-`).
-- `data["+-~"]`: the `~` symbol repeats the `+-` pattern in a loop until the end of the list (all even indices in one stroke).
+- `data(_ + _)`: drops the first (`_`), keeps the second (`+`), drops the third (`_`).
+- `parse packet "v0.9.9" -> (+ _ _ +) -> combine code -> summary`: filters a 4-element tuple right inside a pipeline and unpacks the 1st and 4th elements directly into the next function.
 Zero index arithmetic, zero *off-by-one* bugs.
 
 ### 6. "Zero-noise" polymorphism (`A`..`Z`) governed by your domain

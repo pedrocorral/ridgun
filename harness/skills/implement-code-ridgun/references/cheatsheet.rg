@@ -1,6 +1,6 @@
 -- ============================================================
 -- harness/skills/implement-code-ridgun/references/cheatsheet.rg
--- Canonical Ridgun v0.9.12 Reference Cheatsheet for AI Agents
+-- Canonical Ridgun v0.9.21 Reference Cheatsheet for AI Agents
 -- ============================================================
 
 -- 1. Sum ADTs, Shared Constructors, Bare Type Variants, `expand type` & Product Records (`FR-COMP-005`)
@@ -64,7 +64,7 @@ op :: format String type String with Int  => String
       format label  type kind   with size =  "{label}:{kind}:{size}"
 
 fn :: enable tls ServerSpec => ServerSpec
-      enable tls spec       =  spec with tls: True, port: 443
+      enable tls spec       =  spec with tls = True, port = 443
 
 -- 5. Deeply Nested Decision Trees (`|`) with Compact Inline `|.` Closers
 fn :: route request Int    Int  Bool      Bool     Int        Int          => Int
@@ -125,10 +125,8 @@ fn :: add pair Int Int => Int
 
 fn :: process items [Int] => Int [Int]
       process items xs    =
-        seq_doubled = map double val xs
-        par_doubled = ||map double val xs
-        par_evens   = ||filter is even par_doubled
-        total       = fold add pair 0 seq_doubled
+        xs map double val -> fold 0 add pair -> total
+        xs ||map double val -> ||filter is even -> par_evens
         (total, par_evens)
 
 -- 9. Multi-Word Functions Starting With `filter`/`map`/`fold` & Logical `and`/`or` (`FR-COMP-005`)
@@ -153,7 +151,7 @@ fn :: task check all => String
 fn :: check timeout budget => Int
       check timeout budget =
         with timeout 200_ms do
-          rem = sys remaining ms
+          sys remaining ms -> rem
           rem
 
 -- 12. Native Agent Model (`agent`, `send ... to`, `receive from`, `stop`) (`FR-COMP-009`)
@@ -163,8 +161,8 @@ fn :: add visits Int    Int   => Int
 fn :: run visit agent => Int
       run visit agent =
         counter = agent (add visits) 10
-        send 5 to counter
-        res = receive from counter
+        5 -> send to counter
+        receive from counter -> res
         stop counter
         res
 
@@ -178,16 +176,31 @@ fn :: unwrap ok (Result A String) A => A
 
 fn :: demo generics and closures Int => Int
       demo generics and closures offset =
-        p    = Page [1, 2, 3] 3
-        nums = map (x => x + offset) (page_items p)
-        fold (acc x => acc + x) (unwrap ok (Ok 10) 0) nums
+        Page [1, 2, 3] 3 -> page_items -> map (x => x + offset) -> fold (unwrap ok (Ok 10) 0) (acc x => acc + x)
 
--- 14. Zero-Argument Entrypoint (`fn :: main => ()`)
+-- 14. Idiomatic `->` Pipeline Chaining (Style `2b`), `(+ _ _ +)` Sequence Masks & `-> ()` (`FR-COMP-014`)
+op :: [Int] compact limit Int => [Int]
+      []     compact limit _   =  []
+      (x:xs) compact limit lim
+        | x <= lim  = [x] :: (xs compact limit lim)
+        | otherwise = xs compact limit lim
+
+fn :: combine status Int  String => String
+      combine status code msg    =  "{code}:{msg}"
+
+fn :: demo idiomatic pipeline [Int] => [Int] String
+      demo idiomatic pipeline xs    =
+        xs map (x => x * 2) -> filter (x => x > 4) -> compact limit 10 -> piped
+        parse header packet "v0.9.21" -> (+ _ _ +) -> combine status -> summary
+        (piped, summary)
+
+-- 15. Zero-Argument Entrypoint (`fn :: main => ()`)
 fn :: main => ()
       main =
-        spec  = enable tls (ServerSpec "localhost" 8080 False)
-        code  = route request 1 2 True True 500 0
-        res   = process items [1, 2, 3, 4, 5]
-        total = (fst res) + (filter section loop 4 2) + (run visit agent)
-        rem   = check timeout budget
-        echo "Server {host spec}:{port spec} code={code} total={total} rem={rem}"
+        ServerSpec "localhost" 8080 False -> enable tls -> spec
+        route request 1 2 True True 500 0 -> code
+        process items [1, 2, 3, 4, 5] -> res
+        demo idiomatic pipeline [1, 2, 3, 4, 5, 6] -> (_ +) -> pkt_summary
+        total = (fst res) + (filter section loop 4 2) + (run visit agent) + ( demo generics and closures 5 )
+        check timeout budget -> rem
+        echo "Server {host spec}:{port spec} code={code} total={total} rem={rem} pkt={pkt_summary}"

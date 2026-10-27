@@ -5,7 +5,7 @@ Un programa que solo mueve un número o un texto a la vez sirve de poco. En la v
 Para eso, Ridgun te da tres envases distintos, cada uno pensado para un trabajo muy concreto:
 1. **Listas (`[T]`)**: *"Tengo muchos elementos del mismo tipo (o ninguno) y quiero recorrerlos"*.
 2. **Tuplas (`(A, B)`)**: *"Quiero devolver un par o un trío de cosas distintas juntas sin crear un tipo nuevo"*.
-3. **Secuencias y máscaras (`s["-+-"]`)**: *"Quiero filtrar o reordenar argumentos al vuelo como si tuviera un colador matemático"*.
+3. **Secuencias y máscaras (`s(_ + _)`, `(+ _ _ +)`)**: *"Quiero filtrar o reordenar argumentos al vuelo como si tuviera un colador matemático"*.
 
 Vamos una por una.
 
@@ -138,31 +138,48 @@ fn :: main => ()
 
 ---
 
-## 5.4. El truco ninja: Secuencias y Máscaras Posicionales (`s["-+-"]`)
+## 5.4. El truco ninja: Secuencias y Máscaras Posicionales (`s(_ + _)`, `(+ _ _ +)`)
 
 Aquí viene una de las joyas más originales de Ridgun, heredada directamente de los lenguajes vectoriales como J y APL.
 
-Imagina que recibes una ristra de argumentos con el patrón de secuencia **`(s)`** y quieres quedarte solo con algunos y tirar otros sin declarar cinco variables con nombres inventados (`_a`, `b`, `_c`, `d`...).
+Imagina que recibes una ristra de argumentos con el patrón de secuencia **`(s)`** y quieres quedarte solo con algunos y descartar otros sin declarar cinco variables con nombres inventados (`_a`, `b`, `_c`, `d`...).
 
-Le aplicas a `s` una **máscara de signos `+` (quédatelo) y `-` (tíralo)**:
+Le aplicas a `s` una **máscara de tupla con `+` (quédatelo) y `_` (descártalo)**:
 
-- **`s["-+-"]`**: de 3 elementos, tira el primero (`-`), quédate con el segundo (`+`) y tira el tercero (`-`).
-- **`s["+-+"]`**: quédate con el primero y el tercero; devuelve la secuencia con esos dos.
-- **`s["-- +"]`** (ojo al espacio antes del último `+`): tira los dos primeros (`--`) y aplica `+` **a todos los demás que vengan detrás**, sean cuantos sean.
+- **`s(_ + _)`**: de 3 elementos, descarta el primero (`_`), quédate con el segundo (`+`) y descarta el tercero (`_`).
+- **`s(+ _ +)`**: quédate con el primero y el tercero; devuelve la secuencia con esos dos.
+- **`s(_ _ +...)`**: descarta los dos primeros (`_ _`) y aplica `+...` **a todos los demás que vengan detrás**, sean cuantos sean.
 
 Míralo funcionando:
 
 ```ridgun
 fn :: el del medio Int Int Int => Int
-      el del medio (s)         =  s["-+-"]
+      el del medio (s)         =  s(_ + _)
 
 fn :: descartar dos primeros Int... => [Int]
-      descartar dos primeros (s)    =  s["-- +"]
+      descartar dos primeros (s)    =  s(_ _ +...)
 
 fn :: main => ()
       main =
         echo (el del medio 100 42 999)              -- Imprime 42
         echo (descartar dos primeros 1 2 10 20 30)  -- Imprime [10, 20, 30]
+```
+
+Mejor aún: puedes colocar una máscara **`(+ _ _ +)`** como una etapa intermedia dentro de una tubería **`->`** (`FR-COMP-014`). Cuando una función u operador devuelve una tupla de varios valores, la máscara filtra qué posiciones conservas (`+`) y cuáles descartas (`_`), y los elementos seleccionados se desempaquetan automáticamente como argumentos de la siguiente función de la tubería:
+
+```ridgun
+fn :: parsear paquete String => Int Int String String
+      parsear paquete ver    =  (200, 4, ver, "OK")
+
+fn :: combinar codigo Int  String => String
+      combinar codigo code msg    =  "{code}:{msg}"
+
+fn :: main => ()
+      main =
+        -- De (200, 4, "v0.9.9", "OK"), (+ _ _ +) selecciona el 1.º (200) y el 4.º ("OK")
+        -- y los pasa como los 2 argumentos de `combinar codigo`:
+        parsear paquete "v0.9.9" -> (+ _ _ +) -> combinar codigo -> resumen
+        echo resumen  -- Imprime 200:OK
 ```
 
 Además, si usas el operador coma `,` fuera de paréntesis (`lista1 , lista2`), Ridgun aplana ambas colecciones en una única secuencia continua.

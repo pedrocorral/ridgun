@@ -43,6 +43,6 @@ Task report: what changed · IDs touched · tests · security rows still open ·
 
 ## Scoped instructions
 Read these before working on matching files:
-- `custom/languages/ridgun` (when touching **/*.rg, build.rg): read `.aix/custom/instructions/languages/ridgun.md` — Use when writing, refactoring, or reviewing Ridgun (.rg) source files or build.rg: syntax rules, type signatures, guards, ADTs, parallel || DAGs, RMM1/RMM2 memory, regions, and stable/ridgunc ELF64 verification.
+- `custom/languages/ridgun` (when touching **/*.rg, build.rg): read `.aix/custom/instructions/languages/ridgun.md` — Use when writing, refactoring, or reviewing Ridgun (.rg) source files or build.rg: syntax rules, idiomatic -> pipeline chaining (xs map f -> filter g -> results), (+ _ _ +) sequence masks, -> () unit discard, _ =-free blocks, type signatures, guards, ADTs, parallel || DAGs, RMM1/RMM2 memory, regions, and stable/ridgunc ELF64 verification.
 - `custom/tools/stable` (when touching build.rg, plugins/**/*.rg, .stable/plugins/**/*.rg): read `.aix/custom/instructions/tools/stable.md` — Use when creating, editing, or running build.rg, stable plugins (plugins/*.rg, .stable/plugins/*.rg), custom stable tasks, dependencies, or library/executable builds with stable.
 

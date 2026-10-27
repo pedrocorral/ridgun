@@ -47,7 +47,7 @@ fn :: tuple snd (Int Int) => Int
 
 fn :: wait child exit Int => Int Int
       wait child exit 0 =
-        _ = sys exit 42
+        sys exit 42
         (0, 0)
       wait child exit pid =  sys waitpid pid 0
 
@@ -64,7 +64,7 @@ fn :: run pal timeout block String   => Int
           -- Poll readable regular file (events = 1 = POLLIN)
           pfd = sys open mode pal_file "r"
           pr = sys poll pfd 1 (0 - 1)
-          _ = sys close pfd
+          sys close pfd
           assert true (pr > 0)
           42
 
@@ -74,9 +74,9 @@ fn :: main => ()
         stable_bin = root_dir + "/" + (resolve stable bin)
         ridgunc_bin = root_dir + "/" + (resolve ridgunc bin)
         echo "=== FR-COMP-006: Reusable Library Compilation (.rglib & ELF64 ET_DYN .so) ==="
-        _ = shell exec "rm -rf target/test_lib_work && mkdir -p target/test_lib_work"
+        shell exec "rm -rf target/test_lib_work && mkdir -p target/test_lib_work"
         lib_src = "-- Reusable math & shape library (no main function)\ntype Shape = Circle Int | Rect Int Int\n\nfn :: math cube Int => Int\n      math cube x   =  x * x * x\n\nfn :: shape area Shape        => Int\n      shape area (Circle r)   =  3 * r * r\n      shape area (Rect   w h) =  w * h\n"
-        _ = write file "target/test_lib_work/geom_lib.rg" lib_src
+        write file "target/test_lib_work/geom_lib.rg" lib_src
         st_lib = shell exec ("\"" + ridgunc_bin + "\" build --lib target/test_lib_work/geom_lib.rg -o target/test_lib_work/geom_lib")
         assert int equals st_lib 0 "ridgunc build --lib geom_lib"
         rglib_text = read file "target/test_lib_work/geom_lib.rglib"
@@ -92,8 +92,8 @@ fn :: main => ()
         assert int equals (byte at so_bytes 16) 3 "ELF64 ET_DYN low byte"
         assert int equals (byte at so_bytes 17) 0 "ELF64 ET_DYN high byte"
         -- Consumer program importing the compiled .rglib bundle
-        app_src = "import \"target/test_lib_work/geom_lib.rglib\"\n\nfn :: check eq Int Int => ()\n      check eq a   b\n        | a == b = ()\n        | otherwise = sys exit 1\n\nfn :: main => ()\n      main =\n        _ = check eq (math cube 4) 64\n        _ = check eq (shape area (Rect 5 8)) 40\n        check eq (shape area (Circle 3)) 27\n"
-        _ = write file "target/test_lib_work/consumer_app.rg" app_src
+        app_src = "import \"target/test_lib_work/geom_lib.rglib\"\n\nfn :: check eq Int Int => ()\n      check eq a   b\n        | a == b = ()\n        | otherwise = sys exit 1\n\nfn :: main => ()\n      main =\n        check eq (math cube 4) 64\n        check eq (shape area (Rect 5 8)) 40\n        check eq (shape area (Circle 3)) 27\n"
+        write file "target/test_lib_work/consumer_app.rg" app_src
         st_app = shell exec ("\"" + ridgunc_bin + "\" run target/test_lib_work/consumer_app.rg")
         assert int equals st_app 0 "ridgunc run consumer_app with .rglib"
         echo "=== FR-TOOL-001 / FR-TOOL-002 / FR-TOOL-003: Comprehensive `stable` Test Suite ==="
@@ -136,7 +136,7 @@ fn :: main => ()
         assert ok (str contains tst_out "[success] Passed 1/1 test suite(s) — 0 failures.")
         -- `stable format` on an unaligned file + idempotence check
         unaligned_src = "fn :: add pair Int Int => Int\n      add pair x y = x + y\n      add pair 0 y = y\n"
-        _ = write file "target/test_lib_work/hello_app/src/main/ridgun/lib/math_util.rg" unaligned_src
+        write file "target/test_lib_work/hello_app/src/main/ridgun/lib/math_util.rg" unaligned_src
         st_fmt1 = shell exec ("cd target/test_lib_work/hello_app && \"" + stable_bin + "\" format src/main/ridgun/lib/math_util.rg > fmt1.txt")
         assert int equals st_fmt1 0 "stable format first pass"
         assert ok (str contains (read file "target/test_lib_work/hello_app/fmt1.txt") "[fmt]")
@@ -163,7 +163,7 @@ fn :: main => ()
         assert int equals st_run_app 0 "stable run hello_app"
         assert ok (str contains (read file "target/test_lib_work/hello_app/run.txt") "Hello from hello_app!")
         -- 3. `stable init` in a fresh directory & `stable new -l` (via `cli.rglib` short flag `-l`)
-        _ = shell exec "mkdir -p target/test_lib_work/init_proj"
+        shell exec "mkdir -p target/test_lib_work/init_proj"
         st_init = shell exec ("cd target/test_lib_work/init_proj && \"" + stable_bin + "\" init > init1.txt")
         assert int equals st_init 0 "stable init in empty dir"
         assert ok (is file "target/test_lib_work/init_proj/build.rg")
@@ -194,13 +194,13 @@ fn :: main => ()
         assert int equals st_deps_sync 0 "stable deps sync"
         assert ok (str contains (read file "target/test_lib_work/hello_app/deps.txt") "[success] Dependencies synchronized.")
         -- 5. Custom Tasks, Multi-Word Tasks, Plugins, and Executable Plugins (`FR-TOOL-003`)
-        _ = shell exec "rm -rf target/test_lib_work/web_proj && mkdir -p target/test_lib_work/web_proj/plugins"
+        shell exec "rm -rf target/test_lib_work/web_proj && mkdir -p target/test_lib_work/web_proj/plugins"
         web_build = "fn :: project name => String\n      project name =  \"demo_web\"\n\nfn :: project version => String\n      project version =  \"0.1.0\"\n\nfn :: plugins => [String]\n      plugins =  [\"router\"]\n\nfn :: task serve => String\n      task serve =  \"printf SERVE_OK > target_serve.txt\"\n\nfn :: task db migrate => String\n      task db migrate =  \"printf MIGRATE_OK > target_migrate.txt\"\n"
         router_plugin = "fn :: task routes => String\n      task routes =  \"printf ROUTES_OK > target_routes.txt\"\n"
-        gen_plugin = "fn :: main => ()\n      main =  write_file \"target_exec_plugin.txt\" \"EXEC_PLUGIN_OK\"\n"
-        _ = write file "target/test_lib_work/web_proj/build.rg" web_build
-        _ = write file "target/test_lib_work/web_proj/plugins/router.rg" router_plugin
-        _ = write file "target/test_lib_work/web_proj/plugins/codegen.rg" gen_plugin
+        gen_plugin = "fn :: main => ()\n      main =  write_file \"target_exec_plugin.txt\" \"EXEC_PLUGIN_OK\" -> ()\n"
+        write file "target/test_lib_work/web_proj/build.rg" web_build
+        write file "target/test_lib_work/web_proj/plugins/router.rg" router_plugin
+        write file "target/test_lib_work/web_proj/plugins/codegen.rg" gen_plugin
         st_serve = shell exec ("cd target/test_lib_work/web_proj && \"" + stable_bin + "\" serve")
         assert int equals st_serve 0 "stable serve exit status"
         assert str eq (read file "target/test_lib_work/web_proj/target_serve.txt") "SERVE_OK" "stable serve output"
@@ -238,9 +238,9 @@ fn :: main => ()
         -- 6. Creative Multi-Angle Stress & Edge-Case Tests for `stable`
         -- 6a. Longest-prefix task disambiguation (`task db` vs `task db migrate` vs `task db migrate rollback`) + extra arg forwarding
         disambig_build = "fn :: project name => String\n      project name =  \"disambig_proj\"\n\nfn :: task db => String\n      task db =  \"echo DB_ROOT:\"\n\nfn :: task db migrate => String\n      task db migrate =  \"echo DB_MIG:\"\n\nfn :: task db migrate rollback => String\n      task db migrate rollback =  \"echo DB_ROLLBACK:\"\n"
-        _ = shell exec "mkdir -p target/test_lib_work/disambig_proj/.stable/plugins"
-        _ = write file "target/test_lib_work/disambig_proj/build.rg" disambig_build
-        _ = write file "target/test_lib_work/disambig_proj/.stable/plugins/hidden_plug.rg" "fn :: task secret deploy => String\n      task secret deploy =  \"printf SECRET_DEPLOY_OK > secret.txt\"\n"
+        shell exec "mkdir -p target/test_lib_work/disambig_proj/.stable/plugins"
+        write file "target/test_lib_work/disambig_proj/build.rg" disambig_build
+        write file "target/test_lib_work/disambig_proj/.stable/plugins/hidden_plug.rg" "fn :: task secret deploy => String\n      task secret deploy =  \"printf SECRET_DEPLOY_OK > secret.txt\"\n"
         st_db1 = shell exec ("cd target/test_lib_work/disambig_proj && \"" + stable_bin + "\" db > db1.txt")
         assert int equals st_db1 0 "task db root"
         assert ok (str contains (read file "target/test_lib_work/disambig_proj/db1.txt") "DB_ROOT:")
@@ -256,12 +256,12 @@ fn :: main => ()
         assert int equals st_sec 0 "hidden .stable/plugins task execution"
         assert str eq (read file "target/test_lib_work/disambig_proj/secret.txt") "SECRET_DEPLOY_OK" ".stable/plugins task output"
         -- 6b. Multi-executable project (`alpha` and `beta` in `src/main/ridgun/<target>/main.rg`), selective `built beta`, `run beta`, `run alpha`
-        _ = shell exec "mkdir -p target/test_lib_work/multi_app/src/main/ridgun/alpha target/test_lib_work/multi_app/src/main/ridgun/beta target/test_lib_work/multi_app/src/main/ridgun/lib target/test_lib_work/multi_app/src/test/ridgun"
+        shell exec "mkdir -p target/test_lib_work/multi_app/src/main/ridgun/alpha target/test_lib_work/multi_app/src/main/ridgun/beta target/test_lib_work/multi_app/src/main/ridgun/lib target/test_lib_work/multi_app/src/test/ridgun"
         multi_build = "fn :: project name => String\n      project name =  \"alpha\"\n\nfn :: project version => String\n      project version =  \"0.2.0\"\n\nfn :: main entry => String\n      main entry =  \"src/main/ridgun/alpha/main.rg\"\n"
-        _ = write file "target/test_lib_work/multi_app/build.rg" multi_build
-        _ = write file "target/test_lib_work/multi_app/src/main/ridgun/lib/shared_tag.rg" "fn :: tag prefix => String\n      tag prefix =  \"MULTI\"\n"
-        _ = write file "target/test_lib_work/multi_app/src/main/ridgun/alpha/main.rg" "import shared_tag\n\nfn :: main => ()\n      main =  echo ((tag prefix) + \":ALPHA\")\n"
-        _ = write file "target/test_lib_work/multi_app/src/main/ridgun/beta/main.rg" "import shared_tag\n\nfn :: main => ()\n      main =  echo ((tag prefix) + \":BETA\")\n"
+        write file "target/test_lib_work/multi_app/build.rg" multi_build
+        write file "target/test_lib_work/multi_app/src/main/ridgun/lib/shared_tag.rg" "fn :: tag prefix => String\n      tag prefix =  \"MULTI\"\n"
+        write file "target/test_lib_work/multi_app/src/main/ridgun/alpha/main.rg" "import shared_tag\n\nfn :: main => ()\n      main =  echo ((tag prefix) + \":ALPHA\")\n"
+        write file "target/test_lib_work/multi_app/src/main/ridgun/beta/main.rg" "import shared_tag\n\nfn :: main => ()\n      main =  echo ((tag prefix) + \":BETA\")\n"
         -- Selective build of `beta` only
         st_b_beta = shell exec ("cd target/test_lib_work/multi_app && \"" + stable_bin + "\" built beta")
         assert int equals st_b_beta 0 "selective stable built beta"
@@ -278,23 +278,23 @@ fn :: main => ()
         assert ok (str contains (read file "target/test_lib_work/multi_app/run_beta.txt") "MULTI:BETA")
         -- 6c. End-to-end dependency consumption: `hello_app` imports `mathkit` from `.stable/deps/mathkit.rglib` and passes `stable check` & `stable run`
         hello_with_dep = "import mathkit\n\nfn :: main => ()\n      main =  echo (greet \"from_dep\")\n"
-        _ = write file "target/test_lib_work/hello_app/src/main/ridgun/hello_app/main.rg" hello_with_dep
+        write file "target/test_lib_work/hello_app/src/main/ridgun/hello_app/main.rg" hello_with_dep
         st_chk_dep = shell exec ("cd target/test_lib_work/hello_app && \"" + stable_bin + "\" check")
         assert int equals st_chk_dep 0 "stable check hello_app importing mathkit from .stable/deps"
         st_built_dep = shell exec ("cd target/test_lib_work/hello_app && \"" + stable_bin + "\" built && \"" + stable_bin + "\" run > run_dep.txt")
         assert int equals st_built_dep 0 "stable built & run hello_app with mathkit dependency"
         assert ok (str contains (read file "target/test_lib_work/hello_app/run_dep.txt") "Hello from library from_dep!")
         -- 6c-bis. Regression suite: external project (`ext_solstice`) resolving `.stable/deps/{mod}.rglib`, `.stable/deps/{mod}.rg`, `.stable/deps/ridgun-libs/src/main/ridgun/lib/{mod}.rg`, transitive imports via local `.rg` modules, diamond imports, 0-arg ADTs, record getters & postfix operators
-        _ = shell exec "mkdir -p target/test_lib_work/ext_solstice/.stable/deps/ridgun-libs/src/main/ridgun/lib target/test_lib_work/ext_solstice/src/main/ridgun/lib target/test_lib_work/ext_solstice/src/main/ridgun/ext_solstice"
-        _ = shell exec "cp -f target/test_lib_work/mathkit/target/mathkit.rglib target/test_lib_work/ext_solstice/.stable/deps/mathkit.rglib"
+        shell exec "mkdir -p target/test_lib_work/ext_solstice/.stable/deps/ridgun-libs/src/main/ridgun/lib target/test_lib_work/ext_solstice/src/main/ridgun/lib target/test_lib_work/ext_solstice/src/main/ridgun/ext_solstice"
+        shell exec "cp -f target/test_lib_work/mathkit/target/mathkit.rglib target/test_lib_work/ext_solstice/.stable/deps/mathkit.rglib"
         ext_base_src = "type ExtMode = ModeFast | ModeSafe\n\ntype ExtCfg = ext_port: Int, ext_tag: String\n\nop :: String trim ext => String\n      s      trim ext =  s + \"_ok\"\n"
         ext_mid_src = "import ext_base\n\nfn :: build ext cfg Int => ExtCfg\n      build ext cfg p   =  ExtCfg p (\"p\" trim ext)\n"
         local_hlp_src = "import ext_mid\nimport mathkit\n\nfn :: check mode ExtMode => Bool\n      check mode ModeFast = True\n      check mode ModeSafe = False\n\nfn :: format helper ExtCfg Bool => String\n      format helper cfg True = (greet (ext_tag cfg)) + \":\" + (int_to_str (ext_port cfg))\n      format helper _ False = \"bad\"\n\nfn :: run helper Int => String\n      run helper p   =\n        cfg = build ext cfg p\n        ok_m = check mode ModeFast\n        format helper cfg ok_m\n"
         ext_main_src = "import local_helper\nimport ext_base\n\nfn :: main => ()\n      main =  echo (run helper 8080)\n"
-        _ = write file "target/test_lib_work/ext_solstice/.stable/deps/ridgun-libs/src/main/ridgun/lib/ext_base.rg" ext_base_src
-        _ = write file "target/test_lib_work/ext_solstice/.stable/deps/ext_mid.rg" ext_mid_src
-        _ = write file "target/test_lib_work/ext_solstice/src/main/ridgun/lib/local_helper.rg" local_hlp_src
-        _ = write file "target/test_lib_work/ext_solstice/src/main/ridgun/ext_solstice/main.rg" ext_main_src
+        write file "target/test_lib_work/ext_solstice/.stable/deps/ridgun-libs/src/main/ridgun/lib/ext_base.rg" ext_base_src
+        write file "target/test_lib_work/ext_solstice/.stable/deps/ext_mid.rg" ext_mid_src
+        write file "target/test_lib_work/ext_solstice/src/main/ridgun/lib/local_helper.rg" local_hlp_src
+        write file "target/test_lib_work/ext_solstice/src/main/ridgun/ext_solstice/main.rg" ext_main_src
         st_ext_chk = shell exec ("cd target/test_lib_work/ext_solstice && \"" + ridgunc_bin + "\" check src/main/ridgun/ext_solstice/main.rg > ext_chk.txt")
         assert int equals st_ext_chk 0 "ridgunc check in external project with transitive .stable/deps imports"
         assert ok (str contains (read file "target/test_lib_work/ext_solstice/ext_chk.txt") "0 error(s)")
@@ -302,30 +302,30 @@ fn :: main => ()
         assert int equals st_ext_bld 0 "ridgunc build & run in external project with transitive .stable/deps imports"
         assert ok (str contains (read file "target/test_lib_work/ext_solstice/ext_out.txt") "Hello from library p_ok!:8080")
         -- 6d. Negative tests: `stable check` on a broken type error and `stable test` on a failing assertion must both exit with code 1
-        _ = shell exec "mkdir -p target/test_lib_work/broken_proj/src/main/ridgun/broken target/test_lib_work/broken_proj/src/test/ridgun"
-        _ = write file "target/test_lib_work/broken_proj/build.rg" "fn :: project name => String\n      project name =  \"broken\"\n"
-        _ = write file "target/test_lib_work/broken_proj/src/main/ridgun/broken/main.rg" "fn :: bad fn Int => Int\n      bad fn x   =  \"not_an_int\"\n\nfn :: main => ()\n      main =  ()\n"
+        shell exec "mkdir -p target/test_lib_work/broken_proj/src/main/ridgun/broken target/test_lib_work/broken_proj/src/test/ridgun"
+        write file "target/test_lib_work/broken_proj/build.rg" "fn :: project name => String\n      project name =  \"broken\"\n"
+        write file "target/test_lib_work/broken_proj/src/main/ridgun/broken/main.rg" "fn :: bad fn Int => Int\n      bad fn x   =  \"not_an_int\"\n\nfn :: main => ()\n      main =  ()\n"
         st_bad_chk = shell exec ("cd target/test_lib_work/broken_proj && \"" + stable_bin + "\" check > bad_chk.txt")
         assert int equals st_bad_chk 1 "stable check on broken module returns exit code 1"
         assert ok (str contains (read file "target/test_lib_work/broken_proj/bad_chk.txt") "[err]")
         -- Fix source module, add a failing test suite using `test.rg`, and verify `stable test` returns exit code 1
-        _ = write file "target/test_lib_work/broken_proj/src/main/ridgun/broken/main.rg" "fn :: main => ()\n      main =  ()\n"
-        _ = shell exec "cp -f src/test/ridgun/test.rg target/test_lib_work/broken_proj/src/test/ridgun/test.rg"
-        _ = write file "target/test_lib_work/broken_proj/src/test/ridgun/test_fail.rg" "import test\n\nfn :: main => ()\n      main =  assert int equals 2 3 \"intentional failure\"\n"
+        write file "target/test_lib_work/broken_proj/src/main/ridgun/broken/main.rg" "fn :: main => ()\n      main =  ()\n"
+        shell exec "cp -f src/test/ridgun/test.rg target/test_lib_work/broken_proj/src/test/ridgun/test.rg"
+        write file "target/test_lib_work/broken_proj/src/test/ridgun/test_fail.rg" "import test\n\nfn :: main => ()\n      main =  assert int equals 2 3 \"intentional failure\"\n"
         st_bad_tst = shell exec ("cd target/test_lib_work/broken_proj && \"" + stable_bin + "\" test > bad_tst.txt")
         assert int equals st_bad_tst 1 "stable test on failing assertion returns exit code 1"
         bad_tst_out = read file "target/test_lib_work/broken_proj/bad_tst.txt"
         assert ok (str contains bad_tst_out "[FAIL]")
         assert ok (str contains bad_tst_out "[error] Passed 0/1 test suite(s) — 1 failed.")
         -- 6e. `stable install` with isolated HOME into `$HOME/.local/bin/` and `./bin/`
-        _ = shell exec "mkdir -p target/test_lib_work/fake_home"
+        shell exec "mkdir -p target/test_lib_work/fake_home"
         st_inst = shell exec ("cd target/test_lib_work/multi_app && HOME=\"$PWD/../fake_home\" \"" + stable_bin + "\" install alpha > inst.txt")
         assert int equals st_inst 0 "stable install alpha with isolated HOME"
         assert ok (is file "target/test_lib_work/fake_home/.local/bin/alpha")
         assert ok (is file "target/test_lib_work/multi_app/bin/alpha")
         -- 6f. Interactive REPL piped session (`info`, `reload`, `tasks`, `exit`)
         repl_in = "info\nreload\ntasks\nexit\n"
-        _ = write file "target/test_lib_work/multi_app/repl_in.txt" repl_in
+        write file "target/test_lib_work/multi_app/repl_in.txt" repl_in
         st_repl = shell exec ("cd target/test_lib_work/multi_app && \"" + stable_bin + "\" < repl_in.txt > repl_out.txt")
         assert int equals st_repl 0 "interactive REPL session exits cleanly with 0"
         repl_out = read file "target/test_lib_work/multi_app/repl_out.txt"
@@ -358,10 +358,10 @@ fn :: main => ()
         eof_chunk = sys read fd rfd 16
         assert equals eof_chunk ""
         assert equals (sys close rfd) 0
-        -- 3. Normalized PAL flags `sys open` (1 | 64 | 1024 = 1089 = write+create+append)
+        -- 3. Normalized PAL flags `sys open` (1 | 64 | 1089 = write+create+append)
         afd = sys open pal_file 1089 420
         assert true (afd >= 0)
-        _ = sys write fd afd "!"
+        sys write fd afd "!"
         assert equals (sys close afd) 0
         assert equals (read file pal_file) "hello-pal-ridgun!"
         -- 4. `sys getpid`, `sys time ms`, `sys sleep ms`, `sys kill`, `sys terminate`, `sys call`
@@ -380,7 +380,7 @@ fn :: main => ()
         pipe_wfd = tuple snd pfds
         assert true (pipe_rfd >= 0)
         assert true (pipe_wfd >= 0)
-        _ = sys write fd pipe_wfd "pipe-msg"
+        sys write fd pipe_wfd "pipe-msg"
         assert equals (sys close pipe_wfd) 0
         pipe_out = sys read fd pipe_rfd 32
         assert equals pipe_out "pipe-msg"
@@ -393,7 +393,7 @@ fn :: main => ()
         assert equals (sys deadline ms) 0
         assert equals (sys remaining ms) (0 - 1)
         t0 = sys time ms
-        _ = sys sleep ms 10_ms
+        sys sleep ms 10_ms
         t1 = sys time ms
         assert true (t1 >= (t0 + 5))
         outer_res = run pal timeout block pal_file
@@ -403,71 +403,71 @@ fn :: main => ()
         assert equals (sys remaining ms) (0 - 1)
         -- 6. Verify `--strict` mode rejects `_` in `fn ::` / `op ::` names and `(Int, Int)` outputs, and accepts `fn`/`op`/`where` and `=> Int Int`
         strict_bad = "target/test_lib_work/strict_bad.rg"
-        _ = write file strict_bad "fn :: bad_fn_name Int => Int\n      bad_fn_name x = x + 1\n"
+        write file strict_bad "fn :: bad_fn_name Int => Int\n      bad_fn_name x = x + 1\n"
         rc_non_strict = shell exec ("\"" + ridgunc_bin + "\" check " + strict_bad + " >/dev/null 2>&1")
         assert equals rc_non_strict 0
         rc_strict_bad = shell exec ("\"" + ridgunc_bin + "\" check --strict " + strict_bad + " >/dev/null 2>&1")
         assert true (rc_strict_bad != 0)
         strict_bad_ret = "target/test_lib_work/strict_bad_ret.rg"
-        _ = write file strict_bad_ret "fn :: pair up Int => (Int, Int)\n      pair up x = (x, x + 1)\n"
+        write file strict_bad_ret "fn :: pair up Int => (Int, Int)\n      pair up x = (x, x + 1)\n"
         rc_strict_bad_ret = shell exec ("\"" + ridgunc_bin + "\" check --strict " + strict_bad_ret + " >/dev/null 2>&1")
         assert true (rc_strict_bad_ret != 0)
         strict_good = "target/test_lib_work/strict_good.rg"
-        _ = write file strict_good "fn :: op Int => Int Int\n      op where = (where, where + 1)\nop :: Int fn Int => Int\n      a fn b = a + b\n"
+        write file strict_good "fn :: op Int => Int Int\n      op where = (where, where + 1)\nop :: Int fn Int => Int\n      a fn b = a + b\n"
         rc_strict_good = shell exec ("\"" + ridgunc_bin + "\" check --strict " + strict_good + " >/dev/null 2>&1")
         assert equals rc_strict_good 0
         -- 7. Verify the 5 canonical lambda syntax & diagnostic rules (`FR-COMP-013`)
         lam_bad_empty = "target/test_lib_work/lam_bad_empty.rg"
-        _ = write file lam_bad_empty "fn :: main => ()\n      main =\n        f = (() => 42)\n        echo (f ())\n"
+        write file lam_bad_empty "fn :: main => ()\n      main =\n        f = (() => 42)\n        echo (f ())\n"
         rc_lam_empty = shell exec ("\"" + ridgunc_bin + "\" check " + lam_bad_empty + " > target/test_lib_work/lam_empty.txt 2>&1")
         assert true (rc_lam_empty != 0)
         assert ok (str contains (read file "target/test_lib_work/lam_empty.txt") "zero-parameter lambda uses '(=> expr)', not '(() => expr)'")
         lam_bad_sig = "target/test_lib_work/lam_bad_sig.rg"
-        _ = write file lam_bad_sig "fn :: run thunk (() => Int) => Int\n      run thunk f = f ()\nfn :: main => ()\n      main = echo 1\n"
+        write file lam_bad_sig "fn :: run thunk (() => Int) => Int\n      run thunk f = f ()\nfn :: main => ()\n      main = echo 1\n"
         rc_lam_sig = shell exec ("\"" + ridgunc_bin + "\" check " + lam_bad_sig + " > target/test_lib_work/lam_sig.txt 2>&1")
         assert true (rc_lam_sig != 0)
         assert ok (str contains (read file "target/test_lib_work/lam_sig.txt") "zero-parameter function type in signature uses '(=> Type)', not '(() => Type)'")
         lam_bad_unparen = "target/test_lib_work/lam_bad_unparen.rg"
-        _ = write file lam_bad_unparen "fn :: main => ()\n      main =\n        f = x => x + 1\n        echo (f 5)\n"
+        write file lam_bad_unparen "fn :: main => ()\n      main =\n        f = x => x + 1\n        echo (f 5)\n"
         rc_lam_unparen = shell exec ("\"" + ridgunc_bin + "\" check " + lam_bad_unparen + " > target/test_lib_work/lam_unparen.txt 2>&1")
         assert true (rc_lam_unparen != 0)
         assert ok (str contains (read file "target/test_lib_work/lam_unparen.txt") "lambda expression must be enclosed in parentheses: '(x => expr)'")
         lam_bad_type_expr = "target/test_lib_work/lam_bad_type_expr.rg"
-        _ = write file lam_bad_type_expr "fn :: main => ()\n      main =\n        echo (map (Int => Int) [1, 2, 3])\n"
+        write file lam_bad_type_expr "fn :: main => ()\n      main =\n        echo (map (Int => Int) [1, 2, 3])\n"
         rc_lam_type_expr = shell exec ("\"" + ridgunc_bin + "\" check " + lam_bad_type_expr + " > target/test_lib_work/lam_type_expr.txt 2>&1")
         assert true (rc_lam_type_expr != 0)
         assert ok (str contains (read file "target/test_lib_work/lam_type_expr.txt") "type signature '(Type => Type)' cannot be used as an expression")
         lam_bad_val_type = "target/test_lib_work/lam_bad_val_type.rg"
-        _ = write file lam_bad_val_type "fn :: run handler (conn => conn) Int => Int\n      run handler f x = f x\nfn :: main => ()\n      main = echo 1\n"
+        write file lam_bad_val_type "fn :: run handler (conn => conn) Int => Int\n      run handler f x = f x\nfn :: main => ()\n      main = echo 1\n"
         rc_lam_val_type = shell exec ("\"" + ridgunc_bin + "\" check " + lam_bad_val_type + " > target/test_lib_work/lam_val_type.txt 2>&1")
         assert true (rc_lam_val_type != 0)
         assert ok (str contains (read file "target/test_lib_work/lam_val_type.txt") "function type in signature must use uppercase type names")
         lam_bad_tup = "target/test_lib_work/lam_bad_tup.rg"
-        _ = write file lam_bad_tup "fn :: main => ()\n      main =\n        echo (map (a b => a + b) [(1, 2), (3, 4)])\n"
+        write file lam_bad_tup "fn :: main => ()\n      main =\n        echo (map (a b => a + b) [(1, 2), (3, 4)])\n"
         rc_lam_tup = shell exec ("\"" + ridgunc_bin + "\" check " + lam_bad_tup + " > target/test_lib_work/lam_tup.txt 2>&1")
         assert true (rc_lam_tup != 0)
         assert ok (str contains (read file "target/test_lib_work/lam_tup.txt") "use '((a b) => ...)' to destructure a tuple")
         lam_bad_multi = "target/test_lib_work/lam_bad_multi.rg"
-        _ = write file lam_bad_multi "fn :: main => ()\n      main =\n        echo (fold ((acc x) => acc + x) 0 [1, 2, 3])\n"
+        write file lam_bad_multi "fn :: main => ()\n      main =\n        echo (fold ((acc x) => acc + x) 0 [1, 2, 3])\n"
         rc_lam_multi = shell exec ("\"" + ridgunc_bin + "\" check " + lam_bad_multi + " > target/test_lib_work/lam_multi.txt 2>&1")
         assert true (rc_lam_multi != 0)
         assert ok (str contains (read file "target/test_lib_work/lam_multi.txt") "use '(a b => ...)' for multiple parameters")
         -- 8. RG-095 regression test: multi-file module (`module :: modlib` across `modlib.rg` and `modlib_extra.rg`)
         --    imported by an app that defines its own `type Changeset` (both source and `.rglib` bundle)
-        _ = write file "target/test_lib_work/modlib_extra.rg" "module :: modlib\n\nfn :: trim field String => String\n      trim field s = s\n"
-        _ = write file "target/test_lib_work/modlib.rg" "module :: modlib\nimport modlib_extra\n\ntype Changeset = cs_field: String\n\nfn :: validate required String => Changeset\n      validate required s = Changeset (trim_field s)\n"
-        _ = write file "target/test_lib_work/modapp.rg" "import modlib\n\ntype Changeset = app_a: String, app_b: String\n\nfn :: app cs val Changeset => String\n      app cs val c = (app_a c) + (app_b c)\n\nfn :: lib cs val modlib.Changeset => String\n      lib cs val c = modlib.cs_field c\n\nfn :: main => ()\n      main =\n        lc = modlib.validate_required \"ok\"\n        ac = Changeset \"1\" \"2\"\n        echo ((lib_cs_val lc) + \":\" + (app_cs_val ac))\n"
+        write file "target/test_lib_work/modlib_extra.rg" "module :: modlib\n\nfn :: trim field String => String\n      trim field s = s\n"
+        write file "target/test_lib_work/modlib.rg" "module :: modlib\nimport modlib_extra\n\ntype Changeset = cs_field: String\n\nfn :: validate required String => Changeset\n      validate required s = Changeset (trim_field s)\n"
+        write file "target/test_lib_work/modapp.rg" "import modlib\n\ntype Changeset = app_a: String, app_b: String\n\nfn :: app cs val Changeset => String\n      app cs val c = (app_a c) + (app_b c)\n\nfn :: lib cs val modlib.Changeset => String\n      lib cs val c = modlib.cs_field c\n\nfn :: main => ()\n      main =\n        lc = modlib.validate_required \"ok\"\n        ac = Changeset \"1\" \"2\"\n        echo ((lib_cs_val lc) + \":\" + (app_cs_val ac))\n"
         rc_modapp = shell exec ("\"" + ridgunc_bin + "\" run --strict target/test_lib_work/modapp.rg > target/test_lib_work/modapp_out.txt 2>&1")
         assert int equals rc_modapp 0 "RG-095 multi-file module source run"
         assert str eq (str trim (read file "target/test_lib_work/modapp_out.txt")) "ok:12" "RG-095 multi-file module output"
         rc_modlib_bundle = shell exec ("\"" + ridgunc_bin + "\" build --lib --strict target/test_lib_work/modlib.rg -o target/test_lib_work/modlib.rglib >/dev/null 2>&1")
         assert int equals rc_modlib_bundle 0 "RG-095 multi-file .rglib build"
-        _ = shell exec "rm -f target/test_lib_work/modlib.rg target/test_lib_work/modlib_extra.rg"
+        shell exec "rm -f target/test_lib_work/modlib.rg target/test_lib_work/modlib_extra.rg"
         rc_modapp_bundle = shell exec ("\"" + ridgunc_bin + "\" run --strict target/test_lib_work/modapp.rg > target/test_lib_work/modapp_bundle_out.txt 2>&1")
         assert int equals rc_modapp_bundle 0 "RG-095 multi-file .rglib bundle run"
         assert str eq (str trim (read file "target/test_lib_work/modapp_bundle_out.txt")) "ok:12" "RG-095 multi-file .rglib bundle output"
         -- 9. RG-094 regression test: Argon2id OWASP (m=19456, t=2, p=1) must execute in < 1,100 ms with LLVM opt -O2
-        _ = write file "target/test_lib_work/bench_a2.rg" "import argon2id\n\nfn :: report a2 Int String => String\n      report a2 elapsed h\n        | elapsed < 1100 and (str_len h) > 32 = \"argon2id_ok\"\n        | otherwise = \"argon2id_slow\"\n\nfn :: main => ()\n      main =\n        t0 = sys_time_ms\n        res = argon2id_hash \"correct horse battery staple\" \"saltsaltsaltsalt\" 19456 2 1\n        t1 = sys_time_ms\n        echo (report_a2 (t1 - t0) res)\n"
+        write file "target/test_lib_work/bench_a2.rg" "import argon2id\n\nfn :: report a2 Int String => String\n      report a2 elapsed h\n        | elapsed < 1100 and (str_len h) > 32 = \"argon2id_ok\"\n        | otherwise = \"argon2id_slow\"\n\nfn :: main => ()\n      main =\n        t0 = sys_time_ms\n        res = argon2id_hash \"correct horse battery staple\" \"saltsaltsaltsalt\" 19456 2 1\n        t1 = sys_time_ms\n        echo (report_a2 (t1 - t0) res)\n"
         rc_a2_build = shell exec ("\"" + ridgunc_bin + "\" build target/test_lib_work/bench_a2.rg -o target/test_lib_work/bench_a2 >/dev/null 2>&1")
         assert int equals rc_a2_build 0 "RG-094 Argon2id build"
         rc_a2_run = shell exec "target/test_lib_work/bench_a2 > target/test_lib_work/bench_a2_out.txt 2>&1"
@@ -477,19 +477,19 @@ fn :: main => ()
         --     (a) orm imports db_abstract (Conn, Value, query) while solstice and root app also define Conn, Value, Changeset, query
         --     (b) web_sdk imports codec_hlp (json_get_str :: String String => String) while root app imports web_sdk and json_lib (json_get_str :: JsonDoc String => String)
         --     (c) unimported sibling module mod_b is invisible inside mod_a
-        _ = write file "target/test_lib_work/db_abstract.rg" "module :: db_abstract\n\ntype Conn = db_fd: Int\ntype Value = VInt Int | VText String\n\nfn :: query Conn String [Value] => String\n      query c sql _ = \"db:\" + (int_to_str (db_fd c)) + \":\" + sql\n"
-        _ = write file "target/test_lib_work/orm.rg" "module :: orm\nimport db_abstract\n\ntype Changeset = orm_valid: Bool\n\nfn :: find by id Conn String Int => String\n      find by id c tbl id = query c tbl [VInt id]\n"
-        _ = write file "target/test_lib_work/codec_hlp.rg" "module :: codec_hlp\n\nfn :: json get str String String => String\n      json get str raw key = \"codec:\" + raw + \":\" + key\n"
-        _ = write file "target/test_lib_work/solstice.rg" "module :: solstice\nimport codec_hlp\n\ntype Conn = http_status: Int\ntype Value = SVal String\ntype Changeset = sol_ok: Bool\n\nfn :: query Conn => Int\n      query c = http_status c\n\nfn :: extract token String => String\n      extract token body = json_get_str body \"tok\"\n"
-        _ = write file "target/test_lib_work/json_lib.rg" "module :: json_lib\n\ntype JsonDoc = JDoc String\n\nfn :: json get str JsonDoc String => String\n      json get str (JDoc s) k = \"json:\" + s + \":\" + k\n"
-        _ = write file "target/test_lib_work/vis_app.rg" "import db_abstract\nimport orm\nimport solstice\nimport json_lib\n\ntype Conn = app_tag: String\n\nfn :: main => ()\n      main =\n        dbc = db_abstract.Conn 7\n        r1 = orm.find_by_id dbc \"users\" 42\n        sc = solstice.Conn 200\n        r2 = solstice.query sc\n        r3 = solstice.extract_token \"payload\"\n        r4 = json_get_str (JDoc \"doc\") \"id\"\n        ac = Conn \"local\"\n        echo (r1 + \"|\" + (int_to_str r2) + \"|\" + r3 + \"|\" + r4 + \"|\" + (app_tag ac))\n"
+        write file "target/test_lib_work/db_abstract.rg" "module :: db_abstract\n\ntype Conn = db_fd: Int\ntype Value = VInt Int | VText String\n\nfn :: query Conn String [Value] => String\n      query c sql _ = \"db:\" + (int_to_str (db_fd c)) + \":\" + sql\n"
+        write file "target/test_lib_work/orm.rg" "module :: orm\nimport db_abstract\n\ntype Changeset = orm_valid: Bool\n\nfn :: find by id Conn String Int => String\n      find by id c tbl id = query c tbl [VInt id]\n"
+        write file "target/test_lib_work/codec_hlp.rg" "module :: codec_hlp\n\nfn :: json get str String String => String\n      json get str raw key = \"codec:\" + raw + \":\" + key\n"
+        write file "target/test_lib_work/solstice.rg" "module :: solstice\nimport codec_hlp\n\ntype Conn = http_status: Int\ntype Value = SVal String\ntype Changeset = sol_ok: Bool\n\nfn :: query Conn => Int\n      query c = http_status c\n\nfn :: extract token String => String\n      extract token body = json_get_str body \"tok\"\n"
+        write file "target/test_lib_work/json_lib.rg" "module :: json_lib\n\ntype JsonDoc = JDoc String\n\nfn :: json get str JsonDoc String => String\n      json get str (JDoc s) k = \"json:\" + s + \":\" + k\n"
+        write file "target/test_lib_work/vis_app.rg" "import db_abstract\nimport orm\nimport solstice\nimport json_lib\n\ntype Conn = app_tag: String\n\nfn :: main => ()\n      main =\n        dbc = db_abstract.Conn 7\n        r1 = orm.find_by_id dbc \"users\" 42\n        sc = solstice.Conn 200\n        r2 = solstice.query sc\n        r3 = solstice.extract_token \"payload\"\n        r4 = json_get_str (JDoc \"doc\") \"id\"\n        ac = Conn \"local\"\n        echo (r1 + \"|\" + (int_to_str r2) + \"|\" + r3 + \"|\" + r4 + \"|\" + (app_tag ac))\n"
         rc_vis_app = shell exec ("\"" + ridgunc_bin + "\" run --strict target/test_lib_work/vis_app.rg > target/test_lib_work/vis_app_out.txt 2>&1")
         assert int equals rc_vis_app 0 "FR-COMP-012 per-module import visibility run"
         assert str eq (str trim (read file "target/test_lib_work/vis_app_out.txt")) "db:7:users|200|codec:payload:tok|json:doc:id|local" "FR-COMP-012 per-module import visibility output"
-        _ = write file "target/test_lib_work/mod_b.rg" "module :: mod_b\n\nfn :: secret b only Int => Int\n      secret b only x = x + 99\n"
-        _ = write file "target/test_lib_work/mod_a.rg" "module :: mod_a\n\nfn :: leak attempt Int => Int\n      leak attempt x = secret_b_only x\n"
-        _ = write file "target/test_lib_work/leak_app.rg" "import mod_b\nimport mod_a\n\nfn :: main => ()\n      main =\n        echo (int_to_str (mod_a.leak_attempt 1))\n"
+        write file "target/test_lib_work/mod_b.rg" "module :: mod_b\n\nfn :: secret b only Int => Int\n      secret b only x = x + 99\n"
+        write file "target/test_lib_work/mod_a.rg" "module :: mod_a\n\nfn :: leak attempt Int => Int\n      leak attempt x = secret_b_only x\n"
+        write file "target/test_lib_work/leak_app.rg" "import mod_b\nimport mod_a\n\nfn :: main => ()\n      main =\n        echo (int_to_str (mod_a.leak_attempt 1))\n"
         rc_leak = shell exec ("\"" + ridgunc_bin + "\" check target/test_lib_work/leak_app.rg > target/test_lib_work/leak_out.txt 2>&1")
         assert true (rc_leak != 0)
-        _ = shell exec "rm -rf target/test_lib_work"
+        shell exec "rm -rf target/test_lib_work"
         echo "=== All library compilation, stable plugin & PAL timeout tests passed ==="

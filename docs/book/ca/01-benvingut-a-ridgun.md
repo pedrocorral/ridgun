@@ -108,7 +108,7 @@ Ridgun no pretén reinventar la roda quadrada; manlleva sense complexos el millo
 | De qui | Què pren Ridgun | Què deixa fora (per la teva salut mental) |
 |---|---|---|
 | **Haskell / ML** | Funcions pures, *pattern matching* per casos, tipus algebraics (`Option`, `Result`) i polimorfisme (`A`..`Z`). | Les mònades abstractes, els 40 `LANGUAGE pragmas` i el recol·lector de brossa. |
-| **J / APL** | L'obsessió per la forma tabular del codi, tensors natius i màscares de seqüències (`s["-+-"]`). | Els símbols jeroglífics impossibles d'escriure en un teclat normal. |
+| **J / APL** | L'obsessió per la forma tabular del codi, tensors natius i màscares de seqüències (`s(_ + _)`). | Els símbols jeroglífics impossibles d'escriure en un teclat normal. |
 | **Rust / C** | Binaris ELF natius petits, zero GC, control de memòria (`with region`) i crides al sistema POSIX. | La baralla constant amb el *borrow checker*, els *lifetimes* `'a` i la verbositat sintàctica. |
 | **Erlang / Go** | Agents aïllats (`agent`, `send ... to`, `receive from`) i concurrència per canals (`new bounded channel`). | Els punters `nil` i les mutacions compartides per descuit. |
 
@@ -166,11 +166,11 @@ op :: Int limitat_entre Int i Int => Int
 ```
 I després al teu codi escrius `velocitat limitat_entre 0 i 120`. Es llegeix com català (o anglès), però està 100% tipat i compilat a codi natiu.
 
-### 5. Màscares visuals sobre seqüències (`s(+ _)` i `s["-+-"]`)
-Alguna vegada has hagut d'escriure una amanida d'índexs `filter(\(i, x) -> i % 2 == 0)` només per quedar-te amb els elements parells o extreure un patró rítmic d'una llista?
+### 5. Màscares visuals sobre seqüències (`s(_ + _)` i `-> (+ _ _ +) ->`)
+Alguna vegada has hagut d'escriure una amanida d'índexs o obrir una tupla amb variables mudes només per quedar-te amb dues posicions concretes?
 En Ridgun li passes directament una **màscara visual**:
-- `dades["-+-"]`: descarta el primer (`-`), es queda el segon (`+`), descarta el tercer (`-`).
-- `dades["+-~"]`: el símbol `~` repeteix el patró `+-` en bucle fins al final de la llista (tots els índexs parells d'un sol cop).
+- `dades(_ + _)`: descarta el primer (`_`), es queda el segon (`+`), descarta el tercer (`_`).
+- `parsejar paquet "v0.9.9" -> (+ _ _ +) -> combinar codi -> resum`: filtra una tupla de 4 elements al mig d'una canonada i passa el 1r i el 4t directament com a arguments de la funció següent.
 Zero aritmètica d'índexs, zero errors *off-by-one*.
 
 ### 6. Polimorfisme de "zero soroll" (`A`..`Z`) governat pel teu domini

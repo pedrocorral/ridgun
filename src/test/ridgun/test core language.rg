@@ -87,9 +87,9 @@ fn :: cmm trace elegir Bool => Int Int Int Int Int Int
         vivos_ab = cmm_live_blocks - base_live
         c = elegir cond a b
         vivos_tras_elegir = cmm_live_blocks - base_live
-        _ = list len a
+        list len a
         vivos_tras_usar_a = cmm_live_blocks - base_live
-        _ = list len c
+        list len c
         vivos_tras_usar_c = cmm_live_blocks - base_live
         delta_freed = cmm_cond_freed - base_freed
         delta_spared = cmm_cond_spared - base_spared
@@ -113,9 +113,9 @@ fn :: cmm trace cascada Bool Bool => Int Int Int
         c = elegir c1 a b
         e = elegir c2 c d
         vivos_tras_cascada = cmm_live_blocks - base
-        _ = list len a
+        list len a
         vivos_tras_a = cmm_live_blocks - base
-        _ = list len e
+        list len e
         vivos_tras_e = cmm_live_blocks - base
         (vivos_tras_cascada, vivos_tras_a, vivos_tras_e)
 
@@ -126,9 +126,9 @@ fn :: rmm2 trace nested => Int Int Int
         b = [30, 40]
         xs = [a, b]
         vivos_inicial = cmm_live_blocks - base
-        _ = list len xs
+        list len xs
         vivos_tras_xs = cmm_live_blocks - base
-        _ = list len a
+        list len a
         vivos_final = cmm_live_blocks - base
         (vivos_inicial, vivos_tras_xs, vivos_final)
 
@@ -408,6 +408,25 @@ fn :: with session check String (String => String) => String
 fn :: run lazy thunk (=> Int) => Int
       run lazy thunk thunk = thunk ()
 
+-- @tests FR-COMP-014
+op :: [Int] compact limit Int => [Int]
+      [] compact limit _ = []
+      (x:xs) compact limit lim
+        | x <= lim = [x] :: (xs compact limit lim)
+        | otherwise = xs compact limit lim
+
+fn :: combine code msg Int String => String
+      combine code msg code msg = "{code}:{msg}"
+
+fn :: discard int side effect Int => ()
+      discard int side effect n =
+        double val n -> ()
+
+fn :: pipe agent worker Int Int => Int Int
+      pipe agent worker st msg =
+        next = st + msg
+        (next, next)
+
 fn :: main => ()
       main =
         echo "=== Core Language, ADTs, Mixfix, Variadics & Higher-Order Ops ==="
@@ -553,4 +572,36 @@ fn :: main => ()
           doubled + offset
         ) [1, 2, 3]
         assert equals multi_res [12, 14, 16]
+        echo "=== FR-COMP-014: Idiomatic Pipeline Chaining (->), Left-Operand Calls & _ = Free Blocks ==="
+        raw_nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        -- Style 2b (recommended idiomatic): infix start + -> between stages + -> target
+        raw_nums map (x => x * 2) -> filter (x => x > 6) -> compact limit 14 -> res_2b
+        -- Style 2: -> from initial value
+        raw_nums -> map (x => x * 2) -> filter (x => x > 6) -> compact limit 14 -> res_2
+        -- Style 1: infix chain without intermediate ->
+        raw_nums map (x => x * 2) filter (x => x > 6) compact limit 14 -> res_1
+        -- Style 3: prefix start + -> stages
+        map (x => x * 2) raw_nums -> filter (x => x > 6) -> compact limit 14 -> res_3
+        assert equals res_2b [8, 10, 12, 14]
+        assert equals res_2 [8, 10, 12, 14]
+        assert equals res_1 [8, 10, 12, 14]
+        assert equals res_3 [8, 10, 12, 14]
+        -- Multi-line pipeline + fold
+        raw_nums map (x => x * 3)
+          -> filter (x => x >= 12)
+          -> fold 0 (acc x => acc + x)
+          -> pipe_sum
+        assert equals pipe_sum 147
+        -- Sequence mask stage in pipeline unpacking into 2-arg function
+        parse header packet "v0.9.9" -> (+ _ _ +) -> combine code msg -> masked_pkt
+        assert equals masked_pkt "200:OK"
+        -- Agent stage in pipeline + explicit unit discard (-> ())
+        ag_pipe = agent pipe_agent_worker 100
+        [5, 10, 15] -> sum int list -> send to ag_pipe
+        receive from ag_pipe -> ag_first
+        assert equals ag_first 130
+        [1, 2, 3, 4] -> sum int list -> ask to ag_pipe -> ag_total
+        stop ag_pipe
+        assert equals ag_total 140
+        discard int side effect 21
         echo "=== All core language tests passed ==="

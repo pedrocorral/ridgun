@@ -76,7 +76,22 @@ kor_tva_ganger (A => A) A => A
 kor_tva_ganger f        x =  f (f x)
 ```
 
-### 4. Lexikala closures och anonyma funktioner (`(x => expr)`, `(acc x => expr)`)
+### 4. Idiomatiska pipelines från vänster till höger (`->`) — 100 % Ridgun-stil!
+När du kedjar ihop flera transformationer (`map`, `filter`, `fold` eller dina egna funktioner och `op ::`-operatorer) tvingar nästlade parenteser från höger till vänster (`compact l (filter g (map f xs))`) dig att läsa inifrån och ut.
+
+I Ridgun läses den **rekommenderade idiomatiska stilen (`2b`)** från vänster till höger med pipeline-operatorn **`->`**, där **det som kommer från vänster alltid går in som första argument** till nästa funktion eller `op ::`:
+
+```ridgun
+-- Rekommenderad idiomatisk stil i Ridgun (2b):
+xs map (x => x * 2) -> filter (x => x > 10) -> fold (acc x => acc + x) 0 -> resultat
+
+-- Och om en funktion returnerar en tupel filtrerar du den med en mask och den packas upp automatiskt:
+tolka paket "v0.9.9" -> (+ _ _ +) -> kombinera kod -> sammanfattning
+```
+
+Dessutom kan varje uttryck med sidoeffekter (skriva en fil, anropa systemet) stå på en egen rad utan `echo` eller dummyvariabler `_ =`, eller avslutas med `-> ()` om du uttryckligen vill kasta returvärdet.
+
+### 5. Lexikala closures och anonyma funktioner (`(x => expr)`, `(acc x => expr)`)
 När du vill skicka in en kort funktion i farten eller fånga lokala variabler från det omgivande scopet (som en offset, ett prefix eller en aktiv session) utan att deklarera en separat toppnivåfunktion använder du en **lexikal closure** inom parentes med **`=>`**:
 
 ```ridgun

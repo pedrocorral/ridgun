@@ -13,6 +13,7 @@
 -- @implements FR-COMP-010
 -- @implements FR-COMP-012
 -- @implements FR-COMP-013
+-- @implements FR-COMP-014
 -- ============================================================
 import ast
 import lexer
@@ -620,10 +621,33 @@ fn :: is with block start [RToken] => Bool
         | s == "region" OR s == "timeout" = True
       is with block start _        =  False
 
+fn :: is arrow tok [RToken]     => Bool
+      is arrow tok (TokArrow:_) =  True
+      is arrow tok _            =  False
+
 fn :: parse expr [RToken] => RExpr [RToken]
       parse expr ts
         | is_with_block_start ts = parse_with_expr ts
-        | otherwise = parse_logic_expr ts
+        | otherwise = parse_pipe_chain (parse_logic_expr ts)
+
+fn :: parse pipe chain (RExpr, [RToken]) => RExpr [RToken]
+      parse pipe chain (left_e, (TokArrow:(TokIdent v):TokIdxLBracket:rest)) =
+        (left_e, [TokArrow, TokIdent v, TokIdxLBracket] :: rest)
+      parse pipe chain (left_e, (TokArrow:TokLParen:TokRParen:rest)) =
+        parse_pipe_chain (ECall "__pipe__" [left_e, EUnit], rest)
+      parse pipe chain (left_e, (TokArrow:TokLParen:rest))
+        | is_seq_mask_tokens ([TokLParen] :: rest) =
+          parse_pipe_chain (finish_seq_select left_e (scan_seq_mask rest ""))
+      parse pipe chain (left_e, (TokArrow:rest)) =
+        parse_pipe_stage left_e (parse_logic_expr (skip_newlines rest))
+      parse pipe chain (left_e, (TokNewline:rest))
+        | is_arrow_tok (skip_newlines rest) =
+          parse_pipe_chain (left_e, skip_newlines rest)
+      parse pipe chain res = res
+
+fn :: parse pipe stage RExpr (RExpr, [RToken]) => RExpr [RToken]
+      parse pipe stage left_e (rhs_e, rest) =
+        parse_pipe_chain (ECall "__pipe__" [left_e, rhs_e], rest)
 
 fn :: skip do token [RToken]     => [RToken]
       skip do token (TokDo:rest) =  rest
@@ -861,7 +885,9 @@ fn :: is seq mask tokens [RToken] => Bool
 
 fn :: scan seq mask [RToken]          String => String [RToken]
       scan seq mask (TokRParen:rest)  acc    =  (acc, rest)
+      scan seq mask (TokPlus:TokEllipsis:rest) acc = scan_seq_mask rest (acc + " +")
       scan seq mask (TokPlus:rest)    acc    =  scan_seq_mask rest (acc + "+")
+      scan seq mask (TokEllipsis:rest) acc   =  scan_seq_mask rest (acc + " +")
       scan seq mask ((TokIdent s):rest) acc  =  scan_seq_mask rest (acc + s)
       scan seq mask ((TokInt n):rest) ""     =  scan_seq_mask rest (int_to_str n)
       scan seq mask ((TokInt n):rest) acc    =  scan_seq_mask rest (acc + " " + (int_to_str n))
@@ -1317,18 +1343,40 @@ fn :: line has equals depth [RToken] Int => Bool
 
 fn :: is echo expr RExpr            => Bool
       is echo expr (EEcho _)        =  True
+      is echo expr (ECall "__pipe__" (_:(EVar _):[])) = True
       is echo expr (ECall "send" _) =  True
       is echo expr (ECall "send_to" _) = True
       is echo expr (ECall "send_through" _) = True
       is echo expr (ECall "stop" _) =  True
+      is echo expr (ECall "write_file" _) = True
+      is echo expr (ECall "write_bytes" _) = True
+      is echo expr (ECall "shell_exec" _) = True
+      is echo expr (ECall "sys_mkdir" _) = True
+      is echo expr (ECall "sys_close" _) = True
+      is echo expr (ECall "log" _) = True
+      is echo expr (ECall "print" _) = True
+      is echo expr (ECall "verify" _) = True
+      is echo expr (ECall "ensure" _) = True
+      is echo expr (ECall "report" _) = True
       is echo expr _                =  False
+
+fn :: is stmt only starter String     => Bool
+      is stmt only starter "echo"     =  True
+      is stmt only starter "send"     =  True
+      is stmt only starter "ask"      =  True
+      is stmt only starter "stop"     =  True
+      is stmt only starter "sys_exit" =  True
+      is stmt only starter _          =  False
 
 fn :: line followed by pipe [RToken]       => Bool
       line followed by pipe []             =  False
       line followed by pipe (TokEof:_)     =  False
+      line followed by pipe (TokNewline:TokPipe:TokOtherwise:_) = False
       line followed by pipe (TokNewline:TokPipe:_) = True
       line followed by pipe (TokNewline:_) =  False
       line followed by pipe (TokEquals:_)  =  False
+      line followed by pipe (TokArrow:_)   =  False
+      line followed by pipe (TokFatArrow:_) = False
       line followed by pipe (_:ts)         =  line_followed_by_pipe ts
 
 fn :: next line has guard [RToken] => Bool
@@ -1337,8 +1385,10 @@ fn :: next line has guard [RToken] => Bool
         next_line_has_guard_clean clean
 
 fn :: next line has guard clean [RToken] => Bool
-      next line has guard clean (TokPipe:_) = False
-      next line has guard clean ts = line_followed_by_pipe ts
+      next line has guard clean ((TokIdent s):rest)
+        | (is_stmt_only_starter s) OR (str_contains s "_") = False
+        | otherwise = line_followed_by_pipe rest
+      next line has guard clean _ = False
 
 fn :: line has arrow [RToken]       => Bool
       line has arrow []             =  False
@@ -1404,6 +1454,12 @@ fn :: parse pipe where target (RExpr, [RToken]) => [RWhereBind] [RToken]
       parse pipe where target (e, (TokArrow:(TokIdent v):rest)) =
         dot_res = strip_optional_dpipe_dot rest
         parse_pipe_where_after_dot (WhereBind e v []) dot_res
+      parse pipe where target ((ECall "__pipe__" (inner_e:(EVar v):[])), rest) =
+        dot_res = strip_optional_dpipe_dot rest
+        parse_pipe_where_after_dot (WhereBind inner_e v []) dot_res
+      parse pipe where target ((ECall "__pipe__" (inner_e:EUnit:[])), rest) =
+        dot_res = strip_optional_dpipe_dot rest
+        parse_pipe_where_after_dot (WhereBind inner_e "_" []) dot_res
       parse pipe where target (_, rest)         =  ([], rest)
 
 fn :: parse pipe where indexed RExpr String ([Int], [RToken]) => [RWhereBind] [RToken]
@@ -2335,7 +2391,7 @@ fn :: can complete op [RArityEntry] String [RExpr] => Bool
 
 fn :: extract mixfix start String [RExpr] [RArityEntry] [RArityEntry] [RExpr] => String [RExpr]
       extract mixfix start w rest arities w_cands operands
-        | (NOT ((is_std_builtin w) AND (expr_list_count operands) > 0)) AND (has_arity_prefix w_cands w) AND (can_complete_op w_cands w rest) = extract_mixfix_call w rest w_cands operands
+        | (NOT (str_starts_with w "__lambda_")) AND (NOT ((is_std_builtin w) AND (expr_list_count operands) > 0)) AND (has_arity_prefix w_cands w) AND (can_complete_op w_cands w rest) = extract_mixfix_call w rest w_cands operands
         | otherwise = extract_mixfix_call "" rest arities (operands :: [EVar w])
 
 fn :: extract mixfix call String [RExpr] [RArityEntry] [RExpr] => String [RExpr]
@@ -2527,11 +2583,192 @@ fn :: norm map call String [RExpr] [RArityEntry] => RExpr
       norm map call fn_name args arities =
         ECall fn_name (norm_expr_list args arities)
 
+fn :: is fn arg RExpr [RArityEntry] => Bool
+      is fn arg (ECall fn_name _) _ =
+        (fn_name == "__lambda__") OR (str_starts_with fn_name "__lambda_")
+      is fn arg (EVar v) arities =
+        ((lookup_arity arities v) > 0) OR (str_starts_with v "__lambda_")
+      is fn arg _ _ = False
+
+fn :: norm fold call [RExpr] [RArityEntry] => RExpr
+      norm fold call (a1:a2:target_e:[]) arities
+        | is_fn_arg a1 arities = ECall "fold" [norm_expr a1 arities, norm_expr a2 arities, norm_expr target_e arities]
+        | is_fn_arg a2 arities = ECall "fold" [norm_expr a2 arities, norm_expr a1 arities, norm_expr target_e arities]
+        | otherwise = ECall "fold" [norm_expr a1 arities, norm_expr a2 arities, norm_expr target_e arities]
+      norm fold call args arities =
+        ECall "fold" (norm_expr_list args arities)
+
+fn :: take one fn ref [RExpr] [RArityEntry] => RExpr [RExpr]
+      take one fn ref ((EVar w1):(EVar w2):(EVar w3):(EVar w4):rest) arities
+        | (lookup_arity arities (w1 + "_" + w2 + "_" + w3 + "_" + w4)) >= 0 = (EVar (w1 + "_" + w2 + "_" + w3 + "_" + w4), rest)
+      take one fn ref ((EVar w1):(EVar w2):(EVar w3):rest) arities
+        | (lookup_arity arities (w1 + "_" + w2 + "_" + w3)) >= 0 = (EVar (w1 + "_" + w2 + "_" + w3), rest)
+      take one fn ref ((EVar w1):(EVar w2):rest) arities
+        | (lookup_arity arities (w1 + "_" + w2)) >= 0 = (EVar (w1 + "_" + w2), rest)
+      take one fn ref (e:rest) _ = (e, rest)
+      take one fn ref [] _ = (EUnit, [])
+
+fn :: consume op words String [RExpr] [RArityEntry] => String [RExpr]
+      consume op words cur ((EVar w):rest) arities
+        | (NOT (str_starts_with w "__lambda_")) AND (has_arity_prefix arities (cur + "_" + w)) AND (can_complete_op arities (cur + "_" + w) rest) =
+          consume_op_words (cur + "_" + w) rest arities
+      consume op words cur rest _ = (cur, rest)
+
+fn :: is infix comb word String => Bool
+      is infix comb word "map"      = True
+      is infix comb word "||map"    = True
+      is infix comb word "filter"   = True
+      is infix comb word "||filter" = True
+      is infix comb word "fold"     = True
+      is infix comb word "send"     = True
+      is infix comb word "ask"      = True
+      is infix comb word _          = False
+
+fn :: is infix comb start [RExpr] => Bool
+      is infix comb start ((EVar w):_) = is_infix_comb_word w
+      is infix comb start _            = False
+
+fn :: has placeholder arg [RExpr] => Bool
+      has placeholder arg [] = False
+      has placeholder arg ((EVar "_"):_) = True
+      has placeholder arg (_:xs) = has_placeholder_arg xs
+
+fn :: replace placeholder arg [RExpr] RExpr => [RExpr]
+      replace placeholder arg [] _ = []
+      replace placeholder arg ((EVar "_"):xs) rep = [rep] :: (replace_placeholder_arg xs rep)
+      replace placeholder arg (x:xs) rep = [x] :: (replace_placeholder_arg xs rep)
+
+fn :: norm pipe ask RExpr [RExpr] [RArityEntry] (Bool, [RExpr], RExpr) => RExpr
+      norm pipe ask _ _ arities (True, msg_atoms, target) =
+        finish_ask_norm "ask" [] arities (True, msg_atoms, target)
+      norm pipe ask left_e args arities (False, _, _) =
+        norm_call "ask" (args :: [left_e]) arities
+
+fn :: reduce infix map step RExpr String (RExpr, [RExpr]) [RArityEntry] => Bool RExpr
+      reduce infix map step _ _ (EUnit, []) _ = (False, EUnit)
+      reduce infix map step acc w (fn_arg, rem) arities =
+        acc1 = norm_map_call w [fn_arg, acc] arities
+        reduce_infix_steps acc1 rem arities
+
+fn :: reduce infix filter step RExpr String (RExpr, [RExpr]) [RArityEntry] => Bool RExpr
+      reduce infix filter step _ _ (EUnit, []) _ = (False, EUnit)
+      reduce infix filter step acc w (fn_arg, rem) arities =
+        acc1 = ECall w [norm_expr fn_arg arities, acc]
+        reduce_infix_steps acc1 rem arities
+
+fn :: reduce infix fold step RExpr (RExpr, [RExpr]) [RArityEntry] => Bool RExpr
+      reduce infix fold step _ (EUnit, []) _ = (False, EUnit)
+      reduce infix fold step acc (a1, rem1) arities =
+        reduce_infix_fold_step2 acc a1 (take_one_fn_ref rem1 arities) arities
+
+fn :: reduce infix fold step2 RExpr RExpr (RExpr, [RExpr]) [RArityEntry] => Bool RExpr
+      reduce infix fold step2 _ _ (EUnit, []) _ = (False, EUnit)
+      reduce infix fold step2 acc a1 (a2, rem2) arities =
+        acc1 = norm_fold_call [a1, a2, acc] arities
+        reduce_infix_steps acc1 rem2 arities
+
+fn :: reduce infix op take RExpr String [RExpr] Int [RArityEntry] => Bool RExpr
+      reduce infix op take acc mangled c_after need arities
+        | (expr_list_count c_after) >= need =
+          stage_args = norm_expr_list (take_exprs c_after need) arities
+          rem = drop_exprs c_after need
+          reduce_infix_steps (ECall mangled ([acc] :: stage_args)) rem arities
+        | otherwise = (False, EUnit)
+
+fn :: reduce infix mixfix check String Int [RExpr] [RArityEntry] => Bool RExpr
+      reduce infix mixfix check mangled ar c_ops arities
+        | arity_matches ar (expr_list_count c_ops) = (True, ECall mangled (norm_expr_list c_ops arities))
+        | otherwise = (False, EUnit)
+
+fn :: reduce infix mixfix RExpr (String, [RExpr]) [RArityEntry] => Bool RExpr
+      reduce infix mixfix _ (mangled, ops) arities =
+        ar = lookup_arity arities mangled
+        c_ops = maybe_collapse_args ops ar arities
+        reduce_infix_mixfix_check mangled ar c_ops arities
+
+fn :: reduce infix op dispatch RExpr String [RExpr] String [RExpr] Int [RArityEntry] => Bool RExpr
+      reduce infix op dispatch acc _ _ mangled [] ar _
+        | ar >= 1 = (True, ECall mangled [acc])
+      reduce infix op dispatch acc _ _ mangled after_words ar arities
+        | ar >= 1 AND (NOT (has_longer_arity_prefix arities mangled after_words)) =
+          c_after = maybe_collapse_args after_words (ar - 1) arities
+          reduce_infix_op_take acc mangled c_after (ar - 1) arities
+      reduce infix op dispatch acc w orig_rest _ _ _ arities =
+        w_cands = filter_arity_prefix arities w (w + "_")
+        reduce_infix_mixfix acc (extract_mixfix_call w orig_rest w_cands [acc]) arities
+
+fn :: reduce infix op step RExpr String [RExpr] (String, [RExpr]) [RArityEntry] => Bool RExpr
+      reduce infix op step acc w orig_rest (mangled, after_words) arities =
+        ar = lookup_arity arities mangled
+        reduce_infix_op_dispatch acc w orig_rest mangled after_words ar arities
+
+fn :: reduce infix steps RExpr [RExpr] [RArityEntry] => Bool RExpr
+      reduce infix steps acc [] _ = (True, acc)
+      reduce infix steps acc ((EVar w):rest) arities
+        | w == "map" OR w == "||map" =
+          reduce_infix_map_step acc w (take_one_fn_ref rest arities) arities
+        | w == "filter" OR w == "||filter" =
+          reduce_infix_filter_step acc w (take_one_fn_ref rest arities) arities
+        | w == "fold" =
+          reduce_infix_fold_step acc (take_one_fn_ref rest arities) arities
+        | w == "send" =
+          (True, finish_send_to_norm "send" ([acc] :: rest) arities (split_send_to_args ([acc] :: rest) []))
+        | w == "ask" =
+          (True, norm_pipe_ask acc rest arities (split_send_to_args ([acc] :: rest) []))
+        | (NOT (str_starts_with w "__lambda_")) AND (has_arity_prefix arities w) =
+          reduce_infix_op_step acc w rest (consume_op_words w rest arities) arities
+        | is_std_builtin w =
+          (True, ECall w ([acc] :: (norm_expr_list (collapse_fn_ref_args rest arities) arities)))
+        | otherwise = (False, EUnit)
+      reduce infix steps _ _ _ = (False, EUnit)
+
+fn :: finish pipe step RExpr String [RExpr] [RArityEntry] (Bool, RExpr) => RExpr
+      finish pipe step _ _ _ _ (True, res_e) = res_e
+      finish pipe step l_norm fn_name args arities (False, _) =
+        norm_call fn_name ([l_norm] :: args) arities
+
+fn :: norm pipe step RExpr RExpr [RArityEntry] => RExpr
+      norm pipe step left_e EUnit arities =
+        EBlock [StmtExpr (norm_expr left_e arities), StmtExpr EUnit]
+      norm pipe step left_e (EVar "echo") arities =
+        EEcho [norm_expr left_e arities]
+      norm pipe step left_e (EEcho args) arities
+        | has_placeholder_arg args =
+          EEcho (fold_echo_args (collapse_fn_ref_args (replace_placeholder_arg args left_e) arities) arities)
+        | otherwise =
+          EEcho (fold_echo_args (collapse_fn_ref_args (args :: [left_e]) arities) arities)
+      norm pipe step left_e (EVar fn_name) arities
+        | is_upper_ident fn_name = ECall fn_name [norm_expr left_e arities]
+        | ((lookup_arity arities fn_name) >= 1) OR (is_std_builtin fn_name) OR ((lookup_arity arities fn_name) == (0 - 2)) =
+          ECall fn_name [norm_expr left_e arities]
+        | otherwise =
+          EBlock [StmtLet fn_name (norm_expr left_e arities)]
+      norm pipe step left_e (ECall fn_name args) arities
+        | has_placeholder_arg args =
+          norm_call fn_name (replace_placeholder_arg args left_e) arities
+        | is_upper_ident fn_name =
+          ECall fn_name ([norm_expr left_e arities] :: (norm_expr_list args arities))
+        | otherwise =
+          l_norm = norm_expr left_e arities
+          finish_pipe_step l_norm fn_name args arities (reduce_infix_steps l_norm ([EVar fn_name] :: args) arities)
+      norm pipe step left_e rhs_e arities =
+        ECall "__chain__" [norm_expr rhs_e arities, norm_expr left_e arities]
+
+fn :: norm pipe args [RExpr] [RArityEntry] => RExpr
+      norm pipe args (left_e:rhs_e:[]) arities = norm_pipe_step left_e rhs_e arities
+      norm pipe args args arities = ECall "__pipe__" (norm_expr_list args arities)
+
 fn :: norm call with cands String [RExpr] [RArityEntry] [RArityEntry] Int => RExpr
       norm call with cands fn_name args arities cands ar
         | ar >= 0 and (not (has_longer_arity_prefix cands fn_name args)) = ECall fn_name (norm_expr_list (maybe_collapse_args args ar arities) arities)
         | (not (is_std_builtin fn_name)) and (has_arity_prefix cands fn_name) and (can_complete_op cands fn_name args) = norm_call_mixfix fn_name args arities (extract_mixfix_call fn_name args cands [])
+        | is_infix_comb_start args = norm_call_infix_or_mixfix fn_name args arities (reduce_infix_steps (norm_expr (EVar fn_name) arities) args arities)
         | otherwise = norm_call_mixfix fn_name args arities (extract_mixfix_call "" ([EVar fn_name] :: args) arities [])
+
+fn :: norm call infix or mixfix String [RExpr] [RArityEntry] (Bool, RExpr) => RExpr
+      norm call infix or mixfix _ _ _ (True, res_e) = res_e
+      norm call infix or mixfix fn_name args arities (False, _) =
+        norm_call_mixfix fn_name args arities (extract_mixfix_call "" ([EVar fn_name] :: args) arities [])
 
 fn :: norm call fast or cands String [RExpr] [RArityEntry] Int => RExpr
       norm call fast or cands fn_name args arities ar
@@ -2540,15 +2777,29 @@ fn :: norm call fast or cands String [RExpr] [RArityEntry] Int => RExpr
           cands = filter_arity_prefix arities fn_name (fn_name + "_")
           norm_call_with_cands fn_name args arities cands (lookup_arity cands fn_name)
 
+fn :: norm call chain start [RExpr] [RArityEntry] => RExpr
+      norm call chain start (first_e:rest) arities
+        | is_infix_comb_start rest =
+          norm_call_chain_infix (first_e:rest) arities (reduce_infix_steps (norm_expr first_e arities) rest arities)
+      norm call chain start args arities =
+        norm_call_chain args arities (extract_mixfix_call "" args arities [])
+
+fn :: norm call chain infix [RExpr] [RArityEntry] (Bool, RExpr) => RExpr
+      norm call chain infix _ _ (True, res_e) = res_e
+      norm call chain infix args arities (False, _) =
+        norm_call_chain args arities (extract_mixfix_call "" args arities [])
+
 fn :: norm call String  [RExpr] [RArityEntry] => RExpr
       norm call fn_name args    arities
         | fn_name == "__lambda__" = ECall "__lambda__" args
+        | fn_name == "__pipe__" = norm_pipe_args args arities
         | fn_name == "agent" and (not (has_longer_arity_prefix arities "agent" args)) = ECall "agent" (norm_expr_list (collapse_fn_ref_args args arities) arities)
         | fn_name == "send" = finish_send_to_norm fn_name args arities (split_send_to_args args [])
         | fn_name == "ask" = finish_ask_norm fn_name args arities (split_send_to_args args [])
         | (fn_name == "map" or fn_name == "||map") and (not (has_longer_arity_prefix arities fn_name args)) = norm map call fn_name (collapse_fn_ref_args args arities) arities
+        | fn_name == "fold" and (not (has_longer_arity_prefix arities "fold" args)) = norm_fold_call (collapse_fn_ref_args args arities) arities
         | (is_std_builtin fn_name) and (not (has_longer_arity_prefix arities fn_name args)) = ECall fn_name (norm_expr_list (maybe_collapse_args args (std_builtin_arity fn_name) arities) arities)
-        | fn_name == "__chain__" = norm_call_chain args arities (extract_mixfix_call "" args arities [])
+        | fn_name == "__chain__" = norm_call_chain_start args arities
         | otherwise = norm_call_fast_or_cands fn_name args arities (lookup_arity arities fn_name)
 
 fn :: norm call chain [RExpr] [RArityEntry] (String, [RExpr]) => RExpr
@@ -2561,7 +2812,18 @@ fn :: norm call chain step [RExpr] [RArityEntry] String Int [RExpr] => RExpr
       norm call chain step orig_args arities mangled ar c_ops
         | arity_matches ar (expr_list_count c_ops) = ECall mangled (norm_expr_list c_ops arities)
         | ar > 0 and (expr_list_count c_ops) == 0 = EVar mangled
-        | otherwise = norm_call_chain_fallback (norm_expr_list orig_args arities) arities mangled ar c_ops
+        | otherwise = norm_call_chain_try_infix orig_args arities mangled ar c_ops
+
+fn :: norm call chain try infix [RExpr] [RArityEntry] String Int [RExpr] => RExpr
+      norm call chain try infix (first_e:rest) arities mangled ar c_ops =
+        norm_call_chain_after_infix (first_e:rest) arities mangled ar c_ops (reduce_infix_steps (norm_expr first_e arities) rest arities)
+      norm call chain try infix orig_args arities mangled ar c_ops =
+        norm_call_chain_fallback (norm_expr_list orig_args arities) arities mangled ar c_ops
+
+fn :: norm call chain after infix [RExpr] [RArityEntry] String Int [RExpr] (Bool, RExpr) => RExpr
+      norm call chain after infix _ _ _ _ _ (True, res_e) = res_e
+      norm call chain after infix orig_args arities mangled ar c_ops (False, _) =
+        norm_call_chain_fallback (norm_expr_list orig_args arities) arities mangled ar c_ops
 
 fn :: norm call chain fallback [RExpr] [RArityEntry] String Int [RExpr] => RExpr
       norm call chain fallback normed arities mangled ar c_ops =
@@ -2577,7 +2839,12 @@ fn :: norm call mixfix step String [RExpr] [RArityEntry] String Int [RExpr] => R
       norm call mixfix step orig_name orig_args arities mangled ar c_ops
         | arity_matches ar (expr_list_count c_ops) = ECall mangled (norm_expr_list c_ops arities)
         | ar > 0 and (expr_list_count c_ops) == 0 = EVar mangled
-        | otherwise = norm_call_mixfix_fallback orig_name (norm_expr_list orig_args arities) arities mangled ar c_ops
+        | otherwise = norm_call_mixfix_after_infix orig_name orig_args arities mangled ar c_ops (reduce_infix_steps (norm_expr (EVar orig_name) arities) orig_args arities)
+
+fn :: norm call mixfix after infix String [RExpr] [RArityEntry] String Int [RExpr] (Bool, RExpr) => RExpr
+      norm call mixfix after infix _ _ _ _ _ _ (True, res_e) = res_e
+      norm call mixfix after infix orig_name orig_args arities mangled ar c_ops (False, _) =
+        norm_call_mixfix_fallback orig_name (norm_expr_list orig_args arities) arities mangled ar c_ops
 
 fn :: norm call mixfix fallback String [RExpr] [RArityEntry] String Int [RExpr] => RExpr
       norm call mixfix fallback orig_name normed arities mangled ar c_ops =
@@ -2668,14 +2935,33 @@ fn :: bind where local arities [RWhereBind] [RArityEntry] => [RArityEntry]
         | v != "" = bind_where_local_arities wbs ([ArityEntry v (0 - 2)] :: arities)
         | otherwise = bind_where_local_arities wbs arities
 
+fn :: is pipe var target String [RArityEntry] => Bool
+      is pipe var target v arities =
+        (v != "echo") AND (NOT (is_upper_ident v)) AND (NOT (is_std_builtin v)) AND ((lookup_arity arities v) <= 0)
+
 fn :: norm stmt list [RStmt]            [RArityEntry] => [RStmt]
       norm stmt list []                 _             =  []
       norm stmt list ((StmtLet v e):ss) arities       =
         [StmtLet v (norm_expr e arities)] :: (norm_stmt_list ss ([ArityEntry v (0 - 2)] :: arities))
       norm stmt list ((StmtMut v e):ss) arities       =
         [StmtMut v (norm_expr e arities)] :: (norm_stmt_list ss ([ArityEntry v (0 - 2)] :: arities))
+      norm stmt list ((StmtExpr (ECall "__pipe__" (left_e:(EVar v):[]))):ss) arities
+        | is_pipe_var_target v arities =
+          norm_pipe_var_stmt left_e v ss arities
       norm stmt list ((StmtExpr e):ss)  arities       =  [StmtExpr (norm_expr e arities)] :: (norm_stmt_list ss arities)
       norm stmt list ((StmtIndexAssign t idxs e):ss) arities = [StmtIndexAssign t (norm_expr_list idxs arities) (norm_expr e arities)] :: (norm_stmt_list ss arities)
+
+fn :: extract fst expr (RExpr, [RToken]) => RExpr
+      extract fst expr (e, _)            =  e
+
+fn :: norm pipe var stmt RExpr String [RStmt] [RArityEntry] => [RStmt]
+      norm pipe var stmt left_e v ss arities
+        | is_subscript_ident v =
+          base_v = extract fst str (split_subscript v)
+          sub_e = extract_fst_expr (wrap_subscript_let_rhs (left_e, []))
+          [StmtMut base_v (norm_expr sub_e arities)] :: (norm_stmt_list ss ([ArityEntry base_v (0 - 2), ArityEntry v (0 - 2)] :: arities))
+        | otherwise =
+          [StmtLet v (norm_expr left_e arities)] :: (norm_stmt_list ss ([ArityEntry v (0 - 2)] :: arities))
 
 fn :: norm where list [RWhereBind] [RArityEntry] => [RWhereBind]
       norm where list []           _             =  []
@@ -3018,10 +3304,16 @@ fn :: lift stmt list lambdas [RStmt] [String] Int [RFnDef] => [RStmt] Int [RFnDe
         lift_stmt_let_step v (lift_expr_lambdas e locals cnt lifted) ss (locals :: [v])
       lift stmt list lambdas ((StmtMut v e):ss) locals cnt lifted =
         lift_stmt_mut_step v (lift_expr_lambdas e locals cnt lifted) ss (locals :: [v])
+      lift stmt list lambdas ((StmtExpr (ECall "__pipe__" (left_e:(EVar v):[]))):ss) locals cnt lifted =
+        lift_stmt_pipe_var_step v (lift_expr_lambdas left_e locals cnt lifted) ss (locals :: [v])
       lift stmt list lambdas ((StmtExpr e):ss) locals cnt lifted =
         lift_stmt_expr_step (lift_expr_lambdas e locals cnt lifted) ss locals
       lift stmt list lambdas ((StmtIndexAssign t idxs e):ss) locals cnt lifted =
         lift_stmt_idx_step (lift_idx_assign_lambdas t (lift_expr_list_lambdas idxs locals cnt lifted) e locals) ss locals
+
+fn :: lift stmt pipe var step String (RExpr, Int, [RFnDef]) [RStmt] [String] => [RStmt] Int [RFnDef]
+      lift stmt pipe var step v (e1, c1, l1) ss locals =
+        finish_lift_stmt (StmtExpr (ECall "__pipe__" [e1, EVar v])) (lift_stmt_list_lambdas ss locals c1 l1)
 
 fn :: lift stmt let step String (RExpr, Int, [RFnDef]) [RStmt] [String] => [RStmt] Int [RFnDef]
       lift stmt let step v (e1, c1, l1) ss locals =
@@ -4407,6 +4699,17 @@ fn :: rewrite lambda args [RExpr] String [String] [RModAlias] [RModAlias] [RModA
       rewrite lambda args (p:rest) cur_mod locals aliases ctor_map fn_map field_map =
         [p] :: (rewrite_lambda_args rest cur_mod locals aliases ctor_map fn_map field_map)
 
+fn :: unpack rewritten infix call String [RExpr] RExpr => [RExpr]
+      unpack rewritten infix call _ _ (ECall rw rrest) = [EVar rw] :: rrest
+      unpack rewritten infix call orig_w orig_rest _ = [EVar orig_w] :: orig_rest
+
+fn :: rewrite local call args [RExpr] String [String] [RModAlias] [RModAlias] [RModAlias] [RModAlias] => [RExpr]
+      rewrite local call args ((EVar w):rest) cur_mod locals aliases ctor_map fn_map field_map
+        | (NOT (str_in_seen_list w locals)) AND (NOT (is_upper_ident w)) AND (w != "with") AND (w != "and") AND (w != "or") =
+          unpack_rewritten_infix_call w rest (rewrite_call_expr w rest cur_mod locals aliases ctor_map fn_map field_map)
+      rewrite local call args args cur_mod locals aliases ctor_map fn_map field_map =
+        rewrite_expr_list args cur_mod locals aliases ctor_map fn_map field_map
+
 fn :: rewrite call expr String [RExpr] String [String] [RModAlias] [RModAlias] [RModAlias] [RModAlias] => RExpr
       rewrite call expr "__lambda__" args cur_mod locals aliases ctor_map fn_map field_map =
         locals1 = collect_lambda_param_strs args locals
@@ -4418,7 +4721,7 @@ fn :: rewrite call expr String [RExpr] String [String] [RModAlias] [RModAlias] [
         | is_upper_ident fn_name =
           ECall (resolve_ctor_ident fn_name cur_mod aliases ctor_map) (rewrite_expr_list args cur_mod locals aliases ctor_map fn_map field_map)
         | str_in_seen_list fn_name locals =
-          ECall fn_name (rewrite_expr_list args cur_mod locals aliases ctor_map fn_map field_map)
+          ECall fn_name (rewrite_local_call_args args cur_mod locals aliases ctor_map fn_map field_map)
         | otherwise =
           fn1 = expand_mod_alias fn_name cur_mod aliases
           rewrite_call_lower fn1 args cur_mod locals aliases ctor_map fn_map field_map
@@ -4508,6 +4811,12 @@ fn :: rewrite expr list [RExpr] String [String] [RModAlias] [RModAlias] [RModAli
       rewrite expr list (e:es) cur_mod locals aliases ctor_map fn_map field_map =
         [rewrite_expr e cur_mod locals aliases ctor_map fn_map field_map] :: (rewrite_expr_list es cur_mod locals aliases ctor_map fn_map field_map)
 
+fn :: is scoped pipe var target String String [String] [RModAlias] [RModAlias] [RModAlias] => Bool
+      is scoped pipe var target cur_mod v locals aliases fn_map field_map
+        | str_in_seen_list v locals = True
+        | (v == "echo") OR (is_upper_ident v) OR (str_contains v ".") OR (is_std_builtin v) = False
+        | otherwise = (lookup_scoped_fn_or_field cur_mod v aliases fn_map field_map) == ""
+
 fn :: rewrite stmt list [RStmt] String [String] [RModAlias] [RModAlias] [RModAlias] [RModAlias] => [RStmt]
       rewrite stmt list [] _ _ _ _ _ _ = []
       rewrite stmt list ((StmtLet v e):ss) cur_mod locals aliases ctor_map fn_map field_map =
@@ -4516,6 +4825,10 @@ fn :: rewrite stmt list [RStmt] String [String] [RModAlias] [RModAlias] [RModAli
       rewrite stmt list ((StmtMut v e):ss) cur_mod locals aliases ctor_map fn_map field_map =
         e1 = rewrite_expr e cur_mod locals aliases ctor_map fn_map field_map
         [StmtMut v e1] :: (rewrite_stmt_list ss cur_mod ([v] :: locals) aliases ctor_map fn_map field_map)
+      rewrite stmt list ((StmtExpr (ECall "__pipe__" (left_e:(EVar v):[]))):ss) cur_mod locals aliases ctor_map fn_map field_map
+        | is_scoped_pipe_var_target cur_mod v locals aliases fn_map field_map =
+          l1 = rewrite_expr left_e cur_mod locals aliases ctor_map fn_map field_map
+          [StmtExpr (ECall "__pipe__" [l1, EVar v])] :: (rewrite_stmt_list ss cur_mod ([v] :: locals) aliases ctor_map fn_map field_map)
       rewrite stmt list ((StmtExpr e):ss) cur_mod locals aliases ctor_map fn_map field_map =
         [StmtExpr (rewrite_expr e cur_mod locals aliases ctor_map fn_map field_map)] :: (rewrite_stmt_list ss cur_mod locals aliases ctor_map fn_map field_map)
       rewrite stmt list ((StmtIndexAssign t idxs e):ss) cur_mod locals aliases ctor_map fn_map field_map =

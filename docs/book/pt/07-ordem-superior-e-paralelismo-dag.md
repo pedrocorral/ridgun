@@ -76,7 +76,22 @@ executar_duas_vezes (A => A) A => A
 executar_duas_vezes f        x =  f (f x)
 ```
 
-### 4. Fechos léxicos e funções anónimas (`(x => expr)`, `(acc x => expr)`)
+### 4. Tubagens fluidas da esquerda para a direita (`->`) — O estilo 100% Ridgun!
+Quando encadeia várias transformações (`map`, `filter`, `fold` ou as suas próprias funções e operadores `op ::`), aninhar parênteses da direita para a esquerda (`compact l (filter g (map f xs))`) obriga-o a ler de dentro para fora.
+
+No Ridgun, o **estilo idiomático recomendado (`2b`)** lê-se da esquerda para a direita com o operador de tubagem **`->`**, onde **o que vem da esquerda entra sempre como primeiro argumento** da função ou `op ::` seguinte:
+
+```ridgun
+-- Estilo idiomático recomendado no Ridgun (2b):
+xs map (x => x * 2) -> filter (x => x > 10) -> fold (acc x => acc + x) 0 -> resultado
+
+-- E se uma função devolver uma tupla, filtra-a com uma máscara e desempacota-se sozinha:
+analisar pacote "v0.9.9" -> (+ _ _ +) -> combinar codigo -> resumo
+```
+
+Além disso, qualquer expressão com efeitos secundários (escrever um ficheiro, invocar o sistema) pode ficar sozinha na sua linha sem `echo` nem variáveis mudas `_ =`, ou terminar em `-> ()` se quiser descartar explicitamente o seu retorno.
+
+### 5. Fechos léxicos e funções anónimas (`(x => expr)`, `(acc x => expr)`)
 Quando quiser passar uma função curta em linha ou capturar variáveis locais do âmbito atual (como um deslocamento, um prefixo ou uma sessão ativa) sem declarar uma função global auxiliar, usa um **fecho léxico** entre parênteses com **`=>`**:
 
 ```ridgun

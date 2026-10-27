@@ -155,6 +155,5 @@ fn :: check chmod status Int => Int
 
 fn :: write elf64 executable String     [Int]     => Int
       write elf64 executable output_bin elf_bytes =
-        _ = write bytes output_bin elf_bytes
-        rc = sys chmod output_bin 493
-        check chmod status rc
+        write bytes output_bin elf_bytes
+        sys chmod output_bin 493 -> check chmod status

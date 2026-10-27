@@ -1,6 +1,6 @@
 ---
 name: implement-code-ridgun
-description: Implement, refactor or review Ridgun (.rg) code and build.rg definitions using the exact Ridgun v0.9.21 grammar, type system, user-defined generic types (type Result T E, type Page T), lexical closures ((x => expr), (acc x => expr)), module namespaces (module ::, import ... as, mod.Type/Ctor/fn), Native Agent Model (agent, send ... to, receive from, try receive from, stop), RMM1/RMM2 deterministic memory rules, parallel || DAGs, with timeout quotas, PAL primitives, and pure-Ridgun stable/ridgunc ELF64 toolchain; use for any Ridgun (.rg) change.
+description: Implement, refactor or review Ridgun (.rg) code and build.rg definitions using the exact Ridgun v0.9.21 grammar, idiomatic -> pipeline chaining (xs map f -> filter g -> results), (+ _ _ +) sequence masks, -> () unit discard, _ =-free side-effect blocks, type system, user-defined generic types (type Result T E, type Page T), lexical closures ((x => expr), (acc x => expr)), module namespaces (module ::, import ... as, mod.Type/Ctor/fn), Native Agent Model (agent, send ... to, receive from, try receive from, stop), RMM1/RMM2 deterministic memory rules, parallel || DAGs, with timeout quotas, PAL primitives, and pure-Ridgun stable/ridgunc ELF64 toolchain; use for any Ridgun (.rg) change.
 ---
 # implement-code-ridgun (`v0.9.21`)
 
@@ -20,7 +20,7 @@ Reading budget: `harness/skills/implement-code-ridgun/references/cheatsheet.rg` 
 
 ## 2. LLM Anti-Patterns: "Never Write This → Write This Instead"
 
-| Common LLM Mistake (INVALID) | Correct Ridgun `v0.9.12` (VALID) | Why |
+| Common LLM Mistake (INVALID) | Correct Ridgun `v0.9.21` (VALID) | Why |
 |---|---|---|
 | `fn :: parse_header String => (Int, [(String, String)], String)` | `fn :: parse header String => Int [String String] String` | Prefer natural spaces in function/built-in names (`FR-COMP-005`) and space-separated tuple/sequence type signatures (`FR-COMP-008`) |
 | `// comment` or `# comment` | `-- comment` | Only `--` starts a comment |
@@ -31,10 +31,12 @@ Reading budget: `harness/skills/implement-code-ridgun/references/cheatsheet.rg` 
 | `where` block | `\|\| expr -> var` | `where` was removed in `FR-COMP-003`; use `\|\|` parallel DAG lines |
 | Guard clause without `=` (`clamp x lo hi \| x < lo = lo`) | `clamp x lo hi =` followed by `\| x < lo = lo` | Every clause and guard branch requires `=` (`FR-COMP-003`) |
 | Reassigning `x = x + 1` after `x = 0` | `mut x = 0` then `x = x + 1` | Local bindings are immutable unless declared with `mut` |
-| `par_map f xs` / `par_filter p xs` | `\|\|map f xs` / `\|\|filter p xs` | Parallel higher-order combinators use the `\|\|` prefix (`FR-COMP-001`) |
+| `par_map f xs` / `par_filter p xs` | `xs \|\|map f` / `xs \|\|filter p` (or `\|\|map f xs` / `\|\|filter p xs`) | Parallel higher-order combinators use the `\|\|` prefix (`FR-COMP-001`) |
 | `\x -> x * 2`, `(() => expr)`, or unparenthesized `x => x * 2` | `(x => x * 2)`, `(=> expr)`, `(acc x => acc + x)`, `((a b) => a + b)` | Anonymous closures use parenthesized `(params => expr)` (`FR-COMP-013`) |
 | `Result<T, E>` or `Page[T]` | `type Result T E = Ok T \| Err E` and `type Page T = items: [T], total: Int` | User-defined generic types list uppercase type parameters after the type name (`FR-COMP-013`) |
-| `(a, b) = compute_pair x` in local block | `res = compute pair x` then `a = fst res` (or destructure in function clause `helper (a, b) = ...`) | Local `=` binds a single variable name (`x = ...` or `mut x = ...`) |
+| `h (g (f x))` deeply nested right-to-left calls or `st1 = ...` / `st2 = ...` temp chains | `xs map f -> filter g -> compact l -> results` | Prefer idiomatic left-to-right `->` pipeline chaining (`FR-COMP-014`) |
+| `_ = echo "msg"` or `_ = write_file p s` | `echo "msg"` / `write_file p s` (and `shell_exec cmd -> ()` if final line of `=> ()`) | Sequential blocks do not need `_ =` on side-effect statements (`FR-COMP-014`) |
+| `(a, _, _, d) = parse_packet x` in local block | `parse packet x -> (+ _ _ +) -> combine code -> out` (or `compute pair x -> (+ _) -> a`) | Use `(+ _ _ +)` sequence masks in `->` pipelines (`FR-COMP-014`) |
 | `Some x` in function argument pattern without parens | `unwrap (Some x) = x` | Constructor patterns with arguments must be parenthesized |
 
 ---
@@ -68,7 +70,7 @@ Reading budget: `harness/skills/implement-code-ridgun/references/cheatsheet.rg` 
 ### 3.2 Unified `=` Grammar (`(none)`, `|`, `||`) & Closers (`|.` / `||.`) (`FR-COMP-003`)
 Every `=` (in `fn ::`, `op ::`, local bindings `x =` / `mut x =`, and guard branches `| cond =` / `| otherwise =`) accepts four right-hand-side forms:
 
-1. **Sequential Block (`(none)`)**: Indented statements evaluated top-to-bottom; the last expression is the return value. Discard `()` side-effects with `_ = ...`.
+1. **Sequential Block (`(none)`)**: Indented statements evaluated top-to-bottom; the last expression is the return value. Side-effect statements (`echo`, `write_file`, `shell_exec`, `log info`, etc.) are written directly without `_ =`; if the final line of a `=> ()` function calls a non-`()` helper (such as `shell_exec`), append `-> ()` (`shell_exec cmd -> ()`) (`FR-COMP-014`).
 2. **Conditional Guard Block (`|`)**:
    - Used in function/operator clauses, conditional local variables (`discount = | is_vip = 20 | otherwise = 0`), and nested 3–4+ level decision trees.
    - When a nested `|` sub-tree finishes and execution returns to an outer branch or statement below it, close the inner block with **`|.`** (preferably inline at the end of its last branch: `| otherwise = val |.`).
@@ -121,20 +123,20 @@ Every `=` (in `fn ::`, `op ::`, local bindings `x =` / `mut x =`, and guard bran
           acc
   ```
 
-### 3.4 First-Class Named Functions, Lexical Closures (`(x => expr)`, `(acc x => expr)`) & Parallel Higher-Order Combinators (`FR-COMP-001`, `FR-COMP-013`)
+### 3.4 First-Class Named Functions, Lexical Closures (`(x => expr)`, `(acc x => expr)`), Parallel Combinators & Idiomatic `->` Pipelines (`FR-COMP-001`, `FR-COMP-013`, `FR-COMP-014`)
 - Function types use `(T1 T2 => Ret)` (or `(=> Ret)` for 0-parameter functions) inside signatures: `fn :: apply twice (Int => Int) Int => Int`.
-- Pass named top-level functions by bare single-word or space-separated multi-word name (`map double val xs`, `filter is even xs`, `fold add pair 0 xs`) or pass **parenthesized anonymous lexical closures** (`(x => expr)`, `(acc x => expr)`, `(=> expr)`, `((a b) => expr)`):
+- Pass named top-level functions by bare single-word or space-separated multi-word name (`xs map double val`, `xs filter is even`, `xs fold 0 add pair`) or pass **parenthesized anonymous lexical closures** (`(x => expr)`, `(acc x => expr)`, `(=> expr)`, `((a b) => expr)`) in idiomatic `->` pipelines:
   ```ridgun
   offset = 10
   bonus  = 3
-  r1 = map (x => x + offset) [1, 2, 3]
-  r2 = filter (x => x >= bonus) [1, 2, 3, 4]
-  r3 = fold (acc x => acc + x + bonus) 0 [1, 2, 3]
-  r4 = map ((a b) => a + b + offset) [(1, 2), (3, 4)]
-  r5 = map (x =>
-    step = x * 2
+  [1, 2, 3] map (x => x + offset) -> r1
+  [1, 2, 3, 4] filter (x => x >= bonus) -> r2
+  [1, 2, 3] fold 0 (acc x => acc + x + bonus) -> r3
+  [(1, 2), (3, 4)] map ((a b) => a + b + offset) -> r4
+  [1, 2, 3] map (x =>
+    x * 2 -> step
     step + offset
-  ) [1, 2, 3]
+  ) -> r5
   ```
 - **5 Canonical Lambda Rules**:
   1. **Mandatory parentheses**: always write `(x => expr)` (unparenthesized `x => expr` is a compile error).
@@ -142,9 +144,16 @@ Every `=` (in `fn ::`, `op ::`, local bindings `x =` / `mut x =`, and guard bran
   3. **Multiple parameters vs. tuple**: `(a b => expr)` takes 2 parameters; `((a b) => expr)` destructures 1 tuple parameter.
   4. **Multi-line bodies**: put a newline after `=>` and indent the block before the closing `)`.
   5. **Uppercase vs. lowercase**: `(Conn => Conn)` is a function type; `(conn => conn)` is a lambda value.
-- **Sequential vs Parallel Combinators**:
-  - Sequential (left-to-right, deterministic side-effects): `map f xs`, `filter p xs`, `fold f init xs`.
-  - Multicore parallel (work-stealing worker threads): **`||map f xs`** and **`||filter p xs`**.
+- **Sequential vs Parallel Combinators & Idiomatic Pipelines (`FR-COMP-001`, `FR-COMP-014`)**:
+  - Sequential (left-to-right, deterministic side-effects): `xs map f`, `xs filter p`, `xs fold init f` (or prefix `map f xs`, `filter p xs`, `fold f init xs`).
+  - Multicore parallel (work-stealing worker threads): **`xs ||map f`** / **`||map f xs`** and **`xs ||filter p`** / **`||filter p xs`**.
+  - **Recommended Idiomatic Pipeline Style (`2b`) (`FR-COMP-014`)**:
+    ```ridgun
+    xs map (x => x * 2) -> filter (x => x > 6) -> compact limit 14 -> results
+    parse header packet "v0.9.9" -> (+ _ _ +) -> combine code msg -> status_line
+    [5, 10, 15] -> sum int list -> send to worker_ag
+    ```
+    Any value piped from the left of `->` (or left of an infix call) enters as the **1st argument** of the right-hand `fn ::` or `op ::` (`x -> f a b` $\equiv$ `x f a b` $\equiv$ `f x a b`, or use `_` placeholder for another slot: `payload -> write_file path _`). All four forms (`xs map f -> filter g -> results`, `xs -> map f -> filter g -> results`, `xs map f filter g -> results`, and `map f xs -> filter g -> results`) normalize to the same AST.
 
 ### 3.5 Types, User-Defined Generics (`FR-COMP-013`), Module Namespaces (`FR-COMP-012`), ADTs, Record Updates (`with`), and Natural-Language Mixfix (`op ::`)
 - **User-Defined Generic Sum ADTs and Product Records (`FR-COMP-013`)**:
@@ -159,8 +168,10 @@ Every `=` (in `fn ::`, `op ::`, local bindings `x =` / `mut x =`, and guard bran
           unwrap result (Err _)           d =  d
     ```
   - `type Option A = Some A | None` is pre-registered as a built-in polymorphic ADT (`RG-062`), so `try receive from ag` works out of the box without redeclaring `Option`.
-- **Module Namespaces, Aliased Imports, and Qualified Types (`FR-COMP-012`)**:
-  - `import http`, `import db as d`, or `module :: http` scopes types, records, constructors, fields, and functions to their module namespace so multiple modules can define `type Config = ...` or `type Status = ...` without collision (`http.Config`, `d.Config`, `http.port cfg`, `http.check status cfg`).
+- **Module Namespaces, Aliased Imports, Qualified Types, and Strict Per-Module Import Visibility (`FR-COMP-012`)**:
+  - `import http`, `import db as d`, or `module :: http` scopes types, records, constructors, fields, and functions to their module namespace so multiple modules can define `type Config = ...`, `type Conn = ...`, or `type Status = ...` without collision (`http.Config`, `d.Config`, `http.port cfg`, `http.check status cfg`).
+  - Multiple files declaring the same `module :: <name>` header share a single logical module namespace.
+  - Each module `M` resolves unqualified names strictly in 3 priority tiers: **Tier 1** (`M`'s own declarations) -> **Tier 2** (`M`'s direct `import` modules; a collision between two direct imports requires `<mod>.<name>`) -> **Tier 3** (`M`'s transitive imports). Unimported sibling modules and the root application never leak into `M`.
 - **Sum ADTs, Shared Constructor Names & Type-Name Variants (`FR-COMP-005`)**:
   - `type Shape = Circle Int | Rect Int Int` or polymorphic `type Option A = None | Some A`.
   - Multiple `type` declarations can share variant constructor names (such as `Error`, `Var`, `Lit`, `None`) with the same or different arities; the typechecker resolves them by expected column type and argument types.
@@ -187,7 +198,7 @@ Every `=` (in `fn ::`, `op ::`, local bindings `x =` / `mut x =`, and guard bran
   type Config = debug: Bool, threads: Int, name: String
 
   fn :: tune config Config => Config
-        tune config cfg    =  cfg with debug: True, threads: 16
+        tune config cfg    =  cfg with debug = True, threads = 16
   ```
    Auto-generated field accessors: `debug cfg`, `threads cfg`, `name cfg`.
 - **Natural-Language Mixfix Operators (`op ::`)**:
@@ -230,10 +241,10 @@ Ridgun achieves deterministic memory management with **zero Garbage Collector pa
   - Any `fn ::` or `op ::` function can be wrapped into an isolated agent:
     - Stateless agent: `ag = agent (procesar mensaje con tiempo)` (`M1 ... Mn => R` $\to$ `Agent (M1 ... Mn) R`).
     - Stateful agent: `ag = agent (sumar visita) 0` (`S M => S` or `S M => S R` $\to$ `Agent M S` or `Agent M R`, with `RMM1`/`RMM2` automatic state release on every transition).
-  - Operations: `send msg to ag` (or multi-argument `send a b to ag`), `res = receive from ag`, `opt = try receive from ag` (`Some res | None`), `stop ag`, `agent alive ag` (`Bool`).
+  - Operations: `send msg to ag` (or `msg -> send to ag`, `msg -> ask to ag -> res`, or multi-argument `send a b to ag`), `receive from ag -> res`, `try receive from ag -> opt` (`Some res | None`), `stop ag`, `agent alive ag` (`Bool`).
   - Legacy `spawn` and `join` are retired: use `||` / `||map` / `||filter` for computational fork-join parallelism and `agent` for decoupled stateful/service processes.
 - **Affine Channels (`new channel`, `send through`, `receive from`)**:
-  - `ch = new channel`, `_ = send through msg ch`, `out = receive from ch`.
+  - `new channel -> ch`, `send through msg ch`, `receive from ch -> out` (no `_ =` needed).
   - Reading a `mut` variable `msg` after `send msg to ag` or `send through msg ch` is rejected at compile time (`ErrUseAfterSend`).
 
 ---

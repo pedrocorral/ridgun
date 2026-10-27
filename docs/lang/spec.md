@@ -221,22 +221,83 @@ When symbolic operators (like `+`, `*`) appear inside natural language operator 
 | | Logical | `and`, `or`, `xor`, `not` |
 | **Lowest** | Natural language operators | `add a to b`, `run a and b in parallel` |
 
-### Operator Chaining
+### Operator Chaining & Idiomatic Left-to-Right Pipelines (`->`) (`FR-COMP-014`)
 
-Operators that return sequences can be **chained** — the output of one operator flows directly as the input to the next:
+Operators and functions that transform values or sequences can be **chained left-to-right** so data flows naturally from source to destination without nested right-to-left parentheses (`h (g (f x))`) or disposable intermediate variables (`st1`, `st2`, `st3`).
+
+#### 1. The Recommended Idiomatic Ridgun Pipeline Style (`2b`)
+
+Ridgun unifies infix left-operand invocation and explicit `->` pipeline stages into the same AST. While all four forms below are valid and equivalent, **Form `2b`** (starting naturally with a subject + operation on the left, chaining subsequent transformations with `->`, and binding the final result with `-> target`) is the **recommended idiomatic Ridgun style**:
+
+```ridgun
+-- Recommended idiomatic style (2b):
+xs map (x => x * 2) -> filter (x => x > 6) -> compact limit 14 -> results
+
+-- Equivalent unified forms (all normalize to the exact same AST):
+xs -> map (x => x * 2) -> filter (x => x > 6) -> compact limit 14 -> results  -- (2) explicit -> from subject
+xs map (x => x * 2) filter (x => x > 6) compact limit 14 -> results           -- (1) contiguous infix chain
+map (x => x * 2) xs -> filter (x => x > 6) -> compact limit 14 -> results     -- (3) prefix start + -> chain
+```
+
+Multi-stage pipelines can also be written across indented continuation lines starting with `->`:
+
+```ridgun
+raw_nums map (x => x * 3)
+  -> filter (x => x >= 12)
+  -> fold 0 (acc x => acc + x)
+  -> total_sum
+```
+
+#### 2. Universal `->` First-Argument Rule & Collection Combinators
+
+- **Universal Rule for Functions & Operators**: Any value coming from the left of `->` (or left of an infix call `x op a b`) enters as the **first argument** of the right-hand function or operator:
+  - `x -> f a b` $\equiv$ `x f a b` $\equiv$ `f x a b`
+  - Works seamlessly for both `fn ::` declarations and `op ::` mixfix declarations without duplicating signatures.
+  - If a downstream function needs the piped value at a non-first parameter position, an explicit `_` placeholder places the piped value at `_` (`payload -> write_file output_path _`).
+- **Collection Combinators (`map`, `||map`, `filter`, `||filter`, `fold`)**: Accept the collection either in traditional prefix position (`map f xs`, `filter g xs`, `fold f init xs`) or from the left of an infix/pipeline stage (`xs map f`, `xs -> map f`, `xs filter g`, `xs -> filter g`, `xs fold init f`, `xs -> fold init f`).
+- **Agent Stages (`-> send to`, `-> ask to`)**: Piping into `-> send to ag` or `-> ask to ag` passes the left value as the message (`[5, 10, 15] -> sum int list -> send to worker_ag`).
+- **Terminal Variable Binding (`-> var`)**: When a pipeline statement in a sequential block ends with `-> var` (where `var` is a local variable name rather than a declared function), it binds `var` (`var = <pipeline_result>`) for the remainder of the block.
+
+#### 3. Sequence Masks in Pipelines (`-> (+ _ _ +) ->`)
+
+When a stage returns a multi-value sequence or tuple, a sequence mask stage (`-> (+ _ _ +) ->`) filters its elements (`+` keeps a position, `_` discards it) and unpacks the selected tuple directly into a multi-argument downstream function:
+
+```ridgun
+parse header packet "v0.9.9" -> (+ _ _ +) -> combine code msg -> status_line
+```
+
+#### 4. `_ =`-Free Side-Effect Statements & Explicit Unit Discard (`-> ()`)
+
+In sequential blocks, side-effect statements (`echo`, `write_file`, `write_bytes`, `shell_exec`, `log info`, `print_error_lines`, `sys_mkdir`, etc.) are written directly **without `_ =` boilerplate**:
+
+```ridgun
+verify strict if enabled strict_mode input_path
+s_errs -> format_type_errors -> print_error_lines
+echo "[ridgunc --strict] {input_path}: {err_c} error(s) found."
+sys_exit 1
+```
+
+When the **final expression** of a `=> ()` function calls a helper that returns a non-`()` value (such as `shell_exec : String => Int`), append `-> ()` to evaluate the expression, discard its return value, and yield `()`:
+
+```ridgun
+fn :: exec built run Int => ()
+      exec built run 0   =  shell_exec "./target/app" -> ()
+      exec built run _   =  sys_exit 1
+```
+
+#### 5. Point-Free Sequence Operator Chaining
+
+Operators that return sequences can also be chained point-free:
 
 ```ridgun
 op :: Int Int switch -> Int Int
       a   b   switch =  b   a
 
--- Output of one operator feeds into the next:
 op :: Int Int invariant -> Int Int
       a   b   invariant =  a b switch switch
 ```
 
-`a b switch` produces `b, a`. That output sequence feeds directly into the second `switch`, producing `a, b` — back to the original. This gives point-free composition without special syntax.
-
-> **Note:** `->` and `=>` are both accepted as return type separators. Use `->` for operators that *transform* sequences, `=>` for functions that *produce* a result.
+> **Note:** `->` and `=>` are both accepted as return type separators in `fn ::` / `op ::` headers. In expressions, `->` is the left-to-right pipeline and binding operator, while `=>` introduces lexical closures `(x => expr)`.
 
 ---
 
@@ -965,17 +1026,17 @@ fn :: main => ()
 
 ---
 
-## Sequential & Parallel Higher-Order Collection Operations (`FR-COMP-001`)
+## Sequential & Parallel Higher-Order Collection Operations (`FR-COMP-001`, `FR-COMP-014`)
 
-Ridgun provides standard sequential collection combinators (`map`, `filter`, `fold`) alongside explicit multicore parallel combinators prefixed with `||` (`||map`, `||filter`):
+Ridgun provides standard sequential collection combinators (`map`, `filter`, `fold`) alongside explicit multicore parallel combinators prefixed with `||` (`||map`, `||filter`). All five combinators support both **idiomatic left-to-right pipeline/infix syntax** (`xs map f -> filter g -> fold 0 h -> res`) and traditional prefix syntax (`map f xs`):
 
-| Built-in | Signature | Execution Model |
+| Built-in | Prefix & Pipeline Forms | Execution Model |
 |---|---|---|
-| `map` | `(A => B) [A] => [B]` | **Sequential**: evaluates `f x` strictly left-to-right on the calling thread. |
-| `||map` | `(A => B) [A] => [B]` | **Parallel (`||`)**: evaluates `f x` across list elements concurrently on worker threads, preserving output order. |
-| `filter` | `(A => Bool) [A] => [A]` | **Sequential**: evaluates predicate `p x` strictly left-to-right on the calling thread. |
-| `||filter` | `(A => Bool) [A] => [A]` | **Parallel (`||`)**: evaluates predicate `p x` concurrently on worker threads and retains matching elements in order. |
-| `fold` | `(B A => B) B [A] => B` | **Sequential left fold**: accumulates `acc = f acc x` from left to right starting from `init`. |
+| `map` | `xs map f` / `xs -> map f` / `map f xs` | **Sequential**: evaluates `f x` strictly left-to-right on the calling thread. |
+| `||map` | `xs \|\|map f` / `xs -> \|\|map f` / `\|\|map f xs` | **Parallel (`\|\|`)**: evaluates `f x` across list elements concurrently on worker threads, preserving output order. |
+| `filter` | `xs filter p` / `xs -> filter p` / `filter p xs` | **Sequential**: evaluates predicate `p x` strictly left-to-right on the calling thread. |
+| `||filter` | `xs \|\|filter p` / `xs -> \|\|filter p` / `\|\|filter p xs` | **Parallel (`\|\|`)**: evaluates predicate `p x` concurrently on worker threads and retains matching elements in order. |
+| `fold` | `xs fold init f` / `xs -> fold init f` / `fold f init xs` | **Sequential left fold**: accumulates `acc = f acc x` from left to right starting from `init`. |
 
 ---
 

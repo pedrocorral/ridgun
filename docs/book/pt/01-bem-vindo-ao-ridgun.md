@@ -108,7 +108,7 @@ O Ridgun não pretende reinventar a roda quadrada; pede emprestado sem complexos
 | De quem | O que o Ridgun aproveita | O que deixa de fora (pela sua saúde mental) |
 |---|---|---|
 | **Haskell / ML** | Funções puras, *pattern matching* por casos, tipos algébricos (`Option`, `Result`) e polimorfismo (`A`..`Z`). | As mónadas abstratas, os 40 `LANGUAGE pragmas` e o coletor de lixo. |
-| **J / APL** | A obsessão pela forma tabular do código, tensores nativos e máscaras de sequências (`s["-+-"]`). | Os símbolos hieroglíficos impossíveis de escrever num teclado normal. |
+| **J / APL** | A obsessão pela forma tabular do código, tensores nativos e máscaras de sequências (`s(_ + _)`). | Os símbolos hieroglíficos impossíveis de escrever num teclado normal. |
 | **Rust / C** | Binários ELF nativos pequenos, zero GC, controlo de memória (`with region`) e chamadas ao sistema POSIX. | A luta constante com o *borrow checker*, os *lifetimes* `'a` e a verbosidade sintática. |
 | **Erlang / Go** | Agentes isolados (`agent`, `send ... to`, `receive from`) e concorrência por canais (`new bounded channel`). | Os ponteiros `nil` e as mutações partilhadas por descuido. |
 
@@ -166,11 +166,11 @@ op :: Int limitado_entre Int e Int => Int
 ```
 E depois no seu código escreve `velocidade limitado_entre 0 e 120`. Lê-se como português (ou inglês), mas está 100% tipado e compilado para código nativo.
 
-### 5. Máscaras visuais sobre sequências (`s(+ _)` e `s["-+-"]`)
-Alguma vez teve de escrever uma salada de índices `filter(\(i, x) -> i % 2 == 0)` só para ficar com os elementos pares ou extrair um padrão rítmico de uma lista?
+### 5. Máscaras visuais sobre sequências (`s(_ + _)` e `-> (+ _ _ +) ->`)
+Alguma vez teve de escrever uma salada de índices ou abrir uma tupla com variáveis mudas só para ficar com duas posições concretas?
 Em Ridgun passa-lhe diretamente uma **máscara visual**:
-- `dados["-+-"]`: descarta o primeiro (`-`), fica com o segundo (`+`), descarta o terceiro (`-`).
-- `dados["+-~"]`: o símbolo `~` repete o padrão `+-` em ciclo até ao final da lista (todos os índices pares de uma assentada).
+- `dados(_ + _)`: descarta o primeiro (`_`), fica com o segundo (`+`), descarta o terceiro (`_`).
+- `analisar pacote "v0.9.9" -> (+ _ _ +) -> combinar codigo -> resumo`: filtra uma tupla de 4 elementos em plena tubagem e passa o 1.º e o 4.º diretamente como argumentos da função seguinte.
 Zero aritmética de índices, zero erros *off-by-one*.
 
 ### 6. Polimorfismo de "zero ruído" (`A`..`Z`) governado pelo seu domínio

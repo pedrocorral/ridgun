@@ -108,7 +108,7 @@ Ridgunek ez du gurpil karratua berrasmatu nahi; konplexurik gabe hartzen du mail
 | Norengandik | Zer hartzen du Ridgunek | Zer uzten du kanpoan (zure osasun mentalagatik) |
 |---|---|---|
 | **Haskell / ML** | Funtzio puruak, kasukako *pattern matching*-a, datu-mota aljebraikoak (`Option`, `Result`) eta polimorfismoa (`A`..`Z`). | Monada abstraktuak, 40 `LANGUAGE pragma`-k eta zabor-biltzailea. |
-| **J / APL** | Kodearen forma taularatuarekiko obsesioa, tentsore natiboak eta sekuentzia-maskarak (`s["-+-"]`). | Teklatu arrunt batean idazteko ezinezkoak diren ikur hieroglifikoak. |
+| **J / APL** | Kodearen forma taularatuarekiko obsesioa, tentsore natiboak eta sekuentzia-maskarak (`s(_ + _)`). | Teklatu arrunt batean idazteko ezinezkoak diren ikur hieroglifikoak. |
 | **Rust / C** | ELF bitar natibo txikiak, zero GC, memoriaren kontrola (`with region`) eta POSIX sistema-deiak. | *Borrow checker*-arekiko etengabeko borroka, `'a` *lifetime*-ak eta berritsukeria sintaktikoa. |
 | **Erlang / Go** | Agente isolatuak (`agent`, `send ... to`, `receive from`) eta kanal bidezko konkurrentzia (`new bounded channel`). | `nil` erakusleak eta deskuiduz partekatutako mutazioak. |
 
@@ -166,11 +166,11 @@ op :: Int mugatua Int eta Int artean => Int
 ```
 Eta gero zure kodean `abiadura mugatua 0 eta 120 artean` idazten duzu. Euskara (edo ingelesa) bezala irakurtzen da, baina % 100ean tipatuta eta kode natibora konpilatuta dago.
 
-### 5. Maskara bisualak sekuentzien gainean (`s(+ _)` eta `s["-+-"]`)
-Inoiz idatzi behar izan duzu `filter(\(i, x) -> i % 2 == 0)` moduko indize-entsalada bat elementu bikoitiekin geratzeko edo zerrenda batetik eredu erritmiko bat ateratzeko soilik?
+### 5. Maskara bisualak sekuentzien gainean (`s(_ + _)` eta `-> (+ _ _ +) ->`)
+Inoiz idatzi behar izan duzu indize-entsalada bat edo tupla bat aldagai mutuekin ireki bi posizio jakinekin geratzeko soilik?
 Ridgunen zuzenean **maskara bisual** bat pasatzen diozu:
-- `datuak["-+-"]`: lehenengoa baztertzen du (`-`), bigarrenarekin geratzen da (`+`), hirugarrena baztertzen du (`-`).
-- `datuak["+-~"]`: `~` ikurrak `+-` eredua begiztan errepikatzen du zerrendaren amaierara arte (indize bikoiti guztiak kolpe batez).
+- `datuak(_ + _)`: lehenengoa baztertzen du (`_`), bigarrenarekin geratzen da (`+`), hirugarrena baztertzen du (`_`).
+- `parseatu paketea "v0.9.9" -> (+ _ _ +) -> konbinatu kodea -> laburpena`: 4 elementuko tupla bat hodian bertan iragazten du eta 1.a eta 4.a zuzenean hurrengo funtzioaren argumentu gisa pasatzen ditu.
 Zero indize-aritmetika, zero *off-by-one* errore.
 
 ### 6. "Zerozko zarata" duen polimorfismoa (`A`..`Z`), zure domeinuak gobernatua

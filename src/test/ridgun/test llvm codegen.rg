@@ -11,7 +11,7 @@ import llvm
 fn :: assert true Bool String => Int
       assert true True _ = 0
       assert true False msg =
-        _ = echo "[FAIL] {msg}"
+        echo "[FAIL] {msg}"
         1
 
 fn :: test llvm instr emission => Int
@@ -68,11 +68,11 @@ fn :: test llvm instr emission => Int
 
 fn :: verify llc status Int String => Int
       verify llc status 0 tmp_base =
-        _ = shell exec ("rm -f \"" + tmp_base + "\".*")
+        shell exec ("rm -f \"" + tmp_base + "\".*")
         0
       verify llc status code tmp_base =
-        _ = shell exec ("rm -f \"" + tmp_base + "\".*")
-        _ = echo "[FAIL] llc verification failed with exit code {code}"
+        shell exec ("rm -f \"" + tmp_base + "\".*")
+        echo "[FAIL] llc verification failed with exit code {code}"
         1
 
 fn :: test llvm module llc validation => Int
@@ -87,7 +87,7 @@ fn :: test llvm module llc validation => Int
         tmp_base = "/tmp/__rg_test_llvm_" + pid_s
         ll_path = tmp_base + ".ll"
         obj_path = tmp_base + ".o"
-        _ = write file ll_path ll_text
+        write file ll_path ll_text
         res = shell exec ("/usr/bin/llc -O2 -filetype=obj \"" + ll_path + "\" -o \"" + obj_path + "\"")
         verify llc status res tmp_base
 
@@ -128,7 +128,7 @@ fn :: test tensor primitives => Int
         t1_(3) = -4611686018427387904
         e1 = assert true ((t1_(0) == 11) AND (t1_(3) == -4611686018427387904)) "1D Tensor fast-path read/write including 64-bit heap-boxed integer"
         m2 = Tensor[Int * 3 * 4]
-        _ = mutate tensor mat m2
+        mutate tensor mat m2
         e2 = assert true ((m2_(1, 2) == 999) AND (m2_(2, 3) == -4611686018427387904)) "2D Tensor in-place argument mutation and fast-path subscript"
         -- Full 64-bit U64 values where bit 63 != bit 62 (0x4000000000000000 .. 0xBFFFFFFFFFFFFFFF)
         u_b62 = (1 shl 62) + 42
@@ -192,7 +192,7 @@ fn :: finish test suite Int => ()
       finish test suite 0 =
         echo "[PASS] test llvm codegen"
       finish test suite errs =
-        _ = echo "[FAIL] test llvm codegen ({errs} error(s))"
+        echo "[FAIL] test llvm codegen ({errs} error(s))"
         sys exit 1
 
 fn :: main => ()

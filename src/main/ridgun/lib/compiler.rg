@@ -2765,22 +2765,24 @@ fn :: lower single case RNativeEnv RFnCase Bool Int RNativeCode => RNativeCode
       lower single case env (FnCase pats [] body) _ sp st =
         arity = env_arity env
         fail_lbl = nc_lbl st
-        st1 = nc_set_lbl st (fail_lbl + 1)
-        st2 = lower_pat_list_cond env pats 0 fail_lbl sp st1
-        st3 = lower_pat_list_binds env pats 0 arity True sp st2
         bound_locals = collect_pat_list_vars pats []
-        st4 = lower_tail_return env body bound_locals sp st3
-        nc_emit_list st4 [NLabel fail_lbl, NClearLocals arity (nc_max_sp st4)] sp
+        st -> nc_set_lbl (fail_lbl + 1)
+          -> lower_pat_list_cond env pats 0 fail_lbl sp _
+          -> lower_pat_list_binds env pats 0 arity True sp _
+          -> lower_tail_return env body bound_locals sp _
+          -> st4
+        st4 -> nc_emit_list [NLabel fail_lbl, NClearLocals arity (nc_max_sp st4)] sp
       lower single case env (FnCase pats guards _) is_last sp st =
         arity = env_arity env
         fail_lbl = nc_lbl st
-        st1 = nc_set_lbl st (fail_lbl + 1)
-        st2 = lower_pat_list_cond env pats 0 fail_lbl sp st1
         move_args = is_last OR (guards_have_otherwise guards)
-        st3 = lower_pat_list_binds env pats 0 arity move_args sp st2
         bound_locals = collect_pat_list_vars pats []
-        st4 = lower_case_guards env guards bound_locals sp st3
-        nc_emit_list st4 [NLabel fail_lbl, NClearLocals arity (nc_max_sp st4)] sp
+        st -> nc_set_lbl (fail_lbl + 1)
+          -> lower_pat_list_cond env pats 0 fail_lbl sp _
+          -> lower_pat_list_binds env pats 0 arity move_args sp _
+          -> lower_case_guards env guards bound_locals sp _
+          -> st4
+        st4 -> nc_emit_list [NLabel fail_lbl, NClearLocals arity (nc_max_sp st4)] sp
 
 fn :: lower cases list RNativeEnv [RFnCase] Int RNativeCode => RNativeCode
       lower cases list _ [] _ st = st
@@ -2820,51 +2822,51 @@ fn :: collect refs expr RExpr              [String] => [String]
       collect refs expr (EVar name)        acc      =  add_unique_str name acc
       collect refs expr (ENot inner)       acc      =  collect_refs_expr inner acc
       collect refs expr (EOut inner)       acc      =  collect_refs_expr inner acc
-      collect refs expr (EBin bop l r)     acc      =  collect_refs_expr r (collect_refs_expr l (add_unique_str (binop_op_tag bop) acc))
-      collect refs expr (ECall fname args) acc      =  collect_refs_expr_list args (add_unique_str fname acc)
+      collect refs expr (EBin bop l r)     acc      =  acc -> add_unique_str (binop_op_tag bop) _ -> collect_refs_expr l _ -> collect_refs_expr r _
+      collect refs expr (ECall fname args) acc      =  acc -> add_unique_str fname _ -> collect_refs_expr_list args _
       collect refs expr (EEcho args)       acc      =  collect_refs_expr_list args acc
       collect refs expr (EStrInterp parts) acc      =  collect_refs_expr_list parts acc
       collect refs expr (EList elems)      acc      =  collect_refs_expr_list elems acc
       collect refs expr (ETuple elems)     acc      =  collect_refs_expr_list elems acc
       collect refs expr (ETensor elems)    acc      =  collect_refs_expr_list elems acc
       collect refs expr (EEinsum es _)     acc      =  collect_refs_expr_list es acc
-      collect refs expr (EHadamard _ l _ r _) acc   =  collect_refs_expr r (collect_refs_expr l acc)
-      collect refs expr (EIndex base idxs) acc      =  collect_refs_expr_list idxs (collect_refs_expr base acc)
-      collect refs expr (EIndexAssign _ idxs v) acc =  collect_refs_expr v (collect_refs_expr_list idxs acc)
+      collect refs expr (EHadamard _ l _ r _) acc   =  acc -> collect_refs_expr l _ -> collect_refs_expr r _
+      collect refs expr (EIndex base idxs) acc      =  acc -> collect_refs_expr base _ -> collect_refs_expr_list idxs _
+      collect refs expr (EIndexAssign _ idxs v) acc =  acc -> collect_refs_expr_list idxs _ -> collect_refs_expr v _
       collect refs expr (ESeqSelect b _)   acc      =  collect_refs_expr b acc
       collect refs expr (EBlock stmts)     acc      =  collect_refs_stmts stmts acc
       collect refs expr (EGuard guards)    acc      =  collect_refs_guards guards acc
-      collect refs expr (EWhere body binds) acc     =  collect_refs_where binds (collect_refs_expr body acc)
+      collect refs expr (EWhere body binds) acc     =  acc -> collect_refs_expr body _ -> collect_refs_where binds _
       collect refs expr (EParPipe branches) acc     =  collect_refs_expr_list branches acc
-      collect refs expr (EWithCtx _ v b)   acc      =  collect_refs_expr b (collect_refs_expr v acc)
+      collect refs expr (EWithCtx _ v b)   acc      =  acc -> collect_refs_expr v _ -> collect_refs_expr b _
       collect refs expr (EWithRegion _ b)  acc      =  collect_refs_expr b acc
       collect refs expr _                  acc      =  acc
 
 fn :: collect refs expr list [RExpr] [String] => [String]
       collect refs expr list [] acc = acc
-      collect refs expr list (e:es) acc = collect_refs_expr_list es (collect_refs_expr e acc)
+      collect refs expr list (e:es) acc = acc -> collect_refs_expr e _ -> collect_refs_expr_list es _
 
 fn :: collect refs stmts [RStmt]            [String] => [String]
       collect refs stmts []                 acc      =  acc
-      collect refs stmts ((StmtLet _ e):ss) acc      =  collect_refs_stmts ss (collect_refs_expr e acc)
-      collect refs stmts ((StmtMut _ e):ss) acc      =  collect_refs_stmts ss (collect_refs_expr e acc)
-      collect refs stmts ((StmtExpr e):ss)  acc      =  collect_refs_stmts ss (collect_refs_expr e acc)
+      collect refs stmts ((StmtLet _ e):ss) acc      =  acc -> collect_refs_expr e _ -> collect_refs_stmts ss _
+      collect refs stmts ((StmtMut _ e):ss) acc      =  acc -> collect_refs_expr e _ -> collect_refs_stmts ss _
+      collect refs stmts ((StmtExpr e):ss)  acc      =  acc -> collect_refs_expr e _ -> collect_refs_stmts ss _
       collect refs stmts ((StmtIndexAssign _ idxs e):ss) acc =
-        collect_refs_stmts ss (collect_refs_expr e (collect_refs_expr_list idxs acc))
+        acc -> collect_refs_expr_list idxs _ -> collect_refs_expr e _ -> collect_refs_stmts ss _
 
 fn :: collect refs where [RWhereBind] [String] => [String]
       collect refs where []           acc      =  acc
-      collect refs where ((WhereBind e _ _):wbs) acc = collect_refs_where wbs (collect_refs_expr e acc)
+      collect refs where ((WhereBind e _ _):wbs) acc = acc -> collect_refs_expr e _ -> collect_refs_where wbs _
 
 fn :: collect refs guards [RGuard] [String] => [String]
       collect refs guards []       acc      =  acc
       collect refs guards ((GuardBranch c b):gs) acc =
-        collect_refs_guards gs (collect_refs_expr b (collect_refs_expr c acc))
+        acc -> collect_refs_expr c _ -> collect_refs_expr b _ -> collect_refs_guards gs _
 
 fn :: collect refs cases [RFnCase] [String] => [String]
       collect refs cases []        acc      =  acc
       collect refs cases ((FnCase _ guards body):cs) acc =
-        collect_refs_cases cs (collect_refs_expr body (collect_refs_guards guards acc))
+        acc -> collect_refs_guards guards _ -> collect_refs_expr body _ -> collect_refs_cases cs _
 
 fn :: find fndef cases [RFnDef] String => [RFnCase]
       find fndef cases []       _      =  []
@@ -3046,73 +3048,68 @@ fn :: join summaries [String] => String
 
 fn :: emit rgc payload RProgram String  => String
       emit rgc payload prog     raw_src =
-        fn_count = count_fn_defs prog
-        ty_count = count_type_defs prog
-        summaries = join_summaries (analyze_rprogram prog)
+        prog -> count_fn_defs -> fn_count
+        prog -> count_type_defs -> ty_count
+        prog -> analyze_rprogram -> join_summaries -> summaries
         "RGC1\n-- SELF_HOSTED_COMPILER: ridgunc v0.9.8\n-- FUNCTIONS: {fn_count}\n-- TYPES: {ty_count}\n{summaries}{raw_src}"
 
 fn :: emit rgc file String     String      => Int
       emit rgc file input_path output_path =
-        raw_src = load_rg_with_libs input_path
-        emit_rgc_file_loaded input_path output_path raw_src
+        input_path -> load_rg_with_libs -> emit_rgc_file_loaded input_path output_path _
 
 fn :: emit rgc file loaded String String String => Int
       emit rgc file loaded input_path _ "" =
-        _ = echo "[ridgunc compile] Error: empty or missing source file: {input_path}"
+        echo "[ridgunc compile] Error: empty or missing source file: {input_path}"
         -1
       emit rgc file loaded _ output_path raw_src =
-        toks = tokenize_src raw_src
-        prog = parse_tokens toks
-        errs = typecheck_program prog
+        raw_src -> tokenize_src -> parse_tokens -> prog
+        prog -> typecheck_program -> errs
         emit_rgc_after_check prog raw_src output_path errs
 
 fn :: emit rgc after check RProgram String String [RTypeError] => Int
       emit rgc after check prog raw_src output_path []
         | ((count_fn_defs prog) == 0) AND ((count_type_defs prog) == 0) =
-          _ = echo "[ridgunc compile] Error: no functions or types found in source"
+          echo "[ridgunc compile] Error: no functions or types found in source"
           -1
         | otherwise =
-          payload = emit_rgc_payload prog raw_src
-          _ = write_file output_path payload
+          prog -> emit_rgc_payload raw_src -> write_file output_path _
           count_fn_defs prog
       emit rgc after check _ _ _ errs =
-        _ = echo (format_type_errors errs)
+        echo (format_type_errors errs)
         0 - (type_err_count errs)
 
 fn :: emit rglib payload RProgram String  => String
       emit rglib payload prog     raw_src =
-        fn_count = count_fn_defs prog
-        ty_count = count_type_defs prog
-        summaries = join_summaries (analyze_rprogram prog)
+        prog -> count_fn_defs -> fn_count
+        prog -> count_type_defs -> ty_count
+        prog -> analyze_rprogram -> join_summaries -> summaries
         "-- RGLIB1\n-- SELF_HOSTED_COMPILER: ridgunc v0.9.8\n-- FUNCTIONS: {fn_count}\n-- TYPES: {ty_count}\n{summaries}{raw_src}"
 
 fn :: emit rglib file String     String      => Int
       emit rglib file input_path output_path =
-        own_src = load_rg_own_source input_path
-        full_src = load_rg_with_libs input_path
+        input_path -> load_rg_own_source -> own_src
+        input_path -> load_rg_with_libs -> full_src
         emit_rglib_file_loaded input_path output_path own_src full_src
 
 fn :: emit rglib file loaded String String String String => Int
       emit rglib file loaded input_path _ "" _ =
-        _ = echo "[ridgunc build --lib] Error: empty or missing source file: {input_path}"
+        echo "[ridgunc build --lib] Error: empty or missing source file: {input_path}"
         1
       emit rglib file loaded _ output_path own_src full_src =
-        full_prog = parse_tokens (tokenize_src full_src)
-        errs = typecheck_program full_prog
-        own_prog = parse_tokens (tokenize_src own_src)
+        full_src -> tokenize_src -> parse_tokens -> typecheck_program -> errs
+        own_src -> tokenize_src -> parse_tokens -> own_prog
         emit_rglib_after_check own_prog own_src output_path errs
 
 fn :: emit rglib after check RProgram String String [RTypeError] => Int
       emit rglib after check prog raw_src output_path []
         | ((count_fn_defs prog) == 0) AND ((count_type_defs prog) == 0) =
-          _ = echo "[ridgunc build --lib] Error: no functions or types found in source"
+          echo "[ridgunc build --lib] Error: no functions or types found in source"
           1
         | otherwise =
-          payload = emit_rglib_payload prog raw_src
-          _ = write_file output_path payload
+          prog -> emit_rglib_payload raw_src -> write_file output_path _
           0
       emit rglib after check _ _ _ errs =
-        _ = echo (format_type_errors errs)
+        echo (format_type_errors errs)
         1
 
 fn :: emit elf for target RNativeProg String => [Int]
@@ -3129,76 +3126,70 @@ fn :: emit so elf for target RNativeProg String => [Int]
 
 fn :: build native target for arch RNativeProg String String => Int
       build native target for arch nprog output_bin "arm64" =
-        write elf64 executable output_bin (emit arm64 elf nprog)
+        nprog -> emit arm64 elf -> write elf64 executable output_bin _
       build native target for arch nprog output_bin "arm64-linux" =
-        write elf64 executable output_bin (emit arm64 elf nprog)
+        nprog -> emit arm64 elf -> write elf64 executable output_bin _
       build native target for arch nprog output_bin "aarch64" =
-        write elf64 executable output_bin (emit arm64 elf nprog)
+        nprog -> emit arm64 elf -> write elf64 executable output_bin _
       build native target for arch nprog output_bin _ =
         build llvm x8664 executable nprog output_bin
 
 fn :: build native so for arch RNativeProg String String => Int
       build native so for arch nprog output_so "arm64" =
-        write elf64 executable output_so (emit arm64 so elf nprog)
+        nprog -> emit arm64 so elf -> write elf64 executable output_so _
       build native so for arch nprog output_so "arm64-linux" =
-        write elf64 executable output_so (emit arm64 so elf nprog)
+        nprog -> emit arm64 so elf -> write elf64 executable output_so _
       build native so for arch nprog output_so "aarch64" =
-        write elf64 executable output_so (emit arm64 so elf nprog)
+        nprog -> emit arm64 so elf -> write elf64 executable output_so _
       build native so for arch nprog output_so _ =
         build llvm x8664 so library nprog output_so
 
 fn :: build native target executable String String String => Int
       build native target executable input_path output_bin target_arch =
-        raw_src = load_rg_with_libs input_path
-        build native target loaded input_path output_bin target_arch raw_src
+        input_path -> load_rg_with_libs -> build native target loaded input_path output_bin target_arch _
 
 fn :: build native target loaded String String String String => Int
       build native target loaded input_path _ _ "" =
-        _ = echo "[ridgunc build] Error: empty or missing source file: {input_path}"
+        echo "[ridgunc build] Error: empty or missing source file: {input_path}"
         1
       build native target loaded _ output_bin target_arch raw_src =
-        toks = tokenize_src raw_src
-        prog = parse_tokens toks
-        errs = typecheck_program prog
+        raw_src -> tokenize_src -> parse_tokens -> prog
+        prog -> typecheck_program -> errs
         build native target after check prog output_bin target_arch errs
 
 fn :: build native target after check RProgram String String [RTypeError] => Int
       build native target after check prog output_bin target_arch []
         | (count_fn_defs prog) == 0 =
-          _ = echo "[ridgunc build] Error: no functions found in source"
+          echo "[ridgunc build] Error: no functions found in source"
           1
         | otherwise =
-          nprog = lower_program_to_native prog
-          build native target for arch nprog output_bin target_arch
+          prog -> lower_program_to_native -> build native target for arch output_bin target_arch
       build native target after check _ _ _ errs =
-        _ = echo (format_type_errors errs)
+        echo (format_type_errors errs)
         1
 
 fn :: build native target so library String String String => Int
       build native target so library input_path output_so target_arch =
-        raw_src = load_rg_with_libs input_path
-        build native so loaded input_path output_so target_arch raw_src
+        input_path -> load_rg_with_libs -> build native so loaded input_path output_so target_arch _
 
 fn :: build native so loaded String String String String => Int
       build native so loaded input_path _ _ "" =
-        _ = echo "[ridgunc build --so] Error: empty or missing source file: {input_path}"
+        echo "[ridgunc build --so] Error: empty or missing source file: {input_path}"
         1
       build native so loaded _ output_so target_arch raw_src =
-        toks = tokenize_src raw_src
-        prog = parse_tokens toks
-        errs = typecheck_program prog
+        raw_src -> tokenize_src -> parse_tokens -> prog
+        prog -> typecheck_program -> errs
         build native so after check prog output_so target_arch errs
 
 fn :: build native so after check RProgram String String [RTypeError] => Int
       build native so after check prog output_so target_arch []
         | ((count_fn_defs prog) == 0) AND ((count_type_defs prog) == 0) =
-          _ = echo "[ridgunc build --so] Error: no functions or types found in source"
+          echo "[ridgunc build --so] Error: no functions or types found in source"
           1
         | otherwise =
-          nprog = lower_library_to_native prog
-          build native so for arch nprog output_so target_arch
+          prog -> lower_library_to_native -> build native so for arch output_so target_arch
       build native so after check _ _ _ errs =
-        _ = echo (format_type_errors errs)
+        echo (format_type_errors errs)
         1
 
 fn :: build native so library String String => Int

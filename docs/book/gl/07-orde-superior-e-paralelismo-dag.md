@@ -76,7 +76,22 @@ executar_duas_veces (A => A) A => A
 executar_duas_veces f        x =  f (f x)
 ```
 
-### 4. Clausuras léxicas e funcións anónimas (`(x => expr)`, `(acc x => expr)`)
+### 4. Tubaxes fluídas de esquerda a dereita (`->`) — O estilo 100% Ridgun!
+Cando encadeas varias transformacións (`map`, `filter`, `fold` ou as túas propias funcións e operadores `op ::`), aniñar parénteses de dereita a esquerda (`compact l (filter g (map f xs))`) obrígache a ler de dentro cara a fóra.
+
+En Ridgun, o **estilo idiomático recomendado (`2b`)** lese de esquerda a dereita co operador de tubaxe **`->`**, onde **o que vén da esquerda entra sempre como primeiro argumento** da función ou `op ::` seguinte:
+
+```ridgun
+-- Estilo idiomático recomendado en Ridgun (2b):
+xs map (x => x * 2) -> filter (x => x > 10) -> fold (acc x => acc + x) 0 -> resultado
+
+-- E se unha función devolve unha tupla, fíltrala cunha máscara e desempaquétase soa:
+parsear paquete "v0.9.9" -> (+ _ _ +) -> combinar codigo -> resumo
+```
+
+Ademais, calquera expresión con efectos secundarios (escribir un ficheiro, invocar o sistema) pódese poñer soa na súa liña sen `echo` nin variables mudas `_ =`, ou rematar en `-> ()` se queres descartar explicitamente o seu retorno.
+
+### 5. Clausuras léxicas e funcións anónimas (`(x => expr)`, `(acc x => expr)`)
 Cando queres pasar unha función curta ao voo ou capturar variables locais do teu ámbito actual (como un desprazamento, un prefixo ou unha sesión activa) sen declarar unha función global auxiliar, usas unha **clausura léxica** entre parénteses con **`=>`**:
 
 ```ridgun

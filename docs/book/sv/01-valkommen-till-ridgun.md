@@ -108,7 +108,7 @@ Ridgun försöker inte uppfinna ett fyrkantigt hjul på nytt; det lånar skamlö
 | Från vem | Vad Ridgun lånar | Vad det lämnar utanför (för din mentala hälsas skull) |
 |---|---|---|
 | **Haskell / ML** | Rena funktioner, mönstermatchning (*pattern matching*) per fall, algebraiska datatyper (`Option`, `Result`) och polymorfism (`A`..`Z`). | De abstrakta monaderna, de 40 `LANGUAGE`-pragmana och skräpsamlaren. |
-| **J / APL** | Besattheten av kodens tabellform, inbyggda tensorer och sekvensmasker (`s["-+-"]`). | De hieroglyfiska symbolerna som är omöjliga att skriva på ett vanligt tangentbord. |
+| **J / APL** | Besattheten av kodens tabellform, inbyggda tensorer och sekvensmasker (`s(_ + _)`). | De hieroglyfiska symbolerna som är omöjliga att skriva på ett vanligt tangentbord. |
 | **Rust / C** | Små inbyggda ELF-binärer, noll GC, minneskontroll (`with region`) och POSIX-systemanrop. | Den ständiga kampen med *borrow checker*, livstider `'a` och syntaktisk mångordighet. |
 | **Erlang / Go** | Isolerade agenter (`agent`, `send ... to`, `receive from`) och samtidighet via kanaler (`new bounded channel`). | `nil`-pekare och delade muteringar av misstag. |
 
@@ -166,11 +166,11 @@ op :: Int begransad_mellan Int och Int => Int
 ```
 Och sedan skriver du i din kod `hastighet begransad_mellan 0 och 120`. Det läses som vanlig svenska (eller engelska), men är till 100 % typat och kompilerat till maskinkod.
 
-### 5. Visuella masker över sekvenser (`s(+ _)` och `s["-+-"]`)
-Har du någonsin behövt skriva en hel sallad av index `filter(\(i, x) -> i % 2 == 0)` bara för att behålla jämna element eller plocka ut ett rytmiskt mönster ur en lista?
+### 5. Visuella masker över sekvenser (`s(_ + _)` och `-> (+ _ _ +) ->`)
+Har du någonsin behövt skriva en hel sallad av index eller packa upp en tupel med dummyvariabler bara för att behålla två specifika positioner?
 I Ridgun skickar du direkt in en **visuell mask**:
-- `data["-+-"]`: kastar det första (`-`), behåller det andra (`+`), kastar det tredje (`-`).
-- `data["+-~"]`: symbolen `~` upprepar mönstret `+-` i en loop ända till slutet av listan (alla jämna index i ett svep).
+- `data(_ + _)`: kastar det första (`_`), behåller det andra (`+`), kastar det tredje (`_`).
+- `tolka paket "v0.9.9" -> (+ _ _ +) -> kombinera kod -> sammanfattning`: filtrerar en tupel med 4 element mitt i en pipeline och skickar det 1:a och 4:e direkt som argument till nästa funktion.
 Noll indexaritmetik, noll *off-by-one*-fel.
 
 ### 6. Polymorfism med "noll brus" (`A`..`Z`) styrd av din domän

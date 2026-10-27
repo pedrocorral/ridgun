@@ -5,7 +5,7 @@ Um programa que só move um número ou um texto de cada vez serve de pouco. Na v
 Para isso, o Ridgun dá-lhe três recipientes distintos, cada um pensado para um trabalho muito concreto:
 1. **Listas (`[T]`)**: *"Tenho muitos elementos do mesmo tipo (ou nenhum) e quero percorrê-los"*.
 2. **Tuplas (`(A, B)`)**: *"Quero devolver um par ou um trio de coisas diferentes juntas sem criar um tipo novo"*.
-3. **Sequências e máscaras (`s["-+-"]`)**: *"Quero filtrar ou reordenar argumentos em tempo de voo como se tivesse um coador matemático"*.
+3. **Sequências e máscaras (`s(_ + _)`, `(+ _ _ +)`)**: *"Quero filtrar ou reordenar argumentos em tempo de voo como se tivesse um coador matemático"*.
 
 Vamos uma por uma.
 
@@ -127,31 +127,39 @@ main =
 
 ---
 
-## 5.4. O truque ninja: Sequências e Máscaras Posicionais (`s["-+-"]`)
+## 5.4. O truque ninja: Sequências e Máscaras Posicionais (`s(_ + _)`, `(+ _ _ +)`)
 
 Aqui vem uma das joias mais originais do Ridgun, herdada diretamente das linguagens vetoriais como J e APL.
 
 Imagine que recebe uma fieira de argumentos com o padrão de sequência **`(s)`** e quer ficar apenas com alguns e descartar outros sem declarar cinco variáveis com nomes inventados (`_a`, `b`, `_c`, `d`...).
 
-Aplica a `s` uma **máscara de sinais `+` (fica com ele) e `-` (deita fora)**:
+Aplica a `s` uma **máscara de tupla com `+` (fica com ele) e `_` (descarta-o)**:
 
-- **`s["-+-"]`**: de 3 elementos, deita fora o primeiro (`-`), fica com o segundo (`+`) e deita fora o terceiro (`-`).
-- **`s["+-+"]`**: fica com o primeiro e o terceiro; devolve a sequência com esses dois.
-- **`s["-- +"]`** (atenção ao espaço antes do último `+`): deita fora os dois primeiros (`--`) e aplica `+` **a todos os demais que vierem atrás**, sejam quantos forem.
+- **`s(_ + _)`**: de 3 elementos, descarta o primeiro (`_`), fica com o segundo (`+`) e descarta o terceiro (`_`).
+- **`s(+ _ +)`**: fica com o primeiro e o terceiro; devolve a sequência com esses dois.
+- **`s(_ _ +...)`**: descarta os dois primeiros (`_ _`) e aplica `+...` **a todos os demais que vierem atrás**, sejam quantos forem.
 
 Veja isto a funcionar:
 
 ```ridgun
 o_do_meio Int Int Int => Int
-o_do_meio (s)         =  s["-+-"]
+o_do_meio (s)         =  s(_ + _)
 
 descartar_dois_primeiros Int... => [Int]
-descartar_dois_primeiros (s)    =  s["-- +"]
+descartar_dois_primeiros (s)    =  s(_ _ +...)
 
 main => ()
 main =
   echo (o_do_meio 100 42 999)                 -- Imprime 42
   echo (descartar_dois_primeiros 1 2 10 20 30)  -- Imprime [10, 20, 30]
+```
+
+E o melhor de tudo: pode intercalar uma máscara posicional **`(+ _ _ +)`** **diretamente no meio de uma tubagem `->`**! Se uma função devolver uma tupla de vários valores e a função seguinte só precisar de dois deles, filtra a tupla em linha e o Ridgun desempacotará os elementos sobreviventes como argumentos separados da etapa seguinte:
+
+```ridgun
+-- analisar pacote devolve 4 valores: (Int, Int, [String String], String)
+-- (+ _ _ +) fica com o 1.º (code) e o 4.º (msg), e passa-os a combinar codigo:
+analisar pacote "v0.9.9" -> (+ _ _ +) -> combinar codigo -> resumo
 ```
 
 Além disso, se usar o operador vírgula `,` fora de parênteses (`lista1 , lista2`), o Ridgun achata ambas as coleções numa única sequência contínua.

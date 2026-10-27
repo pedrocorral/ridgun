@@ -76,7 +76,22 @@ executar_dues_vegades (A => A) A => A
 executar_dues_vegades f        x =  f (f x)
 ```
 
-### 4. Clausures lèxiques i funcions anònimes (`(x => expr)`, `(acc x => expr)`)
+### 4. Canonades fluides d'esquerra a dreta (`->`) — L'estil 100% Ridguner!
+Quan encadenes diverses transformacions (`map`, `filter`, `fold` o les teves pròpies funcions i operadors `op ::`), niar parèntesis de dreta a esquerra (`compact l (filter g (map f xs))`) t'obliga a llegir de dins cap a fora.
+
+En Ridgun, l'**estil idiomàtic recomanat (`2b`)** es llegeix d'esquerra a dreta amb l'operador de canonada **`->`**, on **el que ve de l'esquerra entra sempre com a primer argument** de la funció o `op ::` següent:
+
+```ridgun
+-- Estil idiomàtic recomanat en Ridgun (2b):
+xs map (x => x * 2) -> filter (x => x > 10) -> fold (acc x => acc + x) 0 -> resultat
+
+-- I si una funció retorna una tupla, la filtres amb una màscara i es desempaqueta sola:
+parsejar paquet "v0.9.9" -> (+ _ _ +) -> combinar codi -> resum
+```
+
+A més, qualsevol expressió amb efectes secundaris (escriure un fitxer, invocar el sistema) es pot posar sola a la seva línia sense `echo` ni variables mudes `_ =`, o acabar en `-> ()` si vols descartar explícitament el seu retorn.
+
+### 5. Clausures lèxiques i funcions anònimes (`(x => expr)`, `(acc x => expr)`)
 Quan vols passar una funció curta al vol o capturar variables locals del teu àmbit actual (com un desplaçament, un prefix o una sessió activa) sense declarar una funció global auxiliar, fas servir una **clausura lèxica** entre parèntesis amb **`=>`**:
 
 ```ridgun

@@ -5,7 +5,7 @@ A program that only moves one number or one string at a time doesn't get you ver
 For that, Ridgun gives you three distinct containers, each designed for a very specific job:
 1. **Lists (`[T]`)**: *"I have many elements of the same type (or none at all) and I want to traverse them"*.
 2. **Tuples (`(A, B)`)**: *"I want to return a pair or trio of different things together without declaring a new type"*.
-3. **Sequences and masks (`s["-+-"]`)**: *"I want to filter or slice arguments on the fly as if I had a mathematical sieve"*.
+3. **Sequences and masks (`s(_ + _)`, `(+ _ _ +)`)**: *"I want to filter or slice arguments on the fly as if I had a mathematical sieve"*.
 
 Let's take them one by one.
 
@@ -138,31 +138,39 @@ fn :: main => ()
 
 ---
 
-## 5.4. The Ninja Trick: Sequences and Positional Masks (`s["-+-"]`)
+## 5.4. The Ninja Trick: Sequences and Positional Masks (`s(_ + _)`, `(+ _ _ +)`)
 
 Here comes one of Ridgun's most original gems, inherited straight from array languages like J and APL.
 
 Imagine you receive a stream of arguments using the sequence pattern **`(s)`** and want to keep only certain positions while discarding others, without inventing five throwaway variable names (`_a`, `b`, `_c`, `d`...).
 
-You apply a **mask of `+` (keep it) and `-` (drop it) signs** to `s`:
+You apply a **tuple mask of `+` (keep it) and `_` (drop it)** to `s`:
 
-- **`s["-+-"]`**: out of 3 elements, drop the first (`-`), keep the second (`+`), and drop the third (`-`).
-- **`s["+-+"]`**: keep the first and the third; returns the sequence containing those two.
-- **`s["-- +"]`** (note the space before the last `+`): drop the first two (`--`) and apply `+` **to all remaining elements that follow**, no matter how many there are.
+- **`s(_ + _)`**: out of 3 elements, drop the first (`_`), keep the second (`+`), and drop the third (`_`).
+- **`s(+ _ +)`**: keep the first and the third; returns the sequence containing those two.
+- **`s(_ _ +...)`**: drop the first two (`_ _`) and apply `+...` **to all remaining elements that follow**, no matter how many there are.
 
 See it in action:
 
 ```ridgun
 fn :: middle of three Int Int Int => Int
-      middle of three (s)         =  s["-+-"]
+      middle of three (s)         =  s(_ + _)
 
 fn :: drop first two Int... => [Int]
-      drop first two (s)    =  s["-- +"]
+      drop first two (s)    =  s(_ _ +...)
 
 fn :: main => ()
       main =
         echo (middle of three 100 42 999)     -- Prints 42
         echo (drop first two 1 2 10 20 30)    -- Prints [10, 20, 30]
+```
+
+And the best part: you can plug a positional mask **`(+ _ _ +)`** **right inside an idiomatic `->` pipeline**! When a function returns a tuple of several values and the next function only needs two of them, filter the tuple on the fly and Ridgun will unpack the surviving elements directly as separate arguments into the next stage:
+
+```ridgun
+-- parse packet returns 4 values: (Int, Int, [String String], String)
+-- (+ _ _ +) keeps the 1st (code) and the 4th (msg), and unpacks them into combine code:
+parse packet "v0.9.9" -> (+ _ _ +) -> combine code -> summary
 ```
 
 On top of that, if you use the comma operator `,` outside parentheses (`list1 , list2`), Ridgun flattens both collections into a single continuous sequence.

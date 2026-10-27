@@ -398,21 +398,17 @@ fn :: emit llvm linker script => String
 
 fn :: finish llvm link Int String String => Int
       finish llvm link 0 output_bin tmp_base =
-        _ = shell exec ("rm -f \"" + tmp_base + "\".*")
-        rc = sys chmod output_bin 493
-        check chmod status rc
+        shell exec ("rm -f \"" + tmp_base + "\".*")
+        sys chmod output_bin 493 -> check chmod status
       finish llvm link _ _ tmp_base =
-        _ = shell exec ("rm -f \"" + tmp_base + "\".*")
-        _ = echo "[ridgunc llvm] Error: llc/ld native compilation failed"
+        shell exec ("rm -f \"" + tmp_base + "\".*")
+        echo "[ridgunc llvm] Error: llc/ld native compilation failed"
         1
 
 fn :: write cached rt files String String => ()
       write cached rt files rt_path lds_path =
-        rt_bytes = build x8664 rt kernel
-        _ = write bytes rt_path rt_bytes
-        lds_text = emit llvm linker script
-        _ = write file lds_path lds_text
-        ()
+        build x8664 rt kernel -> write bytes rt_path _
+        emit llvm linker script -> write file lds_path _ -> ()
 
 fn :: ensure cached rt files String String => ()
       ensure cached rt files rt_path lds_path
@@ -428,12 +424,10 @@ fn :: build llvm x8664 executable RNativeProg String     => Int
         obj_path = tmp_base + ".o"
         rt_path = "/tmp/__rg_llvm_cache_v0_9_21_s2.rt"
         lds_path = "/tmp/__rg_llvm_cache_v0_9_21_s2.lds"
-        _ = ensure cached rt files rt_path lds_path
-        ll_text = emit llvm ir nprog
-        _ = write file ll_path ll_text
+        ensure cached rt files rt_path lds_path
+        nprog -> emit llvm ir -> write file ll_path _
         cmd = "/usr/bin/opt -O2 \"" + ll_path + "\" -o \"" + bc_path + "\" && /usr/bin/llc -O2 -filetype=obj \"" + bc_path + "\" -o \"" + obj_path + "\" && /usr/bin/ld -n --no-warn-rwx-segments -T \"" + lds_path + "\" -b binary \"" + rt_path + "\" -b elf64-x86-64 \"" + obj_path + "\" -o \"" + output_bin + "\""
-        res = shell exec cmd
-        finish llvm link res output_bin tmp_base
+        shell exec cmd -> finish llvm link output_bin tmp_base
 
 fn :: build llvm x8664 so library RNativeProg String    => Int
       build llvm x8664 so library nprog       output_so =
@@ -444,9 +438,7 @@ fn :: build llvm x8664 so library RNativeProg String    => Int
         obj_path = tmp_base + ".o"
         rt_path = "/tmp/__rg_llvm_cache_v0_9_21_s2.rt"
         lds_path = "/tmp/__rg_llvm_cache_v0_9_21_s2.lds"
-        _ = ensure cached rt files rt_path lds_path
-        ll_text = emit llvm ir nprog
-        _ = write file ll_path ll_text
+        ensure cached rt files rt_path lds_path
+        nprog -> emit llvm ir -> write file ll_path _
         cmd = "/usr/bin/opt -O2 \"" + ll_path + "\" -o \"" + bc_path + "\" && /usr/bin/llc -O2 -relocation-model=pic -filetype=obj \"" + bc_path + "\" -o \"" + obj_path + "\" && /usr/bin/ld -shared -n --no-warn-rwx-segments -T \"" + lds_path + "\" -b binary \"" + rt_path + "\" -b elf64-x86-64 \"" + obj_path + "\" -o \"" + output_so + "\""
-        res = shell exec cmd
-        finish llvm link res output_so tmp_base
+        shell exec cmd -> finish llvm link output_so tmp_base

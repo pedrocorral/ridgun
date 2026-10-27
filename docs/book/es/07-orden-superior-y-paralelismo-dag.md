@@ -106,6 +106,46 @@ Cinco reglas mantienen las lambdas limpias y sin ambigüedad:
 
 Las variables capturadas (`base`, `bono`) se empaquetan automáticamente con gestión determinista de memoria (`RMM1`/`RMM2`), sin fugas y sin pausas de recolector de basura.
 
+### 5. El estilo más Ridgunero (recomendado): Tuberías fluidas con `->`, invocación por la izquierda y bloques sin `_ =` (`FR-COMP-014`)
+Escribir `map f xs` o asignar cada paso intermedio a una variable (`r1 = ...`, `r2 = ...`) está muy bien, pero donde Ridgun se disfruta al 100% es encadenando transformaciones de izquierda a derecha con **`->`** y ligando el resultado final directamente con **`-> variable`**:
+
+```ridgun
+op :: [Int] compact limit Int => [Int]
+      []     compact limit _   =  []
+      (x:xs) compact limit lim
+        | x <= lim  = [x] :: (xs compact limit lim)
+        | otherwise = xs compact limit lim
+
+fn :: main => ()
+      main =
+        xs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+        -- Estilo recomendado (2b): arranque infijo natural + `->` entre etapas + `-> results`
+        xs map (x => x * 2) -> filter (x => x > 6) -> compact limit 14 -> results
+        echo results  -- Imprime [8, 10, 12, 14]
+```
+
+Ridgun unifica las cuatro formas de escribir la cadena en el mismo árbol sintáctico (AST), para que elijas la que mejor se lea en cada caso:
+1. **Estilo `2b` (recomendado)**: `xs map f -> filter g -> compact limit 14 -> results` (arranque infijo natural con el sujeto a la izquierda, `->` separando cada etapa y `-> results` al final).
+2. **Estilo `2` (`->` desde el valor inicial)**: `xs -> map f -> filter g -> compact limit 14 -> results`.
+3. **Estilo `1` (infijo continuo sin `->` intermedios)**: `xs map f filter g compact limit 14 -> results`.
+4. **Estilo `3` (arranque prefijo clásico + `->`)**: `map f xs -> filter g -> compact limit 14 -> results`.
+
+Y si la tubería es larga, puedes partirla en varias líneas sangradas que empiezan por `->`:
+
+```ridgun
+        xs map (x => x * 3)
+          -> filter (x => x >= 12)
+          -> fold 0 (acc x => acc + x)
+          -> total
+```
+
+La regla universal de `->` es sencilla y consistente en todo el lenguaje:
+- **El valor que viene por la izquierda entra como PRIMER argumento** de la función u operador de la derecha (`x -> f a b` $\equiv$ `x f a b` $\equiv$ `f x a b`), salvo en `map`/`filter`/`fold` (donde entra como la colección sobre la que iterar) o si colocas un comodín explícito **`_`** (`payload -> write_file ruta_salida _`).
+- **Envío directo a agentes**: `[5, 10, 15] -> sumar lista -> send to ag` y `[1, 2, 3] -> sumar lista -> ask to ag -> total`.
+- **Máscaras de secuencia en tránsito (`-> (+ _ _ +) ->`)**: `parsear paquete "v0.9.9" -> (+ _ _ +) -> combinar codigo -> resumen`.
+- **Bloques secuenciales limpios sin `_ =` y descarte explícito `-> ()`**: las llamadas con efectos laterales (`echo`, `write_file`, `shell_exec`, `log`, etc.) se escriben directamente sin `_ =`. Si la última línea de una función `=> ()` llama a una función que devuelve un valor (como `Int`), basta con terminar esa línea con **`-> ()`** para descartar el resultado explícitamente y devolver `()`.
+
 ---
 
 ## 7.2. La joya de la corona: Bloques `||` con `->` como Grafos Paralelos (DAGs)
@@ -231,8 +271,8 @@ Igual que en Go o Erlang, además de agentes también puedes crear tubos explíc
 fn :: main => ()
       main =
         tubo = new bounded channel 4
-        _ = send through "Tarea A completada" tubo
-        _ = send through "Tarea B completada" tubo
+        send through "Tarea A completada" tubo
+        send through "Tarea B completada" tubo
         primero = receive from tubo
         segundo = receive from tubo
         echo primero "|" segundo

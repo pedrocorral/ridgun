@@ -108,7 +108,7 @@ Ridgun no pretende reinventar la rueda cuadrada; toma prestado sin complejos lo 
 | De quién | Qué toma Ridgun | Qué deja fuera (por tu salud mental) |
 |---|---|---|
 | **Haskell / ML** | Funciones puras, *pattern matching* por casos, tipos algebraicos (`Option`, `Result`) y polimorfismo (`A`..`Z`). | Las mónadas abstractas, los 40 `LANGUAGE pragmas` y el recolector de basura. |
-| **J / APL** | La obsesión por la forma tabular del código, tensores nativos y máscaras de secuencias (`s["-+-"]`). | Los símbolos jeroglíficos imposibles de escribir en un teclado normal. |
+| **J / APL** | La obsesión por la forma tabular del código, tensores nativos y máscaras de secuencias (`s(_ + _)`). | Los símbolos jeroglíficos imposibles de escribir en un teclado normal. |
 | **Rust / C** | Binarios ELF nativos pequeños, cero GC, control de memoria (`with region`) y llamadas al sistema POSIX. | La pelea constante con el *borrow checker*, los *lifetimes* `'a` y la verbosidad sintáctica. |
 | **Erlang / Go** | Agentes aislados (`agent`, `send ... to`, `receive from`) y concurrencia por canales (`new bounded channel`). | Los punteros `nil` y las mutaciones compartidas por descuido. |
 
@@ -166,11 +166,11 @@ op :: Int limitado_entre Int y Int => Int
 ```
 Y luego en tu código escribes `velocidad limitado_entre 0 y 120`. Se lee como castellano (o inglés), pero está 100% tipado y compilado a código nativo.
 
-### 5. Máscaras visuales sobre secuencias (`s(+ _)` y `s["-+-"]`)
-¿Alguna vez has tenido que escribir una ensalada de índices `filter(\(i, x) -> i % 2 == 0)` solo para quedarte con los elementos pares o extraer un patrón rítmico de una lista?
+### 5. Máscaras visuales sobre secuencias (`s(_ + _)` y `-> (+ _ _ +) ->`)
+¿Alguna vez has tenido que escribir una ensalada de índices `filter(\(i, x) -> i % 2 == 0)` o abrir una tupla con variables mudas solo para quedarte con dos posiciones concretas?
 En Ridgun le pasas directamente una **máscara visual**:
-- `datos["-+-"]`: descarta el primero (`-`), se queda el segundo (`+`), descarta el tercero (`-`).
-- `datos["+-~"]`: el símbolo `~` repite el patrón `+-` en bucle hasta el final de la lista (todos los índices pares de un plumazo).
+- `datos(_ + _)`: descarta el primero (`_`), se queda el segundo (`+`), descarta el tercero (`_`).
+- `parsear paquete "v0.9.9" -> (+ _ _ +) -> combinar codigo -> resumen`: filtra una tupla de 4 elementos en plena tubería y pasa el 1.º y el 4.º directamente como los 2 argumentos de la siguiente función.
 Cero aritmética de índices, cero errores *off-by-one*.
 
 ### 6. Polimorfismo de "cero ruido" (`A`..`Z`) gobernado por tu dominio

@@ -86,7 +86,7 @@ fn :: apply hof (Int => Int) (Int Int => Int) [Int] => [Int] Int
 fn :: channel roundtrip String => String
       channel roundtrip msg    =
         ch = new channel
-        _ = send through msg ch
+        send through msg ch
         receive from ch
 
 type OptionStr = Some String | None
@@ -115,8 +115,8 @@ fn :: esperar pipe bloqueante Int => Int
         rfd = fst pipe fd fds
         wfd = snd pipe fd fds
         rc = sys poll rfd 1 ms
-        _ = sys close rfd
-        _ = sys close wfd
+        sys close rfd
+        sys close wfd
         rc
 
 fn :: delegar espera pipe Int => Int
@@ -388,9 +388,9 @@ fn :: main => ()
         stop ag_poll2
         -- RG-069 regression test: 5,000 round-trip messages on a stateless agent must leak 0 CMM blocks
         ag_noleak = agent (eco ligero)
-        _ = bombear agente ag_noleak 0 10
+        bombear agente ag_noleak 0 10
         live_ag0 = cmm_live_blocks
-        _ = bombear agente ag_noleak 0 5000
+        bombear agente ag_noleak 0 5000
         live_ag1 = cmm_live_blocks
         assert equals live_ag1 live_ag0
         stop ag_noleak
@@ -440,7 +440,7 @@ fn :: main => ()
         assert equals ((cb3 box3) "1" "2" "3") "123"
         assert equals (cb3 box3 "p" "q" "r") "pqr"
         live0 = cmm_live_blocks
-        _ = run closure mem scope "ok"
+        run closure mem scope "ok"
         assert equals cmm_live_blocks live0
         echo "=== Speed & Zero-Leak Benchmarks: sha256 raw & BlaMka Tensor Permutations ==="
         raw_empty = sha256 raw ""
@@ -486,7 +486,7 @@ fn :: main => ()
         assert equals big_mem_(0, 0) 42
         assert equals big_mem_(159999, 15) 999999
         mut z_mut = Tensor[U64 * 8 * 16]
-        _ = mutate tensor ret int z_mut
+        mutate tensor ret int z_mut
         assert equals z_mut_(3, 7) 123456
         map mutate row ret int in z_mut_(i,)
         assert equals z_mut_(0, 5) 77

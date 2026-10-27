@@ -5,7 +5,7 @@ Ett program som bara flyttar ett tal eller en text i taget gör inte mycket nytt
 För det ger Ridgun dig tre olika behållare, var och en utformad för en mycket specifik uppgift:
 1. **Listor (`[T]`)**: *"Jag har många element av samma typ (eller inga alls) och vill gå igenom dem"*.
 2. **Tupler (`(A, B)`)**: *"Jag vill returnera ett par eller en trio av olika saker tillsammans utan att skapa en ny typ"*.
-3. **Sekvenser och masker (`s["-+-"]`)**: *"Jag vill filtrera eller stuva om argument i farten som om jag hade ett matematiskt durkslag"*.
+3. **Sekvenser och masker (`s(_ + _)`, `(+ _ _ +)`)**: *"Jag vill filtrera eller stuva om argument i farten som om jag hade ett matematiskt durkslag"*.
 
 Vi tar dem en i taget.
 
@@ -127,31 +127,39 @@ main =
 
 ---
 
-## 5.4. Ninjatricket: Sekvenser och positionsmasker (`s["-+-"]`)
+## 5.4. Ninjatricket: Sekvenser och positionsmasker (`s(_ + _)`, `(+ _ _ +)`)
 
 Här kommer en av Ridguns mest originella juveler, ärvd rakt från vektorspråk som J och APL.
 
 Föreställ dig att du tar emot en rad argument med sekvensmönstret **`(s)`** och bara vill behålla några och kasta andra utan att deklarera fem variabler med påhittade namn (`_a`, `b`, `_c`, `d`...).
 
-Då lägger du på en **mask av tecken med `+` (behåll) och `-` (kasta)** på `s`:
+Då lägger du på en **tupelmask med `+` (behåll) och `_` (kasta)** på `s`:
 
-- **`s["-+-"]`**: av 3 element, kasta det första (`-`), behåll det andra (`+`) och kasta det tredje (`-`).
-- **`s["+-+"]`**: behåll det första och det tredje; returnera sekvensen med dessa två.
-- **`s["-- +"]`** (lägg märke till mellanslaget före det sista `+`): kasta de två första (`--`) och tillämpa `+` **på alla efterföljande element**, oavsett hur många de är.
+- **`s(_ + _)`**: av 3 element, kasta det första (`_`), behåll det andra (`+`) och kasta det tredje (`_`).
+- **`s(+ _ +)`**: behåll det första och det tredje; returnera sekvensen med dessa två.
+- **`s(_ _ +...)`**: kasta de två första (`_ _`) och tillämpa `+...` **på alla efterföljande element**, oavsett hur många de är.
 
 Se hur det fungerar i praktiken:
 
 ```ridgun
 den_i_mitten Int Int Int => Int
-den_i_mitten (s)         =  s["-+-"]
+den_i_mitten (s)         =  s(_ + _)
 
 kasta_tva_forsta Int... => [Int]
-kasta_tva_forsta (s)    =  s["-- +"]
+kasta_tva_forsta (s)    =  s(_ _ +...)
 
 main => ()
 main =
   echo (den_i_mitten 100 42 999)        -- Skriver ut 42
   echo (kasta_tva_forsta 1 2 10 20 30)  -- Skriver ut [10, 20, 30]
+```
+
+Och det bästa av allt: du kan skjuta in en positionsmask **`(+ _ _ +)`** **rakt in i en idiomatisk `->`-pipeline**! Om en funktion returnerar en tupel med flera värden och nästa funktion bara behöver två av dem, filtrerar du tupeln i farten och Ridgun packar upp de överlevande elementen direkt som separata argument till nästa steg:
+
+```ridgun
+-- tolka paket returnerar 4 värden: (Int, Int, [String String], String)
+-- (+ _ _ +) behåller det 1:a (code) och det 4:e (msg), och skickar dem till kombinera kod:
+tolka paket "v0.9.9" -> (+ _ _ +) -> kombinera kod -> sammanfattning
 ```
 
 Och om du dessutom använder kommaoperatorn `,` utanför parenteser (`lista1 , lista2`), plattar Ridgun ut båda samlingarna till en enda sammanhängande sekvens.

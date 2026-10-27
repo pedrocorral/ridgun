@@ -31,7 +31,7 @@ fn :: strip script prefix [String]     => [String]
 fn :: print error lines [String]    => ()
       print error lines []          =  ()
       print error lines (line:rest) =
-        _ = echo line
+        echo line
         print_error_lines rest
 
 fn :: has strict flag [String]       => Bool
@@ -47,22 +47,19 @@ fn :: strip strict flag [String]          => [String]
 fn :: verify strict source String     [RTypeError] => ()
       verify strict source _          []           =  ()
       verify strict source input_path s_errs       =
-        err_c = type_err_count s_errs
-        _ = print_error_lines (format_type_errors s_errs)
-        _ = echo "[ridgunc --strict] {input_path}: {err_c} strict mode error(s) found."
+        s_errs -> type_err_count -> err_c
+        s_errs -> format_type_errors -> print_error_lines
+        echo "[ridgunc --strict] {input_path}: {err_c} strict mode error(s) found."
         sys_exit 1
 
 fn :: verify strict if enabled Bool String => ()
       verify strict if enabled False _ = ()
       verify strict if enabled True input_path =
-        raw_src = load_rg_with_libs input_path
-        toks = tokenize_src raw_src
-        verify strict source input_path (check strict tokens toks)
+        input_path -> load_rg_with_libs -> tokenize_src -> check strict tokens -> verify strict source input_path _
 
 fn :: run cli check Bool        String     => ()
       run cli check strict_mode input_path =
-        raw_src = load_rg_with_libs input_path
-        run_cli_check_loaded strict_mode input_path raw_src
+        input_path -> load_rg_with_libs -> run_cli_check_loaded strict_mode input_path _
 
 fn :: strict check errors Bool  [RToken] => [RTypeError]
       strict check errors False _        =  []
@@ -70,36 +67,36 @@ fn :: strict check errors Bool  [RToken] => [RTypeError]
 
 fn :: run cli check loaded Bool String String => ()
       run cli check loaded _ input_path "" =
-        _ = echo "[ridgunc check] Error: empty or missing source file: {input_path}"
+        echo "[ridgunc check] Error: empty or missing source file: {input_path}"
         sys_exit 1
       run cli check loaded strict_mode input_path raw_src =
-        toks = tokenize_src raw_src
-        prog = parse_tokens toks
+        raw_src -> tokenize_src -> toks
+        toks -> parse_tokens -> prog
         errs = (typecheck_program prog) :: (strict check errors strict_mode toks)
         report_check_result input_path prog errs
 
 fn :: report check result String RProgram [RTypeError] => ()
       report check result input_path prog []
         | ((count_fn_defs prog) == 0) AND ((count_type_defs prog) == 0) =
-          _ = echo "[ridgunc check] {input_path}: Error: 0 function(s), 0 type(s) found."
+          echo "[ridgunc check] {input_path}: Error: 0 function(s), 0 type(s) found."
           sys_exit 1
         | otherwise =
-          fn_c = count_fn_defs prog
-          ty_c = count_type_defs prog
-          summaries = analyze_rprogram prog
+          prog -> count_fn_defs -> fn_c
+          prog -> count_type_defs -> ty_c
+          prog -> analyze_rprogram -> summaries
           echo "[ridgunc check] {input_path}: {fn_c} function(s), {ty_c} type(s)"
           echo "[ridgunc check] Type checking & static analysis passed — 0 error(s)."
           echo "[ridgunc check] Static strategies:" summaries
       report check result input_path _ errs =
-        err_c = type_err_count errs
-        _ = print_error_lines (format_type_errors errs)
-        _ = echo "[ridgunc check] {input_path}: {err_c} error(s) found."
+        errs -> type_err_count -> err_c
+        errs -> format_type_errors -> print_error_lines
+        echo "[ridgunc check] {input_path}: {err_c} error(s) found."
         sys_exit 1
 
 fn :: run cli compile Bool String String => ()
       run cli compile strict_mode input_path output_rgc =
-        _ = verify strict if enabled strict_mode input_path
-        fn_c = emit_rgc_file input_path output_rgc
+        verify strict if enabled strict_mode input_path
+        emit_rgc_file input_path output_rgc -> fn_c
         report_compile_status input_path output_rgc fn_c
 
 fn :: report compile status String String Int => ()
@@ -107,7 +104,7 @@ fn :: report compile status String String Int => ()
         | fn_c >= 0 =
           echo "[ridgunc compile] {input_path} -> {output_rgc} ({fn_c} functions)"
         | otherwise =
-          _ = echo "[ridgunc compile] Failed to compile {input_path}"
+          echo "[ridgunc compile] Failed to compile {input_path}"
           sys_exit 1
 
 fn :: str ends with suffix String String => Bool
@@ -124,84 +121,78 @@ fn :: strip rg ext String => String
 fn :: run cli build lib Bool String String String => ()
       run cli build lib strict_mode input_path output_out target_arch
         | str_ends_with_suffix output_out ".so" =
-          _ = verify strict if enabled strict_mode input_path
-          st = build native target so library input_path output_out target_arch
-          report_so_status input_path output_out st
+          verify strict if enabled strict_mode input_path
+          build native target so library input_path output_out target_arch -> report_so_status input_path output_out _
         | str_ends_with_suffix output_out ".rglib" =
-          _ = verify strict if enabled strict_mode input_path
-          st = emit_rglib_file input_path output_out
-          report_rglib_status input_path output_out st
+          verify strict if enabled strict_mode input_path
+          emit_rglib_file input_path output_out -> report_rglib_status input_path output_out _
         | otherwise =
-          _ = verify strict if enabled strict_mode input_path
+          verify strict if enabled strict_mode input_path
           rglib_out = output_out + ".rglib"
           so_out = output_out + ".so"
-          st1 = emit_rglib_file input_path rglib_out
-          st2 = build native target so library input_path so_out target_arch
-          _ = report_rglib_status input_path rglib_out st1
-          report_so_status input_path so_out st2
+          emit_rglib_file input_path rglib_out -> report_rglib_status input_path rglib_out _
+          build native target so library input_path so_out target_arch -> report_so_status input_path so_out _
 
 fn :: run cli build so Bool String String String => ()
       run cli build so strict_mode input_path output_so target_arch =
-        _ = verify strict if enabled strict_mode input_path
-        status = build native target so library input_path output_so target_arch
+        verify strict if enabled strict_mode input_path
+        build native target so library input_path output_so target_arch -> status
         report_so_status input_path output_so status
 
 fn :: report rglib status String String Int => ()
       report rglib status input_path output_lib 0 =
         echo "[ridgunc build --lib] Ridgun library bundle created: {input_path} -> {output_lib}"
       report rglib status _ output_lib code =
-        _ = echo "[ridgunc build --lib] Failed to build {output_lib} (exit code {code})"
+        echo "[ridgunc build --lib] Failed to build {output_lib} (exit code {code})"
         sys_exit 1
 
 fn :: report so status String String Int => ()
       report so status input_path output_so 0 =
         echo "[ridgunc build --so] Native ELF64 shared library (.so) created: {input_path} -> {output_so}"
       report so status _ output_so code =
-        _ = echo "[ridgunc build --so] Failed to build {output_so} (exit code {code})"
+        echo "[ridgunc build --so] Failed to build {output_so} (exit code {code})"
         sys_exit 1
 
 fn :: run cli build Bool String String => ()
       run cli build strict_mode input_path output_bin =
-        _ = verify strict if enabled strict_mode input_path
-        status = build native executable input_path output_bin
+        verify strict if enabled strict_mode input_path
+        build native executable input_path output_bin -> status
         report_build_status input_path output_bin status
 
 fn :: run cli build target Bool String String String => ()
       run cli build target strict_mode input_path output_bin target_arch =
-        _ = verify strict if enabled strict_mode input_path
-        status = build native target executable input_path output_bin target_arch
+        verify strict if enabled strict_mode input_path
+        build native target executable input_path output_bin target_arch -> status
         report_build_status input_path output_bin status
 
 fn :: report build status String String Int => ()
       report build status input_path output_bin 0 =
         echo "[ridgunc build] Native ELF executable created: {input_path} -> {output_bin}"
       report build status _ output_bin code =
-        _ = echo "[ridgunc build] Failed to build {output_bin} (exit code {code})"
+        echo "[ridgunc build] Failed to build {output_bin} (exit code {code})"
         sys_exit 1
 
 fn :: run cli run Bool        String     => ()
       run cli run strict_mode input_path =
-        _ = verify strict if enabled strict_mode input_path
-        _ = sys_mkdir "target" 493
-        status = build native fast executable input_path "target/.ridgunc_run_bin"
-        exec_built_run status
+        verify strict if enabled strict_mode input_path
+        sys_mkdir "target" 493
+        build native fast executable input_path "target/.ridgunc_run_bin" -> exec_built_run
 
 fn :: exec built run Int => ()
       exec built run 0   =
-        _ = shell_exec "./target/.ridgunc_run_bin; _st=$?; rm -f target/.ridgunc_run_bin; exit $_st"
-        ()
+        shell_exec "./target/.ridgunc_run_bin; _st=$?; rm -f target/.ridgunc_run_bin; exit $_st" -> ()
       exec built run _   =  sys_exit 1
 
 fn :: run self hosted pipeline demo => ()
       run self hosted pipeline demo =
         sample_src = "fn :: fact Int => Int\nfact 0 = 1\nfact n = n * (fact (n - 1))\n\nfn :: fib Int => Int\nfib 0 = 0\nfib 1 = 1\nfib n = (fib (n - 1)) + (fib (n - 2))\n\nfn :: compute Int => Int\ncompute x =\n  a = fact x\n  b = fib 10\n  a + b\n"
-        toks = tokenize_src sample_src
-        prog = parse_tokens toks
-        errs = typecheck_program prog
-        strats = analyze_rprogram prog
-        r_fact6 = eval_source_in_ridgun_vm sample_src "fact" [6]
-        r_fib10 = eval_source_in_ridgun_vm sample_src "fib" [10]
-        r_comp5 = eval_source_in_ridgun_vm sample_src "compute" [5]
+        sample_src -> tokenize_src -> toks
+        toks -> parse_tokens -> prog
+        prog -> typecheck_program -> errs
+        prog -> analyze_rprogram -> strats
+        eval_source_in_ridgun_vm sample_src "fact" [6] -> r_fact6
+        eval_source_in_ridgun_vm sample_src "fib" [10] -> r_fib10
+        eval_source_in_ridgun_vm sample_src "compute" [5] -> r_comp5
         echo "=== Self-Hosted Ridgun Compiler (ridgunc.rg) ==="
         echo "Tokens lexed        =>" (count_tokens toks)
         echo "Functions parsed    =>" (count_fn_defs prog)

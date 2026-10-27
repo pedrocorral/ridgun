@@ -1,15 +1,15 @@
 ---
 id: custom/languages/ridgun
 name: "Ridgun Language Conventions"
-description: "Use when writing, refactoring, or reviewing Ridgun (.rg) source files or build.rg: syntax rules, type signatures, guards, ADTs, parallel || DAGs, RMM1/RMM2 memory, regions, and stable/ridgunc ELF64 verification."
+description: "Use when writing, refactoring, or reviewing Ridgun (.rg) source files or build.rg: syntax rules, idiomatic -> pipeline chaining (xs map f -> filter g -> results), (+ _ _ +) sequence masks, -> () unit discard, _ =-free blocks, type signatures, guards, ADTs, parallel || DAGs, RMM1/RMM2 memory, regions, and stable/ridgunc ELF64 verification."
 applyTo: "**/*.rg,build.rg"
 optional: false
 ---
-# Ridgun conventions (`.rg` — `v0.9.12`)
+# Ridgun conventions (`.rg` — `v0.9.21`)
 
 Read and follow the `implement-code-ridgun` skill before editing any `.rg` file.
 
-## Layout and 100% pure-Ridgun ELF64 toolchain (`v0.9.12`)
+## Layout and 100% pure-Ridgun ELF64 toolchain (`v0.9.21`)
 - Shared modules live in `src/main/ridgun/lib/*.rg`; executable entrypoints live in `src/main/ridgun/<target>/main.rg` (compiled directly to standalone Linux ELF64 executables at `target/<target>` without Rust, C, or `rustc`).
 - Library compilation (`FR-COMP-006`): modules without `fn :: main => ()` can be compiled as `.rglib` bundles (`ridgunc build --lib <file.rg> -o <out.rglib>`) and native Linux ELF64 `ET_DYN` shared objects (`ridgunc build --so <file.rg> -o <lib.so>`), or built via `stable built lib` (`fn :: project kind => String` = `"lib"` in `build.rg`, scaffolded via `stable new --lib <name>`).
 - Extensible `stable` (`FR-TOOL-003`): projects can declare custom tasks in `build.rg` (`fn :: task <name> => String`) and load plugins (`fn :: plugins => [String]`, `plugins/*.rg`, `.stable/plugins/*.rg`); inspect via `stable tasks` and `stable plugins`.
@@ -40,11 +40,16 @@ Read and follow the `implement-code-ridgun` skill before editing any `.rg` file.
   - Bare type names in sum ADTs (`type Something = String | Int | MyStruct Float Int`) include values of those types directly without redundant `Int Int` / `String String` wrappers; callers may pass bare `"hej"` / `42` or `String "hej"` / `Int 42`, and patterns match both literals and `(String s)` / `(Int n)`.
   - Extend existing Sum ADTs or Product Records with `expand type UpperName = ...` (e.g., `expand type Error = AuthError String | DbError Int String`, `expand type Something = Bool`, or `expand type Config = tls: Bool`).
   - Re-declaring `fn ::` / `op ::` for an existing function automatically merges the new pattern clauses before any base catch-all (`_`) clause (no `expand fn` keyword needed).
-- **Operators, Strings & Collection Combinators (`FR-COMP-001`)**:
+- **Idiomatic Pipeline Chaining (`->`), Left-Operand Invocation, Sequence Masks & `_ =`-Free Blocks (`FR-COMP-014`)**:
+  - **Recommended Idiomatic Pipeline Style (`2b`)**: Prefer left-to-right pipelines starting with an infix call and chaining stages with `->` into a terminal target variable: `xs map (x => x * 2) -> filter (x => x > 6) -> compact limit 14 -> results` (or across indented continuation lines starting with `->`). All four unified forms (`xs map f -> filter g -> results`, `xs -> map f -> filter g -> results`, `xs map f filter g -> results`, and `map f xs -> filter g -> results`) normalize to the same AST.
+  - **Universal `->` First-Argument Rule**: Any value piped from the left of `->` (or left of an infix call `x op a b`) enters as the **first argument** of the right-hand `fn ::` or `op ::` (`x -> f a b` $\equiv$ `x f a b` $\equiv$ `f x a b`). Use `_` when the piped value belongs in a non-first argument slot (`payload -> write_file output_path _`).
+  - **Sequence Masks & Agent Stages in Pipelines**: Filter/unpack tuple outputs in a pipeline via `-> (+ _ _ +) ->` directly into a multi-argument function (`parse header packet "v0.9.9" -> (+ _ _ +) -> combine code msg -> out`), and pipe into agents via `-> send to ag` or `-> ask to ag`.
+  - **No `_ =` Boilerplate on Side-Effect Statements**: Write side-effect calls (`echo`, `write_file`, `write_bytes`, `shell_exec`, `log info`, `print_error_lines`, `sys_mkdir`, etc.) directly as statements in sequential blocks without `_ =`. When the **final expression** of a `=> ()` function calls a non-`()` helper (like `shell_exec`), append `-> ()` (`shell_exec cmd -> ()`) to discard its return value and yield `()`.
+- **Operators, Strings & Collection Combinators (`FR-COMP-001`, `FR-COMP-014`)**:
   - Logical operators are lowercase words: `and`, `or`, `xor`, `not` (never `&&`, `||`, `!`).
   - List prepend/concat: `[x] :: xs` or `xs :: ys` (`:` is only for pattern destructuring `(x:xs)`, never in expressions).
   - String concat: `"a" + "b"`; interpolated strings `"val: {x}"` (escape literal braces with `\{`/`\}` or `{{`/`}}`) vs raw strings `'literal {x}'`.
-  - Higher-order list combinators: sequential `map f xs`, `filter p xs`, `fold f init xs`, and multicore parallel **`||map f xs`** and **`||filter p xs`**.
+  - Higher-order list combinators accept both idiomatic pipeline/infix (`xs map f`, `xs -> map f`, `xs filter p`, `xs fold init f`) and prefix (`map f xs`, `filter p xs`, `fold f init xs`, **`||map f xs`**, **`||filter p xs`**) forms.
 - **Deterministic Memory (`RMM1` / `RMM2`) & Concurrency Safety (`FR-COMP-002`)**:
   - Zero Garbage Collector: `RMM1` handles static last-use drops (`rg_cmm_drop`), zero-copy return moves, and 1-cycle pointer-identity checks (`ptr(a) != ptr(c)`); `RMM2` leaves incoming arguments untouched (`+0 / -0`), increments (`+1`) on local/container assignment, spares the returned local in transit, and cascades `-1` to child structures on scope exit.
   - Parallel `|| expr -> var` bindings must be acyclic and disjoint on slice writes (`|| val -> m[i, j]`); channels and agents enforce affine move ownership (`ErrUseAfterSend`).
