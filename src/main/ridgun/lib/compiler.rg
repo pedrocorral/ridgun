@@ -1106,7 +1106,7 @@ fn :: any str in list [String] [String] => Bool
 fn :: collect direct heavy fns [RFnDef] => [String]
       collect direct heavy fns []       =  []
       collect direct heavy fns ((FnDef name _ _ cases):fs)
-        | (count case calls name cases) > 0 OR (cases have heavy ops cases) =
+        | ((builtin call id name) < 0 AND (count case calls name cases) > 0) OR (cases have heavy ops cases) =
           [name] :: (collect direct heavy fns fs)
         | otherwise = collect direct heavy fns fs
 
@@ -2030,7 +2030,7 @@ fn :: lower call expr RNativeEnv String [RExpr] [String] Int RNativeCode => RNat
           st1 = lower expr env idx_e bound_locals sp st
           nc emit st1 (NCallBuiltin 91 s_slot 0) sp
       lower call expr env fname args bound_locals sp st
-        | (builtin call id fname) >= 0 =
+        | (builtin call id fname) >= 0 and ((std builtin arity fname) <= 0 or (rexpr list len args) >= (std builtin arity fname)) =
           count = rexpr list len args
           bid = select par collection builtin env fname args bound_locals
           st1 = lower expr list to slots env args bound_locals sp 0 st
@@ -2437,7 +2437,7 @@ fn :: lower tail return RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
 
 fn :: lower tail return cmm RNativeEnv RExpr [String] [String] Int RNativeCode => RNativeCode
       lower tail return cmm env (ECall fname args) bound_locals scope_vars sp st
-        | fname == (env fn name env) AND (rexpr list len args) == (env arity env) AND (lookup local bound_locals fname) < 0 =
+        | (builtin call id fname) < 0 AND fname == (env fn name env) AND (rexpr list len args) == (env arity env) AND (lookup local bound_locals fname) < 0 =
           arity = env arity env
           st1 = lower tco arg list to slots env args [] bound_locals scope_vars sp 0 st
           st2 = lower cmm drops env scope_vars (sp + arity + 1) st1
@@ -3041,12 +3041,93 @@ fn :: build binop dispatch instrs [RFnEntry] [RStrEntry] Int [RNativeInstr] => [
         | otherwise =
           build binop dispatch instrs rest str_tbl lbl acc
 
+fn :: is wrapable builtin fn String => Bool
+      is wrapable builtin fn name =
+        bid = builtin call id name
+        ar = std builtin arity name
+        bid >= 10 and bid != 53 and bid != 54 and bid != 55 and bid != 56 and bid != 61 and ar >= 1 and ar <= 3
+
+fn :: make builtin wrapper fndef String Int => RFnDef
+      make builtin wrapper fndef name 1 =
+        FnDef name ["A"] "B" [FnCase [PatVar "__p0"] [] (ECall name [EVar "__p0"])]
+      make builtin wrapper fndef name 2 =
+        FnDef name ["A", "B"] "C" [FnCase [PatVar "__p0", PatVar "__p1"] [] (ECall name [EVar "__p0", EVar "__p1"])]
+      make builtin wrapper fndef name _ =
+        FnDef name ["A", "B", "C"] "D" [FnCase [PatVar "__p0", PatVar "__p1", PatVar "__p2"] [] (ECall name [EVar "__p0", EVar "__p1", EVar "__p2"])]
+
+fn :: collect builtin val expr RExpr [String] => [String]
+      collect builtin val expr (EVar name) acc
+        | is wrapable builtin fn name = add unique str name acc
+        | otherwise = acc
+      collect builtin val expr (ENot inner) acc = collect builtin val expr inner acc
+      collect builtin val expr (EOut inner) acc = collect builtin val expr inner acc
+      collect builtin val expr (EBin _ l r) acc = collect builtin val expr r (collect builtin val expr l acc)
+      collect builtin val expr (ECall fname args) acc
+        | (is wrapable builtin fn fname) and (rexpr list len args) > 0 and (rexpr list len args) < (std builtin arity fname) =
+          collect builtin val expr list args (add unique str fname acc)
+        | otherwise = collect builtin val expr list args acc
+      collect builtin val expr (EEcho args) acc = collect builtin val expr list args acc
+      collect builtin val expr (EStrInterp parts) acc = collect builtin val expr list parts acc
+      collect builtin val expr (EList elems) acc = collect builtin val expr list elems acc
+      collect builtin val expr (ETuple elems) acc = collect builtin val expr list elems acc
+      collect builtin val expr (ETensor elems) acc = collect builtin val expr list elems acc
+      collect builtin val expr (EEinsum es _) acc = collect builtin val expr list es acc
+      collect builtin val expr (EHadamard _ l _ r _) acc = collect builtin val expr r (collect builtin val expr l acc)
+      collect builtin val expr (EIndex base idxs) acc = collect builtin val expr list idxs (collect builtin val expr base acc)
+      collect builtin val expr (EIndexAssign _ idxs v) acc = collect builtin val expr v (collect builtin val expr list idxs acc)
+      collect builtin val expr (ESeqSelect b _) acc = collect builtin val expr b acc
+      collect builtin val expr (EBlock stmts) acc = collect builtin val stmts stmts acc
+      collect builtin val expr (EGuard guards) acc = collect builtin val guards guards acc
+      collect builtin val expr (EWhere body binds) acc = collect builtin val where binds (collect builtin val expr body acc)
+      collect builtin val expr (EParPipe branches) acc = collect builtin val expr list branches acc
+      collect builtin val expr (EWithCtx _ v b) acc = collect builtin val expr b (collect builtin val expr v acc)
+      collect builtin val expr (EWithRegion _ b) acc = collect builtin val expr b acc
+      collect builtin val expr _ acc = acc
+
+fn :: collect builtin val expr list [RExpr] [String] => [String]
+      collect builtin val expr list [] acc = acc
+      collect builtin val expr list (e:es) acc = collect builtin val expr list es (collect builtin val expr e acc)
+
+fn :: collect builtin val stmts [RStmt] [String] => [String]
+      collect builtin val stmts [] acc = acc
+      collect builtin val stmts ((StmtLet _ e):ss) acc = collect builtin val stmts ss (collect builtin val expr e acc)
+      collect builtin val stmts ((StmtMut _ e):ss) acc = collect builtin val stmts ss (collect builtin val expr e acc)
+      collect builtin val stmts ((StmtExpr e):ss) acc = collect builtin val stmts ss (collect builtin val expr e acc)
+      collect builtin val stmts ((StmtIndexAssign _ idxs e):ss) acc =
+        collect builtin val stmts ss (collect builtin val expr e (collect builtin val expr list idxs acc))
+
+fn :: collect builtin val where [RWhereBind] [String] => [String]
+      collect builtin val where [] acc = acc
+      collect builtin val where ((WhereBind e _ _):wbs) acc = collect builtin val where wbs (collect builtin val expr e acc)
+
+fn :: collect builtin val guards [RGuard] [String] => [String]
+      collect builtin val guards [] acc = acc
+      collect builtin val guards ((GuardBranch c b):gs) acc =
+        collect builtin val guards gs (collect builtin val expr b (collect builtin val expr c acc))
+
+fn :: collect builtin val cases [RFnCase] [String] => [String]
+      collect builtin val cases [] acc = acc
+      collect builtin val cases ((FnCase _ gs b):cs) acc =
+        collect builtin val cases cs (collect builtin val expr b (collect builtin val guards gs acc))
+
+fn :: collect builtin val fndefs [RFnDef] [String] => [String]
+      collect builtin val fndefs [] acc = acc
+      collect builtin val fndefs ((FnDef _ _ _ cases):fs) acc =
+        collect builtin val fndefs fs (collect builtin val cases cases acc)
+
+fn :: build builtin wrapper fndefs [String] [String] => [RFnDef]
+      build builtin wrapper fndefs [] _ = []
+      build builtin wrapper fndefs (b:bs) existing
+        | str in list b existing = build builtin wrapper fndefs bs existing
+        | otherwise = [make builtin wrapper fndef b (std builtin arity b)] :: (build builtin wrapper fndefs bs existing)
+
 fn :: lower program to native RProgram => RNativeProg
       lower program to native (Program raw_fns tys) =
         field_tbl = collect typedef fields tys []
         raw_fn_names = collect fn names raw_fns
+        b_wrappers = build builtin wrapper fndefs (collect builtin val fndefs raw_fns []) raw_fn_names
         sigs = (build cg sigs raw_fns) :: (build field cg sigs field_tbl raw_fn_names)
-        all_fns = opt fndef list (prep fndef list raw_fns sigs)
+        all_fns = (opt fndef list (prep fndef list raw_fns sigs)) :: b_wrappers
         entry_name = find entry fn name all_fns "main"
         reachable = expand reachable worklist [entry_name] all_fns []
         fns = filter reachable fndefs all_fns reachable
@@ -3076,8 +3157,9 @@ fn :: lower library to native RProgram => RNativeProg
       lower library to native (Program raw_fns tys) =
         field_tbl = collect typedef fields tys []
         raw_fn_names = collect fn names raw_fns
+        b_wrappers = build builtin wrapper fndefs (collect builtin val fndefs raw_fns []) raw_fn_names
         sigs = (build cg sigs raw_fns) :: (build field cg sigs field_tbl raw_fn_names)
-        fns = opt fndef list (prep fndef list raw_fns sigs)
+        fns = (opt fndef list (prep fndef list raw_fns sigs)) :: b_wrappers
         fn_names = collect fn names fns
         str_pool = build str pool fns (collect field names field_tbl)
         rodata_str = pool rodata str_pool

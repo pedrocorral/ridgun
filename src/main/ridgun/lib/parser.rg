@@ -2288,9 +2288,8 @@ type RArityEntry = ArityEntry String Int
 fn :: lookup var arity [RArityEntry] String => Int
       lookup var arity []            _      =  -1
       lookup var arity ((ArityEntry k v):rest) target
-        | v > 0 = -1
-        | k == target AND v == -2 = -1
-        | k == target = v
+        | k == target and v == 0 = 0
+        | k == target = -1
         | otherwise = lookup var arity rest target
 
 fn :: lookup arity [RArityEntry] String => Int
@@ -2527,6 +2526,7 @@ fn :: std builtin arity String     => Int
       std builtin arity "str_slice" = 3
       std builtin arity "str_contains" = 2
       std builtin arity "str_starts_with" = 2
+      std builtin arity "str_concat" = 2
       std builtin arity "int_to_str" = 1
       std builtin arity "str_to_int" = 1
       std builtin arity "char_from_code" = 1
@@ -2562,6 +2562,27 @@ fn :: std builtin arity String     => Int
       std builtin arity "sys_kill" = 2
       std builtin arity "sys_call" = 7
       std builtin arity "sys_waitpid" = 2
+      std builtin arity "sys_username" = 1
+      std builtin arity "sys_lookup_uid_gid" = 1
+      std builtin arity "sys_user_groups" = 1
+      std builtin arity "sys_setresgid" = 1
+      std builtin arity "sys_setgroups" = 1
+      std builtin arity "sys_setresuid" = 1
+      std builtin arity "sys_execve" = 3
+      std builtin arity "sys_read_pass" = 1
+      std builtin arity "new_bounded_channel" = 1
+      std builtin arity "chan_send" = 2
+      std builtin arity "chan_recv" = 1
+      std builtin arity "chan_try_recv" = 1
+      std builtin arity "send_through" = 2
+      std builtin arity "receive_from" = 1
+      std builtin arity "try_receive_from" = 1
+      std builtin arity "receive_from_timeout" = 2
+      std builtin arity "cmm_same_ptr" = 2
+      std builtin arity "seq_map" = 2
+      std builtin arity "par_map" = 2
+      std builtin arity "seq_filter" = 2
+      std builtin arity "par_filter" = 2
       std builtin arity _          =  -1
 
 fn :: collapse fn ref args [RExpr] [RArityEntry] => [RExpr]
@@ -5319,8 +5340,7 @@ fn :: should encode base underscores String String [String] [String] Bool => Boo
         | not (str contains base "_") = False
         | (str starts with base "__") or (str starts with base ":") = False
         | (str in seen list v locals) or (str in seen list base locals) = False
-        | is subscript ident v = False
-        | str in seen list (extract fst str (split subscript v)) locals = False
+        | (is subscript ident v) and ((is upper ident v) or (str in seen list (extract fst str (split subscript v)) locals)) = False
         | str in seen list base field_names = False
         | (not encode_builtins) and (is compiler builtin ident base) = False
         | otherwise = True
@@ -5359,9 +5379,10 @@ fn :: encode rec update args underscores [RExpr] [String] [String] [String] Bool
 fn :: is encode pipe var target String [RStmt] [String] [String] [String] => Bool
       is encode pipe var target v ss locals field_names fn_names
         | (v == "echo") or (is upper ident v) or (str contains v ".") or (is compiler builtin ident v) = False
-        | (str in seen list v locals) or (is subscript ident v) = True
+        | str in seen list v locals = True
         | str in seen list v field_names = False
         | str in seen list (encode literal underscores v) fn_names = False
+        | (is subscript ident v) and ((is upper ident v) or (str in seen list (extract fst str (split subscript v)) locals)) = True
         | otherwise = stmt list mentions var ss v
 
 fn :: encode expr underscores RExpr [String] [String] [String] Bool => RExpr
