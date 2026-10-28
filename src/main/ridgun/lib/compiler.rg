@@ -1922,6 +1922,15 @@ fn :: lower indirect call slots RNativeEnv Int [RExpr] [String] Int RNativeCode 
         nc emit st4 (NLabel done_lbl) (sp + count + 4)
 
 fn :: lower map or closure map RNativeEnv String [RExpr] [String] Int RNativeCode => RNativeCode
+      lower map or closure map env fname ((EVar target_fn):list_e:[]) bound_locals sp st
+        | (lookup local bound_locals target_fn) < 0 and (env fn arity env target_fn) == 1 and (select par collection builtin env fname [EVar target_fn, list_e] bound_locals) == 53 =
+          fid = env fn id env target_fn
+          loop_lbl = nc lbl st
+          done_lbl = loop_lbl + 1
+          st0 = nc set lbl st (loop_lbl + 2)
+          st1 = lower expr env list_e bound_locals sp st0
+          ins = [NStoreSlot sp, NMakeList (sp + 1) 0, NStoreSlot (sp + 1), NLabel loop_lbl, NMatchNonEmpty sp, NJumpIfZero done_lbl, NListHead sp, NStoreSlot (sp + 2), NCallFn fid (sp + 2) 1, NStoreSlot (sp + 2), NMakeList (sp + 2) 1, NBinOp 14 (sp + 1), NStoreSlot (sp + 1), NListTail sp, NStoreSlot sp, NJump loop_lbl, NLabel done_lbl, NClearLocals sp (sp + 1), NClearLocals (sp + 2) (sp + 3), NMoveSlot (sp + 1)]
+          nc emit list st1 ins (sp + 3)
       lower map or closure map env fname (fn_e:list_e:[]) bound_locals sp st =
         bid = select par collection builtin env fname [fn_e, list_e] bound_locals
         plain_lbl = nc lbl st
@@ -1939,6 +1948,16 @@ fn :: lower map or closure map RNativeEnv String [RExpr] [String] Int RNativeCod
         nc emit st1 (NCallBuiltin bid sp count) (sp + count + 1)
 
 fn :: lower filter or closure filter RNativeEnv String [RExpr] [String] Int RNativeCode => RNativeCode
+      lower filter or closure filter env fname ((EVar target_fn):list_e:[]) bound_locals sp st
+        | (lookup local bound_locals target_fn) < 0 and (env fn arity env target_fn) == 1 and (select par collection builtin env fname [EVar target_fn, list_e] bound_locals) == 55 =
+          fid = env fn id env target_fn
+          loop_lbl = nc lbl st
+          skip_lbl = loop_lbl + 1
+          done_lbl = loop_lbl + 2
+          st0 = nc set lbl st (loop_lbl + 3)
+          st1 = lower expr env list_e bound_locals sp st0
+          ins = [NStoreSlot sp, NMakeList (sp + 1) 0, NStoreSlot (sp + 1), NLabel loop_lbl, NMatchNonEmpty sp, NJumpIfZero done_lbl, NListHead sp, NStoreSlot (sp + 2), NCallFn fid (sp + 2) 1, NAsBool, NJumpIfZero skip_lbl, NListHead sp, NStoreSlot (sp + 2), NMakeList (sp + 2) 1, NBinOp 14 (sp + 1), NStoreSlot (sp + 1), NLabel skip_lbl, NListTail sp, NStoreSlot sp, NJump loop_lbl, NLabel done_lbl, NClearLocals sp (sp + 1), NClearLocals (sp + 2) (sp + 3), NMoveSlot (sp + 1)]
+          nc emit list st1 ins (sp + 3)
       lower filter or closure filter env fname (fn_e:list_e:[]) bound_locals sp st =
         bid = select par collection builtin env fname [fn_e, list_e] bound_locals
         plain_lbl = nc lbl st
@@ -1957,6 +1976,15 @@ fn :: lower filter or closure filter RNativeEnv String [RExpr] [String] Int RNat
         nc emit st1 (NCallBuiltin bid sp count) (sp + count + 1)
 
 fn :: lower fold or closure fold RNativeEnv [RExpr] [String] Int RNativeCode => RNativeCode
+      lower fold or closure fold env ((EVar target_fn):init_e:list_e:[]) bound_locals sp st
+        | (lookup local bound_locals target_fn) < 0 and (env fn arity env target_fn) == 2 =
+          fid = env fn id env target_fn
+          loop_lbl = nc lbl st
+          done_lbl = loop_lbl + 1
+          st0 = nc set lbl st (loop_lbl + 2)
+          st1 = lower expr list to slots env [init_e, list_e] bound_locals sp 0 st0
+          ins = [NLabel loop_lbl, NMatchNonEmpty (sp + 1), NJumpIfZero done_lbl, NMoveSlot sp, NStoreSlot (sp + 2), NListHead (sp + 1), NStoreSlot (sp + 3), NCallFn fid (sp + 2) 2, NStoreSlot sp, NListTail (sp + 1), NStoreSlot (sp + 1), NJump loop_lbl, NLabel done_lbl, NClearLocals (sp + 1) (sp + 4), NMoveSlot sp]
+          nc emit list st1 ins (sp + 4)
       lower fold or closure fold env (fn_e:init_e:list_e:[]) bound_locals sp st =
         plain_lbl = nc lbl st
         loop_lbl = plain_lbl + 1
@@ -1979,9 +2007,12 @@ fn :: lower direct or partial call RNativeEnv String [RExpr] Int Int [String] In
           st1 = nc emit list st [NLoadStrLit off slen, NStoreSlot sp] (sp + 1)
           st2 = lower expr list to slots env args bound_locals (sp + 1) 0 st1
           nc emit list st2 [NMakeList (sp + 1) count, NStoreSlot (sp + 1), NMakeTuple sp 2] (sp + count + 2)
-        | otherwise =
+        | count == fn_ar =
           st1 = lower expr list to slots env args bound_locals sp 0 st
           nc emit st1 (NCallFn (env fn id env fname) sp count) (sp + count + 1)
+        | otherwise =
+          st1 = lower expr list to slots env args bound_locals sp 0 st
+          nc emit st1 (NCallFn (env fn id env fname) sp (0 - 1)) (sp + count + 1)
 
 fn :: lower call expr RNativeEnv String [RExpr] [String] Int RNativeCode => RNativeCode
       lower call expr env "__chain__" (fn_e:call_args) bound_locals sp st =
@@ -3139,7 +3170,7 @@ fn :: lower program to native RProgram => RNativeProg
         fn_tbl2 = build fn table fields field_tbl fn_names (5 + (list str len fn_names)) fn_tbl1
         fn_tbl = attach heavy fn entries fns fn_names fn_tbl2
         entry_fid = lookup fn id fn_tbl entry_name
-        main_wrapper = NativeFn 1 "__rg_entry_main" 0 2 [NCallFn entry_fid 0 0, NReturn]
+        main_wrapper = NativeFn 1 "__rg_entry_main" 0 2 [NCallFn entry_fid 0 (0 - 1), NReturn]
         spawn_disp = NativeFn 2 "__rg_dispatch_spawn" 2 6 (build spawn dispatch entry fn_tbl str_tbl)
         call2_slots = max int 7 (4 + (highest entry arity fn_tbl))
         call2_disp = NativeFn 3 "__rg_dispatch_call2" 3 call2_slots (build call2 dispatch instrs fn_tbl str_tbl 1 [])
@@ -3151,7 +3182,7 @@ fn :: lower program to native RProgram => RNativeProg
 
 fn :: build lib entry wrapper Int       => RNativeFn
       build lib entry wrapper 0         =  NativeFn 1 "__rg_entry_main" 0 2 [NLoadImmRaw 0, NReturn]
-      build lib entry wrapper entry_fid =  NativeFn 1 "__rg_entry_main" 0 2 [NCallFn entry_fid 0 0, NReturn]
+      build lib entry wrapper entry_fid =  NativeFn 1 "__rg_entry_main" 0 2 [NCallFn entry_fid 0 (0 - 1), NReturn]
 
 fn :: lower library to native RProgram => RNativeProg
       lower library to native (Program raw_fns tys) =

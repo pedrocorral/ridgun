@@ -100,7 +100,7 @@ fn :: llvm sha256 helpers => String
 fn :: llvm tensor and builtin helpers => String
       llvm tensor and builtin helpers =
         h1 = "define i64 @__rg_box_i64_slow(i64 %v) noinline nounwind {{\nentry:\n  %buf = alloca [3 x i64], align 8\n  store i64 -9223372036854775808, ptr %buf, align 8\n  %p1 = getelementptr inbounds [3 x i64], ptr %buf, i64 0, i64 1\n  store i64 %v, ptr %p1, align 8\n  %p2 = getelementptr inbounds [3 x i64], ptr %buf, i64 0, i64 2\n  store i64 0, ptr %p2, align 8\n  %boxed = call i64 @__rg_rt_box_rval(ptr %buf)\n  ret i64 %boxed\n}}\ndefine i64 @__rg_box_i64(i64 %v) alwaysinline nounwind {{\nentry:\n  %shl = shl i64 %v, 1\n  %shr = ashr i64 %shl, 1\n  %fits = icmp eq i64 %shr, %v\n  br i1 %fits, label %tag_imm, label %box_heap\ntag_imm:\n  %tagged = or i64 %shl, 1\n  ret i64 %tagged\nbox_heap:\n  %boxed = call i64 @__rg_box_i64_slow(i64 %v)\n  ret i64 %boxed\n}}\ndefine i64 @__rg_match_heap_tag(i64 %val, i32 %want_tag) alwaysinline nounwind {{\nentry:\n  %non_null = icmp ne i64 %val, 0\n  %low3 = and i64 %val, 7\n  %is_ptr = icmp eq i64 %low3, 0\n  %ok = and i1 %non_null, %is_ptr\n  br i1 %ok, label %chk, label %no\nchk:\n  %p = inttoptr i64 %val to ptr\n  %t = load i64, ptr %p, align 8\n  %w64 = sext i32 %want_tag to i64\n  %m = icmp eq i64 %t, %w64\n  %r = zext i1 %m to i64\n  ret i64 %r\nno:\n  ret i64 0\n}}\ndefine i64 @__rg_adt_field_neg(i64 %val, i64 %idx) alwaysinline nounwind {{\nentry:\n  %p = inttoptr i64 %val to ptr\n  %is_m1 = icmp eq i64 %idx, -1\n  br i1 %is_m1, label %str_len, label %chk_m2\nstr_len:\n  %hp1 = getelementptr inbounds i8, ptr %p, i64 8\n  %hdr1 = load ptr, ptr %hp1, align 8\n  %lp1 = getelementptr inbounds i8, ptr %hdr1, i64 16\n  %l1 = load i64, ptr %lp1, align 8\n  %sh1 = shl i64 %l1, 1\n  %r1 = or i64 %sh1, 1\n  ret i64 %r1\nchk_m2:\n  %is_m2 = icmp eq i64 %idx, -2\n  br i1 %is_m2, label %list_len, label %tensor_dim\nlist_len:\n  %hp2 = getelementptr inbounds i8, ptr %p, i64 16\n  %hdr2 = load ptr, ptr %hp2, align 8\n  %lp2 = getelementptr inbounds i8, ptr %hdr2, i64 16\n  %l2 = load i64, ptr %lp2, align 8\n  %sh2 = shl i64 %l2, 1\n  %r2 = or i64 %sh2, 1\n  ret i64 %r2\ntensor_dim:\n  %dim_i = sub i64 -10, %idx\n  %hp3 = getelementptr inbounds i8, ptr %p, i64 8\n  %shdr = load ptr, ptr %hp3, align 8, !invariant.load !0\n  %sdp = getelementptr inbounds i8, ptr %shdr, i64 8\n  %sdata = load ptr, ptr %sdp, align 8, !invariant.load !0\n  %dp = getelementptr inbounds i64, ptr %sdata, i64 %dim_i\n  %dval = load i64, ptr %dp, align 8, !invariant.load !0\n  %sh3 = shl i64 %dval, 1\n  %r3 = or i64 %sh3, 1\n  ret i64 %r3\n}}\ndefine i64 @__rg_not_op(i64 %val) alwaysinline nounwind {{\nentry:\n  %low1 = and i64 %val, 1\n  %is_int = icmp ne i64 %low1, 0\n  br i1 %is_int, label %int_not, label %chk_u64\nint_not:\n  %r_int = xor i64 %val, -2\n  ret i64 %r_int\nchk_u64:\n  %nn = icmp ne i64 %val, 0\n  %l3 = and i64 %val, 7\n  %is_p = icmp eq i64 %l3, 0\n  %ok_p = and i1 %nn, %is_p\n  br i1 %ok_p, label %chk_u64_hdr, label %bool_not\nchk_u64_hdr:\n  %p = inttoptr i64 %val to ptr\n  %hdr = load i64, ptr %p, align 8\n  %is_u64 = icmp eq i64 %hdr, -9223372036854775808\n  br i1 %is_u64, label %u64_not, label %bool_not\nu64_not:\n  %pay_p = getelementptr inbounds i8, ptr %p, i64 8\n  %raw = load i64, ptr %pay_p, align 8\n  %ign = call i64 @__rg_rt_drop_val(i64 %val)\n  %inv = xor i64 %raw, -1\n  %r_u64 = call i64 @__rg_box_i64(i64 %inv)\n  ret i64 %r_u64\nbool_not:\n  %r_bool = call i64 @__rg_rt_bool_inv(i64 %val)\n  ret i64 %r_bool\n}}\n"
-        h1b = "define i64 @__rg_fast_clone_slot(i64 %v) inlinehint nounwind {{\nentry:\n  %is_z = icmp eq i64 %v, 0\n  %low3 = and i64 %v, 7\n  %is_imm = icmp ne i64 %low3, 0\n  %fast = or i1 %is_z, %is_imm\n  br i1 %fast, label %done, label %slow\ndone:\n  ret i64 %v\nslow:\n  %c = call i64 @__rg_rt_clone_slot(i64 %v)\n  ret i64 %c\n}}\ndefine i64 @__rg_fast_drop_val(i64 %v) inlinehint nounwind {{\nentry:\n  %is_z = icmp eq i64 %v, 0\n  %low3 = and i64 %v, 7\n  %is_imm = icmp ne i64 %low3, 0\n  %fast = or i1 %is_z, %is_imm\n  br i1 %fast, label %done, label %slow\ndone:\n  ret i64 0\nslow:\n  %d = call i64 @__rg_rt_drop_val(i64 %v)\n  ret i64 %d\n}}\ndefine i64 @__rg_fast_store_slot(ptr %slot_ptr, i64 %val) inlinehint nounwind {{\nentry:\n  %old = load i64, ptr %slot_ptr, align 8\n  store i64 %val, ptr %slot_ptr, align 8\n  %is_z = icmp eq i64 %old, 0\n  %low3 = and i64 %old, 7\n  %is_imm = icmp ne i64 %low3, 0\n  %fast = or i1 %is_z, %is_imm\n  br i1 %fast, label %done, label %slow\ndone:\n  ret i64 0\nslow:\n  %d = call i64 @__rg_rt_drop_val(i64 %old)\n  ret i64 0\n}}\ndefine i64 @__rg_cmm_drop_val_slow(i64 %v) noinline nounwind {{\nentry:\n  %tmp = alloca i64, align 8\n  store i64 %v, ptr %tmp, align 8\n  %r = call i64 @__rg_rt_cmm_drop_slot(ptr %tmp)\n  ret i64 %r\n}}\ndefine i64 @__rg_fast_cmm_drop_slot(ptr %slot_ptr) inlinehint nounwind {{\nentry:\n  %old = load i64, ptr %slot_ptr, align 8\n  store i64 0, ptr %slot_ptr, align 8\n  %is_z = icmp eq i64 %old, 0\n  %low3 = and i64 %old, 7\n  %is_imm = icmp ne i64 %low3, 0\n  %fast = or i1 %is_z, %is_imm\n  br i1 %fast, label %done, label %slow\ndone:\n  ret i64 0\nslow:\n  %d = call i64 @__rg_cmm_drop_val_slow(i64 %old)\n  ret i64 %d\n}}\ndefine i64 @__rg_fast_rebind_slot(ptr %slot_ptr, i64 %val) inlinehint nounwind {{\nentry:\n  %old = load i64, ptr %slot_ptr, align 8\n  store i64 %val, ptr %slot_ptr, align 8\n  %is_z = icmp eq i64 %old, 0\n  %low3 = and i64 %old, 7\n  %is_imm = icmp ne i64 %low3, 0\n  %fast = or i1 %is_z, %is_imm\n  br i1 %fast, label %done, label %slow\ndone:\n  ret i64 0\nslow:\n  %d = call i64 @__rg_cmm_drop_val_slow(i64 %old)\n  ret i64 0\n}}\ndefine i64 @__rg_fast_as_bool(i64 %v) inlinehint nounwind {{\nentry:\n  %is_z = icmp eq i64 %v, 0\n  %low3 = and i64 %v, 7\n  %is_imm = icmp ne i64 %low3, 0\n  %fast = or i1 %is_z, %is_imm\n  br i1 %fast, label %imm, label %slow\nimm:\n  %is_true = icmp eq i64 %v, 6\n  %b = zext i1 %is_true to i64\n  ret i64 %b\nslow:\n  %ign = call i64 @__rg_rt_drop_val(i64 %v)\n  ret i64 0\n}}\n"
+        h1b = "define i64 @__rg_fast_clone_slot(i64 %v) inlinehint nounwind {{\nentry:\n  %is_z = icmp eq i64 %v, 0\n  %low3 = and i64 %v, 7\n  %is_imm = icmp ne i64 %low3, 0\n  %fast = or i1 %is_z, %is_imm\n  br i1 %fast, label %done, label %slow\ndone:\n  ret i64 %v\nslow:\n  %c = call i64 @__rg_rt_clone_slot(i64 %v)\n  ret i64 %c\n}}\ndefine i64 @__rg_fast_drop_val(i64 %v) inlinehint nounwind {{\nentry:\n  %is_z = icmp eq i64 %v, 0\n  %low3 = and i64 %v, 7\n  %is_imm = icmp ne i64 %low3, 0\n  %fast = or i1 %is_z, %is_imm\n  br i1 %fast, label %done, label %slow\ndone:\n  ret i64 0\nslow:\n  %d = call i64 @__rg_rt_drop_val(i64 %v)\n  ret i64 %d\n}}\ndefine i64 @__rg_fast_store_slot(ptr %slot_ptr, i64 %val) inlinehint nounwind {{\nentry:\n  %old = load i64, ptr %slot_ptr, align 8\n  store i64 %val, ptr %slot_ptr, align 8\n  %is_z = icmp eq i64 %old, 0\n  %low3 = and i64 %old, 7\n  %is_imm = icmp ne i64 %low3, 0\n  %fast = or i1 %is_z, %is_imm\n  br i1 %fast, label %done, label %slow\ndone:\n  ret i64 0\nslow:\n  %d = call i64 @__rg_rt_drop_val(i64 %old)\n  ret i64 0\n}}\ndefine i64 @__rg_cmm_drop_val_slow(i64 %v) noinline nounwind {{\nentry:\n  %tmp = alloca i64, align 8\n  store i64 %v, ptr %tmp, align 8\n  %r = call i64 @__rg_rt_cmm_drop_slot(ptr %tmp)\n  ret i64 %r\n}}\ndefine i64 @__rg_fast_cmm_drop_slot(ptr %slot_ptr) inlinehint nounwind {{\nentry:\n  %old = load i64, ptr %slot_ptr, align 8\n  store i64 0, ptr %slot_ptr, align 8\n  %is_z = icmp eq i64 %old, 0\n  %low3 = and i64 %old, 7\n  %is_imm = icmp ne i64 %low3, 0\n  %fast = or i1 %is_z, %is_imm\n  br i1 %fast, label %done, label %slow\ndone:\n  ret i64 0\nslow:\n  %d = call i64 @__rg_cmm_drop_val_slow(i64 %old)\n  ret i64 %d\n}}\ndefine i64 @__rg_fast_rebind_slot(ptr %slot_ptr, i64 %val) inlinehint nounwind {{\nentry:\n  %old = load i64, ptr %slot_ptr, align 8\n  store i64 %val, ptr %slot_ptr, align 8\n  %is_z = icmp eq i64 %old, 0\n  %low3 = and i64 %old, 7\n  %is_imm = icmp ne i64 %low3, 0\n  %fast = or i1 %is_z, %is_imm\n  br i1 %fast, label %done, label %slow\ndone:\n  ret i64 0\nslow:\n  %d = call i64 @__rg_cmm_drop_val_slow(i64 %old)\n  ret i64 0\n}}\ndefine i64 @__rg_fast_as_bool(i64 %v) inlinehint nounwind {{\nentry:\n  %is_z = icmp eq i64 %v, 0\n  %low3 = and i64 %v, 7\n  %is_imm = icmp ne i64 %low3, 0\n  %fast = or i1 %is_z, %is_imm\n  br i1 %fast, label %imm, label %slow\nimm:\n  %is_true = icmp eq i64 %v, 6\n  %b = zext i1 %is_true to i64\n  ret i64 %b\nslow:\n  %ign = call i64 @__rg_rt_drop_val(i64 %v)\n  ret i64 0\n}}\ndefine i64 @__rg_make_empty_list() noinline nounwind {{\nentry:\n  %tmp = alloca i64, align 8\n  store i64 0, ptr %tmp, align 8\n  %r = call i64 @__rg_rt_make_list(ptr %tmp, i64 0)\n  ret i64 %r\n}}\ndefine i64 @__rg_make_list_1(i64 %v0) noinline nounwind {{\nentry:\n  %tmp = alloca i64, align 8\n  store i64 %v0, ptr %tmp, align 8\n  %r = call i64 @__rg_rt_make_list(ptr %tmp, i64 1)\n  ret i64 %r\n}}\ndefine i64 @__rg_make_tuple_2(i64 %v0, i64 %v1) noinline nounwind {{\nentry:\n  %tmp = alloca [2 x i64], align 8\n  %p0 = getelementptr inbounds [2 x i64], ptr %tmp, i64 0, i64 0\n  %p1 = getelementptr inbounds [2 x i64], ptr %tmp, i64 0, i64 1\n  store i64 %v0, ptr %p0, align 8\n  store i64 %v1, ptr %p1, align 8\n  %r = call i64 @__rg_rt_make_tuple(ptr %tmp, i64 2)\n  ret i64 %r\n}}\n"
         h1c = "define i64 @__rg_exec_int_op(i64 %op_id, i64 %x, i64 %y) alwaysinline nounwind {{\nentry:\n  switch i64 %op_id, label %op_default [\n    i64 0, label %op_add\n    i64 1, label %op_sub\n    i64 2, label %op_mul\n    i64 3, label %op_div\n    i64 4, label %op_mod\n    i64 5, label %op_eq\n    i64 6, label %op_neq\n    i64 7, label %op_gt\n    i64 8, label %op_lt\n    i64 9, label %op_ge\n    i64 10, label %op_le\n    i64 11, label %op_and\n    i64 12, label %op_or\n    i64 13, label %op_xor\n    i64 17, label %op_shl\n    i64 18, label %op_shr\n    i64 19, label %op_rotr\n    i64 20, label %op_rotl\n  ]\nop_add:\n  %r_add = add i64 %x, %y\n  br label %box_res\nop_sub:\n  %r_sub = sub i64 %x, %y\n  br label %box_res\nop_mul:\n  %r_mul = mul i64 %x, %y\n  br label %box_res\nop_div:\n  %y_z1 = icmp eq i64 %y, 0\n  %y_min1 = icmp eq i64 %y, -1\n  %x_min1 = icmp eq i64 %x, -9223372036854775808\n  %ovf1 = and i1 %x_min1, %y_min1\n  %bad_div = or i1 %y_z1, %ovf1\n  br i1 %bad_div, label %div_zero, label %div_ok\ndiv_zero:\n  %r_div_z = select i1 %y_z1, i64 0, i64 -9223372036854775808\n  br label %box_res\ndiv_ok:\n  %r_div = sdiv i64 %x, %y\n  br label %box_res\nop_mod:\n  %y_z2 = icmp eq i64 %y, 0\n  %y_min2 = icmp eq i64 %y, -1\n  %x_min2 = icmp eq i64 %x, -9223372036854775808\n  %ovf2 = and i1 %x_min2, %y_min2\n  %bad_mod = or i1 %y_z2, %ovf2\n  br i1 %bad_mod, label %mod_zero, label %mod_ok\nmod_zero:\n  br label %box_res\nmod_ok:\n  %r_mod = srem i64 %x, %y\n  br label %box_res\nop_eq:\n  %c_eq = icmp eq i64 %x, %y\n  %b_eq = select i1 %c_eq, i64 6, i64 2\n  ret i64 %b_eq\nop_neq:\n  %c_neq = icmp ne i64 %x, %y\n  %b_neq = select i1 %c_neq, i64 6, i64 2\n  ret i64 %b_neq\nop_gt:\n  %c_gt = icmp sgt i64 %x, %y\n  %b_gt = select i1 %c_gt, i64 6, i64 2\n  ret i64 %b_gt\nop_lt:\n  %c_lt = icmp slt i64 %x, %y\n  %b_lt = select i1 %c_lt, i64 6, i64 2\n  ret i64 %b_lt\nop_ge:\n  %c_ge = icmp sge i64 %x, %y\n  %b_ge = select i1 %c_ge, i64 6, i64 2\n  ret i64 %b_ge\nop_le:\n  %c_le = icmp sle i64 %x, %y\n  %b_le = select i1 %c_le, i64 6, i64 2\n  ret i64 %b_le\nop_and:\n  %r_and = and i64 %x, %y\n  br label %box_res\nop_or:\n  %r_or = or i64 %x, %y\n  br label %box_res\nop_xor:\n  %r_xor = xor i64 %x, %y\n  br label %box_res\nop_shl:\n  %sh_a = and i64 %y, 63\n  %r_shl = shl i64 %x, %sh_a\n  br label %box_res\nop_shr:\n  %sh_b = and i64 %y, 63\n  %r_shr = lshr i64 %x, %sh_b\n  br label %box_res\nop_rotr:\n  %r_rotr = call i64 @llvm.fshr.i64(i64 %x, i64 %x, i64 %y)\n  br label %box_res\nop_rotl:\n  %r_rotl = call i64 @llvm.fshl.i64(i64 %x, i64 %x, i64 %y)\n  br label %box_res\nop_default:\n  br label %box_res\nbox_res:\n  %raw_res = phi i64 [ %r_add, %op_add ], [ %r_sub, %op_sub ], [ %r_mul, %op_mul ], [ %r_div_z, %div_zero ], [ %r_div, %div_ok ], [ 0, %mod_zero ], [ %r_mod, %mod_ok ], [ %r_and, %op_and ], [ %r_or, %op_or ], [ %r_xor, %op_xor ], [ %r_shl, %op_shl ], [ %r_shr, %op_shr ], [ %r_rotr, %op_rotr ], [ %r_rotl, %op_rotl ], [ 0, %op_default ]\n  %boxed = call i64 @__rg_box_i64(i64 %raw_res)\n  ret i64 %boxed\n}}\n"
         h1d = "define i64 @__rg_bin_op_u64_or_slow(i64 %op_id, i64 %lhs, i64 %rhs) noinline nounwind {{\nentry:\n  %tmp_lhs = alloca i64, align 8\n  %lb0 = and i64 %lhs, 1\n  %l_is_imm = icmp ne i64 %lb0, 0\n  br i1 %l_is_imm, label %lhs_imm, label %lhs_chk_heap\nlhs_imm:\n  %lx_imm = ashr i64 %lhs, 1\n  br label %chk_rhs\nlhs_chk_heap:\n  %l_nn = icmp ne i64 %lhs, 0\n  %l_l3 = and i64 %lhs, 7\n  %l_ptr = icmp eq i64 %l_l3, 0\n  %l_ok = and i1 %l_nn, %l_ptr\n  br i1 %l_ok, label %lhs_load_hdr, label %rt_fallback\nlhs_load_hdr:\n  %lp = inttoptr i64 %lhs to ptr\n  %lhdr = load i64, ptr %lp, align 8\n  %l_is_u64 = icmp eq i64 %lhdr, -9223372036854775808\n  br i1 %l_is_u64, label %lhs_heap_u64, label %rt_fallback\nlhs_heap_u64:\n  %lpay_p = getelementptr inbounds i8, ptr %lp, i64 8\n  %lx_heap = load i64, ptr %lpay_p, align 8\n  br label %chk_rhs\nchk_rhs:\n  %x = phi i64 [ %lx_imm, %lhs_imm ], [ %lx_heap, %lhs_heap_u64 ]\n  %ldrop = phi i64 [ 0, %lhs_imm ], [ %lhs, %lhs_heap_u64 ]\n  %rb0 = and i64 %rhs, 1\n  %r_is_imm = icmp ne i64 %rb0, 0\n  br i1 %r_is_imm, label %rhs_imm, label %rhs_chk_heap\nrhs_imm:\n  %ry_imm = ashr i64 %rhs, 1\n  br label %exec_u64\nrhs_chk_heap:\n  %r_nn = icmp ne i64 %rhs, 0\n  %r_l3 = and i64 %rhs, 7\n  %r_ptr = icmp eq i64 %r_l3, 0\n  %r_ok = and i1 %r_nn, %r_ptr\n  br i1 %r_ok, label %rhs_load_hdr, label %rt_fallback\nrhs_load_hdr:\n  %rp = inttoptr i64 %rhs to ptr\n  %rhdr = load i64, ptr %rp, align 8\n  %r_is_u64 = icmp eq i64 %rhdr, -9223372036854775808\n  br i1 %r_is_u64, label %rhs_heap_u64, label %rt_fallback\nrhs_heap_u64:\n  %rpay_p = getelementptr inbounds i8, ptr %rp, i64 8\n  %ry_heap = load i64, ptr %rpay_p, align 8\n  br label %exec_u64\nexec_u64:\n  %y = phi i64 [ %ry_imm, %rhs_imm ], [ %ry_heap, %rhs_heap_u64 ]\n  %rdrop = phi i64 [ 0, %rhs_imm ], [ %rhs, %rhs_heap_u64 ]\n  %c_ld = icmp ne i64 %ldrop, 0\n  br i1 %c_ld, label %do_ldrop, label %after_ldrop\ndo_ldrop:\n  %ign_l = call i64 @__rg_rt_drop_val(i64 %ldrop)\n  br label %after_ldrop\nafter_ldrop:\n  %c_rd = icmp ne i64 %rdrop, 0\n  br i1 %c_rd, label %do_rdrop, label %after_rdrop\ndo_rdrop:\n  %ign_r = call i64 @__rg_rt_drop_val(i64 %rdrop)\n  br label %after_rdrop\nafter_rdrop:\n  %res_u64 = call i64 @__rg_exec_int_op(i64 %op_id, i64 %x, i64 %y)\n  ret i64 %res_u64\nrt_fallback:\n  store i64 %lhs, ptr %tmp_lhs, align 8\n  %res_rt = call i64 @__rg_rt_bin_op(i64 %op_id, ptr %tmp_lhs, i64 %rhs)\n  ret i64 %res_rt\n}}\ndefine i64 @__rg_fast_bin_op(i64 %op_id, ptr %lhs_ptr, i64 %rhs) inlinehint nounwind {{\nentry:\n  %lhs = load i64, ptr %lhs_ptr, align 8\n  store i64 0, ptr %lhs_ptr, align 8\n  %both = and i64 %lhs, %rhs\n  %b0 = and i64 %both, 1\n  %is_imm_int = icmp ne i64 %b0, 0\n  br i1 %is_imm_int, label %fast_int, label %chk_bool_op\nfast_int:\n  %x = ashr i64 %lhs, 1\n  %y = ashr i64 %rhs, 1\n  %res = call i64 @__rg_exec_int_op(i64 %op_id, i64 %x, i64 %y)\n  ret i64 %res\nchk_bool_op:\n  %l_b = and i64 %lhs, -5\n  %r_b = and i64 %rhs, -5\n  %l_is_b = icmp eq i64 %l_b, 2\n  %r_is_b = icmp eq i64 %r_b, 2\n  %both_b = and i1 %l_is_b, %r_is_b\n  br i1 %both_b, label %fast_bool, label %slow\nfast_bool:\n  switch i64 %op_id, label %slow [\n    i64 11, label %b_and\n    i64 12, label %b_or\n    i64 13, label %b_xor\n    i64 5, label %b_eq\n    i64 6, label %b_neq\n  ]\nb_and:\n  %rb_and = and i64 %lhs, %rhs\n  ret i64 %rb_and\nb_or:\n  %rb_or = or i64 %lhs, %rhs\n  ret i64 %rb_or\nb_xor:\n  %xb = xor i64 %lhs, %rhs\n  %rb_xor = or i64 %xb, 2\n  ret i64 %rb_xor\nb_eq:\n  %ce = icmp eq i64 %lhs, %rhs\n  %rb_eq = select i1 %ce, i64 6, i64 2\n  ret i64 %rb_eq\nb_neq:\n  %cn = icmp ne i64 %lhs, %rhs\n  %rb_neq = select i1 %cn, i64 6, i64 2\n  ret i64 %rb_neq\nslow:\n  %res_s = call i64 @__rg_bin_op_u64_or_slow(i64 %op_id, i64 %lhs, i64 %rhs)\n  ret i64 %res_s\n}}\n"
         h1e = "define i64 @__rg_str_char_at_slow(i64 %sv, i64 %iv) noinline nounwind {{\nentry:\n  %tmp = alloca [2 x i64], align 8\n  %p0 = getelementptr inbounds [2 x i64], ptr %tmp, i64 0, i64 0\n  %p1 = getelementptr inbounds [2 x i64], ptr %tmp, i64 0, i64 1\n  %c_sv = call i64 @__rg_fast_clone_slot(i64 %sv)\n  store i64 %c_sv, ptr %p0, align 8\n  store i64 %iv, ptr %p1, align 8\n  %res = call i64 @__rg_rt_builtin(i64 40, ptr %tmp, i64 2)\n  ret i64 %res\n}}\ndefine i64 @__rg_str_char_at_fast(i64 %sv, i64 %iv) inlinehint nounwind {{\nentry:\n  %ibit = and i64 %iv, 1\n  %is_i = icmp ne i64 %ibit, 0\n  br i1 %is_i, label %chk_s, label %slow\nchk_s:\n  %snn = icmp ne i64 %sv, 0\n  %sl3 = and i64 %sv, 7\n  %sptr_ok = icmp eq i64 %sl3, 0\n  %sok = and i1 %snn, %sptr_ok\n  br i1 %sok, label %chk_tag, label %slow\nchk_tag:\n  %sp = inttoptr i64 %sv to ptr\n  %stag = load i32, ptr %sp, align 4\n  %is_str = icmp eq i32 %stag, 1\n  br i1 %is_str, label %chk_bounds, label %slow\nchk_bounds:\n  %idx = ashr i64 %iv, 1\n  %hp = getelementptr inbounds i8, ptr %sp, i64 8\n  %hdr = load ptr, ptr %hp, align 8\n  %lp = getelementptr inbounds i8, ptr %hdr, i64 16\n  %dlen = load i64, ptr %lp, align 8\n  %in_b = icmp ult i64 %idx, %dlen\n  br i1 %in_b, label %load_b, label %oob\nload_b:\n  %dp = getelementptr inbounds i8, ptr %hdr, i64 8\n  %dptr = load ptr, ptr %dp, align 8\n  %bp = getelementptr inbounds i8, ptr %dptr, i64 %idx\n  %b8 = load i8, ptr %bp, align 1\n  %b64 = zext i8 %b8 to i64\n  %shl = shl i64 %b64, 1\n  %res_in = or i64 %shl, 1\n  ret i64 %res_in\noob:\n  ret i64 -1\nslow:\n  %res_slow = call i64 @__rg_str_char_at_slow(i64 %sv, i64 %iv)\n  ret i64 %res_slow\n}}\ndefine i64 @__rg_builtin_str_char_at(ptr %slots_ptr) noinline nounwind {{\nentry:\n  %s0 = getelementptr inbounds i64, ptr %slots_ptr, i64 0\n  %s1 = getelementptr inbounds i64, ptr %slots_ptr, i64 1\n  %sv = load i64, ptr %s0, align 8\n  %iv = load i64, ptr %s1, align 8\n  %ibit = and i64 %iv, 1\n  %is_i = icmp ne i64 %ibit, 0\n  br i1 %is_i, label %chk_s, label %slow\nchk_s:\n  %snn = icmp ne i64 %sv, 0\n  %sl3 = and i64 %sv, 7\n  %sptr_ok = icmp eq i64 %sl3, 0\n  %sok = and i1 %snn, %sptr_ok\n  br i1 %sok, label %chk_tag, label %slow\nchk_tag:\n  %sp = inttoptr i64 %sv to ptr\n  %stag = load i32, ptr %sp, align 4\n  %is_str = icmp eq i32 %stag, 1\n  br i1 %is_str, label %chk_bounds, label %slow\nchk_bounds:\n  %idx = ashr i64 %iv, 1\n  %hp = getelementptr inbounds i8, ptr %sp, i64 8\n  %hdr = load ptr, ptr %hp, align 8\n  %lp = getelementptr inbounds i8, ptr %hdr, i64 16\n  %dlen = load i64, ptr %lp, align 8\n  %in_b = icmp ult i64 %idx, %dlen\n  br i1 %in_b, label %load_b, label %oob\nload_b:\n  %dp = getelementptr inbounds i8, ptr %hdr, i64 8\n  %dptr = load ptr, ptr %dp, align 8\n  %bp = getelementptr inbounds i8, ptr %dptr, i64 %idx\n  %b8 = load i8, ptr %bp, align 1\n  %b64 = zext i8 %b8 to i64\n  %shl = shl i64 %b64, 1\n  %res_in = or i64 %shl, 1\n  br label %finish_fast\noob:\n  br label %finish_fast\nfinish_fast:\n  %res_fast = phi i64 [ %res_in, %load_b ], [ -1, %oob ]\n  store i64 0, ptr %s0, align 8\n  store i64 0, ptr %s1, align 8\n  %ign = call i64 @__rg_rt_drop_val(i64 %sv)\n  ret i64 %res_fast\nslow:\n  %res_slow = call i64 @__rg_rt_builtin(i64 40, ptr %slots_ptr, i64 2)\n  ret i64 %res_slow\n}}\n"
@@ -122,6 +122,17 @@ fn :: llvm bool tag Int => Int
       llvm bool tag 0   =  2
       llvm bool tag _   =  6
 
+fn :: llvm join comma [String] => String
+      llvm join comma []       =  ""
+      llvm join comma (s:[])   =  s
+      llvm join comma (s:ss)   =  s + ", " + (llvm join comma ss)
+
+fn :: llvm reg param list Int Int [String] => String
+      llvm reg param list cur arity acc
+        | cur >= arity = llvm join comma acc
+        | otherwise =
+          llvm reg param list (cur + 1) arity (acc :: ["i64 %arg_{cur}"])
+
 fn :: llvm unroll clear locals Int Int Int [String] => String
       llvm unroll clear locals cur end_slot step acc
         | cur >= end_slot = join str tree acc
@@ -138,6 +149,50 @@ fn :: llvm unroll init frame Int Int Int [String] => String
         | otherwise =
           line = "  %fp_{cur} = getelementptr inbounds i64, ptr %frame, i64 {cur}\n  store i64 0, ptr %fp_{cur}, align 8\n"
           llvm unroll init frame (cur + 1) arity num_slots (acc :: [line])
+
+fn :: llvm unroll init frame reg Int Int Int [String] => String
+      llvm unroll init frame reg cur arity num_slots acc
+        | cur >= num_slots = join str tree acc
+        | cur < arity =
+          line = "  %fp_{cur} = getelementptr inbounds i64, ptr %frame, i64 {cur}\n  store i64 %arg_{cur}, ptr %fp_{cur}, align 8\n"
+          llvm unroll init frame reg (cur + 1) arity num_slots (acc :: [line])
+        | otherwise =
+          line = "  %fp_{cur} = getelementptr inbounds i64, ptr %frame, i64 {cur}\n  store i64 0, ptr %fp_{cur}, align 8\n"
+          llvm unroll init frame reg (cur + 1) arity num_slots (acc :: [line])
+
+fn :: llvm store reg args Int Int [String] => String
+      llvm store reg args cur arity acc
+        | cur >= arity = join str tree acc
+        | otherwise =
+          line = "  %fp_{cur} = getelementptr inbounds i64, ptr %frame, i64 {cur}\n  store i64 %arg_{cur}, ptr %fp_{cur}, align 8\n"
+          llvm store reg args (cur + 1) arity (acc :: [line])
+
+fn :: llvm load wrapper args Int Int [String] => String
+      llvm load wrapper args cur arity acc
+        | cur >= arity = join str tree acc
+        | otherwise =
+          line = "  %ap_{cur} = getelementptr inbounds i64, ptr %args, i64 {cur}\n  %av_{cur} = load i64, ptr %ap_{cur}, align 8\n  store i64 0, ptr %ap_{cur}, align 8\n"
+          llvm load wrapper args (cur + 1) arity (acc :: [line])
+
+fn :: llvm wrapper arg list Int Int [String] => String
+      llvm wrapper arg list cur arity acc
+        | cur >= arity = llvm join comma acc
+        | otherwise =
+          llvm wrapper arg list (cur + 1) arity (acc :: ["i64 %av_{cur}"])
+
+fn :: llvm load call args Int Int Int Int [String] => String
+      llvm load call args start_slot idx count step acc
+        | idx >= count = join str tree acc
+        | otherwise =
+          slot = start_slot + idx
+          line = "  %cap_{step}_{idx} = getelementptr inbounds i64, ptr %frame, i64 {slot}\n  %cav_{step}_{idx} = load i64, ptr %cap_{step}_{idx}, align 8\n  store i64 0, ptr %cap_{step}_{idx}, align 8\n"
+          llvm load call args start_slot (idx + 1) count step (acc :: [line])
+
+fn :: llvm call arg list Int Int Int [String] => String
+      llvm call arg list idx count step acc
+        | idx >= count = llvm join comma acc
+        | otherwise =
+          llvm call arg list (idx + 1) count step (acc :: ["i64 %cav_{step}_{idx}"])
 
 fn :: llvm unroll epilogue Int Int [String] => String
       llvm unroll epilogue cur num_slots acc
@@ -244,13 +299,20 @@ fn :: emit llvm instr RNativeInstr Int Int Int => String
         "  %a_{step} = load i64, ptr %acc, align 8\n  %r_{step} = call i64 @__rg_rt_out(i64 %a_{step})\n  store i64 %r_{step}, ptr %acc, align 8\n"
       emit llvm instr (NBinOp op_id lhs_slot) step _ _
         | op_id == 14 or op_id == 15 or op_id == 16 =
-          "  %s_{step} = getelementptr inbounds i64, ptr %frame, i64 {lhs_slot}\n  %a_{step} = load i64, ptr %acc, align 8\n  %r_{step} = call i64 @__rg_rt_bin_op(i64 {op_id}, ptr %s_{step}, i64 %a_{step})\n  store i64 %r_{step}, ptr %acc, align 8\n"
+          "  %s_{step} = getelementptr inbounds i64, ptr %frame, i64 {lhs_slot}\n  %lv_{step} = load i64, ptr %s_{step}, align 8\n  store i64 0, ptr %s_{step}, align 8\n  %a_{step} = load i64, ptr %acc, align 8\n  %r_{step} = call i64 @__rg_bin_op_u64_or_slow(i64 {op_id}, i64 %lv_{step}, i64 %a_{step})\n  store i64 %r_{step}, ptr %acc, align 8\n"
         | otherwise =
           "  %s_{step} = getelementptr inbounds i64, ptr %frame, i64 {lhs_slot}\n  %a_{step} = load i64, ptr %acc, align 8\n  %r_{step} = call i64 @__rg_fast_bin_op(i64 {op_id}, ptr %s_{step}, i64 %a_{step})\n  store i64 %r_{step}, ptr %acc, align 8\n"
       emit llvm instr (NAdtSet rec_slot idx) step _ _ =
         "  %s_{step} = getelementptr inbounds i64, ptr %frame, i64 {rec_slot}\n  %a_{step} = load i64, ptr %acc, align 8\n  %r_{step} = call i64 @__rg_rt_adt_set(ptr %s_{step}, i64 {idx}, i64 %a_{step})\n  store i64 %r_{step}, ptr %acc, align 8\n"
+      emit llvm instr (NMakeList _ 0) step _ _ =
+        "  %r_{step} = call i64 @__rg_make_empty_list()\n  store i64 %r_{step}, ptr %acc, align 8\n"
+      emit llvm instr (NMakeList start_slot 1) step _ _ =
+        "  %s_{step} = getelementptr inbounds i64, ptr %frame, i64 {start_slot}\n  %v_{step} = load i64, ptr %s_{step}, align 8\n  store i64 0, ptr %s_{step}, align 8\n  %r_{step} = call i64 @__rg_make_list_1(i64 %v_{step})\n  store i64 %r_{step}, ptr %acc, align 8\n"
       emit llvm instr (NMakeList start_slot count) step _ _ =
         "  %s_{step} = getelementptr inbounds i64, ptr %frame, i64 {start_slot}\n  %r_{step} = call i64 @__rg_rt_make_list(ptr %s_{step}, i64 {count})\n  store i64 %r_{step}, ptr %acc, align 8\n"
+      emit llvm instr (NMakeTuple start_slot 2) step _ _ =
+        s1 = start_slot + 1
+        "  %s0_{step} = getelementptr inbounds i64, ptr %frame, i64 {start_slot}\n  %v0_{step} = load i64, ptr %s0_{step}, align 8\n  store i64 0, ptr %s0_{step}, align 8\n  %s1_{step} = getelementptr inbounds i64, ptr %frame, i64 {s1}\n  %v1_{step} = load i64, ptr %s1_{step}, align 8\n  store i64 0, ptr %s1_{step}, align 8\n  %r_{step} = call i64 @__rg_make_tuple_2(i64 %v0_{step}, i64 %v1_{step})\n  store i64 %r_{step}, ptr %acc, align 8\n"
       emit llvm instr (NMakeTuple start_slot count) step _ _ =
         "  %s_{step} = getelementptr inbounds i64, ptr %frame, i64 {start_slot}\n  %r_{step} = call i64 @__rg_rt_make_tuple(ptr %s_{step}, i64 {count})\n  store i64 %r_{step}, ptr %acc, align 8\n"
       emit llvm instr (NMakeTensor start_slot count) step _ _ =
@@ -283,8 +345,13 @@ fn :: emit llvm instr RNativeInstr Int Int Int => String
         "  %r_{step} = call i64 @__rg_rt_enter_region()\n  store i64 %r_{step}, ptr %acc, align 8\n"
       emit llvm instr (NExitRegion quota) step _ _ =
         "  %a_{step} = load i64, ptr %acc, align 8\n  %r_{step} = call i64 @__rg_rt_exit_region(i64 {quota}, i64 %a_{step})\n  store i64 %r_{step}, ptr %acc, align 8\n"
-      emit llvm instr (NCallFn fid start_slot _) step _ _ =
-        "  %s_{step} = getelementptr inbounds i64, ptr %frame, i64 {start_slot}\n  %r_{step} = call i64 @__rg_fn_{fid}(ptr %s_{step})\n  store i64 %r_{step}, ptr %acc, align 8\n"
+      emit llvm instr (NCallFn fid start_slot count) step _ _
+        | fid >= 5 and count >= 0 and count <= 8 =
+          load_ir = llvm load call args start_slot 0 count step []
+          arg_list = llvm call arg list 0 count step []
+          load_ir + "  %r_{step} = call i64 @__rg_fn_{fid}_reg(" + arg_list + ")\n  store i64 %r_{step}, ptr %acc, align 8\n"
+        | otherwise =
+          "  %s_{step} = getelementptr inbounds i64, ptr %frame, i64 {start_slot}\n  %r_{step} = call i64 @__rg_fn_{fid}(ptr %s_{step})\n  store i64 %r_{step}, ptr %acc, align 8\n"
       emit llvm instr (NCallBuiltin 36 start_slot _) step _ _ =
         "  %s_{step} = getelementptr inbounds i64, ptr %frame, i64 {start_slot}\n  %r_{step} = call i64 @__rg_builtin_sha256_raw(ptr %s_{step})\n  store i64 %r_{step}, ptr %acc, align 8\n"
       emit llvm instr (NCallBuiltin 40 start_slot _) step _ _ =
@@ -339,17 +406,34 @@ fn :: llvm fn attrs Int => String
       llvm fn attrs 3   =  "noinline optnone nounwind"
       llvm fn attrs _   =  "nounwind"
 
+fn :: emit llvm reg wrapper Int Int => String
+      emit llvm reg wrapper fid arity =
+        load_ir = llvm load wrapper args 0 arity []
+        arg_list = llvm wrapper arg list 0 arity []
+        "define i64 @__rg_fn_{fid}(ptr %args) nounwind {{\nentry:\n" + load_ir + "  %r = call i64 @__rg_fn_{fid}_reg(" + arg_list + ")\n  ret i64 %r\n}}\n\n"
+
 fn :: emit llvm fn RNativeFn Int => String
       emit llvm fn (NativeFn fid _ arity num_slots instrs) rodata_len
-        | fid >= 5 and num_slots <= 24 and (not (llvm fn has tco instrs)) =
+        | fid >= 5 and arity >= 0 and arity <= 8 and num_slots <= 24 and (not (llvm fn has tco instrs)) =
           aslots = llvm alloc slots num_slots
-          fattrs = llvm fn attrs fid
-          init_ir = llvm unroll init frame 0 arity num_slots []
+          rparams = llvm reg param list 0 arity []
+          init_ir = llvm unroll init frame reg 0 arity num_slots []
           epi_ir = llvm unroll epilogue 0 num_slots []
-          hdr = "define i64 @__rg_fn_{fid}(ptr %args) {fattrs} {{\nentry:\n  %acc = alloca i64, align 8\n  %frame = alloca [{aslots} x i64], align 8\n  store i64 0, ptr %acc, align 8\n" + init_ir + "  br label %tco_entry\ntco_entry:\n"
+          hdr = "define i64 @__rg_fn_{fid}_reg(" + rparams + ") inlinehint nounwind {{\nentry:\n  %acc = alloca i64, align 8\n  %frame = alloca [{aslots} x i64], align 8\n  store i64 0, ptr %acc, align 8\n" + init_ir + "  br label %tco_entry\ntco_entry:\n"
           body_chunks = emit llvm instr list instrs 0 num_slots rodata_len []
           ftr = "  br label %epilogue_exit\nepilogue_exit:\n  %a_end = load i64, ptr %acc, align 8\n" + epi_ir + "  ret i64 %a_end\n}}\n\n"
-          join str tree ([hdr] :: body_chunks :: [ftr])
+          wrap = emit llvm reg wrapper fid arity
+          join str tree ([hdr] :: body_chunks :: [ftr, wrap])
+        | fid >= 5 and arity >= 0 and arity <= 8 =
+          aslots = llvm alloc slots num_slots
+          fbytes = aslots * 8
+          rparams = llvm reg param list 0 arity []
+          init_ir = llvm store reg args 0 arity []
+          hdr = "define i64 @__rg_fn_{fid}_reg(" + rparams + ") nounwind {{\nentry:\n  %acc = alloca i64, align 8\n  %frame = alloca [{aslots} x i64], align 8\n  store i64 0, ptr %acc, align 8\n  call void @llvm.memset.p0.i64(ptr align 8 %frame, i8 0, i64 {fbytes}, i1 false)\n" + init_ir + "  br label %tco_entry\ntco_entry:\n"
+          body_chunks = emit llvm instr list instrs 0 num_slots rodata_len []
+          ftr = "  br label %epilogue_exit\nepilogue_exit:\n  %a_end = load i64, ptr %acc, align 8\n  %r_end = call i64 @__rg_rt_epilogue(ptr %frame, i64 {num_slots}, i64 %a_end)\n  ret i64 %r_end\n}}\n\n"
+          wrap = emit llvm reg wrapper fid arity
+          join str tree ([hdr] :: body_chunks :: [ftr, wrap])
         | otherwise =
           aslots = llvm alloc slots num_slots
           fattrs = llvm fn attrs fid

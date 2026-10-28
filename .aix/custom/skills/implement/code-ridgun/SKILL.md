@@ -1,14 +1,14 @@
 ---
 name: implement-code-ridgun
-description: Implement, refactor or review Ridgun (.rg) code and build.rg definitions using the exact Ridgun v0.9.27 grammar, idiomatic -> pipeline chaining (xs map f -> filter g -> results), (+ _ _ +) sequence masks, -> () unit discard, _ =-free side-effect blocks, type system, user-defined generic types (type Result T E, type Page T), lexical closures ((x => expr), (acc x => expr)), module namespaces (module ::, import ... as, mod.Type/Ctor/fn), Native Agent Model (agent, send ... to, receive from, try receive from, stop), RMM1/RMM2 deterministic memory rules, parallel || DAGs, with timeout quotas, PAL primitives, and pure-Ridgun stable/ridgunc ELF64 toolchain; use for any Ridgun (.rg) change.
+description: Implement, refactor or review Ridgun (.rg) code and build.rg definitions using the exact Ridgun v0.9.28 grammar, idiomatic -> pipeline chaining (xs map f -> filter g -> results), (+ _ _ +) sequence masks, -> () unit discard, _ =-free side-effect blocks, type system, user-defined generic types (type Result T E, type Page T), lexical closures ((x => expr), (acc x => expr)), module namespaces (module ::, import ... as, mod.Type/Ctor/fn), Native Agent Model (agent, send ... to, receive from, try receive from, stop), RMM1/RMM2 deterministic memory rules, parallel || DAGs, with timeout quotas, PAL primitives, and pure-Ridgun stable/ridgunc ELF64 toolchain; use for any Ridgun (.rg) change.
 ---
-# implement-code-ridgun (`v0.9.27`)
+# implement-code-ridgun (`v0.9.28`)
 
 Reading budget: `harness/skills/implement-code-ridgun/references/cheatsheet.rg` (or `docs/lang/spec.md` when a construct is unfamiliar), `build.rg`, and the target `.rg` files under `src/main/ridgun/` or `src/test/ridgun/`.
 
 ---
 
-## 1. Project & Architecture Overview (`v0.9.27`)
+## 1. Project & Architecture Overview (`v0.9.28`)
 - **100% Pure Ridgun (Zero Rust / Zero `rustc`)**: Both `ridgunc` (`src/main/ridgun/ridgunc/main.rg`) and `stable` (`src/main/ridgun/stable/main.rg`) are written 100% in Ridgun and emit standalone, statically linked Linux ELF64 executables directly to disk via `elf64.rg`, `x86_64.rg` (`EM_X86_64 = 62`), and `arm64.rg` (`EM_AARCH64 = 183` for Raspberry Pi).
 - **Project Layout**:
   - `build.rg`: Pure-Ridgun project manifest (`fn :: project name => String`, `project version`, `main entry`, `source dir`, `test dir`, `target dir`).
@@ -20,7 +20,7 @@ Reading budget: `harness/skills/implement-code-ridgun/references/cheatsheet.rg` 
 
 ## 2. LLM Anti-Patterns: "Never Write This → Write This Instead"
 
-| Common LLM Mistake (INVALID) | Correct Ridgun `v0.9.27` (VALID) | Why |
+| Common LLM Mistake (INVALID) | Correct Ridgun `v0.9.28` (VALID) | Why |
 |---|---|---|
 | `fn :: parse_header String => (Int, [(String, String)], String)` | `fn :: parse header String => Int [String String] String` | Prefer natural spaces in function/built-in names (`FR-COMP-005`) and space-separated tuple/sequence type signatures (`FR-COMP-008`) |
 | `// comment` or `# comment` | `-- comment` | Only `--` starts a comment |

@@ -64,7 +64,11 @@ fn :: test llvm instr emission => Int
         e23 = assert true (str contains ir_ein "call i64 @__rg_fast_einsum(") "NEinsum emits @__rg_fast_einsum"
         ir_clr = emit llvm instr (NClearLocals 2 4) 23 4 16
         e24 = assert true (str contains ir_clr "call i64 @__rg_fast_drop_val(") "Small NClearLocals unrolls constant-offset @__rg_fast_drop_val"
-        e1 + e2 + e3 + e4 + e5 + e6 + e7 + e8 + e9 + e10 + e11 + e12 + e13 + e14 + e15 + e16 + e17 + e18 + e19 + e20 + e21 + e22 + e23 + e24
+        ir_call_reg = emit llvm instr (NCallFn 7 2 2) 24 6 16
+        e25 = assert true ((str contains ir_call_reg "call i64 @__rg_fn_7_reg(i64 %cav_24_0, i64 %cav_24_1)") and (str contains ir_call_reg "store i64 0, ptr %cap_24_0")) "OPT-013 NCallFn emits direct register call @__rg_fn_7_reg and zeroes caller slots"
+        fn_reg_ir = emit llvm fn (NativeFn 7 "add_two" 2 4 [NMoveSlot 0, NStoreSlot 2, NMoveSlot 1, NBinOp 0 2, NReturn]) 16
+        e26 = assert true ((str contains fn_reg_ir "define i64 @__rg_fn_7_reg(i64 %arg_0, i64 %arg_1) inlinehint nounwind") and (str contains fn_reg_ir "define i64 @__rg_fn_7(ptr %args) nounwind")) "OPT-013 emit llvm fn emits @__rg_fn_7_reg and ABI wrapper @__rg_fn_7"
+        e1 + e2 + e3 + e4 + e5 + e6 + e7 + e8 + e9 + e10 + e11 + e12 + e13 + e14 + e15 + e16 + e17 + e18 + e19 + e20 + e21 + e22 + e23 + e24 + e25 + e26
 
 fn :: verify llc status Int String => Int
       verify llc status 0 tmp_base =
@@ -183,10 +187,24 @@ fn :: tco sum loop Int Int => Int
         | n <= 0 = acc
         | otherwise = tco sum loop (n - 1) (acc + 1)
 
+fn :: hof triple Int => Int
+      hof triple x = x * 3
+
+fn :: hof is even Int => Bool
+      hof is even x = (x % 2) == 0
+
+fn :: hof sum acc Int Int => Int
+      hof sum acc acc x = acc + x
+
 fn :: test tco loop => Int
       test tco loop =
         res = tco sum loop 50000 0
-        assert true (res == 50000) "TCO 50,000 iterations"
+        e1 = assert true (res == 50000) "TCO 50,000 iterations"
+        nums = [1, 2, 3, 4, 5, 6]
+        s_named = nums map hof triple -> filter hof is even -> fold hof sum acc 0
+        s_lam = nums map (x => x * 3) -> filter (x => (x % 2) == 0) -> fold (acc x => acc + x) 0
+        e2 = assert true ((s_named == 36) and (s_lam == 36)) "OPT-014 direct-call map/filter/fold specialization"
+        e1 + e2
 
 fn :: finish test suite Int => ()
       finish test suite 0 =
