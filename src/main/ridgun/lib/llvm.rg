@@ -47,7 +47,7 @@ fn :: llvm hex digit Int => String
 
 fn :: llvm escape byte Int => String
       llvm escape byte b
-        | b >= 32 AND b <= 126 AND b != 34 AND b != 92 AND b != 123 AND b != 125 = char from code b
+        | b >= 32 and b <= 126 and b != 34 and b != 92 and b != 123 and b != 125 = char from code b
         | otherwise =
           u = (b + 256) % 256
           "\\" + (llvm hex digit (u / 16)) + (llvm hex digit (u % 16))
@@ -243,7 +243,7 @@ fn :: emit llvm instr RNativeInstr Int Int Int => String
       emit llvm instr NOut step _ _ =
         "  %a_{step} = load i64, ptr %acc, align 8\n  %r_{step} = call i64 @__rg_rt_out(i64 %a_{step})\n  store i64 %r_{step}, ptr %acc, align 8\n"
       emit llvm instr (NBinOp op_id lhs_slot) step _ _
-        | op_id == 14 OR op_id == 15 OR op_id == 16 =
+        | op_id == 14 or op_id == 15 or op_id == 16 =
           "  %s_{step} = getelementptr inbounds i64, ptr %frame, i64 {lhs_slot}\n  %a_{step} = load i64, ptr %acc, align 8\n  %r_{step} = call i64 @__rg_rt_bin_op(i64 {op_id}, ptr %s_{step}, i64 %a_{step})\n  store i64 %r_{step}, ptr %acc, align 8\n"
         | otherwise =
           "  %s_{step} = getelementptr inbounds i64, ptr %frame, i64 {lhs_slot}\n  %a_{step} = load i64, ptr %acc, align 8\n  %r_{step} = call i64 @__rg_fast_bin_op(i64 {op_id}, ptr %s_{step}, i64 %a_{step})\n  store i64 %r_{step}, ptr %acc, align 8\n"
@@ -341,7 +341,7 @@ fn :: llvm fn attrs Int => String
 
 fn :: emit llvm fn RNativeFn Int => String
       emit llvm fn (NativeFn fid _ arity num_slots instrs) rodata_len
-        | fid >= 5 AND num_slots <= 24 AND (NOT (llvm fn has tco instrs)) =
+        | fid >= 5 and num_slots <= 24 and (not (llvm fn has tco instrs)) =
           aslots = llvm alloc slots num_slots
           fattrs = llvm fn attrs fid
           init_ir = llvm unroll init frame 0 arity num_slots []

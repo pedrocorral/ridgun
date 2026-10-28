@@ -38,7 +38,7 @@ fn :: trim ws String => String
 fn :: strip trailing newline len String Int => String
       strip trailing newline len s n
         | n <= 0 = ""
-        | (str char at s (n - 1)) == 10 OR (str char at s (n - 1)) == 13 =
+        | (str char at s (n - 1)) == 10 or (str char at s (n - 1)) == 13 =
           strip trailing newline (str slice s 0 (n - 1))
         | otherwise = s
 
@@ -83,7 +83,7 @@ fn :: max int Int Int => Int
 
 fn :: is ident char Int => Bool
       is ident char ch =
-        (ch >= 65 AND ch <= 90) OR (ch >= 97 AND ch <= 122) OR (ch >= 48 AND ch <= 57) OR ch == 95
+        (ch >= 65 and ch <= 90) or (ch >= 97 and ch <= 122) or (ch >= 48 and ch <= 57) or ch == 95
 
 fn :: sanitize step String Int Int String Bool => String
       sanitize step s pos len acc True =
@@ -118,7 +118,7 @@ fn :: parse header expect step (String, [String]) CaseHeader => CaseHeader
 fn :: parse header lines [String] CaseHeader => CaseHeader
       parse header lines [] hdr = hdr
       parse header lines (line:rest) (Header c_desc src has_out out_s has_berr berr_s has_ex ex_v has_ms ms_v has_rss rss_v has_cpu cpu_v libs prop)
-        | NOT (str starts with line "--") =
+        | not (str starts with line "--") =
           Header c_desc src has_out out_s has_berr berr_s has_ex ex_v has_ms ms_v has_rss rss_v has_cpu cpu_v libs prop
         | str starts with line "-- expect-output:" =
           parse header expect step (collect expect output rest []) (Header c_desc src has_out out_s has_berr berr_s has_ex ex_v has_ms ms_v has_rss rss_v has_cpu cpu_v libs prop)
@@ -280,7 +280,7 @@ fn :: check build error result String Bool String String Bool => CaseResult
       check build error result rel True want_err _ prop =
         Result rel False prop ("built, but the build had to fail with: " + want_err)
       check build error result rel False want_err out_txt prop
-        | want_err == "" OR (str contains out_txt want_err) = Result rel True prop ""
+        | want_err == "" or (str contains out_txt want_err) = Result rel True prop ""
         | otherwise =
           last4 = join indented (tail lines (split lines (trim ws out_txt)) 4)
           Result rel False prop ("the build failed, but without '" + want_err + "':\n       " + last4)
@@ -337,7 +337,7 @@ fn :: run built case String String CaseHeader => CaseResult
 
 fn :: finish case build String String String CaseHeader (Int, String, Int, Int) => CaseResult
       finish case build rel work exe (Header c_desc src has_out out_s has_berr berr_s has_ex ex_v has_ms ms_v has_rss rss_v has_cpu cpu_v libs prop) (b_code, b_out, _, _) =
-        built = b_code == 0 AND (file exists exe)
+        built = b_code == 0 and (file exists exe)
         dispatch built case rel work built ( b_out ) (Header c_desc src has_out out_s has_berr berr_s has_ex ex_v has_ms ms_v has_rss rss_v has_cpu cpu_v libs prop)
 
 fn :: dispatch built case String String Bool String CaseHeader => CaseResult
@@ -414,23 +414,23 @@ fn :: gen many program Int => String
 fn :: build tc1 result String (Int, String, Int, Int) => CaseResult
       build tc1 result d (c1, o1, _, _) =
         ex1 = file exists (d + "/no/such/folder/hello")
-        ok1 = ex1 OR c1 != 0
+        ok1 = ex1 or c1 != 0
         Result "toolchain: -o into a folder that doesn't exist either creates it or fails (exit != 0); never reports success without the file (Solstice register RG-081)" ok1 False ("exit " + (int to str c1) + "; output: " + (trim ws o1))
 
 fn :: build tc2 result String (Int, String, Int, Int) => CaseResult
       build tc2 result d (c2, o2, _, _) =
-        ok2 = c2 != 0 AND (NOT (file exists (d + "/bad")))
+        ok2 = c2 != 0 and (not (file exists (d + "/bad")))
         Result "toolchain: a type error exits with a non-zero status and writes no binary" ok2 False ("exit " + (int to str c2) + "; output: " + (trim ws o2))
 
 fn :: build tc3 result (Int, String, Int, Int) (Int, String, Int, Int) => CaseResult
       build tc3 result (cm1, _, tm1, _) (cm2, _, tm2, _) =
         base_t = max int tm1 300
-        ok3 = cm1 == 0 AND cm2 == 0 AND tm2 <= (base_t * 8)
+        ok3 = cm1 == 0 and cm2 == 0 and tm2 <= (base_t * 8)
         Result "toolchain: build time is near-linear in the number of functions (200 -> 800 functions: at most 8x the time; quadratic is 16x)" ok3 False ("200 functions " + (int to str tm1) + " ms (exit " + (int to str cm1) + "), 800 functions " + (int to str tm2) + " ms (exit " + (int to str cm2) + ")")
 
 fn :: build tc4 result (Int, String, Int, Int) => CaseResult
       build tc4 result (cl, _, tl, _) =
-        ok4 = cl == 0 AND tl <= 3000
+        ok4 = cl == 0 and tl <= 3000
         Result "toolchain: building a program that imports standard libraries (str, io, list, cli) completes in under 3000 ms (RG-075)" ok4 False ("built in " + (int to str tl) + " ms (exit " + (int to str cl) + ")")
 
 fn :: run toolchain checks String String String => [CaseResult]

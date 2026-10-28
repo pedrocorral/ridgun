@@ -1,6 +1,6 @@
 -- ============================================================
 -- src/main/ridgun/ridgunc/main.rg
--- Self-Hosted Ridgun Compiler CLI Driver (ridgunc v0.9.26)
+-- Self-Hosted Ridgun Compiler CLI Driver (ridgunc v0.9.27)
 -- Shared Library (`src/main/ridgun/lib/`): ast.rg, lexer.rg,
 -- parser.rg, analyzer.rg, typecheck.rg, compiler.rg, vm.rg,
 -- elf64.rg, x86_64.rg, arm64.rg, llvm.rg
@@ -22,10 +22,10 @@ fn :: strip runner args [String] => [String]
 fn :: strip script prefix [String]     => [String]
       strip script prefix []           =  []
       strip script prefix ("run":script:rest)
-        | (str contains script "ridgunc.rg") OR (str contains script "ridgunc/main.rg") = rest
+        | (str contains script "ridgunc.rg") or (str contains script "ridgunc/main.rg") = rest
         | otherwise = ["run", script] :: rest
       strip script prefix (first:rest)
-        | (str contains first "ridgunc.rg") OR (str contains first "ridgunc/main.rg") = rest
+        | (str contains first "ridgunc.rg") or (str contains first "ridgunc/main.rg") = rest
         | otherwise = [first] :: rest
 
 fn :: print error lines [String]    => ()
@@ -77,7 +77,7 @@ fn :: run cli check loaded Bool String String => ()
 
 fn :: report check result String RProgram [RTypeError] => ()
       report check result input_path prog []
-        | ((count fn defs prog) == 0) AND ((count type defs prog) == 0) =
+        | ((count fn defs prog) == 0) and ((count type defs prog) == 0) =
           echo "[ridgunc check] {input_path}: Error: 0 function(s), 0 type(s) found."
           sys exit 1
         | otherwise =
@@ -111,7 +111,7 @@ fn :: str ends with suffix String String => Bool
       str ends with suffix s suf =
         slen = str len s
         suflen = str len suf
-        slen >= suflen AND (str slice s (slen - suflen) slen) == suf
+        slen >= suflen and (str slice s (slen - suflen) slen) == suf
 
 fn :: strip rg ext String => String
       strip rg ext path
@@ -210,7 +210,7 @@ fn :: run self hosted pipeline demo => ()
 
 fn :: run cli version => ()
       run cli version =
-        echo "ridgunc 0.9.26 (self-hosted Ridgun compiler, x86_64-unknown-linux-gnu)"
+        echo "ridgunc 0.9.27 (self-hosted Ridgun compiler, x86_64-unknown-linux-gnu)"
 
 fn :: run cli help => ()
       run cli help =

@@ -79,7 +79,7 @@ fn :: lookup fn summary [RFnSummary] String => Bool RFnSummary
 
 fn :: is yielding builtin String => Bool
       is yielding builtin callee =
-        callee == "recv" OR callee == "receive_from" OR callee == "try_receive_from" OR callee == "receive_from_timeout" OR callee == "send_to" OR callee == "ask_to" OR callee == "send_through" OR callee == "agent" OR callee == "stop"
+        callee == "recv" or callee == "receive_from" or callee == "try_receive_from" or callee == "receive_from_timeout" or callee == "send_to" or callee == "ask_to" or callee == "send_through" or callee == "agent" or callee == "stop"
 
 fn :: param effect at [RParamEffect] Int => RParamEffect
       param effect at []             _   =  EffReadOnly
@@ -248,7 +248,7 @@ fn :: collect where effects tuple [RWhereBind] String [RFnSummary] ([String], Bo
 
 fn :: apply callee summary String [RExpr] String (Bool, RFnSummary) [String] Bool RCostTier => [String] Bool RCostTier
       apply callee summary callee args cur_fn (found, (FnSummary _ effs s_yld s_cost _)) muts yld cost =
-        yld1 = yld OR (is yielding builtin callee) OR (found AND s_yld)
+        yld1 = yld or (is yielding builtin callee) or (found and s_yld)
         cost1 = compute call cost callee cur_fn found s_cost cost
         muts1 = collect mutated call args args effs 0 muts
         (muts1, yld1, cost1)
@@ -400,7 +400,7 @@ fn :: lookup producer [RProducerEntry] String => Int
 fn :: collect producers [RWhereBind] Int [RProducerEntry] String => [RProducerEntry] [RAnalysisError]
       collect producers [] _ acc _ = (acc, [])
       collect producers ((WhereBind _ target idxs):wbs) idx acc fn_name
-        | (int list len idxs) > 0 OR target == "" = collect producers wbs (idx + 1) acc fn_name
+        | (int list len idxs) > 0 or target == "" = collect producers wbs (idx + 1) acc fn_name
         | (lookup producer acc target) >= 0 = add prod err (ErrWhereCycle fn_name target) (collect producers wbs (idx + 1) acc fn_name)
         | otherwise = collect producers wbs (idx + 1) (acc :: [ProducerEntry target idx]) fn_name
 
@@ -462,7 +462,7 @@ fn :: are where nodes concurrent Int Int [RDagEdge] => Bool
 
 fn :: are disjoint slices String RWhereBind RWhereBind => Bool
       are disjoint slices var (WhereBind _ t1 (i1:_)) (WhereBind _ t2 (i2:_))
-        | t1 == var AND t2 == var AND i1 != i2 = True
+        | t1 == var and t2 == var and i1 != i2 = True
       are disjoint slices _ _ _ = False
 
 fn :: collect bind accesses RWhereBind [RFnSummary] => [String] [String]
@@ -482,7 +482,7 @@ fn :: extract reads and muts [String] ([String], Bool, RCostTier) => [String] [S
 fn :: check vars conflict [String] String RWhereBind RWhereBind [String] [String] [String] [String] => [RAnalysisError]
       check vars conflict [] _ _ _ _ _ _ _ = []
       check vars conflict (v:vs) fn_name b1 b2 r1 m1 r2 m2
-        | ((str in list v r1) OR (str in list v m1)) AND ((str in list v r2) OR (str in list v m2)) AND (NOT (are disjoint slices v b1 b2)) = [ErrParallelMutation fn_name v] :: (check vars conflict vs fn_name b1 b2 r1 m1 r2 m2)
+        | ((str in list v r1) or (str in list v m1)) and ((str in list v r2) or (str in list v m2)) and (not (are disjoint slices v b1 b2)) = [ErrParallelMutation fn_name v] :: (check vars conflict vs fn_name b1 b2 r1 m1 r2 m2)
         | otherwise = check vars conflict vs fn_name b1 b2 r1 m1 r2 m2
 
 fn :: check pair conflict String RWhereBind RWhereBind [RFnSummary] => [RAnalysisError]
@@ -553,7 +553,7 @@ fn :: merge moved errs [RAnalysisError] ([String], [RAnalysisError]) => [String]
 
 fn :: is channel send call String => Bool
       is channel send call callee =
-        callee == "send" OR callee == "send_to" OR callee == "send_through" OR callee == "chan_send"
+        callee == "send" or callee == "send_to" or callee == "send_through" or callee == "chan_send"
 
 fn :: mark sent expr vars RExpr [String] => [String]
       mark sent expr vars (EVar sent_var) moved = add unique str sent_var moved

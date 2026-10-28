@@ -63,9 +63,9 @@ fn :: is top decl start [RToken]        => Bool
       is top decl start (TokHardware:_) =  False
       is top decl start ((TokIdent "module"):TokColonColon:_) = True
       is top decl start (TokType:(TokIdent name):rest)
-        | (is upper ident name) AND (has type params then eq rest) = True
+        | (is upper ident name) and (has type params then eq rest) = True
       is top decl start ((TokIdent "expand"):TokType:(TokIdent name):rest)
-        | (is upper ident name) AND (has type params then eq rest) = True
+        | (is upper ident name) and (has type params then eq rest) = True
       is top decl start (TokType:_)     =  False
       is top decl start ts              =  is top keyword (tok head ts)
 
@@ -142,12 +142,12 @@ fn :: decode literal underscores String => String
 fn :: is upper ident String => Bool
       is upper ident s      =
         c = str char at s (ident base start s)
-        c >= 65 AND c <= 90
+        c >= 65 and c <= 90
 
 fn :: is lower ident String => Bool
       is lower ident s      =
         c = str char at s (ident base start s)
-        (c >= 97 AND c <= 122) OR c == 95 OR (str starts with s "||")
+        (c >= 97 and c <= 122) or c == 95 or (str starts with s "||")
 
 -- ── Subscript Extraction (A_ij -> ("A", "ij")) ──────────────
 
@@ -160,7 +160,7 @@ fn :: find underscore String Int Int => Int
 fn :: all lower ascii String Int Int => Bool
       all lower ascii s pos len
         | pos >= len = True
-        | (str char at s pos) >= 97 AND (str char at s pos) <= 122 = all lower ascii s (pos + 1) len
+        | (str char at s pos) >= 97 and (str char at s pos) <= 122 = all lower ascii s (pos + 1) len
         | otherwise = False
 
 fn :: all einstein idx chars String Int Int => Bool
@@ -292,7 +292,7 @@ fn :: parse type paren [RToken]         => String [RToken]
       parse type paren (TokFatArrow:rest) =
         merge type fn "()" (parse type tok rest)
       parse type paren ((TokIdent s):rest)
-        | (is lower ident s) AND (is paren lambda ([TokIdent s] :: rest) False) =
+        | (is lower ident s) and (is paren lambda ([TokIdent s] :: rest) False) =
           ("__err_lower_fn_type__", skip to rparen rest 0)
       parse type paren ts               =
         p1 = parse type tok ts
@@ -567,22 +567,22 @@ fn :: find matching rbrace String Int Int => Int
       find matching rbrace s pos len
         | pos >= len = -1
         | (str char at s pos) == 125 = pos
-        | (str char at s pos) == 10 OR (str char at s pos) == 59 OR (str char at s pos) == 34 = -1
+        | (str char at s pos) == 10 or (str char at s pos) == 59 or (str char at s pos) == 34 = -1
         | otherwise = find matching rbrace s (pos + 1) len
 
 fn :: has interp brace String Int Int => Bool
       has interp brace s pos len
         | pos >= len = False
-        | (str char at s pos) == 123 AND (str char at s (pos + 1)) == 123 = has interp brace s (pos + 2) len
-        | (str char at s pos) == 125 AND (str char at s (pos + 1)) == 125 = has interp brace s (pos + 2) len
-        | (str char at s pos) == 123 AND (find matching rbrace s (pos + 1) len) > (pos + 1) = True
+        | (str char at s pos) == 123 and (str char at s (pos + 1)) == 123 = has interp brace s (pos + 2) len
+        | (str char at s pos) == 125 and (str char at s (pos + 1)) == 125 = has interp brace s (pos + 2) len
+        | (str char at s pos) == 123 and (find matching rbrace s (pos + 1) len) > (pos + 1) = True
         | otherwise = has interp brace s (pos + 1) len
 
 fn :: unescape double braces String Int Int String => String
       unescape double braces s pos len acc
         | pos >= len = acc
-        | (str char at s pos) == 123 AND (str char at s (pos + 1)) == 123 = unescape double braces s (pos + 2) len (acc + (char from code 123))
-        | (str char at s pos) == 125 AND (str char at s (pos + 1)) == 125 = unescape double braces s (pos + 2) len (acc + (char from code 125))
+        | (str char at s pos) == 123 and (str char at s (pos + 1)) == 123 = unescape double braces s (pos + 2) len (acc + (char from code 123))
+        | (str char at s pos) == 125 and (str char at s (pos + 1)) == 125 = unescape double braces s (pos + 2) len (acc + (char from code 125))
         | otherwise = unescape double braces s (pos + 1) len (acc + (str slice s pos (pos + 1)))
 
 fn :: flush lit part String [RExpr] => [RExpr]
@@ -600,8 +600,8 @@ fn :: extract expr fst (RExpr, [RToken]) => RExpr
 fn :: split interp loop String Int Int String [RExpr] => [RExpr]
       split interp loop s pos len cur_lit parts
         | pos >= len = flush lit part cur_lit parts
-        | (str char at s pos) == 123 AND (str char at s (pos + 1)) == 123 = split interp loop s (pos + 2) len (cur_lit + (char from code 123)) parts
-        | (str char at s pos) == 125 AND (str char at s (pos + 1)) == 125 = split interp loop s (pos + 2) len (cur_lit + (char from code 125)) parts
+        | (str char at s pos) == 123 and (str char at s (pos + 1)) == 123 = split interp loop s (pos + 2) len (cur_lit + (char from code 123)) parts
+        | (str char at s pos) == 125 and (str char at s (pos + 1)) == 125 = split interp loop s (pos + 2) len (cur_lit + (char from code 125)) parts
         | (str char at s pos) == 123 = split interp at brace s pos len cur_lit parts (find matching rbrace s (pos + 1) len)
         | otherwise = split interp loop s (pos + 1) len (cur_lit + (str slice s pos (pos + 1))) parts
 
@@ -612,7 +612,7 @@ fn :: split interp at brace String Int Int String [RExpr] Int => [RExpr]
 
 fn :: build str expr String => RExpr
       build str expr s
-        | NOT ((str contains s (char from code 123)) OR (str contains s (char from code 125))) = EStr s
+        | not ((str contains s (char from code 123)) or (str contains s (char from code 125))) = EStr s
         | has interp brace s 0 (str len s) = EStrInterp (split interp loop s 0 (str len s) "" [])
         | otherwise = EStr (unescape double braces s 0 (str len s) "")
 
@@ -625,7 +625,7 @@ fn :: is atom tok RToken        => Bool
       is atom tok (TokRawStr _) =  True
       is atom tok TokTrue       =  True
       is atom tok TokFalse      =  True
-      is atom tok (TokIdent w)  =  w != "shl" AND w != "shr" AND w != "rotr" AND w != "rotl"
+      is atom tok (TokIdent w)  =  w != "shl" and w != "shr" and w != "rotr" and w != "rotl"
       is atom tok TokFn         =  True
       is atom tok TokOp         =  True
       is atom tok TokImport     =  True
@@ -641,7 +641,7 @@ fn :: is atom tok RToken        => Bool
 
 fn :: is with block start [RToken] => Bool
       is with block start (TokWith:(TokIdent s):_)
-        | s == "region" OR s == "timeout" = True
+        | s == "region" or s == "timeout" = True
       is with block start _        =  False
 
 fn :: is arrow tok [RToken]     => Bool
@@ -686,7 +686,7 @@ fn :: parse with region after Int [RToken] => RExpr [RToken]
 
 fn :: parse with timeout after (RExpr, [RToken]) => RExpr [RToken]
       parse with timeout after (dur_e, (TokComma:(TokIdent r_kw):(TokIdent l_kw):(TokInt quota):rest))
-        | r_kw == "region" AND l_kw == "limit" =
+        | r_kw == "region" and l_kw == "limit" =
           b_res = parse case body (skip opt dtok (skip newlines rest))
           wrap with ctx "__rg_timeout_ms__" dur_e (wrap with region quota b_res)
       parse with timeout after (dur_e, (TokComma:(TokIdent r_kw):(TokInt quota):rest))
@@ -698,7 +698,7 @@ fn :: parse with timeout after (RExpr, [RToken]) => RExpr [RToken]
 
 fn :: parse with expr [RToken] => RExpr [RToken]
       parse with expr (TokWith:(TokIdent r_kw):(TokIdent l_kw):(TokInt quota):rest)
-        | r_kw == "region" AND l_kw == "limit" = parse with region after quota rest
+        | r_kw == "region" and l_kw == "limit" = parse with region after quota rest
       parse with expr (TokWith:(TokIdent r_kw):(TokInt quota):rest)
         | r_kw == "region" = parse with region after quota rest
       parse with expr (TokWith:(TokIdent t_kw):rest)
@@ -810,7 +810,7 @@ fn :: make matmul or einsum RExpr RExpr => RExpr
       make matmul or einsum (EEinsum es subs) (EVar v2)
         | is subscript ident v2 = append einsum term es subs (split subscript v2)
       make matmul or einsum (EVar v1) (EVar v2)
-        | (is subscript ident v1) AND (is subscript ident v2) = build einsum pair (split subscript v1) (split subscript v2)
+        | (is subscript ident v1) and (is subscript ident v2) = build einsum pair (split subscript v1) (split subscript v2)
       make matmul or einsum left right = EBin OpMatMul left right
 
 fn :: append einsum term [RExpr] [String] (String, String) => RExpr
@@ -898,11 +898,11 @@ fn :: parse matmul combine RExpr (RExpr, [RToken]) => RExpr [RToken]
 fn :: is seq mask tokens [RToken] => Bool
       is seq mask tokens (TokLParen:TokPlus:_) = True
       is seq mask tokens (TokLParen:(TokIdent s):TokPlus:_)
-        | s == "_" OR s == "__" OR s == "___" = True
+        | s == "_" or s == "__" or s == "___" = True
       is seq mask tokens (TokLParen:(TokIdent s):(TokIdent _):_)
-        | s == "_" OR s == "__" OR s == "___" = True
+        | s == "_" or s == "__" or s == "___" = True
       is seq mask tokens (TokLParen:(TokIdent s):TokRParen:_)
-        | s == "_" OR s == "__" OR s == "___" = True
+        | s == "_" or s == "__" or s == "___" = True
       is seq mask tokens (TokLParen:(TokInt _):(TokInt _):_) = True
       is seq mask tokens _        =  False
 
@@ -1075,7 +1075,7 @@ fn :: parse atom base [RToken]           => RExpr [RToken]
 
 fn :: is lambda param ident String => Bool
       is lambda param ident "_" = True
-      is lambda param ident s = (is lower ident s) AND (NOT (str contains s "."))
+      is lambda param ident s = (is lower ident s) and (not (str contains s "."))
 
 fn :: scan lambda tuple params [RToken] [String] => Bool [String] [RToken]
       scan lambda tuple params (TokRParen:rest) acc = ((str list count acc) >= 2, acc, rest)
@@ -1409,7 +1409,7 @@ fn :: next line has guard [RToken] => Bool
 
 fn :: next line has guard clean [RToken] => Bool
       next line has guard clean ((TokIdent s):rest)
-        | (is stmt only starter s) OR (str contains s "_") = False
+        | (is stmt only starter s) or (str contains s "_") = False
         | otherwise = line followed by pipe rest
       next line has guard clean _ = False
 
@@ -1724,7 +1724,7 @@ fn :: parse block line ident String [RToken] => [RStmt] [RToken]
       parse block line ident name (TokIdxLBracket:rest)
         | line has equals rest = parse block idx assign name ([TokIdxLBracket] :: rest) (collect bracket indices ([TokIdxLBracket] :: rest) [])
       parse block line ident name rest
-        | (line has equals rest) OR (line has fat arrow rest) = ([], [TokIdent name] :: rest)
+        | (line has equals rest) or (line has fat arrow rest) = ([], [TokIdent name] :: rest)
         | otherwise = finish expr stmt (parse expr ([TokIdent name] :: rest))
 
 fn :: parse block idx assign String [RToken] ([RExpr], [RToken]) => [RStmt] [RToken]
@@ -1754,7 +1754,7 @@ fn :: finish dpipe stmt (RExpr, [RToken]) => [RStmt] [RToken]
 
 fn :: finish expr stmt (RExpr, [RToken]) => [RStmt] [RToken]
       finish expr stmt (e, rest)
-        | (NOT (is echo expr e)) AND (next line has guard rest) = ([StmtExpr e], rest)
+        | (not (is echo expr e)) and (next line has guard rest) = ([StmtExpr e], rest)
         | otherwise = prepend stmt (StmtExpr e) (parse block stmts safe rest)
 
 fn :: parse block stmts safe [RToken] => [RStmt] [RToken]
@@ -1789,7 +1789,7 @@ fn :: parse block safe dispatch [RToken]          => [RStmt] [RToken]
         | is with block start ([TokWith] :: rest) = finish expr stmt (parse expr ([TokWith] :: rest))
         | otherwise = parse block line ident "with" rest
       parse block safe dispatch ts
-        | (is top decl start ts) OR (line has fat arrow ts) = ([], ts)
+        | (is top decl start ts) or (line has fat arrow ts) = ([], ts)
         | otherwise = finish expr stmt (parse expr ts)
 
 fn :: prepend stmt RStmt ([RStmt], [RToken]) => [RStmt] [RToken]
@@ -1859,10 +1859,10 @@ fn :: parse fn cases check String [RToken] => [RFnCase] [RToken]
         | (encode literal underscores s) == fn_name = parse fn cases cont fn_name (parse fn case for fn_name ([TokIdent (encode literal underscores s)] :: rest))
         | otherwise = ([], [TokIdent s] :: rest)
       parse fn cases check "fn" (TokFn:rest)
-        | NOT (is top decl start ([TokFn] :: rest)) =
+        | not (is top decl start ([TokFn] :: rest)) =
           parse fn cases cont "fn" (parse fn case for "fn" ([TokIdent "fn"] :: rest))
       parse fn cases check "op" (TokOp:rest)
-        | NOT (is top decl start ([TokOp] :: rest)) =
+        | not (is top decl start ([TokOp] :: rest)) =
           parse fn cases cont "op" (parse fn case for "op" ([TokIdent "op"] :: rest))
       parse fn cases check "type" (TokType:rest) =
         parse fn cases cont "type" (parse fn case for "type" ([TokIdent "type"] :: rest))
@@ -1993,13 +1993,13 @@ fn :: try parse op template [Bool] [String] [RToken] [RPattern] => Bool [RPatter
       try parse op template (True:_) [] (TokEquals:rest) pats = (True, pats, [TokEquals] :: rest)
       try parse op template (True:_) [] (TokNewline:TokPipe:rest) pats = (True, pats, [TokNewline, TokPipe] :: rest)
       try parse op template (True:t_rest) (kw:kw_rest) (tok:ts_rest) pats
-        | (pat list count pats) > 0 AND (tok head ts_rest) != TokColonColon AND (match op keyword tok kw) =
+        | (pat list count pats) > 0 and (tok head ts_rest) != TokColonColon and (match op keyword tok kw) =
           try parse op template (skip true slots t_rest) kw_rest ts_rest pats
       try parse op template (True:t_rest) kws ts pats
         | is top decl start ts = (False, [], ts)
         | otherwise = try parse op pat t_rest kws pats (parse pattern ts)
       try parse op template (False:t_rest) (kw:kw_rest) (tok:ts_rest) pats
-        | (tok head ts_rest) != TokColonColon AND (match op keyword tok kw) = try parse op template t_rest kw_rest ts_rest pats
+        | (tok head ts_rest) != TokColonColon and (match op keyword tok kw) = try parse op template t_rest kw_rest ts_rest pats
         | otherwise = (False, [], [tok] :: ts_rest)
       try parse op template _ _ ts _ = (False, [], ts)
 
@@ -2167,7 +2167,7 @@ fn :: strip optional colon [RToken]        => [RToken]
 
 fn :: parse field type more (String, [RToken]) Bool => String [RToken]
       parse field type more (acc, ((TokIdent s):rest)) is_app
-        | (is upper ident s) AND (tok head rest) != TokColon =
+        | (is upper ident s) and (tok head rest) != TokColon =
           t2 = parse type tok ([TokIdent s] :: rest)
           parse field type step acc t2
         | otherwise = finish return types acc ([TokIdent s] :: rest) is_app
@@ -2295,13 +2295,13 @@ fn :: lookup var arity [RArityEntry] String => Int
 fn :: lookup arity [RArityEntry] String => Int
       lookup arity []            _      =  -1
       lookup arity ((ArityEntry k v):rest) target
-        | v >= 0 AND k == target = v
+        | v >= 0 and k == target = v
         | otherwise = lookup arity rest target
 
 fn :: has arity prefix loop [RArityEntry] String Int => Bool
       has arity prefix loop [] _ _ = False
       has arity prefix loop ((ArityEntry k v):rest) pref plen
-        | v >= 0 AND (str starts with k pref) AND ((str len k) == plen OR (str char at k plen) == 95) = True
+        | v >= 0 and (str starts with k pref) and ((str len k) == plen or (str char at k plen) == 95) = True
         | otherwise = has arity prefix loop rest pref plen
 
 fn :: has arity prefix [RArityEntry] String => Bool
@@ -2311,7 +2311,7 @@ fn :: has arity prefix [RArityEntry] String => Bool
 fn :: filter arity prefix loop [RArityEntry] String Int => [RArityEntry]
       filter arity prefix loop [] _ _ = []
       filter arity prefix loop ((ArityEntry k v):rest) pref plen
-        | v >= 0 AND (str starts with k pref) AND ((str len k) == plen OR (str char at k plen) == 95) = [ArityEntry k v] :: (filter arity prefix loop rest pref plen)
+        | v >= 0 and (str starts with k pref) and ((str len k) == plen or (str char at k plen) == 95) = [ArityEntry k v] :: (filter arity prefix loop rest pref plen)
         | otherwise = filter arity prefix loop rest pref plen
 
 fn :: has variadic param [String] => Bool
@@ -2327,7 +2327,7 @@ fn def arity params
 
 fn :: arity matches Int Int    => Bool
       arity matches 999 actual =  actual >= 1
-      arity matches ar  actual =  ar >= 0 AND ar == actual
+      arity matches ar  actual =  ar >= 0 and ar == actual
 
 fn :: builtin arity entries => [RArityEntry]
       builtin arity entries =
@@ -2390,7 +2390,7 @@ fn :: fold echo args [RExpr]  [RArityEntry] => [RExpr]
 
 fn :: fold echo var String Int [RExpr] [RArityEntry] => [RExpr]
       fold echo var fn_name ar rest arities
-        | ar > 0 AND (expr list count rest) >= ar = [ECall fn_name (norm expr list (take exprs rest ar) arities)] :: (fold echo args (drop exprs rest ar) arities)
+        | ar > 0 and (expr list count rest) >= ar = [ECall fn_name (norm expr list (take exprs rest ar) arities)] :: (fold echo args (drop exprs rest ar) arities)
         | ar == 0 = [ECall fn_name []] :: (fold echo args rest arities)
         | otherwise = [EVar fn_name] :: (fold echo args rest arities)
 
@@ -2414,7 +2414,7 @@ fn :: can complete op [RArityEntry] String [RExpr] => Bool
 
 fn :: extract mixfix start String [RExpr] [RArityEntry] [RArityEntry] [RExpr] => String [RExpr]
       extract mixfix start w rest arities w_cands operands
-        | (NOT (str starts with w "__lambda_")) AND (NOT ((is std builtin w) AND (expr list count operands) > 0)) AND (has arity prefix w_cands w) AND (can complete op w_cands w rest) = extract mixfix call w rest w_cands operands
+        | (not (str starts with w "__lambda_")) and (not ((is std builtin w) and (expr list count operands) > 0)) and (has arity prefix w_cands w) and (can complete op w_cands w rest) = extract mixfix call w rest w_cands operands
         | otherwise = extract mixfix call "" rest arities (operands :: [EVar w])
 
 fn :: extract mixfix call String [RExpr] [RArityEntry] [RExpr] => String [RExpr]
@@ -2423,7 +2423,7 @@ fn :: extract mixfix call String [RExpr] [RArityEntry] [RExpr] => String [RExpr]
         w_cands = filter arity prefix loop arities w (str len w)
         extract mixfix start w rest arities w_cands operands
       extract mixfix call cur_name ((EVar w):rest) arities operands
-        | (NOT ((is std builtin cur_name) AND (expr list count operands) > 0)) AND (has arity prefix arities (join op word cur_name w)) AND (can complete op arities (join op word cur_name w) rest) = extract mixfix call (join op word cur_name w) rest arities operands
+        | (not ((is std builtin cur_name) and (expr list count operands) > 0)) and (has arity prefix arities (join op word cur_name w)) and (can complete op arities (join op word cur_name w) rest) = extract mixfix call (join op word cur_name w) rest arities operands
         | otherwise = extract mixfix call cur_name rest arities (operands :: [EVar w])
       extract mixfix call cur_name (arg:rest) arities operands =
         extract mixfix call cur_name rest arities (operands :: [arg])
@@ -2431,7 +2431,7 @@ fn :: extract mixfix call String [RExpr] [RArityEntry] [RExpr] => String [RExpr]
 fn :: reduce postfix spine [RExpr] [RArityEntry] [RExpr] => [RExpr]
       reduce postfix spine [] _ stack = stack
       reduce postfix spine ((EVar w):rest) arities stack
-        | (lookup arity arities w) > 0 AND (expr list count stack) > 0 = reduce postfix spine rest arities [ECall w stack]
+        | (lookup arity arities w) > 0 and (expr list count stack) > 0 = reduce postfix spine rest arities [ECall w stack]
         | otherwise = reduce postfix spine rest arities (stack :: [EVar w])
       reduce postfix spine (item:rest) arities stack =
         reduce postfix spine rest arities (stack :: [item])
@@ -2603,7 +2603,7 @@ fn :: maybe collapse args [RExpr] Int [RArityEntry] => [RExpr]
 
 fn :: has longer arity prefix [RArityEntry] String [RExpr] => Bool
       has longer arity prefix arities fn_name ((EVar w):rest)
-        | (is upper ident fn_name) OR (is upper ident w) = False
+        | (is upper ident fn_name) or (is upper ident w) = False
         | otherwise = (has arity prefix arities (fn_name + "_" + w)) and (can complete op arities (fn_name + "_" + w) rest)
       has longer arity prefix _ _ _ = False
 
@@ -2671,9 +2671,9 @@ fn :: norm map call String [RExpr] [RArityEntry] => RExpr
 
 fn :: is fn arg RExpr [RArityEntry] => Bool
       is fn arg (ECall fn_name _) _ =
-        (fn_name == "__lambda__") OR (str starts with fn_name "__lambda_")
+        (fn_name == "__lambda__") or (str starts with fn_name "__lambda_")
       is fn arg (EVar v) arities =
-        ((lookup arity arities v) > 0) OR (str starts with v "__lambda_")
+        ((lookup arity arities v) > 0) or (str starts with v "__lambda_")
       is fn arg _ _ = False
 
 fn :: norm fold call [RExpr] [RArityEntry] => RExpr
@@ -2696,7 +2696,7 @@ fn :: take one fn ref [RExpr] [RArityEntry] => RExpr [RExpr]
 
 fn :: consume op words String [RExpr] [RArityEntry] => String [RExpr]
       consume op words cur ((EVar w):rest) arities
-        | (NOT (str starts with w "__lambda_")) AND (has arity prefix arities (cur + "_" + w)) AND (can complete op arities (cur + "_" + w) rest) =
+        | (not (str starts with w "__lambda_")) and (has arity prefix arities (cur + "_" + w)) and (can complete op arities (cur + "_" + w) rest) =
           consume op words (cur + "_" + w) rest arities
       consume op words cur rest _ = (cur, rest)
 
@@ -2776,7 +2776,7 @@ fn :: reduce infix op dispatch RExpr String [RExpr] [RArityEntry] String [RExpr]
       reduce infix op dispatch acc _ _ _ mangled [] ar _
         | ar >= 1 = (True, ECall mangled [acc])
       reduce infix op dispatch acc _ _ w_cands mangled after_words ar arities
-        | ar >= 1 AND (NOT (has longer arity prefix w_cands mangled after_words)) =
+        | ar >= 1 and (not (has longer arity prefix w_cands mangled after_words)) =
           c_after = maybe collapse args after_words (ar - 1) arities
           reduce infix op take acc mangled c_after (ar - 1) arities
       reduce infix op dispatch acc w orig_rest w_cands _ _ _ arities =
@@ -2802,9 +2802,9 @@ fn :: reduce infix try op RExpr String [RExpr] [RArityEntry] [RArityEntry] => Bo
 fn :: reduce infix steps RExpr [RExpr] [RArityEntry] => Bool RExpr
       reduce infix steps acc [] _ = (True, acc)
       reduce infix steps acc ((EVar w):rest) arities
-        | w == "map" OR w == "||map" =
+        | w == "map" or w == "||map" =
           reduce infix map step acc w (take one fn ref rest arities) arities
-        | w == "filter" OR w == "||filter" =
+        | w == "filter" or w == "||filter" =
           reduce infix filter step acc w (take one fn ref rest arities) arities
         | w == "fold" =
           reduce infix fold step acc (take one fn ref rest arities) arities
@@ -2812,7 +2812,7 @@ fn :: reduce infix steps RExpr [RExpr] [RArityEntry] => Bool RExpr
           (True, finish send to norm "send" ([acc] :: rest) arities (split send to args ([acc] :: rest) []))
         | w == "ask" =
           (True, norm pipe ask acc rest arities (split send to args ([acc] :: rest) []))
-        | NOT (str starts with w "__lambda_") =
+        | not (str starts with w "__lambda_") =
           reduce infix try op acc w rest (filter arity prefix loop arities w (str len w)) arities
         | otherwise = (False, EUnit)
       reduce infix steps _ _ _ = (False, EUnit)
@@ -2834,7 +2834,7 @@ fn :: norm pipe step RExpr RExpr [RArityEntry] => RExpr
           EEcho (fold echo args (collapse fn ref args (args :: [left_e]) arities) arities)
       norm pipe step left_e (EVar fn_name) arities
         | is upper ident fn_name = ECall fn_name [norm expr left_e arities]
-        | ((lookup arity arities fn_name) >= 1) OR (is std builtin fn_name) OR ((lookup arity arities fn_name) == (0 - 2)) =
+        | ((lookup arity arities fn_name) >= 1) or (is std builtin fn_name) or ((lookup arity arities fn_name) == (0 - 2)) =
           ECall fn_name [norm expr left_e arities]
         | otherwise =
           EBlock [StmtLet fn_name (norm expr left_e arities)]
@@ -2992,13 +2992,13 @@ fn :: norm expr RExpr              [RArityEntry] => RExpr
         | (lookup arity arities (name + "_out")) == 0 = ECall (name + "_out") []
       norm expr (EOut inner)       arities       =  EOut (norm expr inner arities)
       norm expr (EBin OpAnd (EVar fn_name) r) arities
-        | (lookup arity arities fn_name) < 0 AND (can absorb mixfix conj fn_name [] "and" r arities) = norm call fn_name ([EVar "and"] :: (flatten mixfix rhs r arities)) arities
+        | (lookup arity arities fn_name) < 0 and (can absorb mixfix conj fn_name [] "and" r arities) = norm call fn_name ([EVar "and"] :: (flatten mixfix rhs r arities)) arities
       norm expr (EBin OpAnd (ECall fn_name args) r) arities
-        | (lookup arity arities fn_name) < 0 AND (can absorb mixfix conj fn_name args "and" r arities) = norm call fn_name (args :: [EVar "and"] :: (flatten mixfix rhs r arities)) arities
+        | (lookup arity arities fn_name) < 0 and (can absorb mixfix conj fn_name args "and" r arities) = norm call fn_name (args :: [EVar "and"] :: (flatten mixfix rhs r arities)) arities
       norm expr (EBin OpOr (EVar fn_name) r) arities
-        | (lookup arity arities fn_name) < 0 AND (can absorb mixfix conj fn_name [] "or" r arities) = norm call fn_name ([EVar "or"] :: (flatten mixfix rhs r arities)) arities
+        | (lookup arity arities fn_name) < 0 and (can absorb mixfix conj fn_name [] "or" r arities) = norm call fn_name ([EVar "or"] :: (flatten mixfix rhs r arities)) arities
       norm expr (EBin OpOr (ECall fn_name args) r) arities
-        | (lookup arity arities fn_name) < 0 AND (can absorb mixfix conj fn_name args "or" r arities) = norm call fn_name (args :: [EVar "or"] :: (flatten mixfix rhs r arities)) arities
+        | (lookup arity arities fn_name) < 0 and (can absorb mixfix conj fn_name args "or" r arities) = norm call fn_name (args :: [EVar "or"] :: (flatten mixfix rhs r arities)) arities
       norm expr (EBin bop l r)     arities       =  EBin bop (norm expr l arities) (norm expr r arities)
       norm expr (ECall fn_name args) arities     =  norm call fn_name args arities
       norm expr (EEcho args)       arities       =  EEcho (fold echo args (collapse fn ref args args arities) arities)
@@ -3043,7 +3043,7 @@ fn :: bind where local arities [RWhereBind] [RArityEntry] => [RArityEntry]
 
 fn :: is pipe var target String [RArityEntry] => Bool
       is pipe var target v arities =
-        (v != "echo") AND (NOT (is upper ident v)) AND (NOT (is std builtin v)) AND ((lookup arity arities v) <= 0)
+        (v != "echo") and (not (is upper ident v)) and (not (is std builtin v)) and ((lookup arity arities v) <= 0)
 
 fn :: norm stmt list [RStmt]            [RArityEntry] => [RStmt]
       norm stmt list []                 _             =  []
@@ -3117,7 +3117,7 @@ fn :: prepend str expr String ([String], RExpr) => [String] RExpr
 
 fn :: collect expr free locals RExpr [String] [String] [String] => [String]
       collect expr free locals (EVar v) outer_locals shadowed acc
-        | (str in seen list v outer_locals) AND (NOT (str in seen list v shadowed)) AND (NOT (str in seen list v acc)) = acc :: [v]
+        | (str in seen list v outer_locals) and (not (str in seen list v shadowed)) and (not (str in seen list v acc)) = acc :: [v]
         | otherwise = acc
       collect expr free locals (ENot e) outer_locals shadowed acc =
         collect expr free locals e outer_locals shadowed acc
@@ -3506,7 +3506,7 @@ fn :: lift fndef step String [String] String ([RFnCase], Int, [RFnDef]) [RFnDef]
 
 fn :: strip ty brackets String => String
       strip ty brackets s
-        | (str len s) >= 2 AND (str starts with s "[") = strip ty brackets (str slice s 1 ((str len s) - 1))
+        | (str len s) >= 2 and (str starts with s "[") = strip ty brackets (str slice s 1 ((str len s) - 1))
         | otherwise = s
 
 fn :: collect poly vars in str String [String] => [String]
@@ -3516,7 +3516,7 @@ fn :: collect poly vars in str String [String] => [String]
 
 fn :: collect poly var base String [String] => [String]
       collect poly var base b acc
-        | (str len b) == 1 AND (is upper ident b) AND (NOT (str in seen list b acc)) = acc :: [b]
+        | (str len b) == 1 and (is upper ident b) and (not (str in seen list b acc)) = acc :: [b]
         | otherwise = acc
 
 fn :: collect poly vars in strs [String] [String] => [String]
@@ -3572,7 +3572,7 @@ fn :: collapse poly param list [String] Int [RArityEntry] => [String]
 
 fn :: collapse poly param step String [String] Int Int [RArityEntry] => [String]
       collapse poly param step p ps k target_arity poly_arities
-        | k > 0 AND (str list count ps) >= k =
+        | k > 0 and (str list count ps) >= k =
           app_s = "(" + p + ", " + (join comma ty strs (take ty strs ps k)) + ")"
           [app_s] :: (collapse poly param list (drop ty strs ps k) (target_arity - 1) poly_arities)
         | otherwise =
@@ -3637,14 +3637,14 @@ fn :: try read candidate step String [String] => String
 
 fn :: rglib dir of String Int Int Int => String
       rglib dir of fpath pos len last_slash
-        | pos >= len AND last_slash < 0 = "."
+        | pos >= len and last_slash < 0 = "."
         | pos >= len = str slice fpath 0 last_slash
         | (str char at fpath pos) == 47 = rglib dir of fpath (pos + 1) len pos
         | otherwise = rglib dir of fpath (pos + 1) len last_slash
 
 fn :: strip quotes len String Int => String
       strip quotes len s      n
-        | n >= 2 AND ((str char at s 0) == 34 OR (str char at s 0) == 39) = str slice s 1 (n - 1)
+        | n >= 2 and ((str char at s 0) == 34 or (str char at s 0) == 39) = str slice s 1 (n - 1)
         | otherwise = s
 
 fn :: strip quotes String => String
@@ -3658,7 +3658,7 @@ fn :: dots to slashes loop String Int Int String => String
 
 fn :: norm spec path String => String
       norm spec path spec
-        | (str contains spec ".rglib") OR (str contains spec ".rg") = spec
+        | (str contains spec ".rglib") or (str contains spec ".rg") = spec
         | str contains spec "." = dots to slashes loop spec 0 (str len spec) ""
         | otherwise = spec
 
@@ -3695,14 +3695,19 @@ fn :: all deps base paths [String] String => [String]
         | otherwise =
           [base + "/" + spec + ".rglib", base + "/" + spec + ".rg"] :: (dep subdir paths base (list dir base) spec) :: (all deps base paths bs spec)
 
+fn :: stdlib deps bases String => [String]
+      stdlib deps bases pdir =
+        home_dir = sys getenv "HOME"
+        [".stable/deps", pdir + "/.stable/deps", pdir + "/../.stable/deps", pdir + "/../../.stable/deps", pdir + "/../../../.stable/deps", pdir + "/../../../../.stable/deps", home_dir + "/.local/lib/ridgun", home_dir + "/.stable/deps", "/home/boogie/ridgun/ridgun/.stable/deps"]
+
 fn :: resolve rglib bundle raw String String => String
       resolve rglib bundle raw pdir spec
         | is core compiler mod spec = ""
         | str contains spec ".rglib" =
-          dep_paths = all deps base paths [".stable/deps", pdir + "/.stable/deps", pdir + "/../.stable/deps", pdir + "/../../.stable/deps", pdir + "/../../../.stable/deps", pdir + "/../../../../.stable/deps"] spec
+          dep_paths = all deps base paths (stdlib deps bases pdir) spec
           try read candidate paths ([spec, pdir + "/" + spec, "target/bundles/" + spec, "build/" + spec, "target/" + spec, "dist/" + spec, "lib/" + spec] :: dep_paths)
         | otherwise =
-          dep_paths = all deps base paths [".stable/deps", pdir + "/.stable/deps", pdir + "/../.stable/deps", pdir + "/../../.stable/deps", pdir + "/../../../.stable/deps", pdir + "/../../../../.stable/deps"] spec
+          dep_paths = all deps base paths (stdlib deps bases pdir) spec
           try read candidate paths (dep_paths :: ["target/bundles/" + spec + ".rglib", "build/" + spec + ".rglib", pdir + "/" + spec + ".rglib", pdir + "/lib/" + spec + ".rglib", spec + ".rglib", "target/" + spec + ".rglib", "dist/" + spec + ".rglib", "lib/" + spec + ".rglib", "src/main/ridgun/lib/" + spec + ".rglib"])
 
 fn :: resolve rglib bundle fallback String String String => String
@@ -3724,13 +3729,13 @@ fn :: resolve rglib clean String String => String
 fn :: rglib trim lead String Int Int => String
       rglib trim lead s pos len
         | pos >= len = ""
-        | (str char at s pos) == 32 OR (str char at s pos) == 9 OR (str char at s pos) == 13 = rglib trim lead s (pos + 1) len
+        | (str char at s pos) == 32 or (str char at s pos) == 9 or (str char at s pos) == 13 = rglib trim lead s (pos + 1) len
         | otherwise = str slice s pos len
 
 fn :: rglib trim trail String Int     => String
       rglib trim trail s      end_pos
         | end_pos <= 0 = ""
-        | (str char at s (end_pos - 1)) == 32 OR (str char at s (end_pos - 1)) == 9 OR (str char at s (end_pos - 1)) == 13 = rglib trim trail s (end_pos - 1)
+        | (str char at s (end_pos - 1)) == 32 or (str char at s (end_pos - 1)) == 9 or (str char at s (end_pos - 1)) == 13 = rglib trim trail s (end_pos - 1)
         | otherwise = str slice s 0 end_pos
 
 fn :: rglib trim String => String
@@ -3741,7 +3746,7 @@ fn :: rglib trim String => String
 fn :: strip inline comment loop String Int Int => String
       strip inline comment loop s pos len
         | pos >= len = s
-        | (pos + 1) < len AND (str char at s pos) == 45 AND (str char at s (pos + 1)) == 45 = str slice s 0 pos
+        | (pos + 1) < len and (str char at s pos) == 45 and (str char at s (pos + 1)) == 45 = str slice s 0 pos
         | otherwise = strip inline comment loop s (pos + 1) len
 
 fn :: find import as kw String Int Int => Int
@@ -3772,8 +3777,8 @@ fn :: last slash idx String Int Int Int => Int
 
 fn :: strip mod ext String => String
       strip mod ext s
-        | (str len s) > 6 AND (str slice s ((str len s) - 6) (str len s)) == ".rglib" = str slice s 0 ((str len s) - 6)
-        | (str len s) > 3 AND (str slice s ((str len s) - 3) (str len s)) == ".rg" = str slice s 0 ((str len s) - 3)
+        | (str len s) > 6 and (str slice s ((str len s) - 6) (str len s)) == ".rglib" = str slice s 0 ((str len s) - 6)
+        | (str len s) > 3 and (str slice s ((str len s) - 3) (str len s)) == ".rg" = str slice s 0 ((str len s) - 3)
         | otherwise = s
 
 fn :: mod name after slash String Int => String
@@ -3861,7 +3866,7 @@ fn :: append rglib local or ext String String String String [String] => String [
 
 fn :: append rglib if unseen String String String [String] => String [String]
       append rglib if unseen pdir clean_spec acc seen
-        | (is core compiler mod clean_spec) OR (str in seen list clean_spec seen) = (acc, seen)
+        | (is core compiler mod clean_spec) or (str in seen list clean_spec seen) = (acc, seen)
         | has same dir rglib pdir clean_spec =
           seen1 = [clean_spec] :: seen
           append rglib resolved mod pdir clean_spec (resolve rglib bundle pdir clean_spec) acc seen1
@@ -3876,18 +3881,18 @@ fn :: fst str seen (String, [String]) => String
 fn :: skip line spaces String Int Int => Int
       skip line spaces s p end_p
         | p >= end_p = p
-        | (str char at s p) == 32 OR (str char at s p) == 9 = skip line spaces s (p + 1) end_p
+        | (str char at s p) == 32 or (str char at s p) == 9 = skip line spaces s (p + 1) end_p
         | otherwise = p
 
 fn :: line starts with import String Int Int => Bool
       line starts with import s start end_p =
         p = skip line spaces s start end_p
-        (end_p - p) > 7 AND (str char at s p) == 105 AND (str char at s (p + 1)) == 109 AND (str char at s (p + 2)) == 112 AND (str char at s (p + 3)) == 111 AND (str char at s (p + 4)) == 114 AND (str char at s (p + 5)) == 116 AND (str char at s (p + 6)) == 32
+        (end_p - p) > 7 and (str char at s p) == 105 and (str char at s (p + 1)) == 109 and (str char at s (p + 2)) == 112 and (str char at s (p + 3)) == 111 and (str char at s (p + 4)) == 114 and (str char at s (p + 5)) == 116 and (str char at s (p + 6)) == 32
 
 fn :: line starts with module String Int Int => Bool
       line starts with module s start end_p =
         p = skip line spaces s start end_p
-        (end_p - p) > 9 AND (str char at s p) == 109 AND (str char at s (p + 1)) == 111 AND (str char at s (p + 2)) == 100 AND (str char at s (p + 3)) == 117 AND (str char at s (p + 4)) == 108 AND (str char at s (p + 5)) == 101 AND (str char at s (p + 6)) == 32
+        (end_p - p) > 9 and (str char at s p) == 109 and (str char at s (p + 1)) == 111 and (str char at s (p + 2)) == 100 and (str char at s (p + 3)) == 117 and (str char at s (p + 4)) == 108 and (str char at s (p + 5)) == 101 and (str char at s (p + 6)) == 32
 
 fn :: extract line mod after String => String
       extract line mod after line
@@ -3896,7 +3901,7 @@ fn :: extract line mod after String => String
 
 fn :: extract line module name String Int Int => String
       extract line module name s start end_p
-        | NOT (line starts with module s start end_p) = ""
+        | not (line starts with module s start end_p) = ""
         | otherwise = extract line mod after (rglib trim (str slice s start end_p))
 
 fn :: add inline mod seen String [String] => [String]
@@ -3987,16 +3992,16 @@ fn :: scan own rg lines cont String String Int Int (String, [String]) => String 
 
 fn :: scan own rg lines String String Int Int Int Int String [String] => String [String]
       scan own rg lines pdir s pos len line_start chunk_start acc seen
-        | pos >= len AND line_start >= len =
+        | pos >= len and line_start >= len =
           (acc + (str slice s chunk_start len), seen)
-        | pos >= len AND (line starts with import s line_start len) =
+        | pos >= len and (line starts with import s line_start len) =
           before = acc + (str slice s chunk_start line_start)
           line = rglib trim (str slice s line_start len)
           raw_spec = str slice line 7 (str len line)
           append own rg import pair pdir s (parse import spec line raw_spec) before seen
         | pos >= len =
           (acc + (str slice s chunk_start len), seen)
-        | (str char at s pos) == 10 AND (line starts with import s line_start pos) =
+        | (str char at s pos) == 10 and (line starts with import s line_start pos) =
           before = acc + (str slice s chunk_start line_start)
           line = rglib trim (str slice s line_start pos)
           raw_spec = str slice line 7 (str len line)
@@ -4067,7 +4072,7 @@ fn :: set explicit mod String [String] => [String]
 fn :: has alias pair [RModAlias] String String => Bool
       has alias pair [] _ _ = False
       has alias pair ((ModAlias k v):rest) tk tv
-        | k == tk AND v == tv = True
+        | k == tk and v == tv = True
         | otherwise = has alias pair rest tk tv
 
 fn :: add alias unique String String [RModAlias] => [RModAlias]
@@ -4091,7 +4096,7 @@ fn :: add mod import step String String [RModAlias] => [RModAlias]
 
 fn :: add mod rename String String [RModAlias] => [RModAlias]
       add mod rename m1 m2 aliases
-        | m1 == "" OR m2 == "" OR m1 == m2 = aliases
+        | m1 == "" or m2 == "" or m1 == m2 = aliases
         | otherwise =
           a1 = add alias unique ("__ren__:" + m1) m2 aliases
           add alias unique ("__ren__:" + m2) m1 a1
@@ -4099,7 +4104,7 @@ fn :: add mod rename String String [RModAlias] => [RModAlias]
 fn :: record enter rename [String] String [RModAlias] => [RModAlias]
       record enter rename [] _ aliases = aliases
       record enter rename (top_m:_) new_mod aliases
-        | (str starts with top_m ":") AND (new_mod != "") =
+        | (str starts with top_m ":") and (new_mod != "") =
           add mod rename (strip enter colon top_m) new_mod aliases
         | otherwise = aliases
 
@@ -4109,7 +4114,7 @@ fn :: has any str [String] => Bool
 
 fn :: record exit import Bool [String] String String [RModAlias] => [RModAlias]
       record exit import in_lib rest_stack parent_mod child_mod aliases
-        | ((NOT in_lib) OR (has any str rest_stack)) AND (child_mod != "") =
+        | ((not in_lib) or (has any str rest_stack)) and (child_mod != "") =
           add mod import parent_mod child_mod aliases
         | otherwise = aliases
 
@@ -4150,7 +4155,7 @@ fn :: lookup str map [RModAlias] String => String
 
 fn :: expand mod alias String String [RModAlias] => String
       expand mod alias s cur_mod aliases
-        | NOT (str contains s ".") = s
+        | not (str contains s ".") = s
         | otherwise =
           pfx = ident first prefix s
           rest = ident after first dot s
@@ -4165,7 +4170,7 @@ fn :: expand mod alias step String String String => String
 
 fn :: is single variant alias RTypeDef [RScopedType] => Bool
       is single variant alias (TypeDef _ ((TypeVariant vname []):[]) []) s_tys =
-        (str contains vname ".") OR (scoped types have name s_tys vname)
+        (str contains vname ".") or (scoped types have name s_tys vname)
       is single variant alias _ _ = False
 
 fn :: scoped types have name [RScopedType] String => Bool
@@ -4180,7 +4185,7 @@ fn :: has any scoped mod [RScopedFn] [RScopedType] [RModAlias] => Bool
         | m != "" = True
         | otherwise = has any scoped mod fs tys aliases
       has any scoped mod [] ((ScopedType m _ tdef):ts) aliases
-        | m != "" OR (is single variant alias tdef ts) = True
+        | m != "" or (is single variant alias tdef ts) = True
         | otherwise = has any scoped mod [] ts aliases
       has any scoped mod [] [] [] = False
 
@@ -4286,7 +4291,7 @@ fn :: lookup in mod scope tier2 String String [String] [RModAlias] [RModAlias] S
 
 fn :: key has base ident String String => Bool
       key has base ident k base =
-        (str contains k ".") AND ((ident base name k) == base)
+        (str contains k ".") and ((ident base name k) == base)
 
 fn :: map has base ident [RModAlias] String => Bool
       map has base ident [] _ = False
@@ -4297,7 +4302,7 @@ fn :: map has base ident [RModAlias] String => Bool
 fn :: other scoped type has name [RScopedType] String String => Bool
       other scoped type has name [] _ _ = False
       other scoped type has name ((ScopedType m2 False (TypeDef tname2 _ _)):ts) m1 target
-        | tname2 == target AND m2 != m1 = True
+        | tname2 == target and m2 != m1 = True
         | otherwise = other scoped type has name ts m1 target
       other scoped type has name (_:ts) m1 target =
         other scoped type has name ts m1 target
@@ -4320,7 +4325,7 @@ fn :: fields have name [RField] String => Bool
 fn :: other mod has field [RScopedType] String String => Bool
       other mod has field [] _ _ = False
       other mod has field ((ScopedType m2 _ (TypeDef _ _ fs)):ts) m1 target
-        | m2 != m1 AND (fields have name fs target) = True
+        | m2 != m1 and (fields have name fs target) = True
         | otherwise = other mod has field ts m1 target
 
 fn :: collect fields collided from list [RField] String [RScopedType] [String] => [String]
@@ -4339,7 +4344,7 @@ fn :: collect collided fields [RScopedType] [RScopedType] [String] => [String]
 fn :: other mod has fn [RScopedFn] String String => Bool
       other mod has fn [] _ _ = False
       other mod has fn ((ScopedFn m2 _ (FnDef fname2 _ _ _)):fs) m1 target
-        | fname2 == target AND m2 != m1 = True
+        | fname2 == target and m2 != m1 = True
         | otherwise = other mod has fn fs m1 target
 
 fn :: is special top fn String => Bool
@@ -4351,7 +4356,7 @@ fn :: is special top fn String => Bool
 fn :: collect collided fns [RScopedFn] [RScopedFn] [String] => [String]
       collect collided fns [] _ acc = acc
       collect collided fns ((ScopedFn m _ (FnDef fname _ _ _)):fs) _ acc
-        | (NOT (is special top fn fname)) AND (NOT (str in seen list fname acc)) AND (other mod has fn fs m fname) =
+        | (not (is special top fn fname)) and (not (str in seen list fname acc)) and (other mod has fn fs m fname) =
           collect collided fns fs fs (add unique seen fname acc)
         | otherwise = collect collided fns fs fs acc
 
@@ -4365,14 +4370,14 @@ fn :: other mod has ctor [RScopedType] String String => Bool
       other mod has ctor [] _ _ = False
       other mod has ctor ((ScopedType _ True _):ts) m1 target = other mod has ctor ts m1 target
       other mod has ctor ((ScopedType m2 False (TypeDef _ vs _)):ts) m1 target
-        | m2 != m1 AND (variants have ctor vs target) = True
+        | m2 != m1 and (variants have ctor vs target) = True
         | otherwise = other mod has ctor ts m1 target
 
 fn :: count ctor in mod [RScopedType] String String => Int
       count ctor in mod [] _ _ = 0
       count ctor in mod ((ScopedType _ True _):ts) m target = count ctor in mod ts m target
       count ctor in mod ((ScopedType m2 False (TypeDef _ vs _)):ts) m target
-        | m2 == m AND (variants have ctor vs target) = 1 + (count ctor in mod ts m target)
+        | m2 == m and (variants have ctor vs target) = 1 + (count ctor in mod ts m target)
         | otherwise = count ctor in mod ts m target
 
 fn :: collect ctors collided from vars String [RVariant] [RScopedType] [String] => [String]
@@ -4489,7 +4494,7 @@ fn :: build fn map [RScopedFn] [String] => [RModAlias]
 
 fn :: is type ident char Int => Bool
       is type ident char c =
-        (c >= 65 AND c <= 90) OR (c >= 97 AND c <= 122) OR (c >= 48 AND c <= 57) OR c == 95 OR c == 46
+        (c >= 65 and c <= 90) or (c >= 97 and c <= 122) or (c >= 48 and c <= 57) or c == 95 or c == 46
 
 fn :: scan type ident end String Int Int => Int
       scan type ident end s pos len
@@ -4501,12 +4506,12 @@ fn :: is builtin or poly type String => Bool
       is builtin or poly type s
         | (str len s) == 1 = True
         | is prim type ctor s = True
-        | s == "Unit" OR s == "Actor" OR s == "Agent" OR s == "Tensor" OR s == "Tensor_GPU" OR s == "Option" OR s == "Byte" OR s == "Ptr" OR s == "Channel" OR s == "Fd" OR s == "Socket" OR s == "Pid" OR s == "Any" OR s == "SysOs" OR s == "SysArch" = True
+        | s == "Unit" or s == "Actor" or s == "Agent" or s == "Tensor" or s == "Tensor_GPU" or s == "Option" or s == "Byte" or s == "Ptr" or s == "Channel" or s == "Fd" or s == "Socket" or s == "Pid" or s == "Any" or s == "SysOs" or s == "SysArch" = True
         | otherwise = False
 
 fn :: resolve one type ident String String [RModAlias] [RModAlias] => String
       resolve one type ident tok cur_mod aliases type_map
-        | NOT (is upper ident tok) = tok
+        | not (is upper ident tok) = tok
         | otherwise =
           t1 = expand mod alias tok cur_mod aliases
           resolve one type step t1 cur_mod aliases type_map
@@ -4549,7 +4554,7 @@ fn :: rewrite type str list [String] String [RModAlias] [RModAlias] => [String]
 fn :: is builtin ctor ident String => Bool
       is builtin ctor ident c
         | is prim type ctor c = True
-        | c == "True" OR c == "False" OR c == "Some" OR c == "None" OR c == "Linux" OR c == "MacOS" OR c == "Windows" OR c == "X86_64" OR c == "Arm64" = True
+        | c == "True" or c == "False" or c == "Some" or c == "None" or c == "Linux" or c == "MacOS" or c == "Windows" or c == "X86_64" or c == "Arm64" = True
         | otherwise = False
 
 fn :: resolve ctor ident String String [RModAlias] [RModAlias] => String
@@ -4653,13 +4658,13 @@ fn :: lookup scoped ff t2 String String [String] [RModAlias] [RModAlias] [RModAl
 
 fn :: lookup scoped ff t3 String String => String
       lookup scoped ff t3 base ""
-        | (is std builtin base) OR ((lookup arity (builtin arity entries) base) >= 0) = base
+        | (is std builtin base) or ((lookup arity (builtin arity entries) base) >= 0) = base
         | otherwise = ""
       lookup scoped ff t3 _ hit = hit
 
 fn :: ident has word part String String => Bool
       ident has word part full_name word =
-        (full_name == word) OR (str starts with full_name (word + "_")) OR (str contains full_name ("_" + word + "_")) OR ((str len full_name) > (str len word) AND (str slice full_name ((str len full_name) - (str len word) - 1) (str len full_name)) == ("_" + word))
+        (full_name == word) or (str starts with full_name (word + "_")) or (str contains full_name ("_" + word + "_")) or ((str len full_name) > (str len word) and (str slice full_name ((str len full_name) - (str len word) - 1) (str len full_name)) == ("_" + word))
 
 fn :: arity list has word part [RArityEntry] String => Bool
       arity list has word part [] _ = False
@@ -4670,7 +4675,7 @@ fn :: arity list has word part [RArityEntry] String => Bool
 fn :: mod has word part in map String String [RModAlias] => Bool
       mod has word part in map _ _ [] = False
       mod has word part in map m word ((ModAlias k _):rest)
-        | (str starts with k (m + ".")) AND (ident has word part (ident base name k) word) = True
+        | (str starts with k (m + ".")) and (ident has word part (ident base name k) word) = True
         | otherwise = mod has word part in map m word rest
 
 fn :: mods have word part [String] String [RModAlias] => Bool
@@ -4685,7 +4690,7 @@ fn :: scope has word part String String [RModAlias] [RModAlias] => Bool
         direct_imps = direct imports of cur_mod aliases
         trans_imps = trans imports of cur_mod direct_imps aliases
         all_vis = own :: direct_imps :: trans_imps
-        (arity list has word part (builtin arity entries) word) OR (mods have word part all_vis word fn_map)
+        (arity list has word part (builtin arity entries) word) or (mods have word part all_vis word fn_map)
 
 fn :: is mixfix reserved word String => Bool
       is mixfix reserved word "to" = True
@@ -4718,7 +4723,7 @@ fn :: collect unimported ff names [String] [RModAlias] [String] => [String]
 
 fn :: collect unimp ff step [String] String String [RModAlias] [String] => [String]
       collect unimp ff step vis_mods m base rest acc
-        | (m != "") AND (NOT (str in seen list m vis_mods)) =
+        | (m != "") and (not (str in seen list m vis_mods)) =
           collect unimported ff names vis_mods rest (add unique seen base acc)
         | otherwise =
           collect unimported ff names vis_mods rest acc
@@ -4736,19 +4741,19 @@ fn :: compute mod special ff String [String] [String] [RModAlias] [RModAlias] [R
 fn :: special has word or prefix String [String] => Bool
       special has word or prefix _ [] = False
       special has word or prefix w (s:ss)
-        | s == w OR (str starts with s (w + "_")) = True
+        | s == w or (str starts with s (w + "_")) = True
         | otherwise = special has word or prefix w ss
 
 fn :: args touch special [RExpr] [String] => Bool
       args touch special ((EVar w):rest) special_ff
-        | (is lower ident w) AND (NOT (str contains w ".")) =
-          (str in seen list w special_ff) OR (args touch special rest special_ff)
+        | (is lower ident w) and (not (str contains w ".")) =
+          (str in seen list w special_ff) or (args touch special rest special_ff)
       args touch special _ _ = False
 
 fn :: resolve lower ident String String [String] [String] [RModAlias] [RModAlias] [RModAlias] => String
       resolve lower ident v cur_mod locals special_ff aliases fn_map field_map
         | str in seen list v locals = v
-        | (NOT (str contains v ".")) AND (NOT (str in seen list v special_ff)) = v
+        | (not (str contains v ".")) and (not (str in seen list v special_ff)) = v
         | otherwise =
           v1 = expand mod alias v cur_mod aliases
           resolve lower ident step v1 cur_mod aliases fn_map field_map
@@ -4766,7 +4771,7 @@ fn :: resolve lower ident step String String [RModAlias] [RModAlias] [RModAlias]
 fn :: resolve lower plain fallback String String [RModAlias] [RModAlias] [RModAlias] String => String
       resolve lower plain fallback v1 cur_mod aliases fn_map field_map ""
         | is mixfix reserved word v1 = v1
-        | ((map has base ident fn_map v1) OR (map has base ident field_map v1)) AND (NOT (scope has word part cur_mod v1 aliases fn_map)) = "__unimported__." + v1
+        | ((map has base ident fn_map v1) or (map has base ident field_map v1)) and (not (scope has word part cur_mod v1 aliases fn_map)) = "__unimported__." + v1
         | otherwise = v1
       resolve lower plain fallback _ _ _ _ _ in_scope = in_scope
 
@@ -4790,7 +4795,7 @@ fn :: resolve field plain fallback String [RModAlias] String => String
 
 fn :: try consume mod words String String [RExpr] [RExpr] [RModAlias] [RModAlias] => String [RExpr] [RExpr]
       try consume mod words m acc_base consumed ((EVar w):rest) fn_map field_map
-        | (is lower ident w) AND (NOT (str contains w ".")) =
+        | (is lower ident w) and (not (str contains w ".")) =
           cand = acc_base + "_" + w
           deeper = try consume mod words m cand (consumed :: [EVar w]) rest fn_map field_map
           select mod words m acc_base consumed ((EVar w):rest) fn_map field_map deeper
@@ -4805,7 +4810,7 @@ fn :: select mod words String String [RExpr] [RExpr] [RModAlias] [RModAlias] (St
 
 fn :: try consume scoped words String String [RExpr] [RExpr] [RModAlias] [RModAlias] [RModAlias] => String [RExpr] [RExpr]
       try consume scoped words cur_mod acc_base consumed ((EVar w):rest) aliases fn_map field_map
-        | (is lower ident w) AND (NOT (str contains w ".")) =
+        | (is lower ident w) and (not (str contains w ".")) =
           cand = acc_base + "_" + w
           deeper = try consume scoped words cur_mod cand (consumed :: [EVar w]) rest aliases fn_map field_map
           select scoped words cur_mod acc_base consumed ((EVar w):rest) aliases fn_map field_map deeper
@@ -4820,12 +4825,12 @@ fn :: select scoped words String String [RExpr] [RExpr] [RModAlias] [RModAlias] 
 
 fn :: lookup any unimported ff String [RModAlias] [RModAlias] => String
       lookup any unimported ff base fn_map field_map
-        | (map has base ident fn_map base) OR (map has base ident field_map base) = "__unimported__." + base
+        | (map has base ident fn_map base) or (map has base ident field_map base) = "__unimported__." + base
         | otherwise = ""
 
 fn :: try consume unimported words String [RExpr] [RExpr] [RModAlias] [RModAlias] => String [RExpr] [RExpr]
       try consume unimported words acc_base consumed ((EVar w):rest) fn_map field_map
-        | (is lower ident w) AND (NOT (str contains w ".")) =
+        | (is lower ident w) and (not (str contains w ".")) =
           cand = acc_base + "_" + w
           deeper = try consume unimported words cand (consumed :: [EVar w]) rest fn_map field_map
           select unimported words acc_base consumed ((EVar w):rest) fn_map field_map deeper
@@ -4867,7 +4872,7 @@ fn :: unpack rewritten infix call String [RExpr] RExpr => [RExpr]
 
 fn :: rewrite local call args [RExpr] String [String] [String] [RModAlias] [RModAlias] [RModAlias] [RModAlias] => [RExpr]
       rewrite local call args ((EVar w):rest) cur_mod locals special_ff aliases ctor_map fn_map field_map
-        | (NOT (str in seen list w locals)) AND (NOT (is upper ident w)) AND (w != "with") AND (w != "and") AND (w != "or") =
+        | (not (str in seen list w locals)) and (not (is upper ident w)) and (w != "with") and (w != "and") and (w != "or") =
           unpack rewritten infix call w rest (rewrite call expr w rest cur_mod locals special_ff aliases ctor_map fn_map field_map)
       rewrite local call args args cur_mod locals special_ff aliases ctor_map fn_map field_map =
         rewrite expr list args cur_mod locals special_ff aliases ctor_map fn_map field_map
@@ -4894,7 +4899,7 @@ fn :: rewrite call lower String [RExpr] String [String] [String] [RModAlias] [RM
           m = ident mod prefix fn1
           base = ident base name fn1
           finish qual mod call fn1 orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map (try consume mod words m base [] orig_args fn_map field_map)
-        | (NOT (special has word or prefix fn1 special_ff)) AND (NOT (args touch special orig_args special_ff)) =
+        | (not (special has word or prefix fn1 special_ff)) and (not (args touch special orig_args special_ff)) =
           ECall fn1 (rewrite expr list orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map)
         | otherwise =
           finish scoped mod call fn1 orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map (try consume scoped words cur_mod fn1 [] orig_args aliases fn_map field_map)
@@ -4981,7 +4986,7 @@ fn :: rewrite expr list [RExpr] String [String] [String] [RModAlias] [RModAlias]
 fn :: is scoped pipe var target String String [String] [RModAlias] [RModAlias] [RModAlias] => Bool
       is scoped pipe var target cur_mod v locals aliases fn_map field_map
         | str in seen list v locals = True
-        | (v == "echo") OR (is upper ident v) OR (str contains v ".") OR (is std builtin v) = False
+        | (v == "echo") or (is upper ident v) or (str contains v ".") or (is std builtin v) = False
         | otherwise = (lookup scoped fn or field cur_mod v aliases fn_map field_map) == ""
 
 fn :: rewrite stmt list [RStmt] String [String] [String] [RModAlias] [RModAlias] [RModAlias] [RModAlias] => [RStmt]
@@ -5068,9 +5073,9 @@ fn :: rewrite and merge fns cached [RScopedFn] String [String] [String] [String]
 
 fn :: add split ident words loop String Int Int Int [String] => [String]
       add split ident words loop s start pos len acc
-        | pos >= len AND start >= len = acc
+        | pos >= len and start >= len = acc
         | pos >= len = add unique seen (str slice s start len) acc
-        | (str char at s pos) == 95 AND pos > start =
+        | (str char at s pos) == 95 and pos > start =
           acc1 = add unique seen (str slice s start pos) acc
           add split ident words loop s (pos + 1) (pos + 1) len acc1
         | (str char at s pos) == 95 =
@@ -5086,10 +5091,10 @@ fn :: add ident words String [String] => [String]
 
 fn :: ident words all in loop String Int Int Int [String] => Bool
       ident words all in loop s start pos len words
-        | pos >= len AND start >= len = True
+        | pos >= len and start >= len = True
         | pos >= len = str in seen list (str slice s start len) words
-        | (str char at s pos) == 95 AND pos > start =
-          (str in seen list (str slice s start pos) words) AND (ident words all in loop s (pos + 1) (pos + 1) len words)
+        | (str char at s pos) == 95 and pos > start =
+          (str in seen list (str slice s start pos) words) and (ident words all in loop s (pos + 1) (pos + 1) len words)
         | (str char at s pos) == 95 =
           ident words all in loop s (pos + 1) (pos + 1) len words
         | otherwise =
@@ -5201,7 +5206,7 @@ fn :: expand reachable words pass [RScopedFn] [RScopedFn] [[String]] [[String]] 
 
 fn :: expand reach step String [RScopedFn] [RScopedFn] [[String]] [[String]] [String] => [[String]] [String]
       expand reach step fname sfs all_sfs frontier next_sets reached
-        | (NOT (str in seen list fname reached)) AND (any case has all words fname frontier) =
+        | (not (str in seen list fname reached)) and (any case has all words fname frontier) =
           next_sets1 = collect all fname word sets all_sfs fname next_sets
           expand reachable words pass sfs all_sfs frontier next_sets1 ([fname] :: reached)
         | otherwise =
@@ -5209,7 +5214,7 @@ fn :: expand reach step String [RScopedFn] [RScopedFn] [[String]] [[String]] [St
 
 fn :: expand reachable words fix [RScopedFn] ([[String]], [String]) => [String]
       expand reachable words fix sfs (frontier, reached)
-        | NOT (has any word set frontier) = reached
+        | not (has any word set frontier) = reached
         | otherwise =
           expand reachable words fix sfs (expand reachable words pass sfs sfs frontier [] reached)
 
@@ -5234,7 +5239,7 @@ fn :: has any lib fn [RScopedFn] => Bool
 
 fn :: prune unreachable lib fns [RScopedFn] => [RScopedFn]
       prune unreachable lib fns s_fns
-        | (has any user fn s_fns) AND (has any lib fn s_fns) =
+        | (has any user fn s_fns) and (has any lib fn s_fns) =
           init_sets = collect root word sets s_fns []
           reached = expand reachable words fix s_fns (init_sets, [])
           filter reachable scoped fns s_fns reached
@@ -5506,7 +5511,7 @@ fn :: resolve scoped state [RScopedFn] [RScopedType] [RModAlias] => RProgram
 
 fn :: resolve scoped state encoded [RScopedFn] [RScopedType] [RModAlias] => RProgram
       resolve scoped state encoded raw_s_fns s_tys aliases
-        | NOT (has any scoped mod raw_s_fns s_tys aliases) =
+        | not (has any scoped mod raw_s_fns s_tys aliases) =
           Program (merge plain scoped fns raw_s_fns []) (merge plain scoped types s_tys [])
         | otherwise =
           s_fns = prune unreachable lib fns raw_s_fns
@@ -5600,15 +5605,15 @@ fn :: parse items mod [RToken] [RScopedFn] [RScopedType] [RModAlias] [String] Bo
         hw_res = parse hardware decl ([TokHardware] :: rest)
         parse items after fndefs mod hw_res s_fns s_tys aliases mod_stack in_lib
       parse items mod (TokType:(TokIdent name):rest) s_fns s_tys aliases mod_stack in_lib
-        | (is upper ident name) AND (has type params then eq rest) =
+        | (is upper ident name) and (has type params then eq rest) =
           t_res = parse type decl ([TokType, TokIdent name] :: rest)
           parse items after type mod False t_res s_fns s_tys aliases mod_stack in_lib
       parse items mod ((TokIdent "expand"):TokType:(TokIdent name):rest) s_fns s_tys aliases mod_stack in_lib
-        | (is upper ident name) AND (has type params then eq rest) =
+        | (is upper ident name) and (has type params then eq rest) =
           t_res = parse type decl ([TokType, TokIdent name] :: rest)
           parse items after type mod True t_res s_fns s_tys aliases mod_stack in_lib
       parse items mod ts                 s_fns s_tys aliases mod_stack in_lib
-        | (NOT (line has colon colon ts)) AND (line has fat arrow ts) =
+        | (not (line has colon colon ts)) and (line has fat arrow ts) =
           parse items after fn mod (parse bare decl ts) s_fns s_tys aliases mod_stack in_lib
         | otherwise =
           err_fn = FnDef "__syntax_error__" [] "Int" [FnCase [] [] (ECall "__syntax_error__" [EStr "unknown or invalid top-level declaration"])]
@@ -5698,7 +5703,7 @@ fn :: filter new extension cases [RFnCase] [RFnCase] => [RFnCase]
 
 fn :: filter new extension step [RFnCase] String RFnCase [RFnCase] => [RFnCase]
       filter new extension step old_cs ctor c cs
-        | ctor != "" AND (NOT (cases have adt ctor old_cs ctor)) = [c] :: (filter new extension cases old_cs cs)
+        | ctor != "" and (not (cases have adt ctor old_cs ctor)) = [c] :: (filter new extension cases old_cs cs)
         | otherwise = filter new extension cases old_cs cs
 
 fn :: merge fn cases [RFnCase] [RFnCase] => [RFnCase]
@@ -5743,7 +5748,7 @@ fn :: has any fn case [RFnCase] => Bool
 
 fn :: is adt ext fndef [String] String [RFnCase] [String] String [RFnCase] => Bool
       is adt ext fndef old_ps old_ret old_cs new_ps new_ret new_cs =
-        (str list same old_ps new_ps) AND (old_ret == new_ret) AND (has any fn case (filter new extension cases old_cs new_cs))
+        (str list same old_ps new_ps) and (old_ret == new_ret) and (has any fn case (filter new extension cases old_cs new_cs))
 
 fn :: has extensible fn def [RFnDef] RFnDef => Bool
       has extensible fn def [] _ = False
@@ -5771,8 +5776,8 @@ fn :: has fn def name [RFnDef] String => Bool
 
 fn :: merge fn def scoped [RFnDef] RFnDef Bool => [RFnDef]
       merge fn def scoped fns (FnDef name ps ret cs) in_lib
-        | (cases have any adt ctor cs) AND (has extensible fn def fns (FnDef name ps ret cs)) = update fn def fns (FnDef name ps ret cs)
-        | in_lib AND (name != "__unresolved_import__") AND (name != "__syntax_error__") AND (has fn def name fns name) = fns
+        | (cases have any adt ctor cs) and (has extensible fn def fns (FnDef name ps ret cs)) = update fn def fns (FnDef name ps ret cs)
+        | in_lib and (name != "__unresolved_import__") and (name != "__syntax_error__") and (has fn def name fns name) = fns
         | otherwise = fns :: [FnDef name ps ret cs]
 
 fn :: merge fn def [RFnDef] RFnDef => [RFnDef]

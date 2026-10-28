@@ -370,7 +370,7 @@ type RCgSig = CgSig String Int Bool
 fn :: str ends with dots String => Bool
       str ends with dots s      =
         len = str len s
-        len > 3 AND (str slice s (len - 3) len) == "..."
+        len > 3 and (str slice s (len - 3) len) == "..."
 
 fn :: params has variadic [String] => Bool
       params has variadic []       =  False
@@ -393,14 +393,14 @@ fn :: build cg sigs [RFnDef] => [RCgSig]
 fn :: lookup var cg sig [RCgSig] String => Bool Int Bool
       lookup var cg sig []       _      =  (False, 0, False)
       lookup var cg sig ((CgSig name arity is_var):rest) target
-        | name == target AND arity < 0 = (False, 0, False)
+        | name == target and arity < 0 = (False, 0, False)
         | name == target = (True, arity, is_var)
         | otherwise = lookup var cg sig rest target
 
 fn :: lookup cg sig [RCgSig] String => Bool Int Bool
       lookup cg sig []       _      =  (False, 0, False)
       lookup cg sig ((CgSig name arity is_var):rest) target
-        | arity >= 0 AND name == target = (True, arity, is_var)
+        | arity >= 0 and name == target = (True, arity, is_var)
         | otherwise = lookup cg sig rest target
 
 fn :: bind pat cg sigs RPattern [RCgSig] => [RCgSig]
@@ -464,10 +464,10 @@ fn :: prep call String [RExpr]         (Bool, Int, Bool) => RExpr
         | arity <= 1 = ECall fname [EList args]
         | otherwise = ECall fname ((take exprs args (arity - 1)) :: [EList (drop exprs args (arity - 1))])
       prep call fname  (single_arg:[]) (True, 2, False)
-        | NOT (str starts with fname "__rg_lambda_") =
+        | not (str starts with fname "__rg_lambda_") =
           ECall "__unpack2__" [EVar fname, single_arg]
       prep call fname  (single_arg:[]) (True, arity, False)
-        | arity > 2 AND (is tuple unpack arg single_arg) AND (NOT (str starts with fname "__rg_lambda_")) =
+        | arity > 2 and (is tuple unpack arg single_arg) and (not (str starts with fname "__rg_lambda_")) =
           ECall "__unpack2__" [EVar fname, single_arg]
       prep call fname  args            _                 =  ECall fname args
 
@@ -544,16 +544,16 @@ fn :: is pure arith binop RBinOp => Bool
       is pure arith binop _      =  False
 
 fn :: is pure arith expr RExpr          => Bool
-      is pure arith expr (EVar v)       =  NOT (is upper ident v)
+      is pure arith expr (EVar v)       =  not (is upper ident v)
       is pure arith expr (EInt _)       =  True
       is pure arith expr (EBool _)      =  True
       is pure arith expr (ENot a)       =  is pure arith expr a
-      is pure arith expr (EBin bop a b) =  (is pure arith binop bop) AND (is pure arith expr a) AND (is pure arith expr b)
+      is pure arith expr (EBin bop a b) =  (is pure arith binop bop) and (is pure arith expr a) and (is pure arith expr b)
       is pure arith expr _              =  False
 
 fn :: is compound arith expr RExpr          => Bool
       is compound arith expr (ENot a)       =  is pure arith expr a
-      is compound arith expr (EBin bop a b) =  (is pure arith binop bop) AND (is pure arith expr a) AND (is pure arith expr b)
+      is compound arith expr (EBin bop a b) =  (is pure arith binop bop) and (is pure arith expr a) and (is pure arith expr b)
       is compound arith expr _              =  False
 
 fn :: is simple inline arg RExpr    => Bool
@@ -563,19 +563,19 @@ fn :: is simple inline arg RExpr    => Bool
 
 fn :: all simple inline args [RExpr] => Bool
       all simple inline args []      =  True
-      all simple inline args (e:es)  =  (is simple inline arg e) AND (all simple inline args es)
+      all simple inline args (e:es)  =  (is simple inline arg e) and (all simple inline args es)
 
 fn :: collect inline expr fns [RFnDef] => [RInlineExprEntry]
       collect inline expr fns []       =  []
       collect inline expr fns ((FnDef name _ _ ((FnCase pats [] body):[])):fs)
-        | (NOT (str starts with name "__rg_lambda_")) AND pats != [] AND (all pat vars pats) AND (is compound arith expr body) =
+        | (not (str starts with name "__rg_lambda_")) and pats != [] and (all pat vars pats) and (is compound arith expr body) =
           [InlineExprEntry name (extract pat var names pats) body] :: (collect inline expr fns fs)
       collect inline expr fns (_:fs)   =  collect inline expr fns fs
 
 fn :: lookup inline expr [RInlineExprEntry] String Int => Bool [String] RExpr
       lookup inline expr [] _ _ = (False, [], EUnit)
       lookup inline expr ((InlineExprEntry name pnames body):rest) target arity
-        | name == target AND (list str len pnames) == arity = (True, pnames, body)
+        | name == target and (list str len pnames) == arity = (True, pnames, body)
         | otherwise = lookup inline expr rest target arity
 
 fn :: subst param var String [String] [RExpr] => RExpr
@@ -648,24 +648,24 @@ fn :: inline leaf fndef list [RFnDef] [RInlineExprEntry] => [RFnDef]
       inline leaf fndef list ((FnDef n p r cs):fs) tbl = [FnDef n p r (inline leaf case list cs tbl)] :: (inline leaf fndef list fs tbl)
 
 fn :: is pure inline stmt RStmt         => Bool
-      is pure inline stmt (StmtLet v e) =  v != "_" AND (NOT (str starts with v ":")) AND (is pure arith expr e)
-      is pure inline stmt (StmtMut v e) =  v != "_" AND (NOT (str starts with v ":")) AND (is pure arith expr e)
+      is pure inline stmt (StmtLet v e) =  v != "_" and (not (str starts with v ":")) and (is pure arith expr e)
+      is pure inline stmt (StmtMut v e) =  v != "_" and (not (str starts with v ":")) and (is pure arith expr e)
       is pure inline stmt _             =  False
 
 fn :: all pure arith exprs [RExpr] => Bool
       all pure arith exprs []      =  True
-      all pure arith exprs (e:es)  =  (is pure arith expr e) AND (all pure arith exprs es)
+      all pure arith exprs (e:es)  =  (is pure arith expr e) and (all pure arith exprs es)
 
 fn :: split tuple return stmts [RStmt] [RStmt] => Bool [RStmt] [RExpr]
       split tuple return stmts ((StmtExpr (ETuple ret_es)):[]) acc
-        | ret_es != [] AND (all pure arith exprs ret_es) = (True, acc, ret_es)
+        | ret_es != [] and (all pure arith exprs ret_es) = (True, acc, ret_es)
       split tuple return stmts (s:ss) acc
         | is pure inline stmt s = split tuple return stmts ss (acc :: [s])
       split tuple return stmts _ _ = (False, [], [])
 
 fn :: extract tuple return body RExpr           => Bool [RStmt] [RExpr]
       extract tuple return body (ETuple ret_es)
-        | ret_es != [] AND (all pure arith exprs ret_es) = (True, [], ret_es)
+        | ret_es != [] and (all pure arith exprs ret_es) = (True, [], ret_es)
       extract tuple return body (EBlock stmts)  =  split tuple return stmts stmts []
       extract tuple return body _               =  (False, [], [])
 
@@ -677,24 +677,24 @@ fn :: append inline tuple if match String [String] (Bool, [RStmt], [RExpr]) [RIn
 fn :: collect inline tuple fns [RFnDef] => [RInlineTupleEntry]
       collect inline tuple fns []       =  []
       collect inline tuple fns ((FnDef name _ _ ((FnCase pats [] body):[])):fs)
-        | pats != [] AND (all pat vars pats) =
+        | pats != [] and (all pat vars pats) =
           append inline tuple if match name (extract pat var names pats) (extract tuple return body body) (collect inline tuple fns fs)
       collect inline tuple fns (_:fs)   =  collect inline tuple fns fs
 
 fn :: lookup inline tuple [RInlineTupleEntry] String Int => Bool [String] [RStmt] [RExpr]
       lookup inline tuple [] _ _ = (False, [], [], [])
       lookup inline tuple ((InlineTupleEntry name pnames init_stmts ret_es):rest) target arity
-        | name == target AND (list str len pnames) == arity = (True, pnames, init_stmts, ret_es)
+        | name == target and (list str len pnames) == arity = (True, pnames, init_stmts, ret_es)
         | otherwise = lookup inline tuple rest target arity
 
 fn :: match tup unpack stmts [RStmt] String Int Int [RStmt] => Bool [RStmt] [RStmt]
       match tup unpack stmts rest _ idx count acc
         | idx >= count = (True, acc, rest)
       match tup unpack stmts ((StmtMut v (EIndex (EVar tv) ((EInt i):[]))):rest) tmp_name idx count acc
-        | tv == tmp_name AND i == idx =
+        | tv == tmp_name and i == idx =
           match tup unpack stmts rest tmp_name (idx + 1) count (acc :: [StmtMut v EUnit])
       match tup unpack stmts ((StmtIndexAssign tk is (EIndex (EVar tv) ((EInt i):[]))):rest) tmp_name idx count acc
-        | tv == tmp_name AND i == idx =
+        | tv == tmp_name and i == idx =
           match tup unpack stmts rest tmp_name (idx + 1) count (acc :: [StmtIndexAssign tk is EUnit])
       match tup unpack stmts _ _ _ _ _ = (False, [], [])
 
@@ -767,7 +767,7 @@ fn :: inline tuple expr RExpr             [RInlineTupleEntry] => RExpr
 fn :: inline tuple stmt list [RStmt] [RInlineTupleEntry] => [RStmt]
       inline tuple stmt list [] _ = []
       inline tuple stmt list ((StmtMut tmp_name (ECall fname args)):rest) tbl
-        | (str starts with tmp_name ":tup-") OR (str starts with tmp_name ":idx-tup-") =
+        | (str starts with tmp_name ":tup-") or (str starts with tmp_name ":idx-tup-") =
           try expand inline tuple tmp_name fname args rest (lookup inline tuple tbl fname (rexpr list len args)) tbl
       inline tuple stmt list ((StmtLet v e):ss) tbl =
         [StmtLet v (inline tuple expr e tbl)] :: (inline tuple stmt list ss tbl)
@@ -954,7 +954,7 @@ fn :: has field entry [RFieldEntry] String => Bool
 
 fn :: add base field entry String Int [RFieldEntry] => [RFieldEntry]
       add base field entry fname idx acc
-        | (str contains fname ".") AND (NOT (has field entry acc (ident base name fname))) =
+        | (str contains fname ".") and (not (has field entry acc (ident base name fname))) =
           acc :: [FieldEntry (ident base name fname) idx]
         | otherwise = acc
 
@@ -1043,7 +1043,7 @@ fn :: expr has heavy ops RExpr             => Bool
       expr has heavy ops (EEinsum _ _)     =  True
       expr has heavy ops (EHadamard _ _ _ _ _) = True
       expr has heavy ops (EBin OpMatMul _ _) = True
-      expr has heavy ops (EBin _ l r)      =  (expr has heavy ops l) OR (expr has heavy ops r)
+      expr has heavy ops (EBin _ l r)      =  (expr has heavy ops l) or (expr has heavy ops r)
       expr has heavy ops (ENot inner)      =  expr has heavy ops inner
       expr has heavy ops (EOut inner)      =  expr has heavy ops inner
       expr has heavy ops (ECall fname args)
@@ -1053,10 +1053,10 @@ fn :: expr has heavy ops RExpr             => Bool
       expr has heavy ops (ETuple elems)    =  expr list has heavy ops elems
       expr has heavy ops (EBlock stmts)    =  stmt list has heavy ops stmts
       expr has heavy ops (EGuard guards)   =  guard list has heavy ops guards
-      expr has heavy ops (EWhere body binds) = (expr has heavy ops body) OR (where list has heavy ops binds)
+      expr has heavy ops (EWhere body binds) = (expr has heavy ops body) or (where list has heavy ops binds)
       expr has heavy ops (EParPipe branches) = expr list has heavy ops branches
       expr has heavy ops (EWithCtx "__rg_timeout_ms__" _ _) = True
-      expr has heavy ops (EWithCtx _ v b)  =  (expr has heavy ops v) OR (expr has heavy ops b)
+      expr has heavy ops (EWithCtx _ v b)  =  (expr has heavy ops v) or (expr has heavy ops b)
       expr has heavy ops (EWithRegion _ b) =  expr has heavy ops b
       expr has heavy ops _                 =  False
 
@@ -1088,13 +1088,13 @@ fn :: where list has heavy ops [RWhereBind] => Bool
 fn :: guard list has heavy ops [RGuard] => Bool
       guard list has heavy ops [] = False
       guard list has heavy ops ((GuardBranch c b):gs)
-        | (expr has heavy ops c) OR (expr has heavy ops b) = True
+        | (expr has heavy ops c) or (expr has heavy ops b) = True
         | otherwise = guard list has heavy ops gs
 
 fn :: cases have heavy ops [RFnCase] => Bool
       cases have heavy ops []        =  False
       cases have heavy ops ((FnCase _ gs b):cs)
-        | (guard list has heavy ops gs) OR (expr has heavy ops b) = True
+        | (guard list has heavy ops gs) or (expr has heavy ops b) = True
         | otherwise = cases have heavy ops cs
 
 fn :: any str in list [String] [String] => Bool
@@ -1106,7 +1106,7 @@ fn :: any str in list [String] [String] => Bool
 fn :: collect direct heavy fns [RFnDef] => [String]
       collect direct heavy fns []       =  []
       collect direct heavy fns ((FnDef name _ _ cases):fs)
-        | ((builtin call id name) < 0 AND (count case calls name cases) > 0) OR (cases have heavy ops cases) =
+        | ((builtin call id name) < 0 and (count case calls name cases) > 0) or (cases have heavy ops cases) =
           [name] :: (collect direct heavy fns fs)
         | otherwise = collect direct heavy fns fs
 
@@ -1275,13 +1275,13 @@ fn :: cmm where vars [RWhereBind] RExpr [String] => [String]
 fn :: cmm filter in list [String] [String] => [String]
       cmm filter in list [] _ = []
       cmm filter in list (x:xs) allowed
-        | x != "_" AND (str in list x allowed) = [x] :: (cmm filter in list xs allowed)
+        | x != "_" and (str in list x allowed) = [x] :: (cmm filter in list xs allowed)
         | otherwise = cmm filter in list xs allowed
 
 fn :: cmm filter not in list [String] [String] => [String]
       cmm filter not in list [] _ = []
       cmm filter not in list (x:xs) excluded
-        | x != "_" AND (NOT (str in list x excluded)) = [x] :: (cmm filter not in list xs excluded)
+        | x != "_" and (not (str in list x excluded)) = [x] :: (cmm filter not in list xs excluded)
         | otherwise = cmm filter not in list xs excluded
 
 fn :: cmm remove str String [String] => [String]
@@ -1599,7 +1599,7 @@ fn :: lower tensor clone RNativeEnv RExpr [String] Int RNativeCode => RNativeCod
 
 fn :: tensor map call instr RNativeEnv RExpr [String] Int Int => RNativeInstr
       tensor map call instr env (EVar fname) boundLocals fnSlot argSlot
-        | (lookup local boundLocals fname) < 0 AND (env fn arity env fname) == 1 =
+        | (lookup local boundLocals fname) < 0 and (env fn arity env fname) == 1 =
           NCallFn (env fn id env fname) argSlot 1
         | otherwise =
           NCallIndirect1 fnSlot argSlot
@@ -1759,14 +1759,14 @@ fn :: is agent call name String             => Bool
 
 fn :: agent fn mode RNativeEnv RExpr [String] => Int
       agent fn mode env (EVar fname) bound_locals
-        | (lookup local bound_locals fname) < 0 AND (env fn is heavy env fname) = 3
-        | (lookup local bound_locals fname) < 0 AND (env fn arity env fname) == 2 = 4
+        | (lookup local bound_locals fname) < 0 and (env fn is heavy env fname) = 3
+        | (lookup local bound_locals fname) < 0 and (env fn arity env fname) == 2 = 4
         | otherwise = 1
       agent fn mode _ _ _ = 1
 
 fn :: stateful agent mode RNativeEnv RExpr [String] => Int
       stateful agent mode env (EVar fname) bound_locals
-        | (lookup local bound_locals fname) < 0 AND (env fn is heavy env fname) = 1
+        | (lookup local bound_locals fname) < 0 and (env fn is heavy env fname) = 1
         | otherwise = 0
       stateful agent mode _ _ _ = 0
 
@@ -1884,8 +1884,8 @@ fn :: lower agent call RNativeEnv String [RExpr] [String] Int RNativeCode => RNa
 
 fn :: select par collection builtin RNativeEnv String [RExpr] [String] => Int
       select par collection builtin env fname ((EVar callee_fn):_:[]) bound_locals
-        | (fname == "||map" OR fname == "par_map") AND (lookup local bound_locals callee_fn) < 0 AND (env fn arity env callee_fn) > 0 AND (NOT (env fn is heavy env callee_fn)) = 53
-        | (fname == "||filter" OR fname == "par_filter") AND (lookup local bound_locals callee_fn) < 0 AND (env fn arity env callee_fn) > 0 AND (NOT (env fn is heavy env callee_fn)) = 55
+        | (fname == "||map" or fname == "par_map") and (lookup local bound_locals callee_fn) < 0 and (env fn arity env callee_fn) > 0 and (not (env fn is heavy env callee_fn)) = 53
+        | (fname == "||filter" or fname == "par_filter") and (lookup local bound_locals callee_fn) < 0 and (env fn arity env callee_fn) > 0 and (not (env fn is heavy env callee_fn)) = 55
       select par collection builtin _ fname _ _ = builtin call id fname
 
 fn :: lower plain indirect call RNativeEnv Int [RExpr] [String] Int RNativeCode => RNativeCode
@@ -2120,7 +2120,7 @@ fn :: lower expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
         st1 = lower expr list to slots env es bound_locals sp 0 st
         nc emit st1 (NEinsum sp count off (str len spec)) (sp + count + 1)
       lower expr env (EHadamard bop l s1 r s2) bound_locals sp st
-        | (bop == OpXor OR bop == OpAnd OR bop == OpOr) OR (s1 == s2 AND (bop == OpAdd OR bop == OpSub OR bop == OpMul)) =
+        | (bop == OpXor or bop == OpAnd or bop == OpOr) or (s1 == s2 and (bop == OpAdd or bop == OpSub or bop == OpMul)) =
           lower bitwise hadamard env bop l r bound_locals sp st
         | otherwise =
           subs = s1 + "," + s2
@@ -2130,10 +2130,10 @@ fn :: lower expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
           st3 = lower expr env r bound_locals (sp + 1) st2
           nc emit st3 (NHadamard (binop id bop) sp off (str len subs)) (sp + 1)
       lower expr env (EIndex (EVar v) ((EInt idx):[])) _ sp st
-        | (str starts with v ":tup-") OR (str starts with v ":idx-tup-") =
+        | (str starts with v ":tup-") or (str starts with v ":idx-tup-") =
           nc emit st (NTupleGet (env var slot env v) idx) sp
       lower expr env (EIndex (EVar v) idxs) bound_locals sp st
-        | (lookup local bound_locals v) >= 0 AND ((rexpr list len idxs) == 1 OR (rexpr list len idxs) == 2) =
+        | (lookup local bound_locals v) >= 0 and ((rexpr list len idxs) == 1 or (rexpr list len idxs) == 2) =
           count = rexpr list len idxs
           vslot = env var slot env v
           st1 = lower expr list to slots env idxs bound_locals sp 0 st
@@ -2163,7 +2163,7 @@ fn :: lower expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
       lower expr env (EWhere body binds) bound_locals sp st =
         lower where cmm env binds body bound_locals [] sp st
       lower expr env (EParPipe branches) bound_locals sp st
-        | (rexpr list len branches) >= 2 AND (all exprs par eval env branches bound_locals) =
+        | (rexpr list len branches) >= 2 and (all exprs par eval env branches bound_locals) =
           count = rexpr list len branches
           par_off = env str off env "__rg_par_eval__"
           st1 = lower par eval list env branches bound_locals sp 0 st
@@ -2286,7 +2286,7 @@ fn :: can par eval expr RNativeEnv RExpr [String] => Bool
       can par eval expr env (ECall fname args) bound_locals =
         arity = env fn arity env fname
         nargs = rexpr list len args
-        (lookup local bound_locals fname) < 0 AND (NOT (is upper ident fname)) AND (builtin call id fname) < 0 AND (NOT (is agent call name fname)) AND fname != "sys_os" AND fname != "sys_arch" AND fname != "__record_update__" AND fname != "__unpack2__" AND arity >= 0 AND arity <= 3 AND nargs == arity AND (env fn is heavy env fname)
+        (lookup local bound_locals fname) < 0 and (not (is upper ident fname)) and (builtin call id fname) < 0 and (not (is agent call name fname)) and fname != "sys_os" and fname != "sys_arch" and fname != "__record_update__" and fname != "__unpack2__" and arity >= 0 and arity <= 3 and nargs == arity and (env fn is heavy env fname)
       can par eval expr _ _ _ = False
 
 fn :: all exprs par eval RNativeEnv [RExpr] [String] => Bool
@@ -2330,7 +2330,7 @@ fn :: unpack par list to slots Int Int Int RNativeCode => RNativeCode
 
 fn :: can par where pair RNativeEnv RExpr String RExpr String [String] => Bool
       can par where pair env e1 v1 e2 v2 bound_locals =
-        v1 != "_" AND v2 != "_" AND v1 != v2 AND (can par eval expr env e1 bound_locals) AND (can par eval expr env e2 bound_locals) AND (NOT (str in list v1 (cmm expr vars e2 [])))
+        v1 != "_" and v2 != "_" and v1 != v2 and (can par eval expr env e1 bound_locals) and (can par eval expr env e2 bound_locals) and (not (str in list v1 (cmm expr vars e2 [])))
 
 fn :: emit par where pair RNativeEnv RExpr String RExpr String [RWhereBind] RExpr [String] [String] Int RNativeCode => RNativeCode
       emit par where pair env e1 v1 e2 v2 wbs body bound_locals scope_vars sp st =
@@ -2400,7 +2400,7 @@ fn :: guards have self tail call String [RGuard] => Bool
 
 fn :: can move param var String [String] [String] [String] => Bool
       can move param var v locals scope_vars later_vars =
-        ((lookup local locals v) >= 0) AND (NOT (str in list v scope_vars)) AND (NOT (str in list v later_vars))
+        ((lookup local locals v) >= 0) and (not (str in list v scope_vars)) and (not (str in list v later_vars))
 
 fn :: lower tco arg expr RNativeEnv RExpr [RExpr] [String] [String] Int RNativeCode => RNativeCode
       lower tco arg expr env (EVar v) es bound_locals scope_vars sp st
@@ -2416,7 +2416,7 @@ fn :: lower tco arg expr RNativeEnv RExpr [RExpr] [String] [String] Int RNativeC
         st1 = lower tco arg list to slots env elems es bound_locals scope_vars sp 0 st
         nc emit st1 (NMakeTuple sp count) (sp + count + 1)
       lower tco arg expr env (ECall fname args) es bound_locals scope_vars sp st
-        | (lookup local bound_locals fname) < 0 AND (NOT (is upper ident fname)) AND (builtin call id fname) < 0 AND (NOT (is agent call name fname)) AND (NOT (is tensor helper name fname)) AND fname != "sys_os" AND fname != "sys_arch" AND fname != "__record_update__" AND fname != "__unpack2__" AND fname != "__chain__" AND (rexpr list len args) == (env fn arity env fname) AND (NOT ((env has field env fname) AND (env fn arity env fname) == 1 AND (rexpr list len args) > 1)) =
+        | (lookup local bound_locals fname) < 0 and (not (is upper ident fname)) and (builtin call id fname) < 0 and (not (is agent call name fname)) and (not (is tensor helper name fname)) and fname != "sys_os" and fname != "sys_arch" and fname != "__record_update__" and fname != "__unpack2__" and fname != "__chain__" and (rexpr list len args) == (env fn arity env fname) and (not ((env has field env fname) and (env fn arity env fname) == 1 and (rexpr list len args) > 1)) =
           count = rexpr list len args
           st1 = lower tco arg list to slots env args es bound_locals scope_vars sp 0 st
           nc emit st1 (NCallFn (env fn id env fname) sp count) (sp + count + 1)
@@ -2437,7 +2437,7 @@ fn :: lower tail return RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
 
 fn :: lower tail return cmm RNativeEnv RExpr [String] [String] Int RNativeCode => RNativeCode
       lower tail return cmm env (ECall fname args) bound_locals scope_vars sp st
-        | (builtin call id fname) < 0 AND fname == (env fn name env) AND (rexpr list len args) == (env arity env) AND (lookup local bound_locals fname) < 0 =
+        | (builtin call id fname) < 0 and fname == (env fn name env) and (rexpr list len args) == (env arity env) and (lookup local bound_locals fname) < 0 =
           arity = env arity env
           st1 = lower tco arg list to slots env args [] bound_locals scope_vars sp 0 st
           st2 = lower cmm drops env scope_vars (sp + arity + 1) st1
@@ -2575,7 +2575,7 @@ fn :: pat needs check RPattern       => Bool
 fn :: pat has vars RPattern         => Bool
       pat has vars (PatVar _)       =  True
       pat has vars (PatSeqBind _)   =  True
-      pat has vars (PatCons h t)    =  (pat has vars h) OR (pat has vars t)
+      pat has vars (PatCons h t)    =  (pat has vars h) or (pat has vars t)
       pat has vars (PatTuple ps)    =  pat list has vars ps
       pat has vars (PatCtor _ args) =  pat list has vars args
       pat has vars _                =  False
@@ -2644,7 +2644,7 @@ fn :: lower tensor dims cond list RNativeEnv [RPattern] Int Int Int Int RNativeC
 
 fn :: lower pat cons sub RNativeEnv RPattern Int Bool Int Int RNativeCode => RNativeCode
       lower pat cons sub env sub_p slot is_head fail_lbl sp st
-        | NOT (pat needs check sub_p) = st
+        | not (pat needs check sub_p) = st
         | is_head =
           st1 = nc emit list st [NListHead slot, NStoreSlot sp] (sp + 1)
           st2 = lower pat cond env sub_p sp fail_lbl (sp + 1) st1
@@ -2657,7 +2657,7 @@ fn :: lower pat cons sub RNativeEnv RPattern Int Bool Int Int RNativeCode => RNa
 fn :: lower tuple pat conds RNativeEnv [RPattern] Int Int Int Int RNativeCode => RNativeCode
       lower tuple pat conds _ [] _ _ _ _ st = st
       lower tuple pat conds env (p:ps) slot idx fail_lbl sp st
-        | NOT (pat needs check p) = lower tuple pat conds env ps slot (idx + 1) fail_lbl sp st
+        | not (pat needs check p) = lower tuple pat conds env ps slot (idx + 1) fail_lbl sp st
         | otherwise =
           st1 = nc emit list st [NTupleGet slot idx, NStoreSlot sp] (sp + 1)
           st2 = lower pat cond env p sp fail_lbl (sp + 1) st1
@@ -2667,7 +2667,7 @@ fn :: lower tuple pat conds RNativeEnv [RPattern] Int Int Int Int RNativeCode =>
 fn :: lower adt pat conds RNativeEnv [RPattern] Int Int Int Int RNativeCode => RNativeCode
       lower adt pat conds _ [] _ _ _ _ st = st
       lower adt pat conds env (p:ps) slot idx fail_lbl sp st
-        | NOT (pat needs check p) = lower adt pat conds env ps slot (idx + 1) fail_lbl sp st
+        | not (pat needs check p) = lower adt pat conds env ps slot (idx + 1) fail_lbl sp st
         | otherwise =
           st1 = nc emit list st [NAdtField slot idx, NStoreSlot sp] (sp + 1)
           st2 = lower pat cond env p sp fail_lbl (sp + 1) st1
@@ -2721,7 +2721,7 @@ fn :: lower tensor dims bind list RNativeEnv [RPattern] Int Int Int RNativeCode 
 
 fn :: lower pat cons bind RNativeEnv RPattern Int Bool Int RNativeCode => RNativeCode
       lower pat cons bind env sub_p slot is_head sp st
-        | NOT (pat has vars sub_p) = st
+        | not (pat has vars sub_p) = st
         | is_head =
           st1 = nc emit list st [NListHead slot, NStoreSlot sp] (sp + 1)
           st2 = lower pat binds env sub_p sp True (sp + 1) st1
@@ -2734,7 +2734,7 @@ fn :: lower pat cons bind RNativeEnv RPattern Int Bool Int RNativeCode => RNativ
 fn :: lower tuple pat binds RNativeEnv [RPattern] Int Int Int RNativeCode => RNativeCode
       lower tuple pat binds _ [] _ _ _ st = st
       lower tuple pat binds env (p:ps) slot idx sp st
-        | NOT (pat has vars p) = lower tuple pat binds env ps slot (idx + 1) sp st
+        | not (pat has vars p) = lower tuple pat binds env ps slot (idx + 1) sp st
         | otherwise =
           st1 = nc emit list st [NTupleGet slot idx, NStoreSlot sp] (sp + 1)
           st2 = lower pat binds env p sp True (sp + 1) st1
@@ -2744,7 +2744,7 @@ fn :: lower tuple pat binds RNativeEnv [RPattern] Int Int Int RNativeCode => RNa
 fn :: lower adt pat binds RNativeEnv [RPattern] Int Int Int RNativeCode => RNativeCode
       lower adt pat binds _ [] _ _ _ st = st
       lower adt pat binds env (p:ps) slot idx sp st
-        | NOT (pat has vars p) = lower adt pat binds env ps slot (idx + 1) sp st
+        | not (pat has vars p) = lower adt pat binds env ps slot (idx + 1) sp st
         | otherwise =
           st1 = nc emit list st [NAdtField slot idx, NStoreSlot sp] (sp + 1)
           st2 = lower pat binds env p sp True (sp + 1) st1
@@ -2792,7 +2792,7 @@ fn :: lower single case RNativeEnv RFnCase Bool Int RNativeCode => RNativeCode
       lower single case env (FnCase pats guards _) is_last sp st =
         arity = env arity env
         fail_lbl = nc lbl st
-        move_args = is_last OR (guards have otherwise guards)
+        move_args = is_last or (guards have otherwise guards)
         bound_locals = collect pat list vars pats []
         st -> nc set lbl (fail_lbl + 1)
           -> lower pat list cond env pats 0 fail_lbl sp _
@@ -2843,7 +2843,7 @@ fn :: wrap unit return cases String [RFnCase] => [RFnCase]
 
 fn :: maybe wrap unit cases String String [RFnCase] => [RFnCase]
       maybe wrap unit cases name ret cases
-        | ret == "()" OR ret == "Unit" = wrap unit return cases name cases
+        | ret == "()" or ret == "Unit" = wrap unit return cases name cases
         | otherwise = cases
 
 fn :: lower fndef RFnDef [RStrEntry] [RFnEntry] [RFieldEntry] => RNativeFn
@@ -3034,7 +3034,7 @@ fn :: build binop dispatch instrs [RFnEntry] [RStrEntry] Int [RNativeInstr] => [
       build binop dispatch instrs [] _ _ acc =
         acc :: [NLoadImmRaw 0, NReturn]
       build binop dispatch instrs ((FnEntry name fid arity):rest) str_tbl lbl acc
-        | arity == 2 AND (is overloadable binop name name) =
+        | arity == 2 and (is overloadable binop name name) =
           off = lookup str off str_tbl name
           arm = [NMatchStr 0 off (str len name), NJumpIfZero lbl, NMoveSlot 1, NStoreSlot 3, NMoveSlot 2, NStoreSlot 4, NCallFn fid 3 2, NReturn, NLabel lbl]
           build binop dispatch instrs rest str_tbl (lbl + 1) (acc :: arm)
@@ -3206,7 +3206,7 @@ fn :: emit rgc file loaded String String String => Int
 
 fn :: emit rgc after check RProgram String String [RTypeError] => Int
       emit rgc after check prog raw_src output_path []
-        | ((count fn defs prog) == 0) AND ((count type defs prog) == 0) =
+        | ((count fn defs prog) == 0) and ((count type defs prog) == 0) =
           echo "[ridgunc compile] Error: no functions or types found in source"
           -1
         | otherwise =
@@ -3240,7 +3240,7 @@ fn :: emit rglib file loaded String String String String => Int
 
 fn :: emit rglib after check RProgram String String [RTypeError] => Int
       emit rglib after check prog raw_src output_path []
-        | ((count fn defs prog) == 0) AND ((count type defs prog) == 0) =
+        | ((count fn defs prog) == 0) and ((count type defs prog) == 0) =
           echo "[ridgunc build --lib] Error: no functions or types found in source"
           1
         | otherwise =
@@ -3321,7 +3321,7 @@ fn :: build native so loaded String String String String => Int
 
 fn :: build native so after check RProgram String String [RTypeError] => Int
       build native so after check prog output_so target_arch []
-        | ((count fn defs prog) == 0) AND ((count type defs prog) == 0) =
+        | ((count fn defs prog) == 0) and ((count type defs prog) == 0) =
           echo "[ridgunc build --so] Error: no functions or types found in source"
           1
         | otherwise =

@@ -43,12 +43,12 @@ fn :: fmt spaces Int => String
 -- ── Whitespace & Line Splitting Helpers ──────────────────────
 
 fn :: fmt is hspace Int => Bool
-      fmt is hspace c   =  c == 32 OR c == 9 OR c == 13
+      fmt is hspace c   =  c == 32 or c == 9 or c == 13
 
 fn :: fmt leading indent loop String Int Int => Int
       fmt leading indent loop s pos len
         | pos >= len = len
-        | (str char at s pos) == 32 OR (str char at s pos) == 9 = fmt leading indent loop s (pos + 1) len
+        | (str char at s pos) == 32 or (str char at s pos) == 9 = fmt leading indent loop s (pos + 1) len
         | otherwise = pos
 
 fn :: fmt leading indent String => Int
@@ -77,17 +77,17 @@ fn :: fmt trim String => String
 
 fn :: fmt split raw lines loop String Int Int Int Int [String] => [String]
       fmt split raw lines loop s pos len line_start quote_st acc
-        | pos >= len AND line_start == len = acc
+        | pos >= len and line_start == len = acc
         | pos >= len = acc :: [fmt trim right (str slice s line_start len)]
-        | quote_st == 34 AND (str char at s pos) == 92 = fmt split raw lines loop s (pos + 2) len line_start 34 acc
-        | quote_st == 34 AND (str char at s pos) == 34 = fmt split raw lines loop s (pos + 1) len line_start 0 acc
+        | quote_st == 34 and (str char at s pos) == 92 = fmt split raw lines loop s (pos + 2) len line_start 34 acc
+        | quote_st == 34 and (str char at s pos) == 34 = fmt split raw lines loop s (pos + 1) len line_start 0 acc
         | quote_st == 34 = fmt split raw lines loop s (pos + 1) len line_start 34 acc
-        | quote_st == 39 AND (str char at s pos) == 39 = fmt split raw lines loop s (pos + 1) len line_start 0 acc
+        | quote_st == 39 and (str char at s pos) == 39 = fmt split raw lines loop s (pos + 1) len line_start 0 acc
         | quote_st == 39 = fmt split raw lines loop s (pos + 1) len line_start 39 acc
-        | quote_st == 45 AND (str char at s pos) == 10 = fmt split raw lines loop s (pos + 1) len (pos + 1) 0 (acc :: [fmt trim right (str slice s line_start pos)])
+        | quote_st == 45 and (str char at s pos) == 10 = fmt split raw lines loop s (pos + 1) len (pos + 1) 0 (acc :: [fmt trim right (str slice s line_start pos)])
         | quote_st == 45 = fmt split raw lines loop s (pos + 1) len line_start 45 acc
         | (str char at s pos) == 10 = fmt split raw lines loop s (pos + 1) len (pos + 1) 0 (acc :: [fmt trim right (str slice s line_start pos)])
-        | (str char at s pos) == 45 AND (pos + 1) < len AND (str char at s (pos + 1)) == 45 = fmt split raw lines loop s (pos + 2) len line_start 45 acc
+        | (str char at s pos) == 45 and (pos + 1) < len and (str char at s (pos + 1)) == 45 = fmt split raw lines loop s (pos + 2) len line_start 45 acc
         | (str char at s pos) == 34 = fmt split raw lines loop s (pos + 1) len line_start 34 acc
         | (str char at s pos) == 39 = fmt split raw lines loop s (pos + 1) len line_start 39 acc
         | otherwise = fmt split raw lines loop s (pos + 1) len line_start 0 acc
@@ -114,7 +114,7 @@ fn :: fmt find comment col String Int Int => Int
         | pos >= len = -1
         | (str char at s pos) == 34 = fmt find comment col s (fmt skip quoted s (pos + 1) len 34) len
         | (str char at s pos) == 39 = fmt find comment col s (fmt skip quoted s (pos + 1) len 39) len
-        | (pos + 1) < len AND (str char at s pos) == 45 AND (str char at s (pos + 1)) == 45 = pos
+        | (pos + 1) < len and (str char at s pos) == 45 and (str char at s (pos + 1)) == 45 = pos
         | otherwise = fmt find comment col s (pos + 1) len
 
 fn :: fmt strip comment String => String
@@ -148,25 +148,25 @@ fn :: fmt scan group end String Int Int Int => Int
         | pos >= len = len
         | (str char at s pos) == 34 = fmt scan group end s (fmt skip quoted s (pos + 1) len 34) len depth
         | (str char at s pos) == 39 = fmt scan group end s (fmt skip quoted s (pos + 1) len 39) len depth
-        | (str char at s pos) == 40 OR (str char at s pos) == 91 = fmt scan group end s (pos + 1) len (depth + 1)
-        | ((str char at s pos) == 41 OR (str char at s pos) == 93) AND depth <= 1 = pos + 1
-        | (str char at s pos) == 41 OR (str char at s pos) == 93 = fmt scan group end s (pos + 1) len (depth - 1)
+        | (str char at s pos) == 40 or (str char at s pos) == 91 = fmt scan group end s (pos + 1) len (depth + 1)
+        | ((str char at s pos) == 41 or (str char at s pos) == 93) and depth <= 1 = pos + 1
+        | (str char at s pos) == 41 or (str char at s pos) == 93 = fmt scan group end s (pos + 1) len (depth - 1)
         | otherwise = fmt scan group end s (pos + 1) len depth
 
 fn :: fmt scan word end String Int Int Int => Int
       fmt scan word end s pos len depth
         | pos >= len = len
-        | depth == 0 AND (fmt is hspace (str char at s pos)) = pos
+        | depth == 0 and (fmt is hspace (str char at s pos)) = pos
         | (str char at s pos) == 34 = fmt scan word end s (fmt skip quoted s (pos + 1) len 34) len depth
         | (str char at s pos) == 39 = fmt scan word end s (fmt skip quoted s (pos + 1) len 39) len depth
-        | (str char at s pos) == 40 OR (str char at s pos) == 91 = fmt scan word end s (pos + 1) len (depth + 1)
-        | (str char at s pos) == 41 OR (str char at s pos) == 93 = fmt scan word end s (pos + 1) len (fmt max 0 (depth - 1))
+        | (str char at s pos) == 40 or (str char at s pos) == 91 = fmt scan word end s (pos + 1) len (depth + 1)
+        | (str char at s pos) == 41 or (str char at s pos) == 93 = fmt scan word end s (pos + 1) len (fmt max 0 (depth - 1))
         | otherwise = fmt scan word end s (pos + 1) len depth
 
 fn :: fmt scan token end String Int Int Int => Int
       fmt scan token end s pos len ch
-        | ch == 34 OR ch == 39 = fmt skip quoted s (pos + 1) len ch
-        | ch == 40 OR ch == 91 = fmt scan group end s (pos + 1) len 1
+        | ch == 34 or ch == 39 = fmt skip quoted s (pos + 1) len ch
+        | ch == 40 or ch == 91 = fmt scan group end s (pos + 1) len 1
         | otherwise = fmt scan word end s pos len 0
 
 fn :: fmt scan tokens loop String Int Int [FmtToken] => [FmtToken]
@@ -192,14 +192,14 @@ fn :: fmt scan tokens String => [FmtToken]
 fn :: fmt split sig arrow [FmtToken] [String] => Bool [String] String Int
       fmt split sig arrow [] _ = (False, [], "", 0)
       fmt split sig arrow ((FmtTok tok col):rest) lhs_acc
-        | tok == "=>" OR tok == "->" = (True, lhs_acc, tok, col)
+        | tok == "=>" or tok == "->" = (True, lhs_acc, tok, col)
         | otherwise = fmt split sig arrow rest (lhs_acc :: [tok])
 
 fn :: fmt is sig type tok String => Bool
       fmt is sig type tok "" = False
       fmt is sig type tok tok =
         ch = str char at tok 0
-        (ch >= 65 AND ch <= 90) OR ch == 91 OR ch == 40
+        (ch >= 65 and ch <= 90) or ch == 91 or ch == 40
 
 fn :: fmt all type toks [String] => Bool
       fmt all type toks []       =  True
@@ -209,7 +209,7 @@ fn :: fmt all type toks [String] => Bool
 
 fn :: fmt is bare fn lhs [String] => Bool
       fmt is bare fn lhs (first_w:rest)
-        | NOT (fmt is sig type tok first_w) = fmt all type toks rest
+        | not (fmt is sig type tok first_w) = fmt all type toks rest
       fmt is bare fn lhs _ = False
 
 fn :: fmt infer bare kind [String] => String
@@ -226,9 +226,9 @@ fn :: fmt parse sig line String => FmtSig
 
 fn :: fmt parse sig tokens Int String String [FmtToken] => FmtSig
       fmt parse sig tokens _ clean cmt ((FmtTok kind _):(FmtTok "::" _):rest)
-        | kind == "fn" OR kind == "op" = fmt finish sig parse clean cmt kind (fmt split sig arrow rest [])
+        | kind == "fn" or kind == "op" = fmt finish sig parse clean cmt kind (fmt split sig arrow rest [])
       fmt parse sig tokens 0 clean cmt ((FmtTok w col):rest)
-        | w == "type" OR w == "expand" OR w == "import" OR w == "hardware" OR (str starts with w "@") OR (str starts with w "--") OR (str starts with w "|") = NoSig
+        | w == "type" or w == "expand" or w == "import" or w == "hardware" or (str starts with w "@") or (str starts with w "--") or (str starts with w "|") = NoSig
         | otherwise = fmt finish bare sig parse clean cmt (fmt split sig arrow ([FmtTok w col] :: rest) [])
       fmt parse sig tokens _ _ _ _ = NoSig
 
@@ -271,8 +271,8 @@ fn :: fmt is top decl toks Int String [FmtToken] => Bool
       fmt is top decl toks _ tr _
         | str starts with tr "@" = True
       fmt is top decl toks ind _ ((FmtTok w col):rest)
-        | w == "fn" OR w == "op" OR w == "type" OR w == "expand" OR w == "import" OR w == "hardware" = True
-        | ind == 0 AND (NOT (str starts with w "--")) AND (NOT (str starts with w "|")) = fmt has fat arrow ([FmtTok w col] :: rest)
+        | w == "fn" or w == "op" or w == "type" or w == "expand" or w == "import" or w == "hardware" = True
+        | ind == 0 and (not (str starts with w "--")) and (not (str starts with w "|")) = fmt has fat arrow ([FmtTok w col] :: rest)
         | otherwise = False
       fmt is top decl toks _ _ [] = False
 
@@ -285,7 +285,7 @@ fn :: fmt op tokens match [String] [String] => Bool
       fmt op tokens match _ _ = False
 
 fn :: fmt is bare kind String => Bool
-      fmt is bare kind kind   =  kind == "bare_fn" OR kind == "bare_op"
+      fmt is bare kind kind   =  kind == "bare_fn" or kind == "bare_op"
 
 fn :: fmt sig base col String => Int
       fmt sig base col kind
@@ -299,13 +299,13 @@ fn :: fmt sig base col from FmtSig => Int
 fn :: fmt clause matches sig String [String] [String] => Bool
       fmt clause matches sig _ _ [] = False
       fmt clause matches sig "fn" sig_lhs clause_lhs =
-        (fmt str list len clause_lhs) == (fmt str list len sig_lhs) AND (fmt str head clause_lhs) == (fmt str head sig_lhs)
+        (fmt str list len clause_lhs) == (fmt str list len sig_lhs) and (fmt str head clause_lhs) == (fmt str head sig_lhs)
       fmt clause matches sig "bare_fn" sig_lhs clause_lhs =
-        (fmt str list len clause_lhs) == (fmt str list len sig_lhs) AND (fmt str head clause_lhs) == (fmt str head sig_lhs)
+        (fmt str list len clause_lhs) == (fmt str list len sig_lhs) and (fmt str head clause_lhs) == (fmt str head sig_lhs)
       fmt clause matches sig "op" sig_lhs clause_lhs =
-        (fmt str list len clause_lhs) == (fmt str list len sig_lhs) AND (fmt op tokens match sig_lhs clause_lhs)
+        (fmt str list len clause_lhs) == (fmt str list len sig_lhs) and (fmt op tokens match sig_lhs clause_lhs)
       fmt clause matches sig "bare_op" sig_lhs clause_lhs =
-        (fmt str list len clause_lhs) == (fmt str list len sig_lhs) AND (fmt op tokens match sig_lhs clause_lhs)
+        (fmt str list len clause_lhs) == (fmt str list len sig_lhs) and (fmt op tokens match sig_lhs clause_lhs)
       fmt clause matches sig _ _ _ = False
 
 fn :: fmt split clause eq [FmtToken] [String] => [String] Bool Int
@@ -322,7 +322,7 @@ fn :: fmt next nonblank is guard [String] => Bool
 fn :: fmt check guard line String [String] => Bool
       fmt check guard line "" ls = fmt next nonblank is guard ls
       fmt check guard line clean _ =
-        (str starts with clean "|") AND (NOT (str starts with clean "||"))
+        (str starts with clean "|") and (not (str starts with clean "||"))
 
 fn :: fmt parse clause line FmtSig String Bool => FmtClause
       fmt parse clause line NoSig _ _ = NoClause
@@ -333,12 +333,12 @@ fn :: fmt parse clause line FmtSig String Bool => FmtClause
 fn :: fmt parse clause clean String [String] String String String Bool => FmtClause
       fmt parse clause clean _ _ _ _ "" _ = NoClause
       fmt parse clause clean kind sig_lhs line clean tr next_is_guard
-        | (str starts with tr "|") OR (str starts with tr "--") OR (fmt is top decl line tr) = NoClause
+        | (str starts with tr "|") or (str starts with tr "--") or (fmt is top decl line tr) = NoClause
         | otherwise = fmt check clause split kind sig_lhs line next_is_guard (fmt split clause eq (fmt scan tokens clean) [])
 
 fn :: fmt check clause split String [String] String Bool ([String], Bool, Int) => FmtClause
       fmt check clause split kind sig_lhs line next_is_guard (clause_lhs, has_eq, eq_col)
-        | (fmt clause matches sig kind sig_lhs clause_lhs) AND (has_eq OR next_is_guard) = fmt build clause info line clause_lhs has_eq eq_col
+        | (fmt clause matches sig kind sig_lhs clause_lhs) and (has_eq or next_is_guard) = fmt build clause info line clause_lhs has_eq eq_col
         | otherwise = NoClause
 
 fn :: fmt build clause info String [String] Bool Int => FmtClause
@@ -363,7 +363,7 @@ fn :: fmt parse where line String Bool => FmtWhereBind
 fn :: fmt parse where clean String String String => FmtWhereBind
       fmt parse where clean _ _ "" = NoWhereBind
       fmt parse where clean line clean tr
-        | (str starts with tr "|") OR (fmt is top decl line tr) = NoWhereBind
+        | (str starts with tr "|") or (fmt is top decl line tr) = NoWhereBind
         | otherwise = fmt build where bind line clean (fmt find where arrow (fmt scan tokens clean))
 
 fn :: fmt build where bind String String Int => FmtWhereBind
@@ -453,7 +453,7 @@ fn :: fmt finish group geometry String [String] String String ([Int], Int) => Fm
 
 fn :: fmt select group geometry String [String] String String [Int] Int Int Int Int => FmtSig
       fmt select group geometry kind lhs_strs arrow_s ret_s sig_cols arrow_col ret_col num_params total_sig_len
-        | num_params > 4 OR total_sig_len > 80 = SigInfo kind lhs_strs arrow_s ret_s [] 0 0
+        | num_params > 4 or total_sig_len > 80 = SigInfo kind lhs_strs arrow_s ret_s [] 0 0
         | otherwise = SigInfo kind lhs_strs arrow_s ret_s sig_cols arrow_col ret_col
 
 -- ── Line Formatting Functions ────────────────────────────────
@@ -520,15 +520,15 @@ fn :: fmt check block opener String Int => Bool
       fmt check block opener clean len
         | len == 0 = False
         | clean == "do" = True
-        | (str char at clean (len - 1)) == 61 AND (len < 2 OR ((str char at clean (len - 2)) != 61 AND (str char at clean (len - 2)) != 33 AND (str char at clean (len - 2)) != 60 AND (str char at clean (len - 2)) != 62)) = True
-        | len >= 3 AND (str slice clean (len - 3) len) == " do" = True
+        | (str char at clean (len - 1)) == 61 and (len < 2 or ((str char at clean (len - 2)) != 61 and (str char at clean (len - 2)) != 33 and (str char at clean (len - 2)) != 60 and (str char at clean (len - 2)) != 62)) = True
+        | len >= 3 and (str slice clean (len - 3) len) == " do" = True
         | otherwise = False
 
 fn :: fmt line closes block String    => Bool
       fmt line closes block prev_text =
         clean = fmt trim (fmt strip comment prev_text)
         len = str len clean
-        (len >= 2 AND (str slice clean (len - 2) len) == "|.") OR (len >= 3 AND (str slice clean (len - 3) len) == "||.")
+        (len >= 2 and (str slice clean (len - 2) len) == "|.") or (len >= 3 and (str slice clean (len - 3) len) == "||.")
 
 fn :: fmt guard indent Int Int Int String => Int
       fmt guard indent base_g orig_indent prev_indent prev_text =
@@ -539,7 +539,7 @@ fn :: fmt guard indent clean Int Int Int String String => Int
       fmt guard indent clean base_g orig_indent prev_indent prev_text prev_clean
         | str starts with prev_clean "||" = base_g
         | fmt line opens block prev_text = fmt max base_g (prev_indent + 2)
-        | fmt line closes block prev_text AND orig_indent >= base_g AND orig_indent < prev_indent = orig_indent
+        | fmt line closes block prev_text and orig_indent >= base_g and orig_indent < prev_indent = orig_indent
         | fmt line closes block prev_text = fmt max base_g (prev_indent - 2)
         | str starts with prev_clean "|" = fmt max base_g prev_indent
         | otherwise = base_g
@@ -583,7 +583,7 @@ fn :: fmt next body indent clean Int String String => Int
       fmt next body indent clean prev_indent prev_text prev_clean
         | fmt line opens block prev_text = prev_indent + 2
         | fmt line closes block prev_text = fmt max 8 (prev_indent - 2)
-        | (str starts with prev_clean "|") AND (NOT (str starts with prev_clean "||")) = fmt max 8 (prev_indent - 2)
+        | (str starts with prev_clean "|") and (not (str starts with prev_clean "||")) = fmt max 8 (prev_indent - 2)
         | otherwise = prev_indent
 
 fn :: fmt indent body line Int String String => String

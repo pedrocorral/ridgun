@@ -36,7 +36,7 @@ fn :: assert true Bool => ()
 
 fn :: assert false Bool String => ()
       assert false cond label
-        | NOT cond = echo "  [ok]   False ({label})"
+        | not cond = echo "  [ok]   False ({label})"
         | otherwise = fail test "assert_false failed: {label}"
 
 fn :: assert str eq String String String => ()

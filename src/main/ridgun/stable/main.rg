@@ -1,6 +1,6 @@
 -- ============================================================
 -- src/main/ridgun/stable/main.rg
--- `stable` v0.9.26 — The Interactive Build Tool for Ridgun (100% Ridgun)
+-- `stable` v0.9.27 — The Interactive Build Tool for Ridgun (100% Ridgun)
 -- Written in Ridgun's natural-language mixfix operator style (`op :: ...`).
 -- Decoupled from `ridgunc` internals per ADR-0001: delegates `check`,
 -- `compile`, `build`, `build lib`, and test/plugin compilation to the
@@ -64,7 +64,7 @@ op :: collect flat rg in String entries [String] => [String]
 
 op :: append flat rg if match String to [String] => [String]
       append flat rg if match full   to rest
-        | (is file full) AND (str ends with full ".rg") = [full] :: rest
+        | (is file full) and (str ends with full ".rg") = [full] :: rest
         | otherwise = rest
 
 op :: collect sub rg in String entries [String] => [String]
@@ -80,7 +80,7 @@ op :: append sub rg if dir String to [String] => [String]
 
 op :: list rg files in String => [String]
       list rg files in dir
-        | NOT (is dir dir) = []
+        | not (is dir dir) = []
         | otherwise =
           ents = list str sort (list dir dir)
           (collect flat rg in dir entries ents) :: (collect sub rg in dir entries ents)
@@ -98,12 +98,12 @@ op :: append if file exists String to [String] => [String]
 
 op :: list exec entries in String => [String]
       list exec entries in dir
-        | NOT (is dir dir) = []
+        | not (is dir dir) = []
         | otherwise = collect exec entries in dir entries (list str sort (list dir dir))
 
 op :: is test filename String => Bool
       is test filename name   =
-        (str ends with name ".rg") AND ((str starts with name "test_") OR (str starts with name "test "))
+        (str ends with name ".rg") and ((str starts with name "test_") or (str starts with name "test "))
 
 op :: collect test files in String entries [String] => [String]
       collect test files in _      entries []       =  []
@@ -113,12 +113,12 @@ op :: collect test files in String entries [String] => [String]
 
 op :: append test file if match String String to [String] => [String]
       append test file if match name   full   to rest
-        | (is file full) AND (is test filename name) = [full] :: rest
+        | (is file full) and (is test filename name) = [full] :: rest
         | otherwise = rest
 
 op :: list test files in String => [String]
       list test files in dir
-        | NOT (is dir dir) = []
+        | not (is dir dir) = []
         | otherwise = collect test files in dir entries (list str sort (list dir dir))
 
 -- ── Structured Console Logging Functions ─────────────────────
@@ -234,8 +234,8 @@ op :: resolve ridgunc binary => String
 
 op :: pick ridgunc binary String sibling String => String
       pick ridgunc binary env_rg sibling sib_rg
-        | (env_rg != "") AND (file env_rg exists) = env_rg
-        | (sib_rg != "") AND (file sib_rg exists) = sib_rg
+        | (env_rg != "") and (file env_rg exists) = env_rg
+        | (sib_rg != "") and (file sib_rg exists) = sib_rg
         | file "bin/ridgunc" exists = "bin/ridgunc"
         | file "target/ridgunc" exists = "target/ridgunc"
         | file "/home/boogie/ridgun/bin/ridgunc" exists = "/home/boogie/ridgun/bin/ridgunc"
@@ -275,7 +275,7 @@ op :: extract quoted strings String at Int len Int in quote Bool cur String into
         | otherwise = extract quoted strings s at (pos + 1) len n in quote False cur "" into acc
       extract quoted strings s at pos len n in quote True cur buf into acc
         | pos >= n = acc :: [buf]
-        | ((str char at s pos) == 92) AND ((pos + 1) < n) =
+        | ((str char at s pos) == 92) and ((pos + 1) < n) =
           esc_ch = str slice s (pos + 1) (pos + 2)
       extract quoted strings s at (pos + 2) len n in quote True cur (buf + esc_ch) into acc
         | (str char at s pos) == 34 =
@@ -289,7 +289,7 @@ op :: quoted strings in String => [String]
 
 op :: is declaration header line String => Bool
       is declaration header line l      =
-        (str starts with l "--") OR (str starts with l "fn ") OR (str starts with l "fn::") OR (str starts with l "op ") OR (str starts with l "op::") OR (str starts with l "type ") OR (str starts with l "expand ") OR (str starts with l "import ") OR (str starts with l "|")
+        (str starts with l "--") or (str starts with l "fn ") or (str starts with l "fn::") or (str starts with l "op ") or (str starts with l "op::") or (str starts with l "type ") or (str starts with l "expand ") or (str starts with l "import ") or (str starts with l "|")
 
 op :: parse clause key and rhs String => String String
       parse clause key and rhs line
@@ -317,7 +317,7 @@ op :: extract function body from [String] named String default String => String
 
 op :: match function clause (String, String) rest [String] named String default String => String
       match function clause (k, rhs) rest ls named target default default_val
-        | (k == target) AND (str starts with rhs "\"") =
+        | (k == target) and (str starts with rhs "\"") =
           first string or default (quoted strings in rhs) default default_val
         | otherwise = extract function body from ls named target default default_val
 
@@ -329,8 +329,8 @@ op :: extract bool body from [String] named String default Bool        => Bool
 
 op :: match bool clause (String, String) rest [String] named String default Bool => Bool
       match bool clause (k, rhs) rest _ named target default _
-        | (k == target) AND ((rhs == "True") OR (rhs == "\"true\"")) = True
-        | (k == target) AND ((rhs == "False") OR (rhs == "\"false\"")) = False
+        | (k == target) and ((rhs == "True") or (rhs == "\"true\"")) = True
+        | (k == target) and ((rhs == "False") or (rhs == "\"false\"")) = False
       match bool clause _ rest ls named target default default_val =
         extract bool body from ls named target default default_val
 
@@ -340,14 +340,14 @@ op :: strict flag for Bool  => String
 
 op :: load strict flag from String     => String
       load strict flag from build_path
-        | NOT (file build_path exists) = ""
+        | not (file build_path exists) = ""
         | otherwise =
           lines = split lines of (read file build_path)
           strict flag for (extract bool body from lines named "strict_mode" default False)
 
 op :: load build config from String     => StableConfig
       load build config from build_path
-        | NOT (file build_path exists) = ProjectConfig "" "0.1.0" "" "src/main/ridgun" "src/test/ridgun" "target"
+        | not (file build_path exists) = ProjectConfig "" "0.1.0" "" "src/main/ridgun" "src/test/ridgun" "target"
         | otherwise = parse build config source (read file build_path)
 
 op :: parse build config source String => StableConfig
@@ -472,7 +472,7 @@ op :: compile if check status Int  from String into String  => Int
 
 op :: load project kind from String     => String
       load project kind from build_path
-        | NOT (file build_path exists) = "bin"
+        | not (file build_path exists) = "bin"
         | otherwise =
           lines = split lines of (read file build_path)
           extract function body from lines named "project_kind" default "bin"
@@ -517,7 +517,7 @@ op :: run task build lib on StableConfig args [String]  => Int
 
 op :: build target from String     into String  version String => Int
       build target from entry_path into out_bin version ver
-        | NOT (file entry_path exists) =
+        | not (file entry_path exists) =
           log error "Entry point not found: {entry_path}"
           1
         | otherwise =
@@ -762,14 +762,14 @@ op :: extract list function body from [String] named String => [String]
 
 op :: match list function clause (String, String) rest [String] named String => [String]
       match list function clause (k, rhs) rest ls named target
-        | (k == target) AND (str starts with rhs "[") = quoted strings in rhs
-        | (k == target) AND (str starts with rhs "\"") =
+        | (k == target) and (str starts with rhs "[") = quoted strings in rhs
+        | (k == target) and (str starts with rhs "\"") =
           split words of (first string or default (quoted strings in rhs) default "")
         | otherwise = extract list function body from ls named target
 
 op :: load dependencies from String     => [String]
       load dependencies from build_path
-        | NOT (file build_path exists) = []
+        | not (file build_path exists) = []
         | otherwise =
           lines = split lines of (read file build_path)
           extract list function body from lines named "dependencies"
@@ -839,7 +839,7 @@ op :: init current dir named String lib Bool  => Int
 
 op :: fetch dependency source String into String => Int
       fetch dependency source dep    into dest
-        | (str starts with dep "http://") OR (str starts with dep "https://") OR (str starts with dep "git@") =
+        | (str starts with dep "http://") or (str starts with dep "https://") or (str starts with dep "git@") =
           shell exec ('if [ -d "' + dest + '/.git" ]; then git -C "' + dest + '" pull -q; else git clone -q "' + dep + '" "' + dest + '"; fi')
         | otherwise =
           shell exec ('rm -rf "' + dest + '" && cp -r "' + dep + '" "' + dest + '"')
@@ -877,7 +877,7 @@ op :: format dep items [String] => String
 
 op :: append dep block if needed String    => ()
       append dep block if needed dep_block
-        | NOT (file "build.rg" exists) = write file "build.rg" dep_block -> ()
+        | not (file "build.rg" exists) = write file "build.rg" dep_block -> ()
         | str contains (read file "build.rg") "dependencies" = ()
         | otherwise = write file "build.rg" ((read file "build.rg") + dep_block) -> ()
 
@@ -922,7 +922,7 @@ op :: extract tasks from lines [String] origin String     => [StableTask]
 
 op :: match task clause (String, String) rest [String] origin String => [StableTask]
       match task clause (k, rhs) rest ls origin orig_label
-        | (str starts with k "task_") AND ((str len k) > 5) AND (str starts with rhs "\"") =
+        | (str starts with k "task_") and ((str len k) > 5) and (str starts with rhs "\"") =
           raw_key = str slice k 5 (str len k)
           disp = task display name of raw_key
           cmd = first string or default (quoted strings in rhs) default ""
@@ -931,14 +931,14 @@ op :: match task clause (String, String) rest [String] origin String => [StableT
 
 op :: load tasks from file String origin String => [StableTask]
       load tasks from file path   origin orig
-        | NOT (file path exists) = []
+        | not (file path exists) = []
         | otherwise =
           lines = split lines of (read file path)
           extract tasks from lines lines origin orig
 
 op :: load declared plugins from String     => [String]
       load declared plugins from build_path
-        | NOT (file build_path exists) = []
+        | not (file build_path exists) = []
         | otherwise =
           lines = split lines of (read file build_path)
           extract list function body from lines named "plugins"
@@ -1179,7 +1179,7 @@ op :: dispatch command StableCommand on StableConfig => Bool StableConfig Int
       dispatch command CmdExit on cfg = (False, cfg, 0)
       dispatch command CmdHelp on cfg = (True, cfg, run task help)
       dispatch command CmdVersion on cfg =
-        echo "stable 0.9.26 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
+        echo "stable 0.9.27 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
         (True, cfg, 0)
       dispatch command CmdInfo on cfg = (True, cfg, run task info on cfg)
       dispatch command CmdReload on _ =
@@ -1261,12 +1261,12 @@ op :: report reload config StableConfig name String => Bool StableConfig Int
 
 op :: start interactive shell for StableConfig => ()
       start interactive shell for (ProjectConfig "" ver main_ep sdir tdir out_dir) =
-        log info "Welcome to stable 0.9.26 (Ridgun Build Tool — 100% Ridgun)"
+        log info "Welcome to stable 0.9.27 (Ridgun Build Tool — 100% Ridgun)"
         log info "No build.rg found in current directory. Run 'init' or 'new <name>' to create a project."
         log info "Commands: 'new', 'init', 'help', 'exit'"
         repl loop for (ProjectConfig "" ver main_ep sdir tdir out_dir)
       start interactive shell for (ProjectConfig name_str ver main_ep sdir tdir out_dir) =
-        log info "Welcome to stable 0.9.26 (Ridgun Build Tool — 100% Ridgun)"
+        log info "Welcome to stable 0.9.27 (Ridgun Build Tool — 100% Ridgun)"
         log info "Loading project definition from build.rg ..."
         log info "Set current project to '{name_str}' v{ver} (main: {main_ep})"
         log info "Commands: 'built' (or 'build'), 'run', 'test', 'check', 'compile', 'clean', 'info', 'exit'"
@@ -1279,10 +1279,10 @@ op :: strip stable argv [String]     => [String]
 op :: strip stable script [String] => [String]
       strip stable script []       =  []
       strip stable script ("run":script:rem_args)
-        | (str contains script "stable.rg") OR (str contains script "stable/main.rg") = rem_args
+        | (str contains script "stable.rg") or (str contains script "stable/main.rg") = rem_args
         | otherwise = ["run", script] :: rem_args
       strip stable script (first_arg:rem_args)
-        | (str contains first_arg "stable.rg") OR (str contains first_arg "stable/main.rg") = rem_args
+        | (str contains first_arg "stable.rg") or (str contains first_arg "stable/main.rg") = rem_args
         | otherwise = [first_arg] :: rem_args
 
 op :: exit if non zero Int => ()

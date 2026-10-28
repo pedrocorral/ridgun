@@ -1,14 +1,14 @@
 ---
 name: implement-code-ridgun
-description: Implement, refactor or review Ridgun (.rg) code and build.rg definitions using the exact Ridgun v0.9.21 grammar, idiomatic -> pipeline chaining (xs map f -> filter g -> results), (+ _ _ +) sequence masks, -> () unit discard, _ =-free side-effect blocks, type system, user-defined generic types (type Result T E, type Page T), lexical closures ((x => expr), (acc x => expr)), module namespaces (module ::, import ... as, mod.Type/Ctor/fn), Native Agent Model (agent, send ... to, receive from, try receive from, stop), RMM1/RMM2 deterministic memory rules, parallel || DAGs, with timeout quotas, PAL primitives, and pure-Ridgun stable/ridgunc ELF64 toolchain; use for any Ridgun (.rg) change.
+description: Implement, refactor or review Ridgun (.rg) code and build.rg definitions using the exact Ridgun v0.9.27 grammar, idiomatic -> pipeline chaining (xs map f -> filter g -> results), (+ _ _ +) sequence masks, -> () unit discard, _ =-free side-effect blocks, type system, user-defined generic types (type Result T E, type Page T), lexical closures ((x => expr), (acc x => expr)), module namespaces (module ::, import ... as, mod.Type/Ctor/fn), Native Agent Model (agent, send ... to, receive from, try receive from, stop), RMM1/RMM2 deterministic memory rules, parallel || DAGs, with timeout quotas, PAL primitives, and pure-Ridgun stable/ridgunc ELF64 toolchain; use for any Ridgun (.rg) change.
 ---
-# implement-code-ridgun (`v0.9.21`)
+# implement-code-ridgun (`v0.9.27`)
 
 Reading budget: `harness/skills/implement-code-ridgun/references/cheatsheet.rg` (or `docs/lang/spec.md` when a construct is unfamiliar), `build.rg`, and the target `.rg` files under `src/main/ridgun/` or `src/test/ridgun/`.
 
 ---
 
-## 1. Project & Architecture Overview (`v0.9.21`)
+## 1. Project & Architecture Overview (`v0.9.27`)
 - **100% Pure Ridgun (Zero Rust / Zero `rustc`)**: Both `ridgunc` (`src/main/ridgun/ridgunc/main.rg`) and `stable` (`src/main/ridgun/stable/main.rg`) are written 100% in Ridgun and emit standalone, statically linked Linux ELF64 executables directly to disk via `elf64.rg`, `x86_64.rg` (`EM_X86_64 = 62`), and `arm64.rg` (`EM_AARCH64 = 183` for Raspberry Pi).
 - **Project Layout**:
   - `build.rg`: Pure-Ridgun project manifest (`fn :: project name => String`, `project version`, `main entry`, `source dir`, `test dir`, `target dir`).
@@ -20,7 +20,7 @@ Reading budget: `harness/skills/implement-code-ridgun/references/cheatsheet.rg` 
 
 ## 2. LLM Anti-Patterns: "Never Write This → Write This Instead"
 
-| Common LLM Mistake (INVALID) | Correct Ridgun `v0.9.21` (VALID) | Why |
+| Common LLM Mistake (INVALID) | Correct Ridgun `v0.9.27` (VALID) | Why |
 |---|---|---|
 | `fn :: parse_header String => (Int, [(String, String)], String)` | `fn :: parse header String => Int [String String] String` | Prefer natural spaces in function/built-in names (`FR-COMP-005`) and space-separated tuple/sequence type signatures (`FR-COMP-008`) |
 | `// comment` or `# comment` | `-- comment` | Only `--` starts a comment |
@@ -253,7 +253,9 @@ Ridgun achieves deterministic memory management with **zero Garbage Collector pa
 
 ---
 
-## 6. Complete Built-in Runtime Functions
+## 6. Compiler Intrinsics & Standard Library Modules
+
+### 6.1 Compiler Built-in Runtime Functions (No `import` Required)
 | Category | Built-in Function (Natural Spaces) | Signature | Description |
 |---|---|---|---|
 | **Output & CLI** | `echo a b ...` / `expr out` | variadic `=> ()` / `T => ()` | Print values with newline |
@@ -265,31 +267,26 @@ Ridgun achieves deterministic memory management with **zero Garbage Collector pa
 | | `int to str n` / `str to int s` | `Int => String` / `String => Int` | Integer ↔ String conversion |
 | | `str starts with s p` | `String String => Bool` | Prefix check |
 | | `str contains s sub` | `String String => Bool` | Substring check |
-| | `str index of s sub` | `String String => Int` | First index of `sub` (`-1` if not found) |
-| | `str trim s` | `String => String` | Trim ASCII whitespace |
-| | `str replace s old new` | `String String String => String` | Replace all occurrences |
-| | `str split s delim` | `String String => [String]` | Split string into list |
-| | `str to upper s` / `str to lower s` | `String => String` | ASCII case conversion |
 | **Collections** | `map f xs` / `\|\|map f xs` | `(A => B) [A] => [B]` | Sequential / Multicore parallel map |
 | | `filter p xs` / `\|\|filter p xs` | `(A => Bool) [A] => [A]` | Sequential / Multicore parallel filter |
 | | `fold f init xs` | `(B A => B) B [A] => B` | Left fold |
 | **File & Byte I/O** | `read file path` | `String => String` | Read UTF-8 file verbatim |
 | | `write file path text` | `String String => ()` | Write string to file |
-| | `append file path text` | `String String => ()` | Append string to file |
 | | `read bytes path` | `String => [Int]` | Read raw file bytes (`0..255`) |
 | | `write bytes path bytes` | `String [Int] => ()` | Write raw bytes (`0..255`) to file |
-| | `sha256 hex text` | `String => String` | Lowercase 64-char SHA-256 hex digest |
-| **Filesystem & OS** | `file exists p` / `is dir p` / `is file p` / `is symlink p` | `String => Bool` | Path metadata predicates |
-| | `file size p` / `file mtime p` / `file mode p` | `String => Int` | Size in bytes, mtime, POSIX mode |
-| | `list dir path` | `String => [String]` | Sorted directory entry names |
-| | `sys chmod path mode` | `String Int => Bool` | Change file permissions (e.g. `493` = `0755`) |
-| | `sys mkdir p` / `sys rmdir p` / `sys unlink p` | `String => Bool` | Create/remove directory or file |
-| | `sys rename old new` / `sys symlink tgt lnk` | `String String => Bool` | Atomic rename / symlink |
-| | `sys readlink p` / `sys getcwd` / `sys getenv k` | `String => String` / `=> String` | Read symlink, cwd, or env var |
-| | `sys chdir p` | `String => Bool` | Change working directory |
+| | `sha256 str text` / `sha256 file path` | `String => String` | Lowercase 64-char SHA-256 hex digest of string or file |
+| | `sha256 raw text` | `String => String` | Raw 32-byte SHA-256 digest |
+| **Filesystem & OS** | `list dir path` | `String => [String]` | Sorted directory entry names |
+| | `file lstat path` | `String => Bool String Int Int Int String String Int String` | `(exists, kind, mode, nlink, size, owner, group, mtime, symlink_target)` |
+| | `sys chmod path mode` | `String Int => Int` | Change file permissions (`0` on success, e.g. `493` = `0755`) |
+| | `sys mkdir path mode` | `String Int => Int` | Create directory with mode (`0` on success) |
+| | `sys chdir path` | `String => Int` | Change working directory (`0` on success) |
+| | `sys getcwd` / `sys getenv k` | `=> String` / `String => String` | Current working directory or env var |
+| | `sys setenv k v` | `String String => Int` | Set environment variable (`0` on success) |
+| | `sys exec prog args env` / `sys execve prog args env` | `String [String] [String] => Int` | Spawn / exec process without `/bin/sh` |
 | | `sys exit code` | `Int => ()` | Exit process immediately |
 | | `sys os` / `sys arch` | `=> SysOs` / `=> SysArch` | Target OS (`Linux \| MacOS \| Windows`) & CPU arch (`X86_64 \| Arm64`) |
-| | `sys getpid` / `sys time ms` | `=> Int` | Process ID / monotonic time in ms |
+| | `sys getpid` / `sys getuid` / `sys getgid` / `sys time ms` | `=> Int` | Process ID, UID, GID, or monotonic time in ms |
 | | `sys deadline ms` / `sys remaining ms` | `=> Int` | Active `with timeout` deadline / remaining budget in ms (`0` / `-1` if none) |
 | | `sys sleep ms ms` | `Int => ()` | Sleep for `ms` milliseconds |
 | | `sys open mode path mode` | `String String => Int` | Portable open (`"r"`, `"w"`, `"a"`, `"rw"`, `"w+"`, `"a+"` -> `fd >= 0` or `-errno`) |
@@ -302,8 +299,27 @@ Ridgun achieves deterministic memory management with **zero Garbage Collector pa
 | | `sys kill pid sig` | `Int Int => Int` | Send normalized signal (`0`/`2`/`9`/`15`) to process `pid` |
 | | `sys call nr a1 a2 a3 a4 a5 a6` | `Int Int Int Int Int Int Int => Int` | Escape hatch for raw 6-arg target-OS ABI syscall |
 | | `shell exec cmd` | `String => Int` | Execute shell command and return exit code |
-| **RMM Diagnostics** | `cmm same ptr a b` | `[A] [A] => Bool` | `True` if `a` and `b` share the exact same heap pointer |
+| **RMM Diagnostics** | `cmm same ptr a b` | `A A => Bool` | `True` if `a` and `b` share the exact same heap pointer |
 | | `cmm live blocks` / `cmm cond freed` / `cmm cond spared` | `=> Int` | Live heap blocks, conditional frees, and spared return blocks |
+
+### 6.2 Standard Library Modules (Explicit `import` Required)
+| Module (`import ...`) | Function (Natural Spaces) | Signature | Description |
+|---|---|---|---|
+| **`import str`** | `str index of s sub` / `str ends with s suf` | `String String => Int` / `String String => Bool` | First index of `sub` (`-1` if not found) / suffix check |
+| | `str trim s` / `str trim left s` / `str trim right s` | `String => String` | Trim ASCII whitespace |
+| | `str replace s old new` | `String String String => String` | Replace all occurrences |
+| | `str split s delim` / `str join xs sep` | `String String => [String]` / `[String] String => String` | Split string into list / join list with separator |
+| | `str to upper s` / `str to lower s` | `String => String` | ASCII case conversion |
+| | `str repeat s n` / `str pad left s w ch` / `str pad right s w ch` | `String Int => String` / `String Int String => String` | String repetition and padding |
+| **`import io`** | `file exists p` / `is dir p` / `is file p` / `is symlink p` | `String => Bool` | Path metadata predicates |
+| | `file size p` / `file mtime p` / `file mode p` | `String => Int` | Size in bytes, mtime, POSIX mode |
+| | `append file path text` | `String String => Int` | Append string to file (`0` on success) |
+| **`import posix`** | `posix mkdir p` / `posix chdir p` | `String => Bool` | Create directory (`0755`) / change working directory |
+| | `posix chmod path mode` | `String Int => Bool` | Change file permissions |
+| | `sys rmdir p` / `sys unlink p` | `String => Bool` | Remove directory or unlink file |
+| | `sys rename old new` / `sys symlink tgt lnk` | `String String => Bool` | Atomic rename / create symlink |
+| | `sys readlink p` | `String => String` | Read symlink target |
+| **`import crypto`** | `sha256 hex text` / `hmac sha256 key msg` | `String => String` / `String String => String` | Lowercase 64-char SHA-256 / HMAC-SHA256 hex digest |
 
 ---
 
