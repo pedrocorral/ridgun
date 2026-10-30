@@ -1,25 +1,21 @@
 ---
-updated: 2026-10-30T15:21
+updated: 2026-10-30T17:16
 active_task: none
 agent_runtime: antigravity
 ---
 # Session state — read this first when resuming
 
 ## Where we are (3 lines max)
-- Completing `TASK-0044`: implemented fire-and-forget sink agents (`agent sink`), top-level global sink agents (`agent ::`), bounded `mailbox N drop|block`, observability/testing intrinsics (`agent dropped`, `agent flush`, `agent state`, `with agent ... = ... do`), shared `Channel`/`Agent` descriptors (`repros/agents_shared_channel.rg`), `file:line:col` syntax error diagnostics (`syntax error at ...`), `stable --version` / `-v`, and released `ridgunc` and `stable` `v0.9.30`.
+- Completed `TASK-0045`: fixed non-final `expr -> var` pipeline bindings colliding with record field getters/functions (`orm1_arrow_into_field_name.rg`), `< 7`-argument `sys call` falling through to `@__rg_fn_0` (`orm2_undefined_rg_fn_0.sh`), and `str map set` multi-module mixfix word collision tracking (`solstice` + `orm` + `adapter`).
 
 ## Files to load for the active task (nothing else)
-- `docs/road-map/going-on/TASK-0044-ridgun-v0-9-30-sink-agents-top-level-global-mailbo.md`
-- `src/main/ridgun/lib/parser.rg`
-- `src/main/ridgun/lib/typecheck.rg`
-- `src/main/ridgun/lib/analyzer.rg`
-- `src/main/ridgun/lib/compiler.rg`
+- `docs/road-map/completed/TASK-0045-fix-pipeline-terminal-local-binding-var-vs-record-.md`
 
 ## Last verified facts (tests green? migrations applied? env?)
-- `bin/ridgunc` and `bin/stable` (`v0.9.30`) bootstrapped and installed; `stable check`, `stable test`, and `aix docs validate` verified.
+- `bin/ridgunc` bootstrapped (stage 1 -> stage 2); all `edtech-orm` repros, `test core language.rg`, and `aix docs validate` pass with 0 errors.
 
 ## Immediate next action
-- Close `TASK-0044` and commit changes.
+- Await next user instruction.
 
 ## Blockers / questions for the user
 - None.

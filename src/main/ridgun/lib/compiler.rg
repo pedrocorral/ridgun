@@ -2254,7 +2254,11 @@ fn :: lower call expr RNativeEnv String [RExpr] [String] Int RNativeCode => RNat
           st1 = lower expr env idx_e bound_locals sp st
           nc emit st1 (NCallBuiltin 91 s_slot 0) sp
       lower call expr env fname args bound_locals sp st
-        | (builtin call id fname) >= 0 and ((std builtin arity fname) <= 0 or (rexpr list len args) >= (std builtin arity fname)) =
+        | fname == "sys_call" =
+          pargs = pad syscall args args
+          st1 = lower expr list to slots env pargs bound_locals sp 0 st
+          nc emit st1 (NCallBuiltin 83 sp 7) (sp + 8)
+        | (builtin call id fname) >= 0 and (not ((is wrapable builtin fn fname) and (rexpr list len args) > 0 and (rexpr list len args) < (std builtin arity fname))) =
           count = rexpr list len args
           bid = select par collection builtin env fname args bound_locals
           st1 = lower expr list to slots env args bound_locals sp 0 st
@@ -2263,6 +2267,11 @@ fn :: lower call expr RNativeEnv String [RExpr] [String] Int RNativeCode => RNat
           count = rexpr list len args
           fn_ar = env fn arity env fname
           lower direct or partial call env fname args count fn_ar bound_locals sp st
+
+fn :: pad syscall args [RExpr] => [RExpr]
+      pad syscall args args
+        | (rexpr list len args) >= 7 = args
+        | otherwise = pad syscall args (args :: [EInt 0])
 
 fn :: build tuple unpack instrs Int Int Int => [RNativeInstr]
       build tuple unpack instrs tup_slot count idx

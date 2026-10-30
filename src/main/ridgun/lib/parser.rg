@@ -3154,9 +3154,9 @@ fn :: bind where local arities [RWhereBind] [RArityEntry] => [RArityEntry]
         | v != "" = bind where local arities wbs ([ArityEntry v (0 - 2)] :: arities)
         | otherwise = bind where local arities wbs arities
 
-fn :: is pipe var target String [RArityEntry] => Bool
-      is pipe var target v arities =
-        (v != "echo") and (not (is upper ident v)) and (not (is std builtin v)) and ((lookup arity arities v) <= 0)
+fn :: is pipe var target String [RStmt] [RArityEntry] => Bool
+      is pipe var target v ss arities =
+        (v != "echo") and (not (is upper ident v)) and (not (str contains v ".")) and (not (is std builtin v)) and (((lookup arity arities v) <= 0) or (stmt list mentions var ss v))
 
 fn :: norm stmt list [RStmt]            [RArityEntry] => [RStmt]
       norm stmt list []                 _             =  []
@@ -3165,7 +3165,7 @@ fn :: norm stmt list [RStmt]            [RArityEntry] => [RStmt]
       norm stmt list ((StmtMut v e):ss) arities       =
         [StmtMut v (norm expr e arities)] :: (norm stmt list ss ([ArityEntry v (0 - 2)] :: arities))
       norm stmt list ((StmtExpr (ECall "__pipe__" (left_e:(EVar v):[]))):ss) arities
-        | is pipe var target v arities =
+        | is pipe var target v ss arities =
           norm pipe var stmt left_e v ss arities
       norm stmt list ((StmtExpr e):ss)  arities       =  [StmtExpr (norm expr e arities)] :: (norm stmt list ss arities)
       norm stmt list ((StmtIndexAssign t idxs e):ss) arities = [StmtIndexAssign t (norm expr list idxs arities) (norm expr e arities)] :: (norm stmt list ss arities)
@@ -3281,6 +3281,13 @@ fn :: str map put RStrMap String String => RStrMap
         | k == nk = StrMapNode nk nv l r
         | (cmp str bst k nk) < 0 = StrMapNode nk nv (str map put l k v) r
         | otherwise = StrMapNode nk nv l (str map put r k v)
+
+fn :: str map set RStrMap String String => RStrMap
+      str map set StrMapEmpty k v = StrMapNode k v StrMapEmpty StrMapEmpty
+      str map set (StrMapNode nk nv l r) k v
+        | k == nk = StrMapNode nk v l r
+        | (cmp str bst k nk) < 0 = StrMapNode nk nv (str map set l k v) r
+        | otherwise = StrMapNode nk nv l (str map set r k v)
 
 fn :: split ident words list String Int Int Int [String] => [String]
       split ident words list s start pos len acc
@@ -4999,14 +5006,14 @@ fn :: aliases to str map [RModAlias] RStrMap => RStrMap
         aliases to str map rest (str map put acc k v)
 
 fn :: add single mod step String String String RStrMap => RStrMap
-      add single mod step m base "" acc = str map put acc base m
+      add single mod step m base "" acc = str map set acc base m
       add single mod step m base prev acc
         | prev == m = acc
-        | otherwise = str map put acc base "__multi__"
+        | otherwise = str map set acc base "__multi__"
 
 fn :: add single mod entry String String String RStrMap => RStrMap
       add single mod entry m base canon acc
-        | canon != base = str map put acc base "__multi__"
+        | canon != base = str map set acc base "__multi__"
         | otherwise =
           prev = str map get acc base
           add single mod step m base prev acc
@@ -5023,15 +5030,15 @@ fn :: build single mod map [RModAlias] RStrMap => RStrMap
 fn :: mark collided multi [String] RStrMap => RStrMap
       mark collided multi [] acc = acc
       mark collided multi (c:cs) acc =
-        mark collided multi cs (str map put acc c "__multi__")
+        mark collided multi cs (str map set acc c "__multi__")
 
 fn :: add ctor single variants String Bool [RVariant] [String] RStrMap => RStrMap
       add ctor single variants _ _ [] _ acc = acc
       add ctor single variants mk True ((TypeVariant c _):vs) collided_ctors acc =
-        add ctor single variants mk True vs collided_ctors (str map put acc c "__multi__")
+        add ctor single variants mk True vs collided_ctors (str map set acc c "__multi__")
       add ctor single variants mk False ((TypeVariant c _):vs) collided_ctors acc
         | str in seen list c collided_ctors =
-          add ctor single variants mk False vs collided_ctors (str map put acc c "__multi__")
+          add ctor single variants mk False vs collided_ctors (str map set acc c "__multi__")
         | otherwise =
           add ctor single variants mk False vs collided_ctors (add single mod entry mk c c acc)
 
@@ -5046,15 +5053,15 @@ fn :: build ctor single map [RScopedType] [RScopedType] [String] RStrMap => RStr
         build ctor single map ts all_ts collided_ctors acc1
 
 fn :: add word mod step String String String RStrMap => RStrMap
-      add word mod step w mk "" acc = str map put acc w mk
+      add word mod step w mk "" acc = str map set acc w mk
       add word mod step _ _ "__builtin__" acc = acc
       add word mod step _ mk prev acc
         | prev == mk = acc
-      add word mod step w _ _ acc = str map put acc w "__multi__"
+      add word mod step w _ _ acc = str map set acc w "__multi__"
 
 fn :: add word mod one String String RStrMap => RStrMap
       add word mod one "" _ acc = acc
-      add word mod one w "__builtin__" acc = str map put acc w "__builtin__"
+      add word mod one w "__builtin__" acc = str map set acc w "__builtin__"
       add word mod one w mk acc =
         prev = str map get acc w
         add word mod step w mk prev acc
@@ -5611,10 +5618,11 @@ fn :: rewrite expr list [RExpr] String [String] RModCtx [RModAlias] [RModAlias] 
       rewrite expr list (e:es) cur_mod locals special_ff aliases ctor_map fn_map field_map =
         [rewrite expr e cur_mod locals special_ff aliases ctor_map fn_map field_map] :: (rewrite expr list es cur_mod locals special_ff aliases ctor_map fn_map field_map)
 
-fn :: is scoped pipe var target String [String] RModCtx => Bool
-      is scoped pipe var target v locals ctx
+fn :: is scoped pipe var target String [RStmt] [String] RModCtx => Bool
+      is scoped pipe var target v ss locals ctx
         | str in seen list v locals = True
         | (v == "echo") or (is upper ident v) or (str contains v ".") or (is std builtin v) = False
+        | stmt list mentions var ss v = True
         | otherwise = (lookup scoped fn or field ctx v ctx) == ""
 
 fn :: rewrite stmt list [RStmt] String [String] RModCtx [RModAlias] [RModAlias] [RModAlias] [RModAlias] => [RStmt]
@@ -5626,7 +5634,7 @@ fn :: rewrite stmt list [RStmt] String [String] RModCtx [RModAlias] [RModAlias] 
         e1 = rewrite expr e cur_mod locals special_ff aliases ctor_map fn_map field_map
         [StmtMut v e1] :: (rewrite stmt list ss cur_mod ([v] :: locals) special_ff aliases ctor_map fn_map field_map)
       rewrite stmt list ((StmtExpr (ECall "__pipe__" (left_e:(EVar v):[]))):ss) cur_mod locals special_ff aliases ctor_map fn_map field_map
-        | is scoped pipe var target v locals special_ff =
+        | is scoped pipe var target v ss locals special_ff =
           l1 = rewrite expr left_e cur_mod locals special_ff aliases ctor_map fn_map field_map
           [StmtExpr (ECall "__pipe__" [l1, EVar v])] :: (rewrite stmt list ss cur_mod ([v] :: locals) special_ff aliases ctor_map fn_map field_map)
       rewrite stmt list ((StmtExpr e):ss) cur_mod locals special_ff aliases ctor_map fn_map field_map =
@@ -5931,6 +5939,8 @@ fn :: expr mentions var RExpr String => Bool
       expr mentions var (ENot inner) target = expr mentions var inner target
       expr mentions var (EOut inner) target = expr mentions var inner target
       expr mentions var (EBin _ l r) target = (expr mentions var l target) or (expr mentions var r target)
+      expr mentions var (ECall "__pipe__" (left_e:(EVar _):[])) target =
+        expr mentions var left_e target
       expr mentions var (ECall fn_name args) target =
         fn_name == target or (expr list mentions var args target)
       expr mentions var (EEcho args) target = expr list mentions var args target
@@ -6024,10 +6034,11 @@ fn :: is encode pipe var target String [RStmt] [String] RStrSet RStrSet => Bool
       is encode pipe var target v ss locals field_names fn_names
         | (v == "echo") or (is upper ident v) or (str contains v ".") or (is compiler builtin ident v) = False
         | str in seen list v locals = True
+        | (is subscript ident v) and ((is upper ident v) or (str in seen list (extract fst str (split subscript v)) locals)) = True
+        | stmt list mentions var ss v = True
         | str set has field_names v = False
         | str set has fn_names (encode literal underscores v) = False
-        | (is subscript ident v) and ((is upper ident v) or (str in seen list (extract fst str (split subscript v)) locals)) = True
-        | otherwise = stmt list mentions var ss v
+        | otherwise = False
 
 fn :: encode expr underscores RExpr [String] RStrSet RStrSet Bool => RExpr
       encode expr underscores (EVar v) locals field_names _ encode_builtins =

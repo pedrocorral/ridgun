@@ -474,6 +474,14 @@ fn :: shared chan worker Channel Int => Int
         send (wid * 10) through ch
         wid
 
+type PipeTargetPlan =
+  target: Int
+
+fn :: pipe into record field name Int => Int
+      pipe into record field name x =
+        x + 1 -> target
+        target
+
 fn :: main => ()
       main =
         echo "=== Core Language, ADTs, Mixfix, Variadics & Higher-Order Ops ==="
@@ -737,4 +745,8 @@ fn :: main => ()
         assert equals (agent state spy_audit) [999]
         assert equals (agent state global_audit) [100, 200, 300]
         stop spy_audit
+        assert equals (pipe into record field name 3) 4
+        assert equals (target (PipeTargetPlan 99)) 99
+        pid6 = sys call 39 0 0 0 0 0
+        assert equals (pid6 > 0) True
         echo "=== All core language tests passed ==="
