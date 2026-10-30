@@ -460,6 +460,20 @@ op :: status tag Int on String => String
 fn :: lstat mode (Bool String Int Int Int String String Int String) => Int
       lstat mode (_, _, m, _, _, _, _, _, _) = m
 
+-- @tests FR-COMP-009
+fn :: sink accum step Int Int => Int
+      sink accum step acc msg = acc + msg
+
+fn :: sink log step [Int] Int => [Int]
+      sink log step acc msg = acc :: [msg]
+
+agent :: global_audit = sink (sink log step) [], mailbox 128 drop, drain 1_s
+
+fn :: shared chan worker Channel Int => Int
+      shared chan worker ch wid =
+        send (wid * 10) through ch
+        wid
+
 fn :: main => ()
       main =
         echo "=== Core Language, ADTs, Mixfix, Variadics & Higher-Order Ops ==="
@@ -686,4 +700,41 @@ fn :: main => ()
         t_comp_elapsed = (sys time ms) - t_comp_start
         assert equals comp_rc 0
         assert equals (t_comp_elapsed < 5000) True
+        echo "=== v0.9.30 Sink Agents (agent sink / agent ::), Shared Channels & CLI Diagnostics ==="
+        -- 1. Shared Channel descriptor passed to multiple worker agents without UseAfterChannelSendError
+        shared_ch = new channel
+        sw1 = agent (shared chan worker)
+        sw2 = agent (shared chan worker)
+        sw3 = agent (shared chan worker)
+        send shared_ch 1 to sw1
+        send shared_ch 2 to sw2
+        send shared_ch 3 to sw3
+        sc_sum = (receive from shared_ch) + (receive from shared_ch) + (receive from shared_ch)
+        sw_sum = (receive from sw1) + (receive from sw2) + (receive from sw3)
+        stop sw1
+        stop sw2
+        stop sw3
+        assert equals sc_sum 60
+        assert equals sw_sum 6
+        -- 2. Local stateful sink agent with mailbox N drop, agent dropped, agent flush, agent state
+        local_sink = agent sink (sink accum step) 0, mailbox 2 drop
+        send 10 to local_sink
+        send 20 to local_sink
+        send 30 to local_sink
+        assert equals (agent dropped local_sink) 1
+        assert equals (agent state local_sink) 30
+        send 40 to local_sink
+        agent flush local_sink
+        assert equals (agent state local_sink) 70
+        stop local_sink
+        -- 3. Top-level global sink agent (agent ::) and scoped redirection (with agent ... = ... do)
+        send 100 to global_audit
+        send 200 to global_audit
+        spy_audit = agent sink (sink log step) []
+        with agent global_audit = spy_audit do
+          send 999 to global_audit |.
+        send 300 to global_audit
+        assert equals (agent state spy_audit) [999]
+        assert equals (agent state global_audit) [100, 200, 300]
+        stop spy_audit
         echo "=== All core language tests passed ==="

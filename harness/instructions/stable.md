@@ -5,7 +5,7 @@ description: "Use when creating, editing, or running build.rg, stable plugins (p
 applyTo: "build.rg,plugins/**/*.rg,.stable/plugins/**/*.rg"
 optional: false
 ---
-# `stable` project manager, library & plugin conventions (`v0.9.29`)
+# `stable` project manager, library & plugin conventions (`v0.9.30`)
 
 Read and follow the `implement-stable-project` and `implement-code-ridgun` skills before editing `build.rg` or `plugins/*.rg`.
 
@@ -43,6 +43,7 @@ Read and follow the `implement-stable-project` and `implement-code-ridgun` skill
 
 ## 2. Standard `stable` CLI Commands
 - `stable info` — Display project metadata, directories, targets, custom tasks, and active plugins from `build.rg`.
+- `stable --version` / `stable -v` / `stable version` — Print `stable 0.9.30` version banner.
 - `stable new <name>` / `stable init` — Scaffold a new executable Ridgun project (`build.rg`, `src/main/ridgun/<name>/main.rg`, `src/test/ridgun/test main.rg`, `.gitignore`).
 - `stable new --lib <name>` / `stable init --lib` — Scaffold a reusable library project (`project kind = "lib"`, `src/main/ridgun/lib/<name>.rg` without `main`, `src/test/ridgun/test <name>.rg`).
 - `stable check [file.rg ...]` — Type-check and run static `||` DAG + `RMM1`/`RMM2` analysis across all project modules in parallel (`||map`).

@@ -432,7 +432,7 @@ write_template_prefix() {
   <aside class="sidebar">
     <div class="brand">
       <div class="brand-top">
-        <span class="brand-badge">Ridgun v0.9.29</span>
+        <span class="brand-badge">Ridgun v0.9.30</span>
         <div class="lang-bar">${lang_bar_html}</div>
       </div>
       <h1>${brand_title}</h1>

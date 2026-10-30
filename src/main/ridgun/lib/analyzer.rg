@@ -587,21 +587,23 @@ fn :: is channel send call String => Bool
       is channel send call callee =
         callee == "send" or callee == "send_to" or callee == "send_through" or callee == "chan_send"
 
-fn :: mark sent expr vars RExpr [String] => [String]
-      mark sent expr vars (EVar sent_var) moved = add unique str sent_var moved
-      mark sent expr vars (ETuple es) moved = mark sent expr list vars es moved
-      mark sent expr vars _ moved = moved
+fn :: mark sent expr vars RExpr [String] [String] => [String]
+      mark sent expr vars (EVar sent_var) mut_vars moved
+        | str in list ("chan:" + sent_var) mut_vars = moved
+        | otherwise = add unique str sent_var moved
+      mark sent expr vars (ETuple es) mut_vars moved = mark sent expr list vars es mut_vars moved
+      mark sent expr vars _ _ moved = moved
 
-fn :: mark sent expr list vars [RExpr] [String] => [String]
-      mark sent expr list vars [] moved = moved
-      mark sent expr list vars (e:es) moved =
-        mark sent expr list vars es (mark sent expr vars e moved)
+fn :: mark sent expr list vars [RExpr] [String] [String] => [String]
+      mark sent expr list vars [] _ moved = moved
+      mark sent expr list vars (e:es) mut_vars moved =
+        mark sent expr list vars es mut_vars (mark sent expr vars e mut_vars moved)
 
 fn :: mark channel sent String [RExpr] [String] [String] => [String]
-      mark channel sent "chan_send" (_:msg_e:_) _ moved =
-        mark sent expr vars msg_e moved
-      mark channel sent callee (msg_e:_) _ moved
-        | is channel send call callee = mark sent expr vars msg_e moved
+      mark channel sent "chan_send" (_:msg_e:_) mut_vars moved =
+        mark sent expr vars msg_e mut_vars moved
+      mark channel sent callee (msg_e:_) mut_vars moved
+        | is channel send call callee = mark sent expr vars msg_e mut_vars moved
       mark channel sent _ _ _ moved = moved
 
 fn :: check expr safety RExpr String [String] [RFnSummary] [String] => [String] [RAnalysisError]
@@ -679,6 +681,21 @@ fn :: is tensor expr RExpr       => Bool
       is tensor expr (ETensor _) =  True
       is tensor expr _           =  False
 
+fn :: is channel or agent expr RExpr [String] => Bool
+      is channel or agent expr (ECall "new_channel" _) _ = True
+      is channel or agent expr (ECall "channel" _) _ = True
+      is channel or agent expr (ECall "new_mailbox" _) _ = True
+      is channel or agent expr (ECall "mailbox" _) _ = True
+      is channel or agent expr (ECall "new_bounded_channel" _) _ = True
+      is channel or agent expr (ECall "agent" _) _ = True
+      is channel or agent expr (ECall "agent_sink" _) _ = True
+      is channel or agent expr (EVar "new_channel") _ = True
+      is channel or agent expr (EVar "channel") _ = True
+      is channel or agent expr (EVar "new_mailbox") _ = True
+      is channel or agent expr (EVar "mailbox") _ = True
+      is channel or agent expr (EVar v) mut_vars = str in list ("chan:" + v) mut_vars
+      is channel or agent expr _ _ = False
+
 fn :: check guards safety [RGuard] String [String] [RFnSummary] [String] => [String] [RAnalysisError]
       check guards safety [] _ _ _ moved = (moved, [])
       check guards safety ((GuardBranch c b):gs) fn_name mut_vars summaries moved =
@@ -694,9 +711,11 @@ fn :: check stmt list safety [RStmt] String [String] [RFnSummary] [String] => [S
       check stmt list safety [] _ _ _ moved = (moved, [])
       check stmt list safety ((StmtLet v val_e):ss) fn_name mut_vars summaries moved
         | is tensor expr val_e = check stmt list safety tuple ss fn_name (add unique str v mut_vars) summaries (check expr safety val_e fn_name (add unique str v mut_vars) summaries moved)
+        | is channel or agent expr val_e mut_vars = check stmt list safety tuple ss fn_name (add unique str ("chan:" + v) mut_vars) summaries (check expr safety val_e fn_name mut_vars summaries moved)
         | otherwise = check stmt list safety tuple ss fn_name mut_vars summaries (check expr safety val_e fn_name mut_vars summaries moved)
-      check stmt list safety ((StmtMut v val_e):ss) fn_name mut_vars summaries moved =
-        check stmt list safety tuple ss fn_name (add unique str v mut_vars) summaries (check expr safety val_e fn_name (add unique str v mut_vars) summaries moved)
+      check stmt list safety ((StmtMut v val_e):ss) fn_name mut_vars summaries moved
+        | is channel or agent expr val_e mut_vars = check stmt list safety tuple ss fn_name (add unique str ("chan:" + v) (add unique str v mut_vars)) summaries (check expr safety val_e fn_name (add unique str v mut_vars) summaries moved)
+        | otherwise = check stmt list safety tuple ss fn_name (add unique str v mut_vars) summaries (check expr safety val_e fn_name (add unique str v mut_vars) summaries moved)
       check stmt list safety ((StmtExpr e):ss) fn_name mut_vars summaries moved =
         r1 = check expr safety e fn_name mut_vars summaries moved
         check stmt list safety tuple ss fn_name mut_vars summaries r1
@@ -710,11 +729,19 @@ fn :: check stmt list safety tuple [RStmt] String [String] [RFnSummary] ([String
       check stmt list safety tuple ss fn_name mut_vars summaries (moved, errs) =
         merge moved errs errs (check stmt list safety ss fn_name mut_vars summaries moved)
 
+fn :: is chan or agent param ty String => Bool
+      is chan or agent param ty "Channel" = True
+      is chan or agent param ty "Agent"   = True
+      is chan or agent param ty "SinkAgent" = True
+      is chan or agent param ty pty =
+        (str starts with pty "(Agent") or (str starts with pty "(SinkAgent")
+
 fn :: collect mutable params [String]   [RPattern]        => [String]
       collect mutable params []         _                 =  []
       collect mutable params _          []                =  []
       collect mutable params (pty:ptys) ((PatVar v):pats)
         | str starts with pty "Tensor" = add unique str v (collect mutable params ptys pats)
+        | is chan or agent param ty pty = add unique str ("chan:" + v) (collect mutable params ptys pats)
         | otherwise = collect mutable params ptys pats
       collect mutable params (_:ptys)   (_:pats)          =  collect mutable params ptys pats
 

@@ -1,14 +1,14 @@
 ---
 name: implement-code-ridgun
-description: Implement, refactor or review Ridgun (.rg) code and build.rg definitions using the exact Ridgun v0.9.29 grammar, idiomatic -> pipeline chaining (xs map f -> filter g -> results), (+ _ _ +) sequence masks, -> () unit discard, _ =-free side-effect blocks, type system, user-defined generic types (type Result T E, type Page T), lexical closures ((x => expr), (acc x => expr)), module namespaces (module ::, import ... as, mod.Type/Ctor/fn), Native Agent Model (agent, send ... to, receive from, try receive from, stop), RMM1/RMM2 deterministic memory rules, parallel || DAGs, with timeout quotas, PAL primitives, and pure-Ridgun stable/ridgunc ELF64 toolchain; use for any Ridgun (.rg) change.
+description: Implement, refactor or review Ridgun (.rg) code and build.rg definitions using the exact Ridgun v0.9.30 grammar, idiomatic -> pipeline chaining (xs map f -> filter g -> results), (+ _ _ +) sequence masks, -> () unit discard, _ =-free side-effect blocks, type system, user-defined generic types (type Result T E, type Page T), lexical closures ((x => expr), (acc x => expr)), module namespaces (module ::, import ... as, mod.Type/Ctor/fn), Native Agent Model (agent, agent sink, agent ::, send ... to, receive from, try receive from, stop), RMM1/RMM2 deterministic memory rules, parallel || DAGs, with timeout quotas, PAL primitives, and pure-Ridgun stable/ridgunc ELF64 toolchain; use for any Ridgun (.rg) change.
 ---
-# implement-code-ridgun (`v0.9.29`)
+# implement-code-ridgun (`v0.9.30`)
 
 Reading budget: `harness/skills/implement-code-ridgun/references/cheatsheet.rg` (or `docs/lang/spec.md` when a construct is unfamiliar), `build.rg`, and the target `.rg` files under `src/main/ridgun/` or `src/test/ridgun/`.
 
 ---
 
-## 1. Project & Architecture Overview (`v0.9.29`)
+## 1. Project & Architecture Overview (`v0.9.30`)
 - **100% Pure Ridgun (Zero Rust / Zero `rustc`)**: Both `ridgunc` (`src/main/ridgun/ridgunc/main.rg`) and `stable` (`src/main/ridgun/stable/main.rg`) are written 100% in Ridgun and emit standalone, statically linked Linux ELF64 executables directly to disk via `elf64.rg`, `x86_64.rg` (`EM_X86_64 = 62`), and `arm64.rg` (`EM_AARCH64 = 183` for Raspberry Pi).
 - **Project Layout**:
   - `build.rg`: Pure-Ridgun project manifest (`fn :: project name => String`, `project version`, `main entry`, `source dir`, `test dir`, `target dir`).
@@ -20,7 +20,7 @@ Reading budget: `harness/skills/implement-code-ridgun/references/cheatsheet.rg` 
 
 ## 2. LLM Anti-Patterns: "Never Write This → Write This Instead"
 
-| Common LLM Mistake (INVALID) | Correct Ridgun `v0.9.29` (VALID) | Why |
+| Common LLM Mistake (INVALID) | Correct Ridgun `v0.9.30` (VALID) | Why |
 |---|---|---|
 | `fn :: parse_header String => (Int, [(String, String)], String)` | `fn :: parse header String => Int [String String] String` | Prefer natural spaces in function/built-in names (`FR-COMP-005`) and space-separated tuple/sequence type signatures (`FR-COMP-008`) |
 | `// comment` or `# comment` | `-- comment` | Only `--` starts a comment |
@@ -239,18 +239,22 @@ Ridgun achieves deterministic memory management with **zero Garbage Collector pa
   - Compile-time dimension verification: `fn :: linear Tensor[B, In] Tensor[In, Out] => Tensor[B, Out]`.
   - Creation & indexing: `m = zeros [2, 2]`, `m[0, 1] = 3.5`, `v = m[0, 1]`.
   - Einstein summation (`A_ik @ B_kj` or `einsum "ik,kj->ij" a b`) and Hadamard element-wise ops (`a @+ b`, `a @- b`, `a @* b`, `a @/ b`).
-- **Native Agent Model (`agent`, `send ... to`, `ask ... to`, `receive from`, `try receive from`, `stop`) (`FR-COMP-009`)**:
+- **Native Agent Model (`agent`, `agent sink`, `agent ::`, `send ... to`, `ask ... to`, `receive from`, `try receive from`, `stop`) (`FR-COMP-009`)**:
   - Any `fn ::` or `op ::` function can be wrapped into an isolated agent:
     - Stateless agent: `ag = agent (procesar mensaje con tiempo)` (`M1 ... Mn => R` $\to$ `Agent (M1 ... Mn) R`).
     - Stateful agent: `ag = agent (sumar visita) 0` (`S M => S` or `S M => S R` $\to$ `Agent M S` or `Agent M R`, with `RMM1`/`RMM2` automatic state release on every transition).
+    - Fire-and-forget sink agent (`v0.9.30`): `rec = agent sink step_fn [init_state] [, mailbox N drop|block] [, drain D]` (`SinkAgent M S`, processes messages in FIFO order with no output queue).
+    - Top-level global sink agent (`v0.9.30`): `agent :: audit_log = sink step_fn [init_state] [, mailbox N drop|block] [, drain D]` (initialized before `main` and drained in reverse declaration order at program exit).
   - Operations:
     - Asynchronous send: `send msg to ag`, `msg -> send to ag`, or multi-argument `send a b to ag`.
-    - Synchronous request-reply (`send` + `receive`): `ask msg to ag`, `ask ag msg`, or pipeline `msg -> ask to ag -> res`.
-    - Receive & lifecycle: `receive from ag -> res`, `try receive from ag -> opt` (`Some res | None`), `stop ag`, `agent alive ag` (`Bool`).
+    - Synchronous request-reply (`send` + `receive`): `ask msg to ag`, `ask ag msg`, or pipeline `msg -> ask to ag -> res` (compile-time error on `SinkAgent`).
+    - Receive & lifecycle: `receive from ag -> res`, `try receive from ag -> opt` (`Some res | None`), `stop ag`, `agent alive ag` (`Bool`). Calling `receive from` or `try receive from` on a `SinkAgent` is a compile-time error.
+    - Sink observability & test redirection (`v0.9.30`): `agent dropped ag => Int`, `agent flush ag => ()`, `agent state ag => S`, and `with agent <global_ag> = <replacement_ag> do <body>`.
   - Legacy `spawn` and `join` are retired: use `||` / `||map` / `||filter` for computational fork-join parallelism and `agent` for decoupled stateful/service processes.
 - **Affine Channels & Agent Sends (`new channel`, `send through`, `send ... to`, `receive from`)**:
-  - `new channel -> ch`, `send through msg ch`, `receive from ch -> out` (no `_ =` needed).
-  - Reading a variable `msg` after `send msg to ag`, `msg -> send to ag`, or `send through msg ch` is rejected at compile time (`ErrUseAfterSend`).
+  - `new channel -> ch`, `send msg through ch`, `receive from ch -> out` (no `_ =` needed).
+  - Reading a payload variable `msg` after `send msg to ag`, `msg -> send to ag`, or `send msg through ch` is rejected at compile time (`ErrUseAfterSend`).
+  - Variables holding `Channel`, `Agent`, or `SinkAgent` descriptors may be shared across multiple `send ... to` / `send ... through` calls (fan-in/fan-out across worker agents) without triggering `ErrUseAfterSend`.
 
 ---
 

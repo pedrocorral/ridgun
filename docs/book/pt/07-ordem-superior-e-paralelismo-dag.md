@@ -253,4 +253,7 @@ fn :: main => ()
         echo primeiro "|" segundo
 ```
 
+### 4. Agentes sumidouro (*fire-and-forget* `agent sink`), caixas de correio globais (`agent ::`) e testes determinísticos (`with agent`)
+Quando precisa de auditoria assíncrona, métricas ou rastreabilidade transversal sem poluir todas as assinaturas nem acumular respostas por ler numa fila de saída, o Ridgun oferece **agentes sumidouro (`agent sink`)** e **caixas de correio globais de topo (`agent ::`)** (`agent dropped`, `agent flush`, `agent state` e `with agent audit_log = espiao do ...`), além de descritores `Channel` e `Agent` partilháveis entre múltiplos trabalhadores.
+
 E agora, aperte o cinto de segurança para o **Capítulo 08**, o grande final: **tensores com dimensões verificadas na compilação, variáveis de âmbito (`context`/`shared`), regiões de memória determinísticas, acesso direto a hardware MMIO e programação de sistemas UNIX/POSIX**.

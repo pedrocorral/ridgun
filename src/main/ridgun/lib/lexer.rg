@@ -137,10 +137,21 @@ fn :: check byte unit suffix String Int Int Int => RToken Int
         | (end_n + 2) <= len and (str slice src end_n (end_n + 2)) == "_s" and ((end_n + 2) == len or not (is alnum (str char at src (end_n + 2)))) = (TokInt (val * 1000), end_n + 2)
         | otherwise = (TokInt val, end_n)
 
+fn :: strip num underscores String Int Int String => String
+      strip num underscores s pos len acc
+        | pos >= len = acc
+        | (str char at s pos) == 95 = strip num underscores s (pos + 1) len acc
+        | otherwise = strip num underscores s (pos + 1) len (acc + (str slice s pos (pos + 1)))
+
+fn :: clean num slice String => String
+      clean num slice s
+        | str contains s "_" = strip num underscores s 0 (str len s) ""
+        | otherwise = s
+
 fn :: tok dec or real String Int Int Int => RToken Int
       tok dec or real src pos end_n len
         | end_n < len and (str char at src end_n) == 46 and is digit (str char at src (end_n + 1)) = tok real frac src pos (scan dec end src (end_n + 1) len)
-        | otherwise = check byte unit suffix src end_n len (str to int (str slice src pos end_n))
+        | otherwise = check byte unit suffix src end_n len (str to int (clean num slice (str slice src pos end_n)))
 
 fn :: tok real frac String Int Int => RToken Int
       tok real frac src pos end_frac =
@@ -153,7 +164,7 @@ fn :: tok number String Int Int => RToken Int
 
 fn :: tok hex number String Int Int => RToken Int
       tok hex number src pos end_h =
-        raw_h = str slice src pos end_h
+        raw_h = clean num slice (str slice src pos end_h)
         (TokInt (str to int raw_h), end_h)
 
 fn :: tok ident String Int Int => RToken Int

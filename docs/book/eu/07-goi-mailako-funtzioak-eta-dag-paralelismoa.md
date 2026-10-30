@@ -253,4 +253,7 @@ fn :: main => ()
         echo lehena "|" bigarrena
 ```
 
+### 4. Hustubide-agenteak (*fire-and-forget* `agent sink`), postontzi globalak (`agent ::`) eta proba deterministak (`with agent`)
+Ikuskaritza asinkronoa, metrikak edo trazabilitate zeharkakoa behar dituzunean sinadura guztiak zikindu gabe eta irakurri gabeko erantzunak irteera-ilaran pilatu gabe, Ridgunek **hustubide-agenteak (`agent sink`)** eta **goi-mailako postontzi globalak (`agent ::`)** eskaintzen ditu (`agent dropped`, `agent flush`, `agent state` eta `with agent audit_log = espioia do ...`), baita langile anitzen artean parteka daitezkeen `Channel` eta `Agent` deskribatzaileak ere.
+
 Eta orain, lotu gerrikoa **08. kapitulurako**, amaiera handirako: **konpilazio-garaian egiaztatutako dimentsioak dituzten tentsoreak, esparru-aldagaiak (`context`/`shared`), memoria-eskualde deterministak, MMIO hardwarerako sarbide zuzena eta UNIX/POSIX sistemen programazioa**.

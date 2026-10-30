@@ -1,6 +1,6 @@
 -- ============================================================
 -- harness/skills/implement-code-ridgun/references/cheatsheet.rg
--- Canonical Ridgun v0.9.29 Reference Cheatsheet for AI Agents
+-- Canonical Ridgun v0.9.30 Reference Cheatsheet for AI Agents
 -- ============================================================
 
 -- 1. Sum ADTs, Shared Constructors, Bare Type Variants, `expand type` & Product Records (`FR-COMP-005`)

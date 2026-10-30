@@ -253,4 +253,11 @@ fn :: main => ()
         echo first "|" second
 ```
 
+### 4. Fire-and-forget sink agents (`agent sink`), global mailboxes (`agent ::`), and deterministic testing (`with agent`)
+When you need asynchronous audit logs, metrics, tracing, or cross-cutting rate limiting without threading an extra handle through every function signature or accumulating unread replies in an output queue, Ridgun provides **sink agents (`agent sink`)** and **top-level global mailboxes (`agent ::`)**:
+- `rec = agent sink (step fn) [init_state], mailbox N drop|block, drain 2_s`: processes messages in FIFO order (`S M => S` or `M => ()`), releases old states via `RMM1`/`RMM2`, and has **no output queue** (`receive from`, `try receive from`, and `ask` on a `SinkAgent` are compile-time errors).
+- `agent :: audit_log = sink (step fn) [], mailbox 10_000 drop, drain 2_s`: declares a module-level sink agent initialized before `main` and drained in reverse declaration order at program exit.
+- `agent dropped ag`, `agent flush ag`, `agent state ag`, and `with agent audit_log = spy do ...`: let you inspect backpressure drops, flush pending messages, inspect state snapshots, and redirect a global mailbox to an isolated spy agent in tests.
+- In addition, `Channel`, `Agent`, and `SinkAgent` descriptors can be shared across multiple workers (`send ch 1 to w1`, `send ch 2 to w2`), while regular heap payloads sent through channels remain affine (`ErrUseAfterSend`).
+
 And now, fasten your seatbelt for **Chapter 08**, the grand finale: **tensors with compile-time verified dimensions, scoped variables (`context`/`shared`), deterministic memory regions, direct MMIO hardware access, and UNIX/POSIX systems programming**.

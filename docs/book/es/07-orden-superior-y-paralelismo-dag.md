@@ -278,4 +278,11 @@ fn :: main => ()
         echo primero "|" segundo
 ```
 
+### 4. Agentes sumidero (*fire-and-forget* `agent sink`), buzones globales (`agent ::`) y pruebas deterministas (`with agent`)
+Cuando necesitas auditoría asíncrona, métricas, trazas o *rate limiting* transversal sin ensuciar todas las firmas con un parámetro extra ni acumular respuestas sin leer en una cola de salida, Ridgun ofrece **agentes sumidero (`agent sink`)** y **buzones globales de nivel superior (`agent ::`)**:
+- `rec = agent sink (paso) [estado_inicial], mailbox N drop|block, drain 2_s`: procesa cada mensaje en orden FIFO (`S M => S` o `M => ()`), libera el estado anterior con `RMM1`/`RMM2` y **no acumula cola de salida** (`receive from`, `try receive from` y `ask` sobre un `SinkAgent` son errores de compilación).
+- `agent :: audit_log = sink (paso) [], mailbox 10_000 drop, drain 2_s`: declara un agente sumidero global inicializado antes de `main` y vaciado ordenadamente al salir del programa.
+- `agent dropped ag`, `agent flush ag`, `agent state ag` y `with agent audit_log = espia do ...`: permiten observar mensajes descartados por contrapresión (`drop`), drenar el buzón, inspeccionar el estado y redirigir temporalmente un buzón global a un agente espía aislado en los tests.
+- Además, los descriptores de `Channel`, `Agent` y `SinkAgent` pueden compartirse libremente entre múltiples trabajadores (`send ch 1 to w1`, `send ch 2 to w2`), mientras que los datos enviados por el canal mantienen su propiedad afín (`ErrUseAfterSend`).
+
 Y ahora, abróchate el cinturón para el **Capítulo 08**, el gran final: **tensores con dimensiones verificadas en compilación, variables de ámbito (`context`/`shared`), regiones de memoria deterministas, acceso directo a hardware MMIO y programación de sistemas UNIX/POSIX**.

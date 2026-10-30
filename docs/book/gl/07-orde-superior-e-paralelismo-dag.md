@@ -253,4 +253,7 @@ fn :: main => ()
         echo primeiro "|" segundo
 ```
 
+### 4. Axentes sumidoiro (*fire-and-forget* `agent sink`), caixas de correo globais (`agent ::`) e probas deterministas (`with agent`)
+Cando precisas auditoría asíncrona, métricas ou trazabilidade transversal sen ensuciar todas as sinaturas nin acumular respostas sen ler nunha cola de saída, Ridgun ofrece **axentes sumidoiro (`agent sink`)** e **caixas de correo globais de nivel superior (`agent ::`)** (`agent dropped`, `agent flush`, `agent state` e `with agent audit_log = espia do ...`), ademais de descritores `Channel` e `Agent` compartibles entre múltiples traballadores.
+
 E agora, abrocha o cinto para o **Capítulo 08**, o gran final: **tensores con dimensións verificadas en compilación, variables de ámbito (`context`/`shared`), rexións de memoria deterministas, acceso directo a hardware MMIO e programación de sistemas UNIX/POSIX**.

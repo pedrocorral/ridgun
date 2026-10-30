@@ -2,13 +2,13 @@
 name: implement-stable-project
 description: Configure, scaffold, build, and extend Ridgun projects with `stable` (`build.rg`), including executable and reusable library compilation (`.rglib` and ELF64 `.so`), custom `fn :: task` commands, `plugins/*.rg` framework extensions, dependency management, and canonical formatting; use whenever working with `stable`, `build.rg`, libraries, or plugins.
 ---
-# implement-stable-project (`v0.9.29`)
+# implement-stable-project (`v0.9.30`)
 
 Reading budget: `harness/skills/implement-stable-project/references/build_cheatsheet.rg`, `harness/skills/implement-stable-project/references/plugin_cheatsheet.rg`, and the project's `build.rg`.
 
 ---
 
-## 1. Overview of `stable` (`v0.9.29`)
+## 1. Overview of `stable` (`v0.9.30`)
 `stable` (`src/main/ridgun/stable/main.rg`) is Ridgun's 100% self-hosted project manager, build orchestrator, test runner, dependency manager, canonical tabular formatter, and extensible plugin host.
 - **No external config formats**: `stable` uses `build.rg` (pure Ridgun functions) instead of TOML, YAML, or JSON.
 - **Multicore parallel execution**: `stable check`, `stable test`, and `stable format` process files concurrently via Ridgun's `||map`.
@@ -41,6 +41,7 @@ Every setting in `build.rg` is a zero-argument Ridgun function (`fn :: <setting 
 | Command | Action |
 |---|---|
 | `stable info` | Print project name, version, kind, directories, discovered targets, custom tasks, and plugins |
+| `stable --version` / `stable -v` | Print `stable 0.9.30` version banner |
 | `stable new <name>` | Scaffold a new executable project in `<name>/` (`build.rg`, `src/main/ridgun/<name>/main.rg`, `src/test/ridgun/test main.rg`, `.gitignore`) |
 | `stable new --lib <name>` | Scaffold a new reusable library project in `<name>/` (`project kind = "lib"`, `src/main/ridgun/lib/<name>.rg` without `main`, `src/test/ridgun/test <name>.rg`) |
 | `stable init [--lib]` | Initialize `build.rg` and standard directories in the current working directory |

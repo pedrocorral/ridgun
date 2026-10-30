@@ -433,6 +433,11 @@ fn :: build tc4 result (Int, String, Int, Int) => CaseResult
         ok4 = cl == 0 and tl <= 3000
         Result "toolchain: building a program that imports standard libraries (str, io, list, cli) completes in under 3000 ms (RG-075)" ok4 False ("built in " + (int to str tl) + " ms (exit " + (int to str cl) + ")")
 
+fn :: build tc5 result (Int, String, Int, Int) => CaseResult
+      build tc5 result (cs, os, _, _) =
+        ok5 = cs != 0 and (str contains os "syntax error at") and (str contains os "syntax_bad.rg:2:")
+        Result "toolchain: a syntax error reports 'syntax error at <file>:<line>:<col>' instead of 'type error in function syntax' (CH-001)" ok5 False ("exit " + (int to str cs) + "; output: " + (trim ws os))
+
 fn :: run toolchain checks String String String => [CaseResult]
       run toolchain checks ridgunc libs_dir work_root =
         d = work_root + "/toolchain"
@@ -449,7 +454,9 @@ fn :: run toolchain checks String String String => [CaseResult]
         copy libs if needed True d libs_dir
         write file (d + "/lib_perf.rg") "import str\nimport io\nimport list\nimport cli\n\nfn :: main => ()\n      main =  echo (str trim left \"  hello  \")\n"
         r4 = build tc4 result (run sh capture ("\"" + ridgunc + "\" build --strict lib_perf.rg -o lib_perf") d 600)
-        [r1, r2, r3, r4]
+        write file (d + "/syntax_bad.rg") "fn :: broken Int => [Int]\n      broken x = [x, x + 1]]\n"
+        r5 = build tc5 result (run sh capture ("\"" + ridgunc + "\" check syntax_bad.rg") d 600)
+        [r1, r2, r3, r4, r5]
 
 fn :: print case result CaseResult => ()
       print case result (Result name True _ _) =

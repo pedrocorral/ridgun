@@ -5,11 +5,11 @@ description: "Use when writing, refactoring, or reviewing Ridgun (.rg) source fi
 applyTo: "**/*.rg,build.rg"
 optional: false
 ---
-# Ridgun conventions (`.rg` — `v0.9.29`)
+# Ridgun conventions (`.rg` — `v0.9.30`)
 
 Read and follow the `implement-code-ridgun` skill before editing any `.rg` file.
 
-## Layout and 100% pure-Ridgun ELF64 toolchain (`v0.9.29`)
+## Layout and 100% pure-Ridgun ELF64 toolchain (`v0.9.30`)
 - Shared modules live in `src/main/ridgun/lib/*.rg`; executable entrypoints live in `src/main/ridgun/<target>/main.rg` (compiled directly to standalone Linux ELF64 executables at `target/<target>` without Rust, C, or `rustc`).
 - Library compilation (`FR-COMP-006`): modules without `fn :: main => ()` can be compiled as `.rglib` bundles (`ridgunc build --lib <file.rg> -o <out.rglib>`) and native Linux ELF64 `ET_DYN` shared objects (`ridgunc build --so <file.rg> -o <lib.so>`), or built via `stable built lib` (`fn :: project kind => String` = `"lib"` in `build.rg`, scaffolded via `stable new --lib <name>`).
 - Extensible `stable` (`FR-TOOL-003`): projects can declare custom tasks in `build.rg` (`fn :: task <name> => String`) and load plugins (`fn :: plugins => [String]`, `plugins/*.rg`, `.stable/plugins/*.rg`); inspect via `stable tasks` and `stable plugins`.
@@ -58,6 +58,12 @@ Read and follow the `implement-code-ridgun` skill before editing any `.rg` file.
 - **Native Agent Model (`FR-COMP-009`)**:
   - Any `fn ::` or `op ::` function can be instantiated as an autonomous agent without special declaration keywords: `ag = agent fn` (stateless `M => R`) or `ag = agent fn init_state` (stateful `S M => S` or `S M => S R`).
   - Communicate via `send msg to ag` (or pipeline `msg -> send to ag`, or multi-argument `send a b to ag`), synchronous request-reply `ask msg to ag` / `ask ag msg` (or pipeline `msg -> ask to ag -> res`), `receive from ag`, `try receive from ag` (`Some r | None`), `stop ag`, and `agent alive ag`, typed as `Agent In Out` (or `(Agent In Out)`). Legacy `spawn` and `join` are retired.
+  - **Fire-and-Forget Sink Agents (`agent sink`) & Top-Level Global Mailboxes (`agent ::`) (`v0.9.30`)**:
+    - Local sink agents: `recorder = agent sink step_fn [init_state] [, mailbox N drop|block] [, drain D]`.
+    - Top-level global sink agents: `agent :: <name> = sink step_fn [init_state] [, mailbox N drop|block] [, drain D]` (initialized before `main` and drained in reverse declaration order at program exit).
+    - Sink agents process messages in FIFO order (`step_fn :: M => ()` or `step_fn :: S M => S`), releasing previous states via `RMM1`/`RMM2` with **no output queue**. Calling `receive from`, `try receive from`, or `ask ... to` on a sink agent (`SinkAgent`) is a compile-time error.
+    - Bounded mailboxes & testing intrinsics: `mailbox N drop` discards new messages when `N` messages are pending (incrementing `agent dropped <ag> => Int`); `agent flush <ag> => ()` drains pending messages; `agent state <ag> => S` flushes and returns a snapshot of the current internal state; `with agent <global_ag> = <replacement_ag> do <body>` temporarily redirects sends to `<global_ag>` to `<replacement_ag>` for testing.
+    - Variables holding `Channel`, `Agent`, or `SinkAgent` descriptors may be shared across multiple `send ... to` / `send ... through` calls (fan-in/fan-out across worker agents) without triggering `ErrUseAfterSend`, while regular heap payloads remain affine (`ErrUseAfterSend`).
 - **Declarative Timeouts (`with timeout`) & Cross-Platform PAL Primitives (`FR-COMP-007`)**:
   - Duration suffixes `_ms` (`* 1`), `_s` (`* 1000`), and `_min` (`* 60000`) desugar at lex time to integer milliseconds (`Int`).
   - `with timeout 500_ms do ...` (or `with region 64_MB, timeout 500_ms do ...`) pushes a monotonic deadline onto the execution context stack (`sys deadline ms => Int`, `sys remaining ms => Int`) and automatically clamps `sys poll` inside the block.

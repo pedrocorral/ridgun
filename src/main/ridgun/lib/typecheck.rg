@@ -215,6 +215,10 @@ fn :: types compatible RType              RType              => Bool
         | otherwise = False
       types compatible (TyVar "Agent")    (TyTuple ((TyVar "Agent"):_)) = True
       types compatible (TyTuple ((TyVar "Agent"):_)) (TyVar "Agent") = True
+      types compatible (TyVar "Agent")    (TyTuple ((TyVar "SinkAgent"):_)) = True
+      types compatible (TyTuple ((TyVar "SinkAgent"):_)) (TyVar "Agent") = True
+      types compatible (TyVar "SinkAgent") (TyTuple ((TyVar "SinkAgent"):_)) = True
+      types compatible (TyTuple ((TyVar "SinkAgent"):_)) (TyVar "SinkAgent") = True
       types compatible (TyVar "Channel")  TyInt              = True
       types compatible TyInt              (TyVar "Channel")  = True
       types compatible (TyVar a)          other
@@ -299,7 +303,7 @@ fn :: builtin local types => [RTypeBind]
 
 fn :: builtin fn types => [RTypeBind]
       builtin fn types =
-        [TypeBind "cli_args" (TyFun [] (TyList TyString)), TypeBind "new_mailbox" (TyFun [] TyInt), TypeBind "new_channel" (TyFun [] (TyVar "Channel")), TypeBind "stop" (TyFun [TyVar "Agent"] TyUnit), TypeBind "agent_alive" (TyFun [TyVar "Agent"] TyBool), TypeBind "send_to" (TyFun [TyVar "A", TyVar "Agent"] TyUnit), TypeBind "ask_to" (TyFun [TyVar "A", TyVar "Agent"] (TyVar "B")), TypeBind "new_bounded_channel" (TyFun [TyInt] (TyVar "Channel")), TypeBind "send_through" (TyFun [TyVar "A", TyVar "Channel"] TyUnit), TypeBind "chan_send" (TyFun [TyVar "A", TyVar "Channel"] TyUnit), TypeBind "receive_from" (TyFun [TyVar "_chan_or_agent"] (TyVar "A")), TypeBind "chan_recv" (TyFun [TyVar "Channel"] (TyVar "A")), TypeBind "try_receive_from" (TyFun [TyVar "_chan_or_agent"] (TyVar "Option")), TypeBind "chan_try_recv" (TyFun [TyVar "Channel"] (TyVar "Option")), TypeBind "receive_from_timeout" (TyFun [TyVar "Channel", TyInt] (TyVar "Option")), TypeBind "str_len" (TyFun [TyString] TyInt), TypeBind "str_char_at" (TyFun [TyString, TyInt] TyInt), TypeBind "str_slice" (TyFun [TyString, TyInt, TyInt] TyString), TypeBind "char_from_code" (TyFun [TyInt] TyString), TypeBind "str_concat" (TyFun [TyString, TyString] TyString), TypeBind "int_to_str" (TyFun [TyInt] TyString), TypeBind "str_to_int" (TyFun [TyString] TyInt), TypeBind "str_starts_with" (TyFun [TyString, TyString] TyBool), TypeBind "str_contains" (TyFun [TyString, TyString] TyBool), TypeBind "read_file" (TyFun [TyString] TyString), TypeBind "load_rg_source" (TyFun [TyString] TyString), TypeBind "read_bytes" (TyFun [TyString] (TyList TyInt)), TypeBind "write_bytes" (TyFun [TyString, TyList TyInt] TyUnit), TypeBind "write_file" (TyFun [TyString, TyString] TyUnit), TypeBind "shell_exec" (TyFun [TyString] TyInt), TypeBind "map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "seq_map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "||map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "par_map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "seq_filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "||filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "par_filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "fold" (TyFun [TyFun [TyVar "B", TyVar "A"] (TyVar "B"), TyVar "B", TyList (TyVar "A")] (TyVar "B")), TypeBind "list_dir" (TyFun [TyString] (TyList TyString)), TypeBind "file_lstat" (TyFun [TyString] (TyTuple [TyBool, TyString, TyInt, TyInt, TyInt, TyString, TyString, TyInt, TyString])), TypeBind "sha256_file" (TyFun [TyString] TyString), TypeBind "sha256_str" (TyFun [TyString] TyString), TypeBind "sha256_raw" (TyFun [TyString] TyString), TypeBind "sha256_bytes" (TyFun [TyString] TyString), TypeBind "sys_os" (TyFun [] (TyVar "adt:SysOs")), TypeBind "sys_arch" (TyFun [] (TyVar "adt:SysArch")), TypeBind "sys_mkdir" (TyFun [TyString, TyInt] TyInt), TypeBind "sys_chmod" (TyFun [TyString, TyInt] TyInt), TypeBind "sys_exec" (TyFun [TyString, TyList TyString, TyList TyString] TyInt), TypeBind "sys_chdir" (TyFun [TyString] TyInt), TypeBind "sys_getcwd" (TyFun [] TyString), TypeBind "sys_getenv" (TyFun [TyString] TyString), TypeBind "sys_setenv" (TyFun [TyString, TyString] TyInt), TypeBind "sys_exit" (TyFun [TyInt] TyUnit), TypeBind "sys_getuid" (TyFun [] TyInt), TypeBind "sys_getgid" (TyFun [] TyInt), TypeBind "sys_getpid" (TyFun [] TyInt), TypeBind "sys_time_ms" (TyFun [] TyInt), TypeBind "sys_deadline_ms" (TyFun [] TyInt), TypeBind "sys_remaining_ms" (TyFun [] TyInt), TypeBind "sys_sleep_ms" (TyFun [TyInt] TyUnit), TypeBind "sys_open_mode" (TyFun [TyString, TyString] TyInt), TypeBind "sys_open" (TyFun [TyString, TyInt, TyInt] TyInt), TypeBind "sys_close" (TyFun [TyInt] TyInt), TypeBind "sys_read_fd" (TyFun [TyInt, TyInt] TyString), TypeBind "sys_write_fd" (TyFun [TyInt, TyString] TyInt), TypeBind "sys_poll" (TyFun [TyInt, TyInt, TyInt] TyInt), TypeBind "sys_terminate" (TyFun [TyInt, TyBool] TyInt), TypeBind "sys_kill" (TyFun [TyInt, TyInt] TyInt), TypeBind "sys_call" (TyFun [TyInt, TyInt, TyInt, TyInt, TyInt, TyInt, TyInt] TyInt), TypeBind "sys_pipe" (TyFun [] (TyTuple [TyInt, TyInt])), TypeBind "sys_waitpid" (TyFun [TyInt, TyInt] (TyTuple [TyInt, TyInt])), TypeBind "sys_username" (TyFun [TyInt] TyString), TypeBind "sys_user_groups" (TyFun [TyString] (TyList TyString)), TypeBind "sys_lookup_uid_gid" (TyFun [TyString] (TyTuple [TyInt, TyInt])), TypeBind "sys_setresgid" (TyFun [TyInt] TyInt), TypeBind "sys_setgroups" (TyFun [TyList TyInt] TyInt), TypeBind "sys_setresuid" (TyFun [TyInt] TyInt), TypeBind "sys_execve" (TyFun [TyString, TyList TyString, TyList TyString] TyInt), TypeBind "sys_read_pass" (TyFun [TyString] TyString), TypeBind "cmm_live_blocks" (TyFun [] TyInt), TypeBind "cmm_cond_spared" (TyFun [] TyInt), TypeBind "cmm_cond_freed" (TyFun [] TyInt), TypeBind "cmm_same_ptr" (TyFun [TyVar "A", TyVar "A"] TyBool)]
+        [TypeBind "cli_args" (TyFun [] (TyList TyString)), TypeBind "new_mailbox" (TyFun [] TyInt), TypeBind "new_channel" (TyFun [] (TyVar "Channel")), TypeBind "stop" (TyFun [TyVar "Agent"] TyUnit), TypeBind "agent_alive" (TyFun [TyVar "Agent"] TyBool), TypeBind "agent_dropped" (TyFun [TyVar "Agent"] TyInt), TypeBind "agent_flush" (TyFun [TyVar "Agent"] TyUnit), TypeBind "agent_state" (TyFun [TyVar "Agent"] (TyVar "A")), TypeBind "send_to" (TyFun [TyVar "A", TyVar "Agent"] TyUnit), TypeBind "ask_to" (TyFun [TyVar "A", TyVar "Agent"] (TyVar "B")), TypeBind "new_bounded_channel" (TyFun [TyInt] (TyVar "Channel")), TypeBind "send_through" (TyFun [TyVar "A", TyVar "Channel"] TyUnit), TypeBind "chan_send" (TyFun [TyVar "A", TyVar "Channel"] TyUnit), TypeBind "receive_from" (TyFun [TyVar "_chan_or_agent"] (TyVar "A")), TypeBind "chan_recv" (TyFun [TyVar "Channel"] (TyVar "A")), TypeBind "try_receive_from" (TyFun [TyVar "_chan_or_agent"] (TyVar "Option")), TypeBind "chan_try_recv" (TyFun [TyVar "Channel"] (TyVar "Option")), TypeBind "receive_from_timeout" (TyFun [TyVar "Channel", TyInt] (TyVar "Option")), TypeBind "str_len" (TyFun [TyString] TyInt), TypeBind "str_char_at" (TyFun [TyString, TyInt] TyInt), TypeBind "str_slice" (TyFun [TyString, TyInt, TyInt] TyString), TypeBind "char_from_code" (TyFun [TyInt] TyString), TypeBind "str_concat" (TyFun [TyString, TyString] TyString), TypeBind "int_to_str" (TyFun [TyInt] TyString), TypeBind "str_to_int" (TyFun [TyString] TyInt), TypeBind "str_starts_with" (TyFun [TyString, TyString] TyBool), TypeBind "str_contains" (TyFun [TyString, TyString] TyBool), TypeBind "read_file" (TyFun [TyString] TyString), TypeBind "load_rg_source" (TyFun [TyString] TyString), TypeBind "read_bytes" (TyFun [TyString] (TyList TyInt)), TypeBind "write_bytes" (TyFun [TyString, TyList TyInt] TyUnit), TypeBind "write_file" (TyFun [TyString, TyString] TyUnit), TypeBind "shell_exec" (TyFun [TyString] TyInt), TypeBind "map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "seq_map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "||map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "par_map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "seq_filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "||filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "par_filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "fold" (TyFun [TyFun [TyVar "B", TyVar "A"] (TyVar "B"), TyVar "B", TyList (TyVar "A")] (TyVar "B")), TypeBind "list_dir" (TyFun [TyString] (TyList TyString)), TypeBind "file_lstat" (TyFun [TyString] (TyTuple [TyBool, TyString, TyInt, TyInt, TyInt, TyString, TyString, TyInt, TyString])), TypeBind "sha256_file" (TyFun [TyString] TyString), TypeBind "sha256_str" (TyFun [TyString] TyString), TypeBind "sha256_raw" (TyFun [TyString] TyString), TypeBind "sha256_bytes" (TyFun [TyString] TyString), TypeBind "sys_os" (TyFun [] (TyVar "adt:SysOs")), TypeBind "sys_arch" (TyFun [] (TyVar "adt:SysArch")), TypeBind "sys_mkdir" (TyFun [TyString, TyInt] TyInt), TypeBind "sys_chmod" (TyFun [TyString, TyInt] TyInt), TypeBind "sys_exec" (TyFun [TyString, TyList TyString, TyList TyString] TyInt), TypeBind "sys_chdir" (TyFun [TyString] TyInt), TypeBind "sys_getcwd" (TyFun [] TyString), TypeBind "sys_getenv" (TyFun [TyString] TyString), TypeBind "sys_setenv" (TyFun [TyString, TyString] TyInt), TypeBind "sys_exit" (TyFun [TyInt] TyUnit), TypeBind "sys_getuid" (TyFun [] TyInt), TypeBind "sys_getgid" (TyFun [] TyInt), TypeBind "sys_getpid" (TyFun [] TyInt), TypeBind "sys_time_ms" (TyFun [] TyInt), TypeBind "sys_deadline_ms" (TyFun [] TyInt), TypeBind "sys_remaining_ms" (TyFun [] TyInt), TypeBind "sys_sleep_ms" (TyFun [TyInt] TyUnit), TypeBind "sys_open_mode" (TyFun [TyString, TyString] TyInt), TypeBind "sys_open" (TyFun [TyString, TyInt, TyInt] TyInt), TypeBind "sys_close" (TyFun [TyInt] TyInt), TypeBind "sys_read_fd" (TyFun [TyInt, TyInt] TyString), TypeBind "sys_write_fd" (TyFun [TyInt, TyString] TyInt), TypeBind "sys_poll" (TyFun [TyInt, TyInt, TyInt] TyInt), TypeBind "sys_terminate" (TyFun [TyInt, TyBool] TyInt), TypeBind "sys_kill" (TyFun [TyInt, TyInt] TyInt), TypeBind "sys_call" (TyFun [TyInt, TyInt, TyInt, TyInt, TyInt, TyInt, TyInt] TyInt), TypeBind "sys_pipe" (TyFun [] (TyTuple [TyInt, TyInt])), TypeBind "sys_waitpid" (TyFun [TyInt, TyInt] (TyTuple [TyInt, TyInt])), TypeBind "sys_username" (TyFun [TyInt] TyString), TypeBind "sys_user_groups" (TyFun [TyString] (TyList TyString)), TypeBind "sys_lookup_uid_gid" (TyFun [TyString] (TyTuple [TyInt, TyInt])), TypeBind "sys_setresgid" (TyFun [TyInt] TyInt), TypeBind "sys_setgroups" (TyFun [TyList TyInt] TyInt), TypeBind "sys_setresuid" (TyFun [TyInt] TyInt), TypeBind "sys_execve" (TyFun [TyString, TyList TyString, TyList TyString] TyInt), TypeBind "sys_read_pass" (TyFun [TyString] TyString), TypeBind "cmm_live_blocks" (TyFun [] TyInt), TypeBind "cmm_cond_spared" (TyFun [] TyInt), TypeBind "cmm_cond_freed" (TyFun [] TyInt), TypeBind "cmm_same_ptr" (TyFun [TyVar "A", TyVar "A"] TyBool)]
 
 fn :: join adt ret ty RType RType => RType
       join adt ret ty (TyVar a) (TyVar b)
@@ -378,6 +382,30 @@ fn :: rev type binds [RTypeBind] [RTypeBind] => [RTypeBind]
       rev type binds [] acc = acc
       rev type binds (x:xs) acc = rev type binds xs ([x] :: acc)
 
+fn :: infer gagent ret from step Bool (Bool, RType) => RType
+      infer gagent ret from step True (True, (TyFun (s_ty:msg_params) _)) =
+        TyTuple [TyVar "SinkAgent", pack agent msg ty msg_params, s_ty]
+      infer gagent ret from step False (True, (TyFun msg_params _)) =
+        TyTuple [TyVar "SinkAgent", pack agent msg ty msg_params, TyUnit]
+      infer gagent ret from step _ _ =
+        TyTuple [TyVar "SinkAgent", TyVar "_any", TyVar "_any"]
+
+fn :: infer gagent ret [RFnCase] [RTypeBind] => RType
+      infer gagent ret ((FnCase _ _ (ECall "__gagent_get__" (_:(ECall "agent_sink" ((EVar step_fn):_:(EInt _):(EInt _):[])):[]))):_) fns =
+        infer gagent ret from step True (lookup type bind fns step_fn)
+      infer gagent ret ((FnCase _ _ (ECall "__gagent_get__" (_:(ECall "agent_sink" ((EVar step_fn):(EInt _):(EInt _):[])):[]))):_) fns =
+        infer gagent ret from step False (lookup type bind fns step_fn)
+      infer gagent ret _ _ =
+        TyTuple [TyVar "SinkAgent", TyVar "_any", TyVar "_any"]
+
+fn :: resolve gagent sigs [RFnDef] [RTypeBind] [RTypeBind] => [RTypeBind]
+      resolve gagent sigs [] _ fns = fns
+      resolve gagent sigs ((FnDef name [] "__sink_agent__" cases):fs) all_fns fns =
+        ret_ty = infer gagent ret cases all_fns
+        resolve gagent sigs fs all_fns ([TypeBind name (TyFun [] ret_ty)] :: fns)
+      resolve gagent sigs (_:fs) all_fns fns =
+        resolve gagent sigs fs all_fns fns
+
 fn :: register fndef sigs acc [String] [RFnDef] [RTypeBind] => [RTypeBind]
       register fndef sigs acc _ [] acc = acc
       register fndef sigs acc tnames ((FnDef name param_strs ret_str _):fs) acc =
@@ -387,7 +415,8 @@ fn :: register fndef sigs acc [String] [RFnDef] [RTypeBind] => [RTypeBind]
 
 fn :: register fndef sigs [String] [RFnDef] [RTypeBind] => [RTypeBind]
       register fndef sigs tnames fdefs fns0 =
-        rev type binds (register fndef sigs acc tnames fdefs []) fns0
+        fns1 = rev type binds (register fndef sigs acc tnames fdefs []) fns0
+        resolve gagent sigs fdefs fns1 fns1
 
 -- ── Pattern Variable Binding ────────────────────────────────
 
@@ -1215,12 +1244,43 @@ fn :: check agent create [RType] [RTypeError] String => RType [RTypeError]
       check agent create _ arg_errs fn_name =
         (TyVar "Agent", arg_errs :: [TypeError fn_name "agent expects a function reference and optional initial state"])
 
+fn :: check agent sink create [RType] [RTypeError] String => RType [RTypeError]
+      check agent sink create ((TyFun params _):_:_:[]) arg_errs _ =
+        (TyTuple [TyVar "SinkAgent", pack agent msg ty params, TyUnit], arg_errs)
+      check agent sink create ((TyFun (s_ty:msg_params) ret_ty):init_ty:_:_:[]) arg_errs fn_name
+        | (types compatible init_ty s_ty) and (types compatible ret_ty s_ty) =
+          (TyTuple [TyVar "SinkAgent", pack agent msg ty msg_params, s_ty], arg_errs)
+        | not (types compatible init_ty s_ty) =
+          err = TypeError fn_name ("sink agent initial state has type " + (rtype to str init_ty) + ", expected " + (rtype to str s_ty))
+          (TyTuple [TyVar "SinkAgent", pack agent msg ty msg_params, s_ty], arg_errs :: [err])
+        | otherwise =
+          err = TypeError fn_name ("sink agent step function returns " + (rtype to str ret_ty) + ", expected state type " + (rtype to str s_ty))
+          (TyTuple [TyVar "SinkAgent", pack agent msg ty msg_params, s_ty], arg_errs :: [err])
+      check agent sink create _ arg_errs fn_name =
+        (TyVar "SinkAgent", arg_errs :: [TypeError fn_name "agent sink expects a step function and optional initial state"])
+
+fn :: check gagent get [RType] [RTypeError] => RType [RTypeError]
+      check gagent get (_:sink_ty:[]) arg_errs = (sink_ty, arg_errs)
+      check gagent get _ arg_errs = (TyVar "SinkAgent", arg_errs)
+
+fn :: check with agent call [RType] [RTypeError] String => RType [RTypeError]
+      check with agent call (ag_ty:rep_ty:body_ty:[]) arg_errs fn_name
+        | types compatible ag_ty rep_ty = (body_ty, arg_errs)
+        | otherwise =
+          (body_ty, arg_errs :: [TypeError fn_name ("with agent replacement has type " + (rtype to str rep_ty) + ", expected " + (rtype to str ag_ty))])
+      check with agent call _ arg_errs _ = (TyUnit, arg_errs)
+
 fn :: check agent send [RType] [RTypeError] String => RType [RTypeError]
       check agent send (msg_ty:(TyTuple ((TyVar "Agent"):in_ty:_)):[]) arg_errs fn_name
         | types compatible msg_ty in_ty = (TyUnit, arg_errs)
         | otherwise =
           (TyUnit, arg_errs :: [TypeError fn_name ("agent message has type " + (rtype to str msg_ty) + ", expected " + (rtype to str in_ty))])
+      check agent send (msg_ty:(TyTuple ((TyVar "SinkAgent"):in_ty:_)):[]) arg_errs fn_name
+        | types compatible msg_ty in_ty = (TyUnit, arg_errs)
+        | otherwise =
+          (TyUnit, arg_errs :: [TypeError fn_name ("sink agent message has type " + (rtype to str msg_ty) + ", expected " + (rtype to str in_ty))])
       check agent send (_:(TyVar "Agent"):[]) arg_errs _ = (TyUnit, arg_errs)
+      check agent send (_:(TyVar "SinkAgent"):[]) arg_errs _ = (TyUnit, arg_errs)
       check agent send _ arg_errs _ = (TyUnit, arg_errs)
 
 fn :: specialize hof return String [RType] (RType, [RTypeError]) => RType [RTypeError]
@@ -1231,10 +1291,16 @@ fn :: specialize hof return String [RType] (RType, [RTypeError]) => RType [RType
       specialize hof return "fold" (_:init_ty:_) (_, errs) = (init_ty, errs)
       specialize hof return "receive_from" ((TyTuple ((TyVar "Agent"):_:out_ty:[])):_) (_, errs) = (out_ty, errs)
       specialize hof return "try_receive_from" ((TyTuple ((TyVar "Agent"):_:out_ty:[])):_) (_, errs) = (make option type out_ty, errs)
+      specialize hof return "agent_state" ((TyTuple ((TyVar "SinkAgent"):_:st_ty:[])):_) (_, errs) = (st_ty, errs)
+      specialize hof return "agent_state" ((TyTuple ((TyVar "Agent"):_:st_ty:[])):_) (_, errs) = (st_ty, errs)
       specialize hof return "Some" (elem_ty:[]) (_, errs) = (make option type elem_ty, errs)
       specialize hof return _ _ res = res
 
 fn :: check agent ask [RType] [RTypeError] String => RType [RTypeError]
+      check agent ask (_:(TyTuple ((TyVar "SinkAgent"):_)):[]) arg_errs fn_name =
+        (TyUnit, arg_errs :: [TypeError fn_name "cannot 'ask' a sink agent; sink agents are fire-and-forget and produce no output"])
+      check agent ask (_:(TyVar "SinkAgent"):[]) arg_errs fn_name =
+        (TyUnit, arg_errs :: [TypeError fn_name "cannot 'ask' a sink agent; sink agents are fire-and-forget and produce no output"])
       check agent ask (msg_ty:(TyTuple ((TyVar "Agent"):in_ty:out_ty:[])):[]) arg_errs fn_name
         | types compatible msg_ty in_ty = (out_ty, arg_errs)
         | otherwise =
@@ -1242,10 +1308,30 @@ fn :: check agent ask [RType] [RTypeError] String => RType [RTypeError]
       check agent ask (_:(TyVar "Agent"):[]) arg_errs _ = (TyVar "A", arg_errs)
       check agent ask _ arg_errs _ = (TyVar "A", arg_errs)
 
+fn :: is sink agent arg [RType] => Bool
+      is sink agent arg ((TyTuple ((TyVar "SinkAgent"):_)):_) = True
+      is sink agent arg ((TyVar "SinkAgent"):_) = True
+      is sink agent arg _ = False
+
 fn :: finish call check String ([RType], [RTypeError]) String [RTypeBind] [RTypeBind] => RType [RTypeError]
       finish call check "agent" (arg_tys, arg_errs) fn_name _ _ = check agent create arg_tys arg_errs fn_name
+      finish call check "agent_sink" (arg_tys, arg_errs) fn_name _ _ = check agent sink create arg_tys arg_errs fn_name
+      finish call check "__gagent_get__" (arg_tys, arg_errs) _ _ _ = check gagent get arg_tys arg_errs
+      finish call check "__with_agent__" (arg_tys, arg_errs) fn_name _ _ = check with agent call arg_tys arg_errs fn_name
       finish call check "send_to" (arg_tys, arg_errs) fn_name _ _ = check agent send arg_tys arg_errs fn_name
       finish call check "ask_to" (arg_tys, arg_errs) fn_name _ _ = check agent ask arg_tys arg_errs fn_name
+      finish call check "receive_from" (arg_tys, arg_errs) fn_name locals fns
+        | is sink agent arg arg_tys =
+          (TyUnit, arg_errs :: [TypeError fn_name "cannot 'receive from' a sink agent; sink agents have no output queue (use 'agent state' to inspect state in tests)"])
+        | otherwise =
+          base_res = check call target "receive_from" arg_tys arg_errs (resolve callee for args "receive_from" arg_tys locals fns) fn_name
+          specialize hof return "receive_from" arg_tys base_res
+      finish call check "try_receive_from" (arg_tys, arg_errs) fn_name locals fns
+        | is sink agent arg arg_tys =
+          (TyUnit, arg_errs :: [TypeError fn_name "cannot 'try receive from' a sink agent; sink agents have no output queue (use 'agent state' to inspect state in tests)"])
+        | otherwise =
+          base_res = check call target "try_receive_from" arg_tys arg_errs (resolve callee for args "try_receive_from" arg_tys locals fns) fn_name
+          specialize hof return "try_receive_from" arg_tys base_res
       finish call check ":tensor-zeros:" (_, arg_errs) _ _ _ = (TyTensor [], arg_errs)
       finish call check ":tensor-clone:" (_, arg_errs) _ _ _ = (TyTensor [], arg_errs)
       finish call check ":tensor-row-slice:" (_, arg_errs) _ _ _ = (TyTensor [], arg_errs)
@@ -1590,12 +1676,16 @@ fn :: collect fns for refs [String] RTypeBindMap [RTypeBind] => [RTypeBind]
       collect fns for refs (k:ks) fmap acc =
         collect fns for refs ks fmap ((tbind map get fmap k) :: acc)
 
+fn :: resolve fn ret ty [String] String => RType
+      resolve fn ret ty _ "__sink_agent__" = TyVar "SinkAgent"
+      resolve fn ret ty tnames ret_str = qualify declared adt tnames (parse type str ret_str)
+
 fn :: check all functions acc [String] [RFnDef] RTypeBindMap RTypeBindMap [RTypeError] => [RTypeError]
       check all functions acc _ [] _ _ acc = rev type errs acc []
       check all functions acc tnames ((FnDef name param_strs ret_str cases):fs) lmap fmap acc =
         sig_errs = check sig syntax errs param_strs ret_str name
         param_tys = qualify declared adt list tnames (parse type list strs param_strs)
-        ret_ty = qualify declared adt tnames (parse type str ret_str)
+        ret_ty = resolve fn ret ty tnames ret_str
         refs = tc snd list (tc refs cases cases StrSetEmpty [])
         loc_binds = collect fns for refs refs lmap []
         fn_binds = collect fns for refs refs fmap []
@@ -1656,8 +1746,15 @@ fn :: type err count [RTypeError] => Int
 type err count []           =  0
 type err count (_:xs)       =  1 + (type err count xs)
 
+fn :: format one syntax err String => String
+      format one syntax err msg
+        | str starts with msg "at " = "syntax error " + msg
+        | otherwise = "syntax error: " + msg
+
 fn :: format type errors [RTypeError] => [String]
       format type errors []           =  []
+      format type errors ((TypeError "syntax" msg):es) =
+        [format one syntax err (decode literal underscores msg)] :: (format type errors es)
       format type errors ((TypeError fn_name msg):es) =
         ["type error in function '" + (decode literal underscores fn_name) + "': " + (decode literal underscores msg)] :: (format type errors es)
 

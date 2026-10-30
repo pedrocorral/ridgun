@@ -253,4 +253,7 @@ fn :: main => ()
         echo primer "|" segon
 ```
 
+### 4. Agents embornal (*fire-and-forget* `agent sink`), bústies globals (`agent ::`) i proves deterministes (`with agent`)
+Quan necessites auditoria asíncrona, mètriques o traçabilitat transversal sense embrutar totes les signatures ni acumular respostes sense llegir en una cua de sortida, Ridgun ofereix **agents embornal (`agent sink`)** i **bústies globals de nivell superior (`agent ::`)** (`agent dropped`, `agent flush`, `agent state`, i `with agent audit_log = espia do ...`), a més de descriptors `Channel` i `Agent` compartibles entre múltiples treballadors.
+
 I ara, corda't el cinturó per al **Capítol 08**, el gran final: **tensors amb dimensions verificades en compilació, variables d'àmbit (`context`/`shared`), regions de memòria deterministes, accés directe a maquinari MMIO i programació de sistemes UNIX/POSIX**.

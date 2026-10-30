@@ -253,4 +253,7 @@ fn :: main => ()
         echo forsta "|" andra
 ```
 
+### 4. Sänkagenter (*fire-and-forget* `agent sink`), globala brevlådor (`agent ::`) och deterministiska tester (`with agent`)
+När du behöver asynkron granskning, mätvärden eller spårning utan att skräpa ner alla funktionssignaturer eller samla olästa svar i en utkö erbjuder Ridgun **sänkagenter (`agent sink`)** och **globala brevlådor på toppnivå (`agent ::`)** (`agent dropped`, `agent flush`, `agent state` och `with agent audit_log = spion do ...`), samt `Channel`- och `Agent`-deskriptorer som kan delas fritt mellan flera arbetare.
+
 Och spänn nu fast säkerhetsbältet inför **Kapitel 08**, den stora finalen: **tensorer med kompileringstidsverifierade dimensioner, räckviddsvariabler (`context`/`shared`), deterministiska minnesregioner, direkt hårdvaruåtkomst via MMIO och UNIX/POSIX-systemprogrammering**.

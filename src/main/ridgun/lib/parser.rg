@@ -62,6 +62,7 @@ fn :: is top decl start [RToken]        => Bool
       is top decl start (TokHardware:TokColonColon:_) = True
       is top decl start (TokHardware:_) =  False
       is top decl start ((TokIdent "module"):TokColonColon:_) = True
+      is top decl start ((TokIdent "agent"):TokColonColon:_) = True
       is top decl start (TokType:(TokIdent name):rest)
         | (is upper ident name) and (has type params then eq rest) = True
       is top decl start ((TokIdent "expand"):TokType:(TokIdent name):rest)
@@ -641,7 +642,7 @@ fn :: is atom tok RToken        => Bool
 
 fn :: is with block start [RToken] => Bool
       is with block start (TokWith:(TokIdent s):_)
-        | s == "region" or s == "timeout" = True
+        | s == "region" or s == "timeout" or s == "agent" = True
       is with block start _        =  False
 
 fn :: is arrow tok [RToken]     => Bool
@@ -696,6 +697,21 @@ fn :: parse with timeout after (RExpr, [RToken]) => RExpr [RToken]
       parse with timeout after d_res             =
         parse with ctx body "__rg_timeout_ms__" d_res
 
+fn :: parse with agent body String (RExpr, [RToken]) => RExpr [RToken]
+      parse with agent body ag_name (val_e, rest) =
+        clean = skip opt dtok (skip newlines rest)
+        b_res = parse case body clean
+        wrap with agent ag_name val_e b_res
+
+fn :: wrap with agent String RExpr (RExpr, [RToken]) => RExpr [RToken]
+      wrap with agent ag_name val_e (body, rest) =
+        dot_res = strip optional pipe dot rest
+        finish with agent ag_name val_e body dot_res
+
+fn :: finish with agent String RExpr RExpr (Bool, [RToken]) => RExpr [RToken]
+      finish with agent ag_name val_e body (_, after_dot) =
+        (ECall "__with_agent__" [EVar ag_name, val_e, body], after_dot)
+
 fn :: parse with expr [RToken] => RExpr [RToken]
       parse with expr (TokWith:(TokIdent r_kw):(TokIdent l_kw):(TokInt quota):rest)
         | r_kw == "region" and l_kw == "limit" = parse with region after quota rest
@@ -703,6 +719,8 @@ fn :: parse with expr [RToken] => RExpr [RToken]
         | r_kw == "region" = parse with region after quota rest
       parse with expr (TokWith:(TokIdent t_kw):rest)
         | t_kw == "timeout" = parse with timeout after (parse logic expr rest)
+      parse with expr (TokWith:(TokIdent a_kw):(TokIdent ag_name):TokEquals:rest)
+        | a_kw == "agent" = parse with agent body ag_name (parse logic expr rest)
       parse with expr (_:rest) =  parse logic expr rest
       parse with expr []       =  (EUnit, [])
 
@@ -978,12 +996,33 @@ fn :: parse app expr [RToken] => RExpr [RToken]
         p1 = parse atom ts
         parse app tail p1
 
+fn :: parse agent sink opt more ([RExpr], [RToken]) ([RExpr], [RToken]) => [RExpr] [RToken]
+      parse agent sink opt more (acc_args, _) (more_args, rest2) =
+        parse agent sink comma opts (acc_args :: more_args, rest2)
+
+fn :: parse agent sink comma after nl [RExpr] [RToken] [RToken] => [RExpr] [RToken]
+      parse agent sink comma after nl args _ ((TokIdent kw):rest)
+        | kw == "mailbox" or kw == "drain" =
+          parse agent sink opt more (args, rest) (parse atom list ([TokIdent kw] :: rest))
+      parse agent sink comma after nl args orig_after_comma _ =
+        (args, [TokComma] :: orig_after_comma)
+
+fn :: parse agent sink comma opts ([RExpr], [RToken]) => [RExpr] [RToken]
+      parse agent sink comma opts (args, (TokComma:after_comma)) =
+        parse agent sink comma after nl args after_comma (skip newlines after_comma)
+      parse agent sink comma opts res = res
+
+fn :: is tok sink [RToken] => Bool
+      is tok sink ((TokIdent "sink"):_) = True
+      is tok sink _ = False
+
 fn :: parse app tail (RExpr, [RToken]) => RExpr [RToken]
       parse app tail ((EVar name), (TokLParen:rest))
         | is seq mask tokens ([TokLParen] :: rest) = finish seq select (EVar name) (scan seq mask rest "")
       parse app tail ((EVar name), rest)
         | is record update start rest = parse record update (EVar name) rest
         | name == "echo" = finish echo call (parse atom list rest)
+        | name == "agent" and (is tok sink rest) = check record update tail (finish fn or out call (EVar name) name (parse agent sink comma opts (parse atom list rest)))
         | is atom tok (tok head rest) = check record update tail (finish fn or out call (EVar name) name (parse atom list rest))
         | otherwise = (EVar name, rest)
       parse app tail (first_e, rest)
@@ -1371,6 +1410,7 @@ fn :: is echo expr RExpr            => Bool
       is echo expr (ECall "send_to" _) = True
       is echo expr (ECall "send_through" _) = True
       is echo expr (ECall "stop" _) =  True
+      is echo expr (ECall "agent_flush" _) = True
       is echo expr (ECall "write_file" _) = True
       is echo expr (ECall "write_bytes" _) = True
       is echo expr (ECall "shell_exec" _) = True
@@ -1774,7 +1814,7 @@ fn :: parse block safe dispatch [RToken]          => [RStmt] [RToken]
         e_res = parse let rhs rest
         finish mut stmt name e_res
       parse block safe dispatch ((TokIdent name):rest)
-        | (name == "module" or name == "expand") and (is top decl start ([TokIdent name] :: rest)) = ([], [TokIdent name] :: rest)
+        | (name == "module" or name == "expand" or name == "agent") and (is top decl start ([TokIdent name] :: rest)) = ([], [TokIdent name] :: rest)
         | otherwise = parse block line ident name rest
       parse block safe dispatch (TokFn:rest)
         | is top decl start ([TokFn] :: rest) = ([], [TokFn] :: rest)
@@ -2340,7 +2380,7 @@ fn :: arity matches Int Int    => Bool
 
 fn :: builtin arity entries => [RArityEntry]
       builtin arity entries =
-        [ArityEntry "assert_equals" 2, ArityEntry "assert_true" 1, ArityEntry "send_to" 2, ArityEntry "ask_to" 2, ArityEntry "send_through" 2, ArityEntry "receive_from" 1, ArityEntry "try_receive_from" 1, ArityEntry "receive_from_timeout" 2, ArityEntry "stop" 1, ArityEntry "agent_alive" 1, ArityEntry "new_mailbox" 0, ArityEntry "new_channel" 0, ArityEntry "new_bounded_channel" 1, ArityEntry "chan_send" 2, ArityEntry "chan_recv" 1, ArityEntry "chan_try_recv" 1, ArityEntry "str_len" 1, ArityEntry "str_char_at" 2, ArityEntry "str_slice" 3, ArityEntry "str_contains" 2, ArityEntry "str_starts_with" 2, ArityEntry "str_concat" 2, ArityEntry "int_to_str" 1, ArityEntry "str_to_int" 1, ArityEntry "char_from_code" 1, ArityEntry "trim_str" 1, ArityEntry "read_file" 1, ArityEntry "load_rg_source" 1, ArityEntry "read_bytes" 1, ArityEntry "write_bytes" 2, ArityEntry "write_file" 2, ArityEntry "shell_exec" 1, ArityEntry "list_str_len" 1, ArityEntry "list_dir" 1, ArityEntry "file_lstat" 1, ArityEntry "sha256_file" 1, ArityEntry "sha256_str" 1, ArityEntry "sha256_raw" 1, ArityEntry "sha256_bytes" 1, ArityEntry "sys_os" 0, ArityEntry "sys_arch" 0, ArityEntry "sys_mkdir" 2, ArityEntry "sys_chmod" 2, ArityEntry "sys_exec" 3, ArityEntry "sys_chdir" 1, ArityEntry "sys_getcwd" 0, ArityEntry "sys_getenv" 1, ArityEntry "sys_setenv" 2, ArityEntry "sys_exit" 1, ArityEntry "sys_getuid" 0, ArityEntry "sys_getgid" 0, ArityEntry "sys_getpid" 0, ArityEntry "sys_time_ms" 0, ArityEntry "sys_deadline_ms" 0, ArityEntry "sys_remaining_ms" 0, ArityEntry "sys_sleep_ms" 1, ArityEntry "sys_open_mode" 2, ArityEntry "sys_open" 3, ArityEntry "sys_close" 1, ArityEntry "sys_read_fd" 2, ArityEntry "sys_write_fd" 2, ArityEntry "sys_poll" 3, ArityEntry "sys_terminate" 2, ArityEntry "sys_kill" 2, ArityEntry "sys_call" 7, ArityEntry "sys_pipe" 0, ArityEntry "sys_waitpid" 2, ArityEntry "sys_username" 1, ArityEntry "sys_user_groups" 1, ArityEntry "sys_lookup_uid_gid" 1, ArityEntry "sys_setresgid" 1, ArityEntry "sys_setgroups" 1, ArityEntry "sys_setresuid" 1, ArityEntry "sys_execve" 3, ArityEntry "sys_read_pass" 1, ArityEntry "cli_args" 0, ArityEntry "cmm_live_blocks" 0, ArityEntry "cmm_cond_spared" 0, ArityEntry "cmm_cond_freed" 0, ArityEntry "cmm_same_ptr" 2, ArityEntry "seq_map" 2, ArityEntry "par_map" 2, ArityEntry "seq_filter" 2, ArityEntry "par_filter" 2]
+        [ArityEntry "assert_equals" 2, ArityEntry "assert_true" 1, ArityEntry "send_to" 2, ArityEntry "ask_to" 2, ArityEntry "send_through" 2, ArityEntry "receive_from" 1, ArityEntry "try_receive_from" 1, ArityEntry "receive_from_timeout" 2, ArityEntry "stop" 1, ArityEntry "agent_alive" 1, ArityEntry "agent_dropped" 1, ArityEntry "agent_flush" 1, ArityEntry "agent_state" 1, ArityEntry "new_mailbox" 0, ArityEntry "new_channel" 0, ArityEntry "new_bounded_channel" 1, ArityEntry "chan_send" 2, ArityEntry "chan_recv" 1, ArityEntry "chan_try_recv" 1, ArityEntry "str_len" 1, ArityEntry "str_char_at" 2, ArityEntry "str_slice" 3, ArityEntry "str_contains" 2, ArityEntry "str_starts_with" 2, ArityEntry "str_concat" 2, ArityEntry "int_to_str" 1, ArityEntry "str_to_int" 1, ArityEntry "char_from_code" 1, ArityEntry "trim_str" 1, ArityEntry "read_file" 1, ArityEntry "load_rg_source" 1, ArityEntry "read_bytes" 1, ArityEntry "write_bytes" 2, ArityEntry "write_file" 2, ArityEntry "shell_exec" 1, ArityEntry "list_str_len" 1, ArityEntry "list_dir" 1, ArityEntry "file_lstat" 1, ArityEntry "sha256_file" 1, ArityEntry "sha256_str" 1, ArityEntry "sha256_raw" 1, ArityEntry "sha256_bytes" 1, ArityEntry "sys_os" 0, ArityEntry "sys_arch" 0, ArityEntry "sys_mkdir" 2, ArityEntry "sys_chmod" 2, ArityEntry "sys_exec" 3, ArityEntry "sys_chdir" 1, ArityEntry "sys_getcwd" 0, ArityEntry "sys_getenv" 1, ArityEntry "sys_setenv" 2, ArityEntry "sys_exit" 1, ArityEntry "sys_getuid" 0, ArityEntry "sys_getgid" 0, ArityEntry "sys_getpid" 0, ArityEntry "sys_time_ms" 0, ArityEntry "sys_deadline_ms" 0, ArityEntry "sys_remaining_ms" 0, ArityEntry "sys_sleep_ms" 1, ArityEntry "sys_open_mode" 2, ArityEntry "sys_open" 3, ArityEntry "sys_close" 1, ArityEntry "sys_read_fd" 2, ArityEntry "sys_write_fd" 2, ArityEntry "sys_poll" 3, ArityEntry "sys_terminate" 2, ArityEntry "sys_kill" 2, ArityEntry "sys_call" 7, ArityEntry "sys_pipe" 0, ArityEntry "sys_waitpid" 2, ArityEntry "sys_username" 1, ArityEntry "sys_user_groups" 1, ArityEntry "sys_lookup_uid_gid" 1, ArityEntry "sys_setresgid" 1, ArityEntry "sys_setgroups" 1, ArityEntry "sys_setresuid" 1, ArityEntry "sys_execve" 3, ArityEntry "sys_read_pass" 1, ArityEntry "cli_args" 0, ArityEntry "cmm_live_blocks" 0, ArityEntry "cmm_cond_spared" 0, ArityEntry "cmm_cond_freed" 0, ArityEntry "cmm_same_ptr" 2, ArityEntry "seq_map" 2, ArityEntry "par_map" 2, ArityEntry "seq_filter" 2, ArityEntry "par_filter" 2]
 
 fn :: collect fn arities [RFnDef] => [RArityEntry]
       collect fn arities [] = builtin arity entries
@@ -2506,6 +2546,11 @@ fn :: is std builtin String             => Bool
       is std builtin "sys_setresuid"    =  True
       is std builtin "sys_execve"       =  True
       is std builtin "sys_read_pass"    =  True
+      is std builtin "agent_dropped"    =  True
+      is std builtin "agent_flush"      =  True
+      is std builtin "agent_state"      =  True
+      is std builtin "__gagent_get__"   =  True
+      is std builtin "__with_agent__"   =  True
       is std builtin "__record_update__" = True
       is std builtin ":tensor-zeros:"   =  True
       is std builtin ":tensor-clone:"   =  True
@@ -2584,6 +2629,9 @@ fn :: std builtin arity String     => Int
       std builtin arity "receive_from" = 1
       std builtin arity "try_receive_from" = 1
       std builtin arity "receive_from_timeout" = 2
+      std builtin arity "agent_dropped" = 1
+      std builtin arity "agent_flush" = 1
+      std builtin arity "agent_state" = 1
       std builtin arity "cmm_same_ptr" = 2
       std builtin arity "seq_map" = 2
       std builtin arity "par_map" = 2
@@ -2908,10 +2956,61 @@ fn :: norm call chain infix [RExpr] [RArityEntry] (Bool, RExpr) => RExpr
       norm call chain infix args arities (False, _) =
         norm call chain args arities (extract mixfix call "" args arities [])
 
+fn :: is sink opt marker RExpr => Bool
+      is sink opt marker (EVar "mailbox") = True
+      is sink opt marker (EVar "drain") = True
+      is sink opt marker _ = False
+
+fn :: split sink init and opts [RExpr] [RExpr] => [RExpr] [RExpr]
+      split sink init and opts [] init_acc = (init_acc, [])
+      split sink init and opts (e:es) init_acc
+        | is sink opt marker e = (init_acc, [e] :: es)
+        | otherwise = split sink init and opts es (init_acc :: [e])
+
+fn :: parse sink opt atoms [RExpr] Int Int => Int Int
+      parse sink opt atoms [] cap_code drain_ms = (cap_code, drain_ms)
+      parse sink opt atoms ((EVar "mailbox"):(EInt n):(EVar "drop"):rest) _ drain_ms =
+        parse sink opt atoms rest n drain_ms
+      parse sink opt atoms ((EVar "mailbox"):(EInt n):(EVar "block"):rest) _ drain_ms =
+        parse sink opt atoms rest (0 - n) drain_ms
+      parse sink opt atoms ((EVar "drain"):(EInt d):rest) cap_code _ =
+        parse sink opt atoms rest cap_code d
+      parse sink opt atoms (_:rest) cap_code drain_ms =
+        parse sink opt atoms rest cap_code drain_ms
+
+fn :: build sink call expr RExpr [RExpr] (Int, Int) [RArityEntry] => RExpr
+      build sink call expr step_fn_e [] (cap_code, drain_ms) arities =
+        ECall "agent_sink" [norm expr step_fn_e arities, EInt cap_code, EInt drain_ms]
+      build sink call expr step_fn_e (init_e:[]) (cap_code, drain_ms) arities =
+        ECall "agent_sink" [norm expr step_fn_e arities, norm expr init_e arities, EInt cap_code, EInt drain_ms]
+      build sink call expr step_fn_e (first_a:more_a) (cap_code, drain_ms) arities =
+        ECall "agent_sink" [norm expr step_fn_e arities, norm expr (ECall "__chain__" ([first_a] :: more_a)) arities, EInt cap_code, EInt drain_ms]
+
+fn :: norm agent sink finish RExpr ([RExpr], [RExpr]) [RArityEntry] => RExpr
+      norm agent sink finish step_fn_e (init_atoms, opt_atoms) arities =
+        build sink call expr step_fn_e init_atoms (parse sink opt atoms opt_atoms 0 5000) arities
+
+fn :: norm agent sink [RExpr] [RArityEntry] => RExpr
+      norm agent sink (step_fn_e:rest) arities =
+        norm agent sink finish step_fn_e (split sink init and opts rest []) arities
+      norm agent sink [] _ =
+        ECall "agent_sink" [EUnit, EInt 0, EInt 5000]
+
+fn :: is sink arg start [RExpr] => Bool
+      is sink arg start ((EVar "sink"):_) = True
+      is sink arg start _ = False
+
+fn :: drop first expr [RExpr] => [RExpr]
+      drop first expr (_:xs) = xs
+      drop first expr [] = []
+
 fn :: norm call String  [RExpr] [RArityEntry] => RExpr
       norm call fn_name args    arities
         | fn_name == "__lambda__" = ECall "__lambda__" args
         | fn_name == "__pipe__" = norm pipe args args arities
+        | fn_name == "__gagent_get__" = ECall "__gagent_get__" (norm expr list args arities)
+        | fn_name == "__with_agent__" = ECall "__with_agent__" (norm expr list args arities)
+        | fn_name == "agent" and (is sink arg start args) = norm agent sink (collapse fn ref args (drop first expr args) arities) arities
         | fn_name == "agent" and (not (has longer arity prefix arities "agent" args)) = ECall "agent" (norm expr list (collapse fn ref args args arities) arities)
         | fn_name == "send" = finish send to norm fn_name args arities (split send to args args [])
         | fn_name == "ask" = finish ask norm fn_name args arities (split send to args args [])
@@ -3812,6 +3911,16 @@ fn :: try read candidate step String [String] => String
       try read candidate step "" ps = try read candidate paths ps
       try read candidate step content _ = content
 
+fn :: try find candidate path [String] => String
+      try find candidate path []       =  ""
+      try find candidate path (p:ps)   =
+        content = read file p
+        try find candidate step p content ps
+
+fn :: try find candidate step String String [String] => String
+      try find candidate step _ "" ps = try find candidate path ps
+      try find candidate step p _  _  = p
+
 fn :: rglib dir of String Int Int Int => String
       rglib dir of fpath pos len last_slash
         | pos >= len and last_slash < 0 = "."
@@ -3839,9 +3948,13 @@ fn :: norm spec path String => String
         | str contains spec "." = dots to slashes loop spec 0 (str len spec) ""
         | otherwise = spec
 
+fn :: local rg candidate paths String String => [String]
+      local rg candidate paths pdir spec =
+        [pdir + "/" + spec + ".rg", pdir + "/" + spec + "/lib.rg", pdir + "/" + spec + "/mod.rg", pdir + "/../" + spec + ".rg", pdir + "/../../" + spec + ".rg", pdir + "/../../../" + spec + ".rg", pdir + "/../lib/" + spec + ".rg", pdir + "/../../main/ridgun/lib/" + spec + ".rg", pdir + "/../../main/ridgun/" + spec + ".rg", "src/main/ridgun/lib/" + spec + ".rg", "src/main/ridgun/" + spec + ".rg", "src/main/ridgun/" + spec + "/lib.rg", spec + ".rg"]
+
 fn :: read local rg module raw String String => String
       read local rg module raw pdir spec =
-        try read candidate paths [pdir + "/" + spec + ".rg", pdir + "/" + spec + "/lib.rg", pdir + "/" + spec + "/mod.rg", pdir + "/../" + spec + ".rg", pdir + "/../../" + spec + ".rg", pdir + "/../../../" + spec + ".rg", pdir + "/../lib/" + spec + ".rg", pdir + "/../../main/ridgun/lib/" + spec + ".rg", pdir + "/../../main/ridgun/" + spec + ".rg", "src/main/ridgun/lib/" + spec + ".rg", "src/main/ridgun/" + spec + ".rg", "src/main/ridgun/" + spec + "/lib.rg", spec + ".rg"]
+        try read candidate paths (local rg candidate paths pdir spec)
 
 fn :: read local rg module String String => String
       read local rg module pdir spec =
@@ -3851,6 +3964,19 @@ fn :: read local rg module String String => String
 fn :: read local rg fallback String String String => String
       read local rg fallback pdir nspec "" = read local rg module raw pdir nspec
       read local rg fallback _ _ content = content
+
+fn :: find local rg module raw String String => String
+      find local rg module raw pdir spec =
+        try find candidate path (local rg candidate paths pdir spec)
+
+fn :: find local rg fallback String String String => String
+      find local rg fallback pdir nspec "" = find local rg module raw pdir nspec
+      find local rg fallback _ _ found_p = found_p
+
+fn :: find local rg module path String String => String
+      find local rg module path pdir spec =
+        r1 = find local rg module raw pdir spec
+        find local rg fallback pdir (norm spec path spec) r1
 
 fn :: has local rg module String String => Bool
       has local rg module pdir spec =
@@ -4174,8 +4300,9 @@ fn :: append own rg local String String String String String [String] => String 
           append own rg after local clean_spec clean_spec alias res
         | otherwise =
           mname = mod name of spec clean_spec
+          mod_path = find local rg module path pdir clean_spec
           sub_pdir = child pdir for spec pdir clean_spec
-          acc_enter = acc + "\n@__rg_mod_enter__ " + mname + "\n"
+          acc_enter = acc + "\n@__rg_mod_enter__ " + mname + " \"" + mod_path + "\"\n"
           res = scan own rg lines sub_pdir local_rg 0 (str len local_rg) 0 0 acc_enter seen1
           append own rg after local clean_spec mname alias res
 
@@ -4221,7 +4348,7 @@ fn :: load rg own source raw String String => String
       load rg own source raw input_path raw_file =
         pdir = rglib dir of input_path 0 (str len input_path) (0 - 1)
         root_spec = mod name of spec input_path
-        fst str seen (scan own rg lines pdir raw_file 0 (str len raw_file) 0 0 "" [root_spec])
+        "@__rg_file__ \"" + input_path + "\"\n" + (fst str seen (scan own rg lines pdir raw_file 0 (str len raw_file) 0 0 "" [root_spec]))
 
 fn :: load rg own source String => String
       load rg own source input_path =
@@ -4245,14 +4372,32 @@ type RScopedFn = ScopedFn String Bool RFnDef
 type RScopedType = ScopedType String Bool RTypeDef
 type RModAlias = ModAlias String String
 
+fn :: strip pipe file String Int Int => String
+      strip pipe file s pos len
+        | pos >= len = s
+        | (str char at s pos) == 124 = str slice s 0 pos
+        | otherwise = strip pipe file s (pos + 1) len
+
+fn :: extract pipe file String Int Int => String
+      extract pipe file s pos len
+        | pos >= len = ""
+        | (str char at s pos) == 124 = str slice s (pos + 1) len
+        | otherwise = extract pipe file s (pos + 1) len
+
 fn :: strip enter colon String => String
       strip enter colon s
-        | str starts with s ":" = str slice s 1 (str len s)
-        | otherwise = s
+        | str starts with s ":" = strip pipe file (str slice s 1 (str len s)) 0 ((str len s) - 1)
+        | otherwise = strip pipe file s 0 (str len s)
 
 fn :: cur mod of stack [String] => String
       cur mod of stack []       =  ""
       cur mod of stack (m:_)    =  strip enter colon m
+
+fn :: cur file of stack [String] => String
+      cur file of stack []      =  ""
+      cur file of stack (m:ms)
+        | (extract pipe file m 0 (str len m)) != "" = extract pipe file m 0 (str len m)
+        | otherwise = cur file of stack ms
 
 fn :: mod key of String => String
       mod key of "" = "__app__"
@@ -4262,15 +4407,23 @@ fn :: pop mod stack [String] => [String]
       pop mod stack []       =  []
       pop mod stack (_:ms)   =  ms
 
+fn :: attach opt file String String => String
+      attach opt file base "" = base
+      attach opt file base f  = base + "|" + f
+
 fn :: set explicit mod String [String] => [String]
       set explicit mod "main" []     =  []
-      set explicit mod "main" (_:ms) =  [""] :: ms
+      set explicit mod "main" (m:ms) =  [attach opt file "" (extract pipe file m 0 (str len m))] :: ms
       set explicit mod "root" []     =  []
-      set explicit mod "root" (_:ms) =  [""] :: ms
+      set explicit mod "root" (m:ms) =  [attach opt file "" (extract pipe file m 0 (str len m))] :: ms
       set explicit mod ""     []     =  []
-      set explicit mod ""     (_:ms) =  [""] :: ms
+      set explicit mod ""     (m:ms) =  [attach opt file "" (extract pipe file m 0 (str len m))] :: ms
       set explicit mod mname  []     =  [mname]
-      set explicit mod mname  (_:ms) =  [mname] :: ms
+      set explicit mod mname  (m:ms) =  [attach opt file mname (extract pipe file m 0 (str len m))] :: ms
+
+fn :: set file on stack String [String] => [String]
+      set file on stack fpath []     =  ["|" + fpath]
+      set file on stack fpath (m:ms) =  [attach opt file (strip pipe file m 0 (str len m)) fpath] :: ms
 
 fn :: has alias pair [RModAlias] String String => Bool
       has alias pair [] _ _ = False
@@ -5750,6 +5903,18 @@ fn :: collect scoped type field names [RScopedType] RStrSet => RStrSet
       collect scoped type field names ((ScopedType _ _ (TypeDef _ _ fs)):ts) acc =
         collect scoped type field names ts (collect field base names fs acc)
 
+fn :: collect gagent base names [RFnDef] RStrSet => RStrSet
+      collect gagent base names [] acc = acc
+      collect gagent base names ((FnDef fname _ "__sink_agent__" _):fs) acc =
+        collect gagent base names fs (str set add acc (ident base name fname))
+      collect gagent base names (_:fs) acc = collect gagent base names fs acc
+
+fn :: collect scoped gagent base names [RScopedFn] RStrSet => RStrSet
+      collect scoped gagent base names [] acc = acc
+      collect scoped gagent base names ((ScopedFn _ _ (FnDef fname _ "__sink_agent__" _)):fs) acc =
+        collect scoped gagent base names fs (str set add acc (ident base name fname))
+      collect scoped gagent base names (_:fs) acc = collect scoped gagent base names fs acc
+
 fn :: collect fndef base names [RFnDef] RStrSet => RStrSet
       collect fndef base names [] acc = acc
       collect fndef base names ((FnDef fname _ _ _):fs) acc =
@@ -5958,7 +6123,7 @@ fn :: encode fn cases underscores [RFnCase] RStrSet RStrSet Bool => [RFnCase]
 
 fn :: encode fndef list underscores [RFnDef] [RTypeDef] Bool => [RFnDef]
       encode fndef list underscores fns tys encode_builtins =
-        field_names = collect typedef field names tys StrSetEmpty
+        field_names = collect gagent base names fns (collect typedef field names tys StrSetEmpty)
         fn_names = collect fndef base names fns StrSetEmpty
         encode fndef list underscores loop fns field_names fn_names encode_builtins
 
@@ -5974,7 +6139,7 @@ fn :: encode scoped fn list [RScopedFn] RStrSet RStrSet Bool => [RScopedFn]
 
 fn :: encode all scoped fns [RScopedFn] [RScopedType] => [RScopedFn]
       encode all scoped fns raw_s_fns s_tys =
-        field_names = collect scoped type field names s_tys StrSetEmpty
+        field_names = collect scoped gagent base names raw_s_fns (collect scoped type field names s_tys StrSetEmpty)
         fn_names = collect scoped fn base names raw_s_fns StrSetEmpty
         encode scoped fn list raw_s_fns field_names fn_names False
 
@@ -6128,6 +6293,21 @@ fn :: parse chunk bare ([RToken], [RToken]) [RScopedFn] [RScopedType] [RModAlias
       parse chunk bare (chunk, after_chunk) s_fns s_tys aliases mod_stack in_lib =
         parse items after fn mod (parse bare decl chunk) after_chunk s_fns s_tys aliases mod_stack in_lib
 
+fn :: finish agent decl String (RExpr, [RToken]) => RFnDef [RToken]
+      finish agent decl ag_name (sink_call_e, rem_toks) =
+        (FnDef ag_name [] "__sink_agent__" [FnCase [] [] (ECall "__gagent_get__" [EStr ag_name, sink_call_e])], rem_toks)
+
+fn :: parse agent decl [RToken] => RFnDef [RToken]
+      parse agent decl ((TokIdent "agent"):TokColonColon:(TokIdent raw_name):TokEquals:rest) =
+        clean_rhs = skip newlines rest
+        finish agent decl raw_name (parse expr ([TokIdent "agent"] :: clean_rhs))
+      parse agent decl (_:rest) = (FnDef "unknown" [] "()" [], skip to newline rest)
+      parse agent decl [] = (FnDef "unknown" [] "()" [], [])
+
+fn :: parse chunk agent ([RToken], [RToken]) [RScopedFn] [RScopedType] [RModAlias] [String] Bool => [RScopedFn] [RScopedType] [RModAlias]
+      parse chunk agent (chunk, after_chunk) s_fns s_tys aliases mod_stack in_lib =
+        parse items after fn mod (parse agent decl chunk) after_chunk s_fns s_tys aliases mod_stack in_lib
+
 fn :: tok to err str RToken => String
       tok to err str (TokIdent s) = s
       tok to err str (TokInt n) = int to str n
@@ -6166,15 +6346,132 @@ fn :: last scoped fn in mod [RScopedFn] String String => String
         | m == target and fname != "__syntax_error__" = fname
         | otherwise = last scoped fn in mod rest target acc
 
-fn :: format syntax err loc String String String => String
-      format syntax err loc tok_prev "" "" =
-        "unknown or invalid top-level declaration near '" + tok_prev + "' (check for unmatched ')' or ']')"
-      format syntax err loc tok_prev "" last_fn =
-        "unknown or invalid top-level declaration near '" + tok_prev + "' after '" + last_fn + "' (check for unmatched ')' or ']')"
-      format syntax err loc tok_prev cur_mod "" =
-        "unknown or invalid top-level declaration near '" + tok_prev + "' in module '" + cur_mod + "' (check for unmatched ')' or ']')"
-      format syntax err loc tok_prev cur_mod last_fn =
-        "unknown or invalid top-level declaration near '" + tok_prev + "' in module '" + cur_mod + "' after '" + last_fn + "' (check for unmatched ')' or ']')"
+fn :: is word boundary char Int => Bool
+      is word boundary char c =
+        c == 0 or c == 10 or c == 13 or c == 32 or c == 9 or c == 61 or c == 58 or c == 40 or c == 91
+
+fn :: line matches fn decl String Int Int String => Bool
+      line matches fn decl src line_start line_end fn_clean =
+        p = skip line spaces src line_start line_end
+        fl = str len fn_clean
+        ((p + 6 + fl) <= line_end and (str slice src p (p + 6 + fl)) == ("fn :: " + fn_clean) and (is word boundary char (str char at src (p + 6 + fl)))) or ((p + fl) <= line_end and (str slice src p (p + fl)) == fn_clean and (is word boundary char (str char at src (p + fl))))
+
+fn :: find fn start in src String String Int Int Int => Int Int
+      find fn start in src _ "" _ _ _ = (0, 1)
+      find fn start in src src fn_clean pos len cur_line
+        | pos >= len = (0, 1)
+        | otherwise =
+          eol = skip to eol src pos len
+          find fn start step src fn_clean pos eol len cur_line
+
+fn :: find fn start step String String Int Int Int Int => Int Int
+      find fn start step src fn_clean pos eol len cur_line
+        | line matches fn decl src pos eol fn_clean = (pos, cur_line)
+        | eol >= len = (0, 1)
+        | otherwise = find fn start in src src fn_clean (eol + 1) len (cur_line + 1)
+
+fn :: is top stack int [Int] Int => Bool
+      is top stack int (h:_) target = h == target
+      is top stack int [] _ = False
+
+fn :: pop int stack [Int] => [Int]
+      pop int stack (_:xs) = xs
+      pop int stack [] = []
+
+fn :: has any int [Int] => Bool
+      has any int (_:_) = True
+      has any int [] = False
+
+fn :: is next fn decl line String Int Int Int => Bool
+      is next fn decl line src pos len start_pos
+        | pos <= start_pos = False
+        | (pos + 6) <= len and (str slice src pos (pos + 6)) == "fn :: " = True
+        | (pos + 6) <= len and (str slice src pos (pos + 6)) == "op :: " = True
+        | (pos + 5) <= len and (str slice src pos (pos + 5)) == "type " = True
+        | otherwise = False
+
+fn :: scan bracket mismatch String Int Int Int Int Int [Int] => Int Int
+      scan bracket mismatch src pos len start_pos cur_line cur_col bstack
+        | pos >= len = (0, 0)
+        | cur_col == 1 and (is next fn decl line src pos len start_pos) and (has any int bstack) = (cur_line, 1)
+        | cur_col == 1 and (is next fn decl line src pos len start_pos) = (0, 0)
+        | (str char at src pos) == 10 =
+          scan bracket mismatch src (pos + 1) len start_pos (cur_line + 1) 1 bstack
+        | (str char at src pos) == 45 and (str char at src (pos + 1)) == 45 =
+          eol = skip to eol src (pos + 2) len
+          scan bracket mismatch src eol len start_pos cur_line (cur_col + (eol - pos)) bstack
+        | (str char at src pos) == 34 =
+          end_q = scan string end src (pos + 1) len 34
+          scan bracket mismatch src (end_q + 1) len start_pos cur_line (cur_col + (end_q + 1 - pos)) bstack
+        | (str char at src pos) == 39 =
+          end_q = scan raw string end src (pos + 1) len
+          scan bracket mismatch src (end_q + 1) len start_pos cur_line (cur_col + (end_q + 1 - pos)) bstack
+        | (str char at src pos) == 40 =
+          scan bracket mismatch src (pos + 1) len start_pos cur_line (cur_col + 1) ([40] :: bstack)
+        | (str char at src pos) == 91 =
+          scan bracket mismatch src (pos + 1) len start_pos cur_line (cur_col + 1) ([91] :: bstack)
+        | (str char at src pos) == 41 and (is top stack int bstack 40) =
+          scan bracket mismatch src (pos + 1) len start_pos cur_line (cur_col + 1) (pop int stack bstack)
+        | (str char at src pos) == 41 = (cur_line, cur_col)
+        | (str char at src pos) == 93 and (is top stack int bstack 91) =
+          scan bracket mismatch src (pos + 1) len start_pos cur_line (cur_col + 1) (pop int stack bstack)
+        | (str char at src pos) == 93 = (cur_line, cur_col)
+        | otherwise =
+          scan bracket mismatch src (pos + 1) len start_pos cur_line (cur_col + 1) bstack
+
+fn :: find tok line in src String String Int Int Int => Int Int
+      find tok line in src _ "" _ _ start_line = (start_line, 1)
+      find tok line in src src first_tok pos len cur_line
+        | pos >= len = (cur_line, 1)
+        | otherwise =
+          eol = skip to eol src pos len
+          p = skip line spaces src pos eol
+          tl = str len first_tok
+          find tok line step src first_tok pos p eol len cur_line tl
+
+fn :: find tok line step String String Int Int Int Int Int Int => Int Int
+      find tok line step src first_tok pos p eol len cur_line tl
+        | (p + tl) <= eol and (str slice src p (p + tl)) == first_tok = (cur_line, (p - pos) + 1)
+        | eol >= len = (cur_line, 1)
+        | otherwise = find tok line in src src first_tok (eol + 1) len (cur_line + 1)
+
+fn :: finish locate syntax err String String String Int Int (Int, Int) => String
+      finish locate syntax err cur_file _ _ _ _ (b_line, b_col)
+        | b_line > 0 = cur_file + ":" + (int to str b_line) + ":" + (int to str b_col)
+      finish locate syntax err cur_file src first_tok start_pos start_line _ =
+        t_pair = find tok line in src src first_tok start_pos (str len src) start_line
+        finish locate tok pair cur_file t_pair
+
+fn :: finish locate tok pair String (Int, Int) => String
+      finish locate tok pair cur_file (t_line, t_col) =
+        cur_file + ":" + (int to str t_line) + ":" + (int to str t_col)
+
+fn :: locate syntax err with start String String String (Int, Int) => String
+      locate syntax err with start cur_file src first_tok (start_pos, start_line) =
+        b_res = scan bracket mismatch src start_pos (str len src) start_pos start_line 1 []
+        finish locate syntax err cur_file src first_tok start_pos start_line b_res
+
+fn :: locate syntax err in file String String String => String
+      locate syntax err in file "" _ _ = "<input>:1:1"
+      locate syntax err in file cur_file last_fn first_tok =
+        src = read file cur_file
+        locate syntax err src cur_file src (decode literal underscores last_fn) first_tok
+
+fn :: locate syntax err src String String String String => String
+      locate syntax err src cur_file "" _ _ = cur_file + ":1:1"
+      locate syntax err src cur_file src fn_clean first_tok =
+        start_pair = find fn start in src src fn_clean 0 (str len src) 1
+        locate syntax err with start cur_file src first_tok start_pair
+
+fn :: format syntax err loc String String String String => String
+      format syntax err loc loc_str tok_prev "" "" =
+        "at " + loc_str + ": unknown or invalid top-level declaration near '" + tok_prev + "' (check for unmatched ')' or ']')"
+      format syntax err loc loc_str tok_prev "" last_fn =
+        "at " + loc_str + ": unknown or invalid top-level declaration near '" + tok_prev + "' after '" + last_fn + "' (check for unmatched ')' or ']')"
+      format syntax err loc loc_str tok_prev cur_mod "" =
+        "at " + loc_str + ": unknown or invalid top-level declaration near '" + tok_prev + "' in module '" + cur_mod + "' (check for unmatched ')' or ']')"
+      format syntax err loc loc_str tok_prev cur_mod last_fn =
+        "at " + loc_str + ": unknown or invalid top-level declaration near '" + tok_prev + "' in module '" + cur_mod + "' after '" + last_fn + "' (check for unmatched ')' or ']')"
 
 fn :: finish parse items mod ([RScopedFn], [RScopedType], [RModAlias]) => [RScopedFn] [RScopedType] [RModAlias]
       finish parse items mod (s_fns, s_tys, aliases) =
@@ -6190,6 +6487,10 @@ fn :: parse items loop [RToken] [RScopedFn] [RScopedType] [RModAlias] [String] B
       parse items loop (TokNewline:rest)  s_fns s_tys aliases mod_stack in_lib =  parse items loop rest s_fns s_tys aliases mod_stack in_lib
       parse items loop (TokAt:(TokIdent "__rg_user_src__"):rest) s_fns s_tys aliases _ _ =
         parse items loop (skip to newline rest) s_fns s_tys aliases [] False
+      parse items loop (TokAt:(TokIdent "__rg_file__"):(TokStr fpath):rest) s_fns s_tys aliases mod_stack in_lib =
+        parse items loop (skip to newline rest) s_fns s_tys aliases (set file on stack fpath mod_stack) in_lib
+      parse items loop (TokAt:(TokIdent "__rg_mod_enter__"):(TokIdent mname):(TokStr fpath):rest) s_fns s_tys aliases mod_stack in_lib =
+        parse items loop (skip to newline rest) s_fns s_tys aliases ([attach opt file (":" + mname) fpath] :: mod_stack) in_lib
       parse items loop (TokAt:(TokIdent "__rg_mod_enter__"):(TokIdent mname):rest) s_fns s_tys aliases mod_stack in_lib =
         parse items loop (skip to newline rest) s_fns s_tys aliases ([":" + mname] :: mod_stack) in_lib
       parse items loop (TokAt:(TokIdent "__rg_mod_exit__"):rest) s_fns s_tys aliases mod_stack in_lib =
@@ -6223,6 +6524,8 @@ fn :: parse items loop [RToken] [RScopedFn] [RScopedType] [RModAlias] [String] B
         parse chunk op (split top decl chunk rest [TokOp]) s_fns s_tys aliases mod_stack in_lib
       parse items loop (TokHardware:rest) s_fns s_tys aliases mod_stack in_lib =
         parse chunk hw (split top decl chunk rest [TokHardware]) s_fns s_tys aliases mod_stack in_lib
+      parse items loop ((TokIdent "agent"):TokColonColon:(TokIdent name):rest) s_fns s_tys aliases mod_stack in_lib =
+        parse chunk agent (split top decl chunk rest [TokIdent name, TokColonColon, TokIdent "agent"]) s_fns s_tys aliases mod_stack in_lib
       parse items loop (TokType:(TokIdent name):rest) s_fns s_tys aliases mod_stack in_lib
         | (is upper ident name) and (has type params then eq rest) =
           parse chunk type False (split top decl chunk rest [TokIdent name, TokType]) s_fns s_tys aliases mod_stack in_lib
@@ -6234,9 +6537,11 @@ fn :: parse items loop [RToken] [RScopedFn] [RScopedType] [RModAlias] [String] B
           parse chunk bare (split top decl chunk ts []) s_fns s_tys aliases mod_stack in_lib
         | otherwise =
           cur_mod = cur mod of stack mod_stack
+          cur_file = cur file of stack mod_stack
           last_fn = last scoped fn in mod s_fns cur_mod ""
           tok_prev = syntax err tok preview ts 4
-          err_msg = format syntax err loc tok_prev cur_mod last_fn
+          loc_str = locate syntax err in file cur_file last_fn (tok to err str (tok head ts))
+          err_msg = format syntax err loc loc_str tok_prev cur_mod last_fn
           err_fn = FnDef "__syntax_error__" [] "Int" [FnCase [] [] (ECall "__syntax_error__" [EStr err_msg])]
           parse items loop (skip to newline (tok tail ts)) ([ScopedFn cur_mod in_lib err_fn] :: s_fns) s_tys aliases mod_stack in_lib
 
@@ -6259,7 +6564,7 @@ fn :: filter non lib scoped fns [RScopedFn] => [RFnDef]
 
 fn :: finish strict user fns ([RScopedFn], [RScopedType], [RModAlias]) => [RFnDef]
       finish strict user fns (raw_s_fns, s_tys, _) =
-        field_names = collect scoped type field names s_tys StrSetEmpty
+        field_names = collect scoped gagent base names raw_s_fns (collect scoped type field names s_tys StrSetEmpty)
         fn_names = collect scoped fn base names raw_s_fns StrSetEmpty
         enc_s_fns = encode scoped fn list raw_s_fns field_names fn_names True
         filter non lib scoped fns enc_s_fns

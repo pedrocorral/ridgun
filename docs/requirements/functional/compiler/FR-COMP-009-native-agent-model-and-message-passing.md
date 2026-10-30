@@ -4,7 +4,7 @@ title: Native Agent Model (`agent`, `send ... to`, `receive from`, `try receive 
 status: implemented
 priority: must
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-10-30
 depends_on:
   - FR-COMP-001
   - FR-COMP-002
@@ -44,6 +44,17 @@ The Ridgun language and `ridgunc` / `stable` toolchain SHALL replace legacy unst
    - `try receive from ag` SHALL poll the in-flight background job via `b_id 58` (`async_poll`) without blocking (`None` while running, `Some r` when finished, transitioning stateful agent state `S -> S'` upon harvesting), and `receive from ag` SHALL await completion via `b_id 59` (`async_await` / `FUTEX_WAIT`).
    - Independent `||` DAG waves ($\ge 2$ heavy branches via `"__rg_par_eval__"`) and `||map` / `||filter` consult the static analyzer's 4-tier `RFnSummary` classification to select inline sequential execution vs multicore OS kernel thread execution (`NCallBuiltin 54` / `56`).
 
+7. **Fire-and-Forget Sink Agents (`agent sink`), Global Mailboxes (`agent ::`), Observability & Shared Channel/Agent Descriptors (`v0.9.30`)**:
+   - **Local Sink Agents (`agent sink`)**: `ag = agent sink step_fn [init_state] [, mailbox N drop|block] [, drain D]` creates a fire-and-forget sink agent that processes messages in FIFO order (`step_fn :: M => ()` for stateless sinks or `step_fn :: S M => S` for stateful sinks), releasing previous states via `RMM1`/`RMM2` without accumulating an output response queue.
+   - **Top-Level Global Sink Agents (`agent ::`)**: `agent :: <name> = sink step_fn [init_state] [, mailbox N drop|block] [, drain D]` declares a module-level sink agent initialized before `main` and drained in reverse declaration order at program exit.
+   - **Compile-Time One-Way Enforcement**: Calling `receive from`, `try receive from`, or `ask ... to` on a sink agent (`SinkAgent`) SHALL be rejected at compile time with a descriptive type error.
+   - **Bounded Mailboxes & Observability Intrinsics**:
+     - `mailbox N drop` caps pending messages at `N` and drops excess messages without blocking the sender, incrementing the dropped counter read by `agent dropped <ag> => Int`.
+     - `mailbox N block` processes all messages in order without dropping.
+     - `agent flush <ag> => ()` drains all in-flight and queued messages of `<ag>`, and `agent state <ag> => S` flushes and returns a snapshot of `<ag>`'s current internal state for deterministic testing.
+     - `with agent <global_ag> = <replacement_ag> do <body>` temporarily redirects sends to `<global_ag>` to `<replacement_ag>` for the dynamic extent of `<body>` and restores `<global_ag>` on exit.
+   - **Shared `Channel` & `Agent` Descriptors**: Variables holding `Channel`, `Agent`, or `SinkAgent` descriptors MAY be passed across multiple `send ... to` or `send ... through` calls (fan-in/fan-out across worker agents) without triggering `ErrUseAfterSend`, while regular heap payloads sent through channels or to agents remain affine (`ErrUseAfterSend`).
+
 ## Rationale
 - **Orthogonal Concurrency Model**: `||`, `||map`, and `||filter` solve scoped computational fork-join parallelism with compile-time DAG verification, while `agent` solves long-lived, decoupled service concurrency (HTTP/TCP connection handlers, session stores, state machines, actors) with isolated state and typed message queues.
 - **Best of Erlang + Akka Typed + Native RMM**: Ridgun agents combine Erlang's true memory isolation and inline `receive from` ergonomics with Akka Typed's compile-time message type safety and Ridgun's zero-GC deterministic `RMM1`/`RMM2` state reclamation.
@@ -54,3 +65,4 @@ The Ridgun language and `ridgunc` / `stable` toolchain SHALL replace legacy unst
 3. **AC-3 (Non-Blocking `try receive from` and `stop` / `agent alive`)**: `try receive from ag` returns `None` when no response is queued and `Some r` when ready; `stop ag` transitions `agent alive ag` from `True` to `False` and frees the agent's state.
 4. **AC-4 (Retirement of `spawn`/`join`)**: `spawn` and `join` are removed from the compiler, harnesses, and all 7 book editions (`docs/book/`).
 5. **AC-5 (Smart Compile-Time Strategy Selection & Persistent Worker Pool)**: `compiler.rg` automatically selects lightweight green execution (`StratInlineSequential`) for trivial functions and multicore OS thread execution (`SYS_clone`, `NCallBuiltin 54`/`56`) for heavy/recursive `agent`s, `||` DAG waves, and `||map`/`||filter`, backed by a persistent pre-warmed `SYS_futex` worker thread pool in `x86_64.rg` that reuses spawned OS worker threads across batches without repeated stack teardown.
+6. **AC-6 (Sink Agents `agent sink`, Top-Level `agent ::`, `with agent`, and Shared Descriptors)**: Local `agent sink` and top-level `agent :: <name> = sink ...` process fire-and-forget messages without accumulating output queues, enforce `mailbox N drop` (`agent dropped`), support `agent flush`, `agent state`, and `with agent <global> = <spy> do ...`, reject `receive from`/`try receive from`/`ask` at compile time, and allow `Channel`/`Agent` descriptors to be shared across multiple worker agents without false-positive `UseAfterChannelSendError`.
