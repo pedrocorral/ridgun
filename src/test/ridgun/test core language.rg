@@ -482,6 +482,39 @@ fn :: pipe into record field name Int => Int
         x + 1 -> target
         target
 
+fn :: pipe terminal record getter PipeTargetPlan => Int
+      pipe terminal record getter p =
+        p -> target
+
+fn :: pipe chain rebind target Int => Int
+      pipe chain rebind target x =
+        mut target = 0
+        x + 1 -> target
+        target * 2 -> target
+        target + 10
+
+fn :: tagval Int => Int
+      tagval n = n + 100
+
+fn :: pipe into unary fn local Int => Int
+      pipe into unary fn local x =
+        x + 2 -> tagval
+        tagval * 3
+
+fn :: pipe terminal unary fn call Int => Int
+      pipe terminal unary fn call x =
+        x + 2 -> tagval
+
+fn :: syscall6 agent worker Int => Int
+      syscall6 agent worker delta =
+        pid = sys call 39 0 0 0 0 0
+        (pid > 0) -> ok
+        delta + 10
+
+fn :: unused syscall6 helper Int => Int
+      unused syscall6 helper x =
+        (sys call 39 0 0 0 0 0) + x
+
 fn :: main => ()
       main =
         echo "=== Core Language, ADTs, Mixfix, Variadics & Higher-Order Ops ==="
@@ -747,6 +780,16 @@ fn :: main => ()
         stop spy_audit
         assert equals (pipe into record field name 3) 4
         assert equals (target (PipeTargetPlan 99)) 99
+        assert equals (pipe terminal record getter (PipeTargetPlan 77)) 77
+        assert equals (pipe chain rebind target 4) 20
+        assert equals (pipe into unary fn local 5) 21
+        assert equals (pipe terminal unary fn call 5) 107
+        pid1 = sys call 39
+        pid3 = sys call 39 0 0
         pid6 = sys call 39 0 0 0 0 0
-        assert equals (pid6 > 0) True
+        pid7 = sys call 39 0 0 0 0 0 0
+        assert equals (pid1 > 0 and pid1 == pid3 and pid3 == pid6 and pid6 == pid7) True
+        sc_ag = agent (syscall6 agent worker)
+        assert equals (ask sc_ag 5) 15
+        stop sc_ag
         echo "=== All core language tests passed ==="

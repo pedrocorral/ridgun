@@ -503,5 +503,26 @@ fn :: main => ()
         write file "target/test_lib_work/leak_app.rg" "import mod_b\nimport mod_a\n\nfn :: main => ()\n      main =\n        echo (int to str (mod_a.leak attempt 1))\n"
         rc_leak = shell exec ("\"" + ridgunc_bin + "\" check target/test_lib_work/leak_app.rg > target/test_lib_work/leak_out.txt 2>&1")
         assert true (rc_leak != 0)
+        -- 11. TASK-0045 (edtech-orm) multi-module & .rglib regression suite:
+        --     (a) json_hlp uses `expr -> target` as a local binding while orm_hlp defines `type QueryPlan = target: String, limit_n: Int`
+        --     (b) sol_hlp and orm_hlp both define functions using the mixfix word `params` (`route params` and `pred params`), and orm_hlp calls `(pred params a) :: (pred params b)` inside `mutation params`
+        --     (c) pg_hlp defines an agent worker calling 6-arg `sys call 39 0 0 0 0 0` (tested both when DCE-eliminated and when live, and with `.rglib` bundles)
+        write file "target/test_lib_work/json_hlp.rg" "module :: json_hlp\n\nfn :: json path step String String => String\n      json path step doc key = doc + \".\" + key\n\nfn :: json get str String String => String\n      json get str doc key =\n        json path step doc key -> target\n        target + \":ok\"\n"
+        write file "target/test_lib_work/sol_hlp.rg" "module :: sol_hlp\nimport json_hlp\n\nfn :: route params String => [String]\n      route params p = [json get str \"req\" p]\n"
+        write file "target/test_lib_work/orm_hlp.rg" "module :: orm_hlp\n\ntype QueryPlan =\n  target: String\n  limit_n: Int\n\nfn :: pred params String => [String]\n      pred params col = [\"p:\" + col]\n\nfn :: mutation params String String => [String]\n      mutation params a b = (pred params a) :: (pred params b)\n\nfn :: plan summary QueryPlan => String\n      plan summary p = (target p) + \"#\" + (int to str (limit_n p))\n"
+        write file "target/test_lib_work/pg_hlp.rg" "module :: pg_hlp\n\nfn :: pg syscall6 worker String => String\n      pg syscall6 worker dsn =\n        pid = sys call 39 0 0 0 0 0\n        (pid > 0) -> ok\n        \"pg:\" + dsn\n\nfn :: pg connect session String => String\n      pg connect session dsn =\n        ag = agent (pg syscall6 worker)\n        res = ask ag dsn\n        stop ag\n        res\n\nfn :: mem connect session => String\n      mem connect session = \"memory\"\n"
+        write file "target/test_lib_work/edtech_app.rg" "import json_hlp\nimport sol_hlp\nimport orm_hlp\nimport pg_hlp\n\nfn :: first str [String] => String\n      first str [] = \"\"\n      first str (x:_) = x\n\nfn :: main => ()\n      main =\n        s1 = first str (sol_hlp.route params \"id\")\n        mp = orm_hlp.mutation params \"email\" \"role\"\n        s2 = (first str mp) + \"|\" + ( orm_hlp.plan summary (orm_hlp.QueryPlan \"users\" 10) )\n        s3 = pg_hlp.mem connect session\n        s4 = pg_hlp.pg connect session \"db0\"\n        echo (s1 + \"|\" + s2 + \"|\" + s3 + \"|\" + s4)\n"
+        rc_edtech_src = shell exec ("\"" + ridgunc_bin + "\" build target/test_lib_work/edtech_app.rg -o target/test_lib_work/edtech_app >/dev/null 2>&1 && target/test_lib_work/edtech_app > target/test_lib_work/edtech_out.txt 2>&1")
+        assert int equals rc_edtech_src 0 "edtech-orm multi-module native ELF build & run"
+        assert str eq (str trim (read file "target/test_lib_work/edtech_out.txt")) "req.id:ok|p:email|users#10|memory|pg:db0" "edtech-orm multi-module output"
+        -- Also compile json_hlp.rg and orm_hlp.rg into .rglib bundles to verify `is encode pipe var target` and .rglib multi-module loading
+        rc_j_lib = shell exec ("\"" + ridgunc_bin + "\" build --lib target/test_lib_work/json_hlp.rg -o target/test_lib_work/json_hlp.rglib >/dev/null 2>&1")
+        rc_o_lib = shell exec ("\"" + ridgunc_bin + "\" build --lib target/test_lib_work/orm_hlp.rg -o target/test_lib_work/orm_hlp.rglib >/dev/null 2>&1")
+        assert int equals rc_j_lib 0 "edtech-orm json_hlp.rglib build"
+        assert int equals rc_o_lib 0 "edtech-orm orm_hlp.rglib build"
+        shell exec "rm -f target/test_lib_work/json_hlp.rg target/test_lib_work/orm_hlp.rg target/test_lib_work/edtech_app"
+        rc_edtech_lib = shell exec ("\"" + ridgunc_bin + "\" build target/test_lib_work/edtech_app.rg -o target/test_lib_work/edtech_app >/dev/null 2>&1 && target/test_lib_work/edtech_app > target/test_lib_work/edtech_lib_out.txt 2>&1")
+        assert int equals rc_edtech_lib 0 "edtech-orm .rglib native ELF build & run"
+        assert str eq (str trim (read file "target/test_lib_work/edtech_lib_out.txt")) "req.id:ok|p:email|users#10|memory|pg:db0" "edtech-orm .rglib output"
         shell exec "rm -rf target/test_lib_work"
         echo "=== All library compilation, stable plugin & PAL timeout tests passed ==="
