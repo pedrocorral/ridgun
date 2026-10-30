@@ -62,10 +62,11 @@ T'has fixat que molts llenguatges fan servir `|` per a bits, `||` per a booleans
 
 En Ridgun, com que `|` ja és el símbol sagrat de les guardes i dels tipus algebraics, i `||` és l'operador de paral·lelisme, **els operadors booleans s'escriuen amb paraules clares en minúscules**:
 
-- **`and`**: es compleixen totes dues coses (`edat >= 18 and te_carnet`).
-- **`or`**: se'n compleix almenys una (`dia == "dissabte" or dia == "diumenge"`).
+- **`and`**: es compleixen totes dues coses amb avaluació en curtcircuit (`edat >= 18 and te_carnet`).
+- **`or`**: se'n compleix almenys una amb avaluació en curtcircuit (`dia == "dissabte" or dia == "diumenge"`).
 - **`xor`**: es compleix l'una o l'altra, però no totes dues alhora.
 - **`not`**: inverteix el booleà (`not (es_buit text)`).
+- **`<`, `>`, `<=`, `>=`**: comparen tant nombres (`Int`, `Float`) com cadenes **`String` en ordre lexicogràfic UTF-8** (`"alfa" < "beta"`).
 
 Mira que net queda el clàssic problema dels anys de traspàs:
 

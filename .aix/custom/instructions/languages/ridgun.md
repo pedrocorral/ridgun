@@ -5,11 +5,11 @@ description: "Use when writing, refactoring, or reviewing Ridgun (.rg) source fi
 applyTo: "**/*.rg,build.rg"
 optional: false
 ---
-# Ridgun conventions (`.rg` — `v0.9.27`)
+# Ridgun conventions (`.rg` — `v0.9.29`)
 
 Read and follow the `implement-code-ridgun` skill before editing any `.rg` file.
 
-## Layout and 100% pure-Ridgun ELF64 toolchain (`v0.9.27`)
+## Layout and 100% pure-Ridgun ELF64 toolchain (`v0.9.29`)
 - Shared modules live in `src/main/ridgun/lib/*.rg`; executable entrypoints live in `src/main/ridgun/<target>/main.rg` (compiled directly to standalone Linux ELF64 executables at `target/<target>` without Rust, C, or `rustc`).
 - Library compilation (`FR-COMP-006`): modules without `fn :: main => ()` can be compiled as `.rglib` bundles (`ridgunc build --lib <file.rg> -o <out.rglib>`) and native Linux ELF64 `ET_DYN` shared objects (`ridgunc build --so <file.rg> -o <lib.so>`), or built via `stable built lib` (`fn :: project kind => String` = `"lib"` in `build.rg`, scaffolded via `stable new --lib <name>`).
 - Extensible `stable` (`FR-TOOL-003`): projects can declare custom tasks in `build.rg` (`fn :: task <name> => String`) and load plugins (`fn :: plugins => [String]`, `plugins/*.rg`, `.stable/plugins/*.rg`); inspect via `stable tasks` and `stable plugins`.
@@ -45,11 +45,13 @@ Read and follow the `implement-code-ridgun` skill before editing any `.rg` file.
   - **Universal `->` First-Argument Rule**: Any value piped from the left of `->` (or left of an infix call `x op a b`) enters as the **first argument** of the right-hand `fn ::` or `op ::` (`x -> f a b` $\equiv$ `x f a b` $\equiv$ `f x a b`). Use `_` when the piped value belongs in a non-first argument slot (`payload -> write_file output_path _`).
   - **Sequence Masks & Agent Stages in Pipelines**: Filter/unpack tuple outputs in a pipeline via `-> (+ _ _ +) ->` directly into a multi-argument function (`parse header packet "v0.9.9" -> (+ _ _ +) -> combine code msg -> out`), and pipe into agents via `-> send to ag` or `-> ask to ag`.
   - **No `_ =` Boilerplate on Side-Effect Statements & Automatic `=> ()` Return Discarding**: Write side-effect calls (`echo`, `write file`, `write bytes`, `shell exec`, `log info`, `print error lines`, `sys mkdir`, etc.) directly as statements in sequential blocks without `_ =`. In any `=> ()` function, if the final expression evaluates to a non-`()` value (such as `shell exec cmd`), the compiler automatically discards its value and returns `()` (or `-> ()` may be appended explicitly: `shell exec cmd -> ()`).
-- **Operators, Strings & Collection Combinators (`FR-COMP-001`, `FR-COMP-014`)**:
-  - Logical operators are lowercase words: `and`, `or`, `xor`, `not` (never `&&`, `||`, `!`).
+- **Operators, Strings & Collection Combinators (`FR-COMP-001`, `FR-COMP-013`, `FR-COMP-014`)**:
+  - Logical operators are lowercase words: `and`, `or`, `xor`, `not` (never `&&`, `||`, `!`). On `Bool`, `and` and `or` use **short-circuit evaluation** (`False and rhs` and `True or rhs` do not evaluate `rhs`); on `Int`, `and`, `or`, `xor` perform bitwise operations.
+  - Relational operators `<`, `>`, `<=`, `>=` work on `Int`, `Float`, and **`String` (lexicographical UTF-8 byte order)**.
   - List prepend/concat: `[x] :: xs` or `xs :: ys` (`:` is only for pattern destructuring `(x:xs)`, never in expressions).
   - String concat: `"a" + "b"`; interpolated strings `"val: {x}"` (escape literal braces with `\{`/`\}` or `{{`/`}}`) vs raw strings `'literal {x}'`.
-  - Higher-order list combinators accept both idiomatic pipeline/infix (`xs map f`, `xs -> map f`, `xs filter p`, `xs fold init f`) and prefix (`map f xs`, `filter p xs`, `fold f init xs`, **`||map f xs`**, **`||filter p xs`**) forms.
+  - Higher-order list combinators accept both idiomatic pipeline/infix (`xs map f`, `xs -> map f`, `xs filter p`, `xs fold init f`) and prefix (`map f xs`, `filter p xs`, `fold f init xs`, **`||map f xs`**, **`||filter p xs`**) forms, and `||map` / `||filter` execute in parallel across worker threads both for top-level functions and for capturing lexical closures `(x => expr)`.
+  - `write file path text` / `write_file path text` preserves existing POSIX permissions when overwriting an existing file and defaults to `0644` (`420`) when creating a new file.
 - **Deterministic Memory (`RMM1` / `RMM2`) & Concurrency Safety (`FR-COMP-002`)**:
   - Zero Garbage Collector: `RMM1` handles static last-use drops (`rg_cmm_drop`), zero-copy return moves, and 1-cycle pointer-identity checks (`ptr(a) != ptr(c)`); `RMM2` leaves incoming arguments untouched (`+0 / -0`), increments (`+1`) on local/container assignment, spares the returned local in transit, and cascades `-1` to child structures on scope exit.
   - Parallel `|| expr -> var` bindings must be acyclic and disjoint on slice writes (`|| val -> m[i, j]`); channels and agents enforce affine move ownership (`ErrUseAfterSend`).

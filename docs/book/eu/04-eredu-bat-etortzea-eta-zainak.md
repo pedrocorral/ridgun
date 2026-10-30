@@ -62,10 +62,11 @@ Konturatu zara lengoaia askok bitetarako `|`, boolearretarako `||`, ukatzeko `!`
 
 Ridgunen, `|` dagoeneko zainen eta datu-mota aljebraikoen ikur sakratua denez, eta `||` paralelismo-eragilea denez, **eragile boolearrak letra xeheko hitz argiekin idazten dira**:
 
-- **`and`**: bi gauzak betetzen dira (`adina >= 18 and gidabaimena_du`).
-- **`or`**: gutxienez bat betetzen da (`eguna == "larunbata" or eguna == "igandea"`).
+- **`and`**: bi gauzak betetzen dira zirkuitulaburreko ebaluazioarekin (`adina >= 18 and gidabaimena_du`).
+- **`or`**: gutxienez bat betetzen da zirkuitulaburreko ebaluazioarekin (`eguna == "larunbata" or eguna == "igandea"`).
 - **`xor`**: bata edo bestea betetzen da, baina ez biak batera.
 - **`not`**: boolearra alderantzikatzen du (`not (hutsik_dago testua)`).
+- **`<`, `>`, `<=`, `>=`**: zenbakiak (`Int`, `Float`) zein **`String` kateak ordena lexikografikoan (UTF-8)** alderatzen dituzte (`"alfa" < "beta"`).
 
 Begira zein garbi geratzen den bisurte-urteen problema klasikoa:
 

@@ -1,14 +1,14 @@
 ---
 name: implement-code-ridgun
-description: Implement, refactor or review Ridgun (.rg) code and build.rg definitions using the exact Ridgun v0.9.28 grammar, idiomatic -> pipeline chaining (xs map f -> filter g -> results), (+ _ _ +) sequence masks, -> () unit discard, _ =-free side-effect blocks, type system, user-defined generic types (type Result T E, type Page T), lexical closures ((x => expr), (acc x => expr)), module namespaces (module ::, import ... as, mod.Type/Ctor/fn), Native Agent Model (agent, send ... to, receive from, try receive from, stop), RMM1/RMM2 deterministic memory rules, parallel || DAGs, with timeout quotas, PAL primitives, and pure-Ridgun stable/ridgunc ELF64 toolchain; use for any Ridgun (.rg) change.
+description: Implement, refactor or review Ridgun (.rg) code and build.rg definitions using the exact Ridgun v0.9.29 grammar, idiomatic -> pipeline chaining (xs map f -> filter g -> results), (+ _ _ +) sequence masks, -> () unit discard, _ =-free side-effect blocks, type system, user-defined generic types (type Result T E, type Page T), lexical closures ((x => expr), (acc x => expr)), module namespaces (module ::, import ... as, mod.Type/Ctor/fn), Native Agent Model (agent, send ... to, receive from, try receive from, stop), RMM1/RMM2 deterministic memory rules, parallel || DAGs, with timeout quotas, PAL primitives, and pure-Ridgun stable/ridgunc ELF64 toolchain; use for any Ridgun (.rg) change.
 ---
-# implement-code-ridgun (`v0.9.28`)
+# implement-code-ridgun (`v0.9.29`)
 
 Reading budget: `harness/skills/implement-code-ridgun/references/cheatsheet.rg` (or `docs/lang/spec.md` when a construct is unfamiliar), `build.rg`, and the target `.rg` files under `src/main/ridgun/` or `src/test/ridgun/`.
 
 ---
 
-## 1. Project & Architecture Overview (`v0.9.28`)
+## 1. Project & Architecture Overview (`v0.9.29`)
 - **100% Pure Ridgun (Zero Rust / Zero `rustc`)**: Both `ridgunc` (`src/main/ridgun/ridgunc/main.rg`) and `stable` (`src/main/ridgun/stable/main.rg`) are written 100% in Ridgun and emit standalone, statically linked Linux ELF64 executables directly to disk via `elf64.rg`, `x86_64.rg` (`EM_X86_64 = 62`), and `arm64.rg` (`EM_AARCH64 = 183` for Raspberry Pi).
 - **Project Layout**:
   - `build.rg`: Pure-Ridgun project manifest (`fn :: project name => String`, `project version`, `main entry`, `source dir`, `test dir`, `target dir`).
@@ -20,7 +20,7 @@ Reading budget: `harness/skills/implement-code-ridgun/references/cheatsheet.rg` 
 
 ## 2. LLM Anti-Patterns: "Never Write This → Write This Instead"
 
-| Common LLM Mistake (INVALID) | Correct Ridgun `v0.9.28` (VALID) | Why |
+| Common LLM Mistake (INVALID) | Correct Ridgun `v0.9.29` (VALID) | Why |
 |---|---|---|
 | `fn :: parse_header String => (Int, [(String, String)], String)` | `fn :: parse header String => Int [String String] String` | Prefer natural spaces in function/built-in names (`FR-COMP-005`) and space-separated tuple/sequence type signatures (`FR-COMP-008`) |
 | `// comment` or `# comment` | `-- comment` | Only `--` starts a comment |
@@ -144,9 +144,10 @@ Every `=` (in `fn ::`, `op ::`, local bindings `x =` / `mut x =`, and guard bran
   3. **Multiple parameters vs. tuple**: `(a b => expr)` takes 2 parameters; `((a b) => expr)` destructures 1 tuple parameter.
   4. **Multi-line bodies**: put a newline after `=>` and indent the block before the closing `)`.
   5. **Uppercase vs. lowercase**: `(Conn => Conn)` is a function type; `(conn => conn)` is a lambda value.
-- **Sequential vs Parallel Combinators & Idiomatic Pipelines (`FR-COMP-001`, `FR-COMP-014`)**:
+- **Sequential vs Parallel Combinators & Idiomatic Pipelines (`FR-COMP-001`, `FR-COMP-013`, `FR-COMP-014`)**:
   - Sequential (left-to-right, deterministic side-effects): `xs map f`, `xs filter p`, `xs fold init f` (or prefix `map f xs`, `filter p xs`, `fold f init xs`).
-  - Multicore parallel (work-stealing worker threads): **`xs ||map f`** / **`||map f xs`** and **`xs ||filter p`** / **`||filter p xs`**.
+  - Multicore parallel (work-stealing worker threads, supporting both named top-level functions and capturing lexical closures `(x => expr)`): **`xs ||map f`** / **`||map f xs`** and **`xs ||filter p`** / **`||filter p xs`**.
+  - **Short-Circuit Boolean `and` / `or` & Lexicographical `String` Comparisons (`<`, `>`, `<=`, `>=`)**: On `Bool`, `and` and `or` short-circuit (`False and rhs` and `True or rhs` skip `rhs`). Relational operators `<`, `>`, `<=`, `>=` work on `Int`, `Float`, and `String` (lexicographical UTF-8 byte comparison).
   - **Recommended Idiomatic Pipeline Style (`2b`) (`FR-COMP-014`)**:
     ```ridgun
     xs map (x => x * 2) -> filter (x => x > 6) -> compact limit 14 -> results
@@ -271,7 +272,7 @@ Ridgun achieves deterministic memory management with **zero Garbage Collector pa
 | | `filter p xs` / `\|\|filter p xs` | `(A => Bool) [A] => [A]` | Sequential / Multicore parallel filter |
 | | `fold f init xs` | `(B A => B) B [A] => B` | Left fold |
 | **File & Byte I/O** | `read file path` | `String => String` | Read UTF-8 file verbatim |
-| | `write file path text` | `String String => ()` | Write string to file |
+| | `write file path text` | `String String => ()` | Write string to file (preserves existing POSIX mode on overwrite; `0644` on new files) |
 | | `read bytes path` | `String => [Int]` | Read raw file bytes (`0..255`) |
 | | `write bytes path bytes` | `String [Int] => ()` | Write raw bytes (`0..255`) to file |
 | | `sha256 str text` / `sha256 file path` | `String => String` | Lowercase 64-char SHA-256 hex digest of string or file |

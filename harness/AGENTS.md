@@ -1,4 +1,4 @@
-# AGENTS.md — Ridgun Agent Harness (`v0.9.21`)
+# AGENTS.md — Ridgun Agent Harness (`v0.9.29`)
 
 Drop-in agent instructions for any AI coding assistant working on a **Ridgun (`.rg`)** repository.
 
@@ -7,7 +7,7 @@ Drop-in agent instructions for any AI coding assistant working on a **Ridgun (`.
 2. Read `harness/skills/implement-code-ridgun/SKILL.md` (complete grammar, idiomatic `->` pipeline chaining, `(+ _ _ +)` sequence masks, `_ =`-free blocks, anti-patterns table, built-in runtime functions, and toolchain workflow) and `harness/skills/implement-stable-project/SKILL.md` (`stable` commands, `.rglib`/`.so` library builds, custom tasks, and framework plugins).
 3. Inspect `harness/skills/implement-code-ridgun/references/cheatsheet.rg`, `harness/skills/implement-stable-project/references/build_cheatsheet.rg`, and `harness/skills/implement-stable-project/references/plugin_cheatsheet.rg` for canonical, verified examples.
 
-## 2. Core Golden Rules of Ridgun (`v0.9.21`)
+## 2. Core Golden Rules of Ridgun (`v0.9.29`)
 1. **100% Pure Ridgun Toolchain (Executables & Reusable Libraries)**:
    - The compiler (`./bin/ridgunc` / `target/ridgunc`) and project manager/formatter (`./bin/stable` / `target/stable`) are 100% self-hosted in Ridgun (`src/main/ridgun/`) and emit standalone Linux ELF64 executables (`x86_64` and `ARM64` / Raspberry Pi), `.rglib` library bundles (`ridgunc build --lib`), and ELF64 `ET_DYN` shared objects (`ridgunc build --so`, `stable built lib`) directly without Rust, C, or `rustc`.
 2. **Idiomatic Left-to-Right Pipeline Chaining (`->`), `(+ _ _ +)` Sequence Masks & `_ =`-Free Blocks (`FR-COMP-014`)**:
@@ -28,8 +28,8 @@ Drop-in agent instructions for any AI coding assistant working on a **Ridgun (`.
    - Use **`|| expr -> var`** for parallel DAG bindings (the `where` keyword does not exist in Ridgun), and **`||.`** when returning from an inline `||` block to sequential statements below.
 7. **Immutable by Default (`x = ...`) vs Explicit Mutable (`mut x = ...`)**:
    - Local variables are immutable constants unless declared with `mut x = expr`.
-   - Logical operators are lowercase words: `and`, `or`, `xor`, `not`.
-   - Use `xs map f`, `xs filter p`, `xs fold init f` for sequential traversal, and **`xs ||map f`** / **`xs ||filter p`** for multicore parallel traversal.
+   - Logical operators are lowercase words: `and`, `or`, `xor`, `not` (`and` and `or` short-circuit on `Bool`); `<`, `>`, `<=`, `>=` compare `Int`, `Float`, and `String` (lexicographically).
+   - Use `xs map f`, `xs filter p`, `xs fold init f` for sequential traversal, and **`xs ||map f`** / **`xs ||filter p`** for multicore parallel traversal (both for top-level functions and capturing `(x => expr)` closures).
 8. **Deterministic Memory Without GC (`RMM1` & `RMM2`)**:
    - Incoming function arguments are untouched (`+0 / -0`), local/container assignments increment (`+1`), returned locals are spared in transit, and non-returned locals cascade `-1` on scope exit.
 

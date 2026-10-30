@@ -5,7 +5,7 @@ description: "Use when creating, editing, or running build.rg, stable plugins (p
 applyTo: "build.rg,plugins/**/*.rg,.stable/plugins/**/*.rg"
 optional: false
 ---
-# `stable` project manager, library & plugin conventions (`v0.9.12`)
+# `stable` project manager, library & plugin conventions (`v0.9.29`)
 
 Read and follow the `implement-stable-project` and `implement-code-ridgun` skills before editing `build.rg` or `plugins/*.rg`.
 
@@ -52,7 +52,7 @@ Read and follow the `implement-stable-project` and `implement-code-ridgun` skill
 - `stable built lib` (or `stable build lib`) — Compile reusable library artifacts (`target/<name>.rglib` and native ELF64 `ET_DYN` shared object `target/lib<name>.so`) (`FR-COMP-006`).
 - `stable run [args...]` — Compile and run the project's `main entry`.
 - `stable install [target]` — Build and install native ELF64 binaries into `~/.local/bin/` and `bin/`.
-- `stable deps` / `stable add <git_url_or_path>` — Synchronize dependencies declared in `fn :: dependencies => [String]` into `.stable/deps/`.
+- `stable deps` / `stable add <git_url_or_path>` — Synchronize dependencies declared in `fn :: dependencies => [String]` into `.stable/deps/` (direct dependencies in `.stable/deps/<dep>` always take priority over nested transitive `.stable/deps/<other>/.stable/deps/<dep>` folders).
 - `stable tasks` — List all custom `fn :: task <name> => String` commands discovered in `build.rg` and loaded plugins.
 - `stable plugins` — List all loaded `stable` plugin modules (`fn :: plugins => [String]`, `plugins/*.rg`, `.stable/plugins/*.rg`).
 - `stable clean` — Remove compiled artifacts from `target/`.

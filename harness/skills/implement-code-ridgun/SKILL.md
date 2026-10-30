@@ -1,14 +1,14 @@
 ---
 name: implement-code-ridgun
-description: Implement, refactor or review Ridgun (.rg) code and build.rg definitions using the exact Ridgun v0.9.21 grammar, idiomatic -> pipeline chaining (xs map f -> filter g -> results), (+ _ _ +) sequence masks, -> () unit discard, _ =-free side-effect blocks, type system, user-defined generic types (type Result T E, type Page T), lexical closures ((x => expr), (acc x => expr)), module namespaces (module ::, import ... as, mod.Type/Ctor/fn), Native Agent Model (agent, send ... to, receive from, try receive from, stop), RMM1/RMM2 deterministic memory rules, parallel || DAGs, with timeout quotas, PAL primitives, and pure-Ridgun stable/ridgunc ELF64 toolchain; use for any Ridgun (.rg) change.
+description: Implement, refactor or review Ridgun (.rg) code and build.rg definitions using the exact Ridgun v0.9.29 grammar, idiomatic -> pipeline chaining (xs map f -> filter g -> results), (+ _ _ +) sequence masks, -> () unit discard, _ =-free side-effect blocks, type system, user-defined generic types (type Result T E, type Page T), lexical closures ((x => expr), (acc x => expr)), module namespaces (module ::, import ... as, mod.Type/Ctor/fn), Native Agent Model (agent, send ... to, receive from, try receive from, stop), RMM1/RMM2 deterministic memory rules, parallel || DAGs, with timeout quotas, PAL primitives, and pure-Ridgun stable/ridgunc ELF64 toolchain; use for any Ridgun (.rg) change.
 ---
-# implement-code-ridgun (`v0.9.21`)
+# implement-code-ridgun (`v0.9.29`)
 
 Reading budget: `harness/skills/implement-code-ridgun/references/cheatsheet.rg` (or `docs/lang/spec.md` when a construct is unfamiliar), `build.rg`, and the target `.rg` files under `src/main/ridgun/` or `src/test/ridgun/`.
 
 ---
 
-## 1. Project & Architecture Overview (`v0.9.21`)
+## 1. Project & Architecture Overview (`v0.9.29`)
 - **100% Pure Ridgun (Zero Rust / Zero `rustc`)**: Both `ridgunc` (`src/main/ridgun/ridgunc/main.rg`) and `stable` (`src/main/ridgun/stable/main.rg`) are written 100% in Ridgun and emit standalone, statically linked Linux ELF64 executables directly to disk via `elf64.rg`, `x86_64.rg` (`EM_X86_64 = 62`), and `arm64.rg` (`EM_AARCH64 = 183` for Raspberry Pi).
 - **Project Layout**:
   - `build.rg`: Pure-Ridgun project manifest (`fn :: project name => String`, `project version`, `main entry`, `source dir`, `test dir`, `target dir`).
@@ -20,7 +20,7 @@ Reading budget: `harness/skills/implement-code-ridgun/references/cheatsheet.rg` 
 
 ## 2. LLM Anti-Patterns: "Never Write This → Write This Instead"
 
-| Common LLM Mistake (INVALID) | Correct Ridgun `v0.9.21` (VALID) | Why |
+| Common LLM Mistake (INVALID) | Correct Ridgun `v0.9.29` (VALID) | Why |
 |---|---|---|
 | `fn :: parse_header String => (Int, [(String, String)], String)` | `fn :: parse header String => Int [String String] String` | Prefer natural spaces in function/built-in names (`FR-COMP-005`) and space-separated tuple/sequence type signatures (`FR-COMP-008`) |
 | `// comment` or `# comment` | `-- comment` | Only `--` starts a comment |
@@ -46,7 +46,7 @@ Reading budget: `harness/skills/implement-code-ridgun/references/cheatsheet.rg` 
 ### 3.1 Signatures, Space-Separated Tuple Types (`FR-COMP-008`), Natural Spaces in `fn ::`, Clauses & Zero-Noise Generics (`A`..`Z`)
 - `fn ::` and `op ::` prefixes are optional (`add Int Int => Int` or `fn :: add Int Int => Int`).
 - **Unified Space-Separated Tuple and Sequence Types (`FR-COMP-008`)**: Because argument lists and tuples are both typed sequences (`seq`), space-separated types and comma-separated tuple types are 100% interchangeable in return types (`=> Int Int [String String] String` $\equiv$ `=> (Int, Int, [(String, String)], String)`), list brackets (`[String String]` $\equiv$ `[(String, String)]`), and parenthesized tuple types (`(A B)` $\equiv$ `(A, B)`).
-- **Natural-Language Spaces in `fn ::` and Built-in Calls (`FR-COMP-005`)**: Both `fn ::` and `op ::` support multi-word names separated by spaces (`fn :: format app err AppErr => String`, `fn :: project name => String`), and built-in/test functions can be called with spaces (`assert equals a b`, `str len s`, `read file p`, `cmm live blocks`) while keeping `_` backward-compatible.
+- **Natural-Language Spaces in `fn ::` and Built-in Calls (`FR-COMP-005`)**: Both `fn ::` and `op ::` support multi-word names separated by spaces (`fn :: format app err AppErr => String`, `fn :: project name => String`), and built-in/test functions are called with spaces (`assert equals a b`, `str len s`, `read file p`, `cmm live blocks`). **`" "` and `"_"` are never equivalent in function names** (`fn :: a b` cannot be called as `a_b`, and `fn :: a_b` cannot be called as `a b`), and `--strict` forbids `_` in all function declarations and function calls (including built-ins) while always allowing `_` in parameter and local variable names (`input_path`, `my_var`).
 - **Tabular Column Alignment (`=>`, `=`, `->`)**: Each clause aligns its words and arguments under the corresponding tokens in the signature and aligns `=` under `=>`. Run `stable format` to format automatically.
 - **Parametric Polymorphism (`A`..`Z`)**: Single uppercase letters (`A`..`Z`) are polymorphic type variables unified across arguments and substituted into the return type:
   ```ridgun
@@ -144,16 +144,18 @@ Every `=` (in `fn ::`, `op ::`, local bindings `x =` / `mut x =`, and guard bran
   3. **Multiple parameters vs. tuple**: `(a b => expr)` takes 2 parameters; `((a b) => expr)` destructures 1 tuple parameter.
   4. **Multi-line bodies**: put a newline after `=>` and indent the block before the closing `)`.
   5. **Uppercase vs. lowercase**: `(Conn => Conn)` is a function type; `(conn => conn)` is a lambda value.
-- **Sequential vs Parallel Combinators & Idiomatic Pipelines (`FR-COMP-001`, `FR-COMP-014`)**:
+- **Sequential vs Parallel Combinators & Idiomatic Pipelines (`FR-COMP-001`, `FR-COMP-013`, `FR-COMP-014`)**:
   - Sequential (left-to-right, deterministic side-effects): `xs map f`, `xs filter p`, `xs fold init f` (or prefix `map f xs`, `filter p xs`, `fold f init xs`).
-  - Multicore parallel (work-stealing worker threads): **`xs ||map f`** / **`||map f xs`** and **`xs ||filter p`** / **`||filter p xs`**.
+  - Multicore parallel (work-stealing worker threads, supporting both named top-level functions and capturing lexical closures `(x => expr)`): **`xs ||map f`** / **`||map f xs`** and **`xs ||filter p`** / **`||filter p xs`**.
+  - **Short-Circuit Boolean `and` / `or` & Lexicographical `String` Comparisons (`<`, `>`, `<=`, `>=`)**: On `Bool`, `and` and `or` short-circuit (`False and rhs` and `True or rhs` skip `rhs`). Relational operators `<`, `>`, `<=`, `>=` work on `Int`, `Float`, and `String` (lexicographical UTF-8 byte comparison).
   - **Recommended Idiomatic Pipeline Style (`2b`) (`FR-COMP-014`)**:
     ```ridgun
     xs map (x => x * 2) -> filter (x => x > 6) -> compact limit 14 -> results
     parse header packet "v0.9.9" -> (+ _ _ +) -> combine code msg -> status_line
     [5, 10, 15] -> sum int list -> send to worker_ag
+    [1, 2, 3, 4] -> sum int list -> ask to worker_ag -> total
     ```
-    Any value piped from the left of `->` (or left of an infix call) enters as the **1st argument** of the right-hand `fn ::` or `op ::` (`x -> f a b` $\equiv$ `x f a b` $\equiv$ `f x a b`, or use `_` placeholder for another slot: `payload -> write_file path _`). All four forms (`xs map f -> filter g -> results`, `xs -> map f -> filter g -> results`, `xs map f filter g -> results`, and `map f xs -> filter g -> results`) normalize to the same AST.
+    Any value piped from the left of `->` (or left of an infix call) enters as the **1st argument** of the right-hand `fn ::` or `op ::` (`x -> f a b` $\equiv$ `x f a b` $\equiv$ `f x a b`, or use `_` placeholder for another slot: `payload -> write file path _`). All four forms (`xs map f -> filter g -> results`, `xs -> map f -> filter g -> results`, `xs map f filter g -> results`, and `map f xs -> filter g -> results`) normalize to the same AST. In functions returning `=> ()`, a non-`()` final expression is automatically discarded and `()` is returned (or `-> ()` can be written explicitly).
 
 ### 3.5 Types, User-Defined Generics (`FR-COMP-013`), Module Namespaces (`FR-COMP-012`), ADTs, Record Updates (`with`), and Natural-Language Mixfix (`op ::`)
 - **User-Defined Generic Sum ADTs and Product Records (`FR-COMP-013`)**:
@@ -237,19 +239,24 @@ Ridgun achieves deterministic memory management with **zero Garbage Collector pa
   - Compile-time dimension verification: `fn :: linear Tensor[B, In] Tensor[In, Out] => Tensor[B, Out]`.
   - Creation & indexing: `m = zeros [2, 2]`, `m[0, 1] = 3.5`, `v = m[0, 1]`.
   - Einstein summation (`A_ik @ B_kj` or `einsum "ik,kj->ij" a b`) and Hadamard element-wise ops (`a @+ b`, `a @- b`, `a @* b`, `a @/ b`).
-- **Native Agent Model (`agent`, `send ... to`, `receive from`, `try receive from`, `stop`) (`FR-COMP-009`)**:
+- **Native Agent Model (`agent`, `send ... to`, `ask ... to`, `receive from`, `try receive from`, `stop`) (`FR-COMP-009`)**:
   - Any `fn ::` or `op ::` function can be wrapped into an isolated agent:
     - Stateless agent: `ag = agent (procesar mensaje con tiempo)` (`M1 ... Mn => R` $\to$ `Agent (M1 ... Mn) R`).
     - Stateful agent: `ag = agent (sumar visita) 0` (`S M => S` or `S M => S R` $\to$ `Agent M S` or `Agent M R`, with `RMM1`/`RMM2` automatic state release on every transition).
-  - Operations: `send msg to ag` (or `msg -> send to ag`, `msg -> ask to ag -> res`, or multi-argument `send a b to ag`), `receive from ag -> res`, `try receive from ag -> opt` (`Some res | None`), `stop ag`, `agent alive ag` (`Bool`).
+  - Operations:
+    - Asynchronous send: `send msg to ag`, `msg -> send to ag`, or multi-argument `send a b to ag`.
+    - Synchronous request-reply (`send` + `receive`): `ask msg to ag`, `ask ag msg`, or pipeline `msg -> ask to ag -> res`.
+    - Receive & lifecycle: `receive from ag -> res`, `try receive from ag -> opt` (`Some res | None`), `stop ag`, `agent alive ag` (`Bool`).
   - Legacy `spawn` and `join` are retired: use `||` / `||map` / `||filter` for computational fork-join parallelism and `agent` for decoupled stateful/service processes.
-- **Affine Channels (`new channel`, `send through`, `receive from`)**:
+- **Affine Channels & Agent Sends (`new channel`, `send through`, `send ... to`, `receive from`)**:
   - `new channel -> ch`, `send through msg ch`, `receive from ch -> out` (no `_ =` needed).
-  - Reading a `mut` variable `msg` after `send msg to ag` or `send through msg ch` is rejected at compile time (`ErrUseAfterSend`).
+  - Reading a variable `msg` after `send msg to ag`, `msg -> send to ag`, or `send through msg ch` is rejected at compile time (`ErrUseAfterSend`).
 
 ---
 
-## 6. Complete Built-in Runtime Functions
+## 6. Compiler Intrinsics & Standard Library Modules
+
+### 6.1 Compiler Built-in Runtime Functions (No `import` Required)
 | Category | Built-in Function (Natural Spaces) | Signature | Description |
 |---|---|---|---|
 | **Output & CLI** | `echo a b ...` / `expr out` | variadic `=> ()` / `T => ()` | Print values with newline |
@@ -261,31 +268,26 @@ Ridgun achieves deterministic memory management with **zero Garbage Collector pa
 | | `int to str n` / `str to int s` | `Int => String` / `String => Int` | Integer ↔ String conversion |
 | | `str starts with s p` | `String String => Bool` | Prefix check |
 | | `str contains s sub` | `String String => Bool` | Substring check |
-| | `str index of s sub` | `String String => Int` | First index of `sub` (`-1` if not found) |
-| | `str trim s` | `String => String` | Trim ASCII whitespace |
-| | `str replace s old new` | `String String String => String` | Replace all occurrences |
-| | `str split s delim` | `String String => [String]` | Split string into list |
-| | `str to upper s` / `str to lower s` | `String => String` | ASCII case conversion |
 | **Collections** | `map f xs` / `\|\|map f xs` | `(A => B) [A] => [B]` | Sequential / Multicore parallel map |
 | | `filter p xs` / `\|\|filter p xs` | `(A => Bool) [A] => [A]` | Sequential / Multicore parallel filter |
 | | `fold f init xs` | `(B A => B) B [A] => B` | Left fold |
 | **File & Byte I/O** | `read file path` | `String => String` | Read UTF-8 file verbatim |
-| | `write file path text` | `String String => ()` | Write string to file |
-| | `append file path text` | `String String => ()` | Append string to file |
+| | `write file path text` | `String String => ()` | Write string to file (preserves existing POSIX mode on overwrite; `0644` on new files) |
 | | `read bytes path` | `String => [Int]` | Read raw file bytes (`0..255`) |
 | | `write bytes path bytes` | `String [Int] => ()` | Write raw bytes (`0..255`) to file |
-| | `sha256 hex text` | `String => String` | Lowercase 64-char SHA-256 hex digest |
-| **Filesystem & OS** | `file exists p` / `is dir p` / `is file p` / `is symlink p` | `String => Bool` | Path metadata predicates |
-| | `file size p` / `file mtime p` / `file mode p` | `String => Int` | Size in bytes, mtime, POSIX mode |
-| | `list dir path` | `String => [String]` | Sorted directory entry names |
-| | `sys chmod path mode` | `String Int => Bool` | Change file permissions (e.g. `493` = `0755`) |
-| | `sys mkdir p` / `sys rmdir p` / `sys unlink p` | `String => Bool` | Create/remove directory or file |
-| | `sys rename old new` / `sys symlink tgt lnk` | `String String => Bool` | Atomic rename / symlink |
-| | `sys readlink p` / `sys getcwd` / `sys getenv k` | `String => String` / `=> String` | Read symlink, cwd, or env var |
-| | `sys chdir p` | `String => Bool` | Change working directory |
+| | `sha256 str text` / `sha256 file path` | `String => String` | Lowercase 64-char SHA-256 hex digest of string or file |
+| | `sha256 raw text` | `String => String` | Raw 32-byte SHA-256 digest |
+| **Filesystem & OS** | `list dir path` | `String => [String]` | Sorted directory entry names |
+| | `file lstat path` | `String => Bool String Int Int Int String String Int String` | `(exists, kind, mode, nlink, size, owner, group, mtime, symlink_target)` |
+| | `sys chmod path mode` | `String Int => Int` | Change file permissions (`0` on success, e.g. `493` = `0755`) |
+| | `sys mkdir path mode` | `String Int => Int` | Create directory with mode (`0` on success) |
+| | `sys chdir path` | `String => Int` | Change working directory (`0` on success) |
+| | `sys getcwd` / `sys getenv k` | `=> String` / `String => String` | Current working directory or env var |
+| | `sys setenv k v` | `String String => Int` | Set environment variable (`0` on success) |
+| | `sys exec prog args env` / `sys execve prog args env` | `String [String] [String] => Int` | Spawn / exec process without `/bin/sh` |
 | | `sys exit code` | `Int => ()` | Exit process immediately |
 | | `sys os` / `sys arch` | `=> SysOs` / `=> SysArch` | Target OS (`Linux \| MacOS \| Windows`) & CPU arch (`X86_64 \| Arm64`) |
-| | `sys getpid` / `sys time ms` | `=> Int` | Process ID / monotonic time in ms |
+| | `sys getpid` / `sys getuid` / `sys getgid` / `sys time ms` | `=> Int` | Process ID, UID, GID, or monotonic time in ms |
 | | `sys deadline ms` / `sys remaining ms` | `=> Int` | Active `with timeout` deadline / remaining budget in ms (`0` / `-1` if none) |
 | | `sys sleep ms ms` | `Int => ()` | Sleep for `ms` milliseconds |
 | | `sys open mode path mode` | `String String => Int` | Portable open (`"r"`, `"w"`, `"a"`, `"rw"`, `"w+"`, `"a+"` -> `fd >= 0` or `-errno`) |
@@ -298,8 +300,27 @@ Ridgun achieves deterministic memory management with **zero Garbage Collector pa
 | | `sys kill pid sig` | `Int Int => Int` | Send normalized signal (`0`/`2`/`9`/`15`) to process `pid` |
 | | `sys call nr a1 a2 a3 a4 a5 a6` | `Int Int Int Int Int Int Int => Int` | Escape hatch for raw 6-arg target-OS ABI syscall |
 | | `shell exec cmd` | `String => Int` | Execute shell command and return exit code |
-| **RMM Diagnostics** | `cmm same ptr a b` | `[A] [A] => Bool` | `True` if `a` and `b` share the exact same heap pointer |
+| **RMM Diagnostics** | `cmm same ptr a b` | `A A => Bool` | `True` if `a` and `b` share the exact same heap pointer |
 | | `cmm live blocks` / `cmm cond freed` / `cmm cond spared` | `=> Int` | Live heap blocks, conditional frees, and spared return blocks |
+
+### 6.2 Standard Library Modules (Explicit `import` Required)
+| Module (`import ...`) | Function (Natural Spaces) | Signature | Description |
+|---|---|---|---|
+| **`import str`** | `str index of s sub` / `str ends with s suf` | `String String => Int` / `String String => Bool` | First index of `sub` (`-1` if not found) / suffix check |
+| | `str trim s` / `str trim left s` / `str trim right s` | `String => String` | Trim ASCII whitespace |
+| | `str replace s old new` | `String String String => String` | Replace all occurrences |
+| | `str split s delim` / `str join xs sep` | `String String => [String]` / `[String] String => String` | Split string into list / join list with separator |
+| | `str to upper s` / `str to lower s` | `String => String` | ASCII case conversion |
+| | `str repeat s n` / `str pad left s w ch` / `str pad right s w ch` | `String Int => String` / `String Int String => String` | String repetition and padding |
+| **`import io`** | `file exists p` / `is dir p` / `is file p` / `is symlink p` | `String => Bool` | Path metadata predicates |
+| | `file size p` / `file mtime p` / `file mode p` | `String => Int` | Size in bytes, mtime, POSIX mode |
+| | `append file path text` | `String String => Int` | Append string to file (`0` on success) |
+| **`import posix`** | `posix mkdir p` / `posix chdir p` | `String => Bool` | Create directory (`0755`) / change working directory |
+| | `posix chmod path mode` | `String Int => Bool` | Change file permissions |
+| | `sys rmdir p` / `sys unlink p` | `String => Bool` | Remove directory or unlink file |
+| | `sys rename old new` / `sys symlink tgt lnk` | `String String => Bool` | Atomic rename / create symlink |
+| | `sys readlink p` | `String => String` | Read symlink target |
+| **`import crypto`** | `sha256 hex text` / `hmac sha256 key msg` | `String => String` / `String String => String` | Lowercase 64-char SHA-256 / HMAC-SHA256 hex digest |
 
 ---
 

@@ -62,10 +62,11 @@ Já reparou que muitas linguagens usam `|` para bits, `||` para booleanos, `!` p
 
 Em Ridgun, como `|` já é o símbolo sagrado das guardas e dos tipos algébricos, e `||` é o operador de paralelismo, **os operadores booleanos escrevem-se com palavras claras em minúsculas**:
 
-- **`and`**: cumprem-se as duas coisas (`idade >= 18 and tem_carta`).
-- **`or`**: cumpre-se pelo menos uma (`dia == "sabado" or dia == "domingo"`).
+- **`and`**: cumprem-se as duas coisas com avaliação em curto-circuito (`idade >= 18 and tem_carta`).
+- **`or`**: cumpre-se pelo menos uma com avaliação em curto-circuito (`dia == "sabado" or dia == "domingo"`).
 - **`xor`**: cumpre-se uma ou outra, mas não as duas ao mesmo tempo.
 - **`not`**: inverte o booleano (`not (esta_vazio texto)`).
+- **`<`, `>`, `<=`, `>=`**: comparam tanto números (`Int`, `Float`) como cadeias **`String` em ordem lexicográfica UTF-8** (`"alfa" < "beta"`).
 
 Veja como fica limpo o clássico problema dos anos bissextos:
 

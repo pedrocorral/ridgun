@@ -62,10 +62,11 @@ Har du lagt märke till att många språk använder `|` för bitar, `||` för bo
 
 I Ridgun, där `|` redan är den heliga symbolen för vakter och algebraiska datatyper och `||` är parallellitetsoperatorn, **skrivs de booleska operatorerna med tydliga ord i gemener**:
 
-- **`and`**: båda sakerna är uppfyllda (`alder >= 18 and har_korkort`).
-- **`or`**: minst en är uppfylld (`dag == "lordag" or dag == "sondag"`).
+- **`and`**: båda sakerna är uppfyllda med kortslutningsutvärdering (`alder >= 18 and har_korkort`).
+- **`or`**: minst en är uppfylld med kortslutningsutvärdering (`dag == "lordag" or dag == "sondag"`).
 - **`xor`**: antingen det ena eller det andra är uppfyllt, men inte båda samtidigt.
 - **`not`**: vänder på det booleska värdet (`not (ar_tom text)`).
+- **`<`, `>`, `<=`, `>=`**: jämför både tal (`Int`, `Float`) och **`String`-strängar i lexikografisk UTF-8-ordning** (`"alfa" < "beta"`).
 
 Titta så rent det klassiska problemet med skottår blir:
 

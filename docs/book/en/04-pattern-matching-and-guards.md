@@ -62,10 +62,11 @@ Have you ever noticed how many languages use `|` for bits, `||` for booleans, `!
 
 In Ridgun, since `|` is already the sacred symbol for guards and algebraic data types, and `||` is the parallelism operator, **boolean operators are written as clear lowercase words**:
 
-- **`and`**: both sides must hold (`age >= 18 and has_license`).
-- **`or`**: at least one side holds (`day == "saturday" or day == "sunday"`).
+- **`and`**: both sides must hold, using short-circuit evaluation (`age >= 18 and has_license`: if the left side is `False`, the right side is not evaluated).
+- **`or`**: at least one side holds, using short-circuit evaluation (`day == "saturday" or day == "sunday"`: if the left side is `True`, the right side is not evaluated).
 - **`xor`**: one or the other holds, but not both at once.
 - **`not`**: flips the boolean (`not (is_empty text)`).
+- **`<`, `>`, `<=`, `>=`**: compare both numbers (`Int`, `Float`) and **`String` values in lexicographical UTF-8 order** (`"alpha" < "beta"`).
 
 Look how clean the classic leap-year check becomes:
 
