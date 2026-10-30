@@ -4,7 +4,7 @@ title: User-Defined Generic Types, Lexical Closures, and Production Regression H
 status: implemented
 priority: must
 created: 2026-10-26
-updated: 2026-10-26
+updated: 2026-10-29
 depends_on:
   - FR-COMP-001
   - FR-COMP-002
@@ -49,8 +49,19 @@ The Ridgun language, `ridgunc` compiler, and `ridgun-libs` standard library SHAL
    - When a file imports a module from a subdirectory (`import "sub/a"` or `import sub/a`) and that module imports a sibling or nested module (`import b` or `import "b"`), `ridgunc` SHALL resolve transitive imports relative to the importing module's own directory first, falling back to the project root directory.
    - `str split` in `str.rg` (`str.rglib`) SHALL use a tail-recursive accumulator loop with a fast first-byte character check (`str_char_at`) before slicing so that splitting long strings does not grow the call stack or allocate redundant intermediate slices.
 
-5. **Cached Native Runtime Image for Fast Compilation**:
-   - `ridgunc` SHALL cache the static 90 KB native `.rt` runtime binary and linker script in `/tmp` (keyed by compiler runtime version) and reuse the cached image across invocations so repeated compilations and `stable` builds avoid re-serializing the runtime byte array on every invocation.
+5. **Cached Native Runtime Image and $\mathcal{O}(N \log N)$ Multi-Module Compilation Speed (`WR-004`)**:
+   - `ridgunc` SHALL cache the static native `.rt` runtime binary and linker script in `/tmp` (keyed by compiler runtime version) and reuse the cached image across invocations.
+   - All whole-program compiler passes (`parser.rg` import expansion and AST qualifying, `typecheck.rg` duplicate/signature registration, `analyzer.rg` safety summaries, `compiler.rg` dead-code reachability, string-pool construction, instruction emission, and dispatch table generation, and `llvm.rg` IR emission) SHALL use $\mathcal{O}(N \log N)$ balanced trees (`RStrSet`, `RStrMap`, `RStrIntMap`, `RCgSigMap`, `RFnRefsMap`) and $\mathcal{O}(N)$ prepend-then-reverse accumulators instead of $\mathcal{O}(N^2)$ list appends so multi-module applications compile in seconds within bounded memory, verified by an automated compilation-speed assertion in the test suite.
+
+6. **v0.9.29 Production Regression Hardening (`TL-001`..`TL-003`, `RG-100`, `RG-103`, `RG-104`, `WR-001`..`WR-005`, `CH-001`)**:
+   - Partial applications stored in local variables (`f = tag "x"`) and passed to higher-order functions (`apply f r`) SHALL invoke the closure dispatcher without corrupting heap records (`TL-001`).
+   - Relational operators `<`, `>`, `<=`, `>=` SHALL support lexicographical `String` comparison in addition to `Int` (`TL-002`).
+   - Built-in `Channel` type annotations SHALL unify cleanly with channel handles returned by `new_channel` (`TL-003`).
+   - `||map` and `||filter` with closures capturing outer variables SHALL dispatch each list element in parallel across worker threads (`RG-100`).
+   - Logical `and` and `or` SHALL short-circuit so the right-hand operand is not evaluated when the left-hand operand determines the result (`RG-103`).
+   - Function parameters SHALL shadow same-named 1-argument functions (`WR-002`), 1-argument functions and mixfix operators sharing a prefix word SHALL coexist (`WR-003`), extra arguments to multi-word functions SHALL report an arity mismatch on the resolved function name (`WR-001`), and top-level parse errors SHALL include the source file, function context, and token excerpt (`CH-001`).
+   - `write_file` SHALL create new files with mode `0644` (`0666` before `umask`) and preserve existing file permissions on overwrite (`WR-005`).
+   - `stable deps` and `ridgunc` `.stable/deps/` resolution SHALL prefer direct top-level dependencies over nested transitive `.stable/deps/<dep>/.stable/deps/` copies (`RG-104`).
 
 ## Rationale
 - Production feedback from Solstice identified five concrete blockers and ergonomic gaps:

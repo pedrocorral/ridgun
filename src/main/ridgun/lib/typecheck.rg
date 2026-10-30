@@ -215,6 +215,8 @@ fn :: types compatible RType              RType              => Bool
         | otherwise = False
       types compatible (TyVar "Agent")    (TyTuple ((TyVar "Agent"):_)) = True
       types compatible (TyTuple ((TyVar "Agent"):_)) (TyVar "Agent") = True
+      types compatible (TyVar "Channel")  TyInt              = True
+      types compatible TyInt              (TyVar "Channel")  = True
       types compatible (TyVar a)          other
         | is poly type var a = True
         | (str starts with a "adt:") and (adt accepts prim a other) = True
@@ -293,11 +295,11 @@ fn :: put type bind [RTypeBind] String RType => [RTypeBind]
 
 fn :: builtin local types => [RTypeBind]
       builtin local types =
-        [TypeBind "new_mailbox" TyInt, TypeBind "mailbox" TyInt, TypeBind "new_channel" TyInt, TypeBind "channel" TyInt, TypeBind "cli_args" (TyList TyString), TypeBind "sys_os" (TyVar "adt:SysOs"), TypeBind "sys_arch" (TyVar "adt:SysArch"), TypeBind "sys_getcwd" TyString, TypeBind "sys_getuid" TyInt, TypeBind "sys_getgid" TyInt, TypeBind "sys_getpid" TyInt, TypeBind "sys_pipe" (TyTuple [TyInt, TyInt]), TypeBind "sys_time_ms" TyInt, TypeBind "sys_deadline_ms" TyInt, TypeBind "sys_remaining_ms" TyInt, TypeBind "cmm_live_blocks" TyInt, TypeBind "cmm_cond_spared" TyInt, TypeBind "cmm_cond_freed" TyInt]
+        [TypeBind "new_mailbox" TyInt, TypeBind "mailbox" TyInt, TypeBind "new_channel" (TyVar "Channel"), TypeBind "channel" (TyVar "Channel"), TypeBind "cli_args" (TyList TyString), TypeBind "sys_os" (TyVar "adt:SysOs"), TypeBind "sys_arch" (TyVar "adt:SysArch"), TypeBind "sys_getcwd" TyString, TypeBind "sys_getuid" TyInt, TypeBind "sys_getgid" TyInt, TypeBind "sys_getpid" TyInt, TypeBind "sys_pipe" (TyTuple [TyInt, TyInt]), TypeBind "sys_time_ms" TyInt, TypeBind "sys_deadline_ms" TyInt, TypeBind "sys_remaining_ms" TyInt, TypeBind "cmm_live_blocks" TyInt, TypeBind "cmm_cond_spared" TyInt, TypeBind "cmm_cond_freed" TyInt]
 
 fn :: builtin fn types => [RTypeBind]
       builtin fn types =
-        [TypeBind "cli_args" (TyFun [] (TyList TyString)), TypeBind "new_mailbox" (TyFun [] TyInt), TypeBind "new_channel" (TyFun [] TyInt), TypeBind "stop" (TyFun [TyVar "Agent"] TyUnit), TypeBind "agent_alive" (TyFun [TyVar "Agent"] TyBool), TypeBind "send_to" (TyFun [TyVar "A", TyVar "Agent"] TyUnit), TypeBind "ask_to" (TyFun [TyVar "A", TyVar "Agent"] (TyVar "B")), TypeBind "new_bounded_channel" (TyFun [TyInt] TyInt), TypeBind "send_through" (TyFun [TyVar "A", TyInt] TyUnit), TypeBind "chan_send" (TyFun [TyVar "A", TyInt] TyUnit), TypeBind "receive_from" (TyFun [TyVar "_chan_or_agent"] (TyVar "A")), TypeBind "chan_recv" (TyFun [TyInt] (TyVar "A")), TypeBind "try_receive_from" (TyFun [TyVar "_chan_or_agent"] (TyVar "Option")), TypeBind "chan_try_recv" (TyFun [TyInt] (TyVar "Option")), TypeBind "receive_from_timeout" (TyFun [TyInt, TyInt] (TyVar "Option")), TypeBind "str_len" (TyFun [TyString] TyInt), TypeBind "str_char_at" (TyFun [TyString, TyInt] TyInt), TypeBind "str_slice" (TyFun [TyString, TyInt, TyInt] TyString), TypeBind "char_from_code" (TyFun [TyInt] TyString), TypeBind "str_concat" (TyFun [TyString, TyString] TyString), TypeBind "int_to_str" (TyFun [TyInt] TyString), TypeBind "str_to_int" (TyFun [TyString] TyInt), TypeBind "str_starts_with" (TyFun [TyString, TyString] TyBool), TypeBind "str_contains" (TyFun [TyString, TyString] TyBool), TypeBind "read_file" (TyFun [TyString] TyString), TypeBind "load_rg_source" (TyFun [TyString] TyString), TypeBind "read_bytes" (TyFun [TyString] (TyList TyInt)), TypeBind "write_bytes" (TyFun [TyString, TyList TyInt] TyUnit), TypeBind "write_file" (TyFun [TyString, TyString] TyUnit), TypeBind "shell_exec" (TyFun [TyString] TyInt), TypeBind "map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "seq_map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "||map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "par_map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "seq_filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "||filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "par_filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "fold" (TyFun [TyFun [TyVar "B", TyVar "A"] (TyVar "B"), TyVar "B", TyList (TyVar "A")] (TyVar "B")), TypeBind "list_dir" (TyFun [TyString] (TyList TyString)), TypeBind "file_lstat" (TyFun [TyString] (TyTuple [TyBool, TyString, TyInt, TyInt, TyInt, TyString, TyString, TyInt, TyString])), TypeBind "sha256_file" (TyFun [TyString] TyString), TypeBind "sha256_str" (TyFun [TyString] TyString), TypeBind "sha256_raw" (TyFun [TyString] TyString), TypeBind "sha256_bytes" (TyFun [TyString] TyString), TypeBind "sys_os" (TyFun [] (TyVar "adt:SysOs")), TypeBind "sys_arch" (TyFun [] (TyVar "adt:SysArch")), TypeBind "sys_mkdir" (TyFun [TyString, TyInt] TyInt), TypeBind "sys_chmod" (TyFun [TyString, TyInt] TyInt), TypeBind "sys_exec" (TyFun [TyString, TyList TyString, TyList TyString] TyInt), TypeBind "sys_chdir" (TyFun [TyString] TyInt), TypeBind "sys_getcwd" (TyFun [] TyString), TypeBind "sys_getenv" (TyFun [TyString] TyString), TypeBind "sys_setenv" (TyFun [TyString, TyString] TyInt), TypeBind "sys_exit" (TyFun [TyInt] TyUnit), TypeBind "sys_getuid" (TyFun [] TyInt), TypeBind "sys_getgid" (TyFun [] TyInt), TypeBind "sys_getpid" (TyFun [] TyInt), TypeBind "sys_time_ms" (TyFun [] TyInt), TypeBind "sys_deadline_ms" (TyFun [] TyInt), TypeBind "sys_remaining_ms" (TyFun [] TyInt), TypeBind "sys_sleep_ms" (TyFun [TyInt] TyUnit), TypeBind "sys_open_mode" (TyFun [TyString, TyString] TyInt), TypeBind "sys_open" (TyFun [TyString, TyInt, TyInt] TyInt), TypeBind "sys_close" (TyFun [TyInt] TyInt), TypeBind "sys_read_fd" (TyFun [TyInt, TyInt] TyString), TypeBind "sys_write_fd" (TyFun [TyInt, TyString] TyInt), TypeBind "sys_poll" (TyFun [TyInt, TyInt, TyInt] TyInt), TypeBind "sys_terminate" (TyFun [TyInt, TyBool] TyInt), TypeBind "sys_kill" (TyFun [TyInt, TyInt] TyInt), TypeBind "sys_call" (TyFun [TyInt, TyInt, TyInt, TyInt, TyInt, TyInt, TyInt] TyInt), TypeBind "sys_pipe" (TyFun [] (TyTuple [TyInt, TyInt])), TypeBind "sys_waitpid" (TyFun [TyInt, TyInt] (TyTuple [TyInt, TyInt])), TypeBind "sys_username" (TyFun [TyInt] TyString), TypeBind "sys_user_groups" (TyFun [TyString] (TyList TyString)), TypeBind "sys_lookup_uid_gid" (TyFun [TyString] (TyTuple [TyInt, TyInt])), TypeBind "sys_setresgid" (TyFun [TyInt] TyInt), TypeBind "sys_setgroups" (TyFun [TyList TyInt] TyInt), TypeBind "sys_setresuid" (TyFun [TyInt] TyInt), TypeBind "sys_execve" (TyFun [TyString, TyList TyString, TyList TyString] TyInt), TypeBind "sys_read_pass" (TyFun [TyString] TyString), TypeBind "cmm_live_blocks" (TyFun [] TyInt), TypeBind "cmm_cond_spared" (TyFun [] TyInt), TypeBind "cmm_cond_freed" (TyFun [] TyInt), TypeBind "cmm_same_ptr" (TyFun [TyVar "A", TyVar "A"] TyBool)]
+        [TypeBind "cli_args" (TyFun [] (TyList TyString)), TypeBind "new_mailbox" (TyFun [] TyInt), TypeBind "new_channel" (TyFun [] (TyVar "Channel")), TypeBind "stop" (TyFun [TyVar "Agent"] TyUnit), TypeBind "agent_alive" (TyFun [TyVar "Agent"] TyBool), TypeBind "send_to" (TyFun [TyVar "A", TyVar "Agent"] TyUnit), TypeBind "ask_to" (TyFun [TyVar "A", TyVar "Agent"] (TyVar "B")), TypeBind "new_bounded_channel" (TyFun [TyInt] (TyVar "Channel")), TypeBind "send_through" (TyFun [TyVar "A", TyVar "Channel"] TyUnit), TypeBind "chan_send" (TyFun [TyVar "A", TyVar "Channel"] TyUnit), TypeBind "receive_from" (TyFun [TyVar "_chan_or_agent"] (TyVar "A")), TypeBind "chan_recv" (TyFun [TyVar "Channel"] (TyVar "A")), TypeBind "try_receive_from" (TyFun [TyVar "_chan_or_agent"] (TyVar "Option")), TypeBind "chan_try_recv" (TyFun [TyVar "Channel"] (TyVar "Option")), TypeBind "receive_from_timeout" (TyFun [TyVar "Channel", TyInt] (TyVar "Option")), TypeBind "str_len" (TyFun [TyString] TyInt), TypeBind "str_char_at" (TyFun [TyString, TyInt] TyInt), TypeBind "str_slice" (TyFun [TyString, TyInt, TyInt] TyString), TypeBind "char_from_code" (TyFun [TyInt] TyString), TypeBind "str_concat" (TyFun [TyString, TyString] TyString), TypeBind "int_to_str" (TyFun [TyInt] TyString), TypeBind "str_to_int" (TyFun [TyString] TyInt), TypeBind "str_starts_with" (TyFun [TyString, TyString] TyBool), TypeBind "str_contains" (TyFun [TyString, TyString] TyBool), TypeBind "read_file" (TyFun [TyString] TyString), TypeBind "load_rg_source" (TyFun [TyString] TyString), TypeBind "read_bytes" (TyFun [TyString] (TyList TyInt)), TypeBind "write_bytes" (TyFun [TyString, TyList TyInt] TyUnit), TypeBind "write_file" (TyFun [TyString, TyString] TyUnit), TypeBind "shell_exec" (TyFun [TyString] TyInt), TypeBind "map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "seq_map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "||map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "par_map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "seq_filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "||filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "par_filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "fold" (TyFun [TyFun [TyVar "B", TyVar "A"] (TyVar "B"), TyVar "B", TyList (TyVar "A")] (TyVar "B")), TypeBind "list_dir" (TyFun [TyString] (TyList TyString)), TypeBind "file_lstat" (TyFun [TyString] (TyTuple [TyBool, TyString, TyInt, TyInt, TyInt, TyString, TyString, TyInt, TyString])), TypeBind "sha256_file" (TyFun [TyString] TyString), TypeBind "sha256_str" (TyFun [TyString] TyString), TypeBind "sha256_raw" (TyFun [TyString] TyString), TypeBind "sha256_bytes" (TyFun [TyString] TyString), TypeBind "sys_os" (TyFun [] (TyVar "adt:SysOs")), TypeBind "sys_arch" (TyFun [] (TyVar "adt:SysArch")), TypeBind "sys_mkdir" (TyFun [TyString, TyInt] TyInt), TypeBind "sys_chmod" (TyFun [TyString, TyInt] TyInt), TypeBind "sys_exec" (TyFun [TyString, TyList TyString, TyList TyString] TyInt), TypeBind "sys_chdir" (TyFun [TyString] TyInt), TypeBind "sys_getcwd" (TyFun [] TyString), TypeBind "sys_getenv" (TyFun [TyString] TyString), TypeBind "sys_setenv" (TyFun [TyString, TyString] TyInt), TypeBind "sys_exit" (TyFun [TyInt] TyUnit), TypeBind "sys_getuid" (TyFun [] TyInt), TypeBind "sys_getgid" (TyFun [] TyInt), TypeBind "sys_getpid" (TyFun [] TyInt), TypeBind "sys_time_ms" (TyFun [] TyInt), TypeBind "sys_deadline_ms" (TyFun [] TyInt), TypeBind "sys_remaining_ms" (TyFun [] TyInt), TypeBind "sys_sleep_ms" (TyFun [TyInt] TyUnit), TypeBind "sys_open_mode" (TyFun [TyString, TyString] TyInt), TypeBind "sys_open" (TyFun [TyString, TyInt, TyInt] TyInt), TypeBind "sys_close" (TyFun [TyInt] TyInt), TypeBind "sys_read_fd" (TyFun [TyInt, TyInt] TyString), TypeBind "sys_write_fd" (TyFun [TyInt, TyString] TyInt), TypeBind "sys_poll" (TyFun [TyInt, TyInt, TyInt] TyInt), TypeBind "sys_terminate" (TyFun [TyInt, TyBool] TyInt), TypeBind "sys_kill" (TyFun [TyInt, TyInt] TyInt), TypeBind "sys_call" (TyFun [TyInt, TyInt, TyInt, TyInt, TyInt, TyInt, TyInt] TyInt), TypeBind "sys_pipe" (TyFun [] (TyTuple [TyInt, TyInt])), TypeBind "sys_waitpid" (TyFun [TyInt, TyInt] (TyTuple [TyInt, TyInt])), TypeBind "sys_username" (TyFun [TyInt] TyString), TypeBind "sys_user_groups" (TyFun [TyString] (TyList TyString)), TypeBind "sys_lookup_uid_gid" (TyFun [TyString] (TyTuple [TyInt, TyInt])), TypeBind "sys_setresgid" (TyFun [TyInt] TyInt), TypeBind "sys_setgroups" (TyFun [TyList TyInt] TyInt), TypeBind "sys_setresuid" (TyFun [TyInt] TyInt), TypeBind "sys_execve" (TyFun [TyString, TyList TyString, TyList TyString] TyInt), TypeBind "sys_read_pass" (TyFun [TyString] TyString), TypeBind "cmm_live_blocks" (TyFun [] TyInt), TypeBind "cmm_cond_spared" (TyFun [] TyInt), TypeBind "cmm_cond_freed" (TyFun [] TyInt), TypeBind "cmm_same_ptr" (TyFun [TyVar "A", TyVar "A"] TyBool)]
 
 fn :: join adt ret ty RType RType => RType
       join adt ret ty (TyVar a) (TyVar b)
@@ -372,16 +374,20 @@ fn :: register typedef list cont [String] [RTypeDef] ([RTypeBind], [RTypeBind]) 
       register typedef list cont tnames ts (locals1, fns1) =
         register typedef list tnames ts locals1 fns1
 
+fn :: rev type binds [RTypeBind] [RTypeBind] => [RTypeBind]
+      rev type binds [] acc = acc
+      rev type binds (x:xs) acc = rev type binds xs ([x] :: acc)
+
 fn :: register fndef sigs acc [String] [RFnDef] [RTypeBind] => [RTypeBind]
       register fndef sigs acc _ [] acc = acc
       register fndef sigs acc tnames ((FnDef name param_strs ret_str _):fs) acc =
         param_tys = qualify declared adt list tnames (parse type list strs param_strs)
         ret_ty = qualify declared adt tnames (parse type str ret_str)
-        register fndef sigs acc tnames fs (acc :: [TypeBind name (TyFun param_tys ret_ty)])
+        register fndef sigs acc tnames fs ([TypeBind name (TyFun param_tys ret_ty)] :: acc)
 
 fn :: register fndef sigs [String] [RFnDef] [RTypeBind] => [RTypeBind]
       register fndef sigs tnames fdefs fns0 =
-        (register fndef sigs acc tnames fdefs []) :: fns0
+        rev type binds (register fndef sigs acc tnames fdefs []) fns0
 
 -- ── Pattern Variable Binding ────────────────────────────────
 
@@ -655,7 +661,7 @@ fn :: check binop RBinOp RType RType [RTypeBind] String => RType [RTypeError]
         | (types compatible l (TyTensor [])) and (types compatible r (TyTensor [])) = (l, [])
         | otherwise = check overloaded arith OpXor l r fns fn_name
       check binop _ l r _ fn_name
-        | (types compatible l TyInt and types compatible r TyInt) or (types compatible l TyReal and types compatible r TyReal) or (types compatible l TyChar and types compatible r TyChar) = (TyBool, [])
+        | (types compatible l TyInt and types compatible r TyInt) or (types compatible l TyReal and types compatible r TyReal) or (types compatible l TyChar and types compatible r TyChar) or (types compatible l TyString and types compatible r TyString) = (TyBool, [])
         | otherwise = (TyBool, [TypeError fn_name ("comparison operator requires numeric operands, got " + (rtype to str l) + " and " + (rtype to str r))])
 
 -- ── Expression & Call Type Checking ─────────────────────────
@@ -1425,17 +1431,182 @@ fn :: check sig syntax errs [String] String String => [RTypeError]
           [TypeError fn_name "function type in signature must use uppercase type names (e.g. '(Conn => Conn)'), not lowercase lambda parameters"] :: (check sig syntax errs ps ret_str fn_name)
         | otherwise = check sig syntax errs ps ret_str fn_name
 
-fn :: check all functions acc [String] [RFnDef] [RTypeBind] [RTypeBind] [RTypeError] => [RTypeError]
-      check all functions acc _ [] _ _ acc = acc
-      check all functions acc tnames ((FnDef name param_strs ret_str cases):fs) locals fns acc =
+fn :: rev type errs [RTypeError] [RTypeError] => [RTypeError]
+      rev type errs [] acc = acc
+      rev type errs (x:xs) acc = rev type errs xs ([x] :: acc)
+
+type RTypeBindMap = TypeBindEmpty | TypeBindNode String [RTypeBind] RTypeBindMap RTypeBindMap
+
+fn :: tbind map add RTypeBindMap String RTypeBind => RTypeBindMap
+      tbind map add TypeBindEmpty k b =
+        TypeBindNode k [b] TypeBindEmpty TypeBindEmpty
+      tbind map add (TypeBindNode nk nb l r) k b
+        | (cmp str bst k nk) == 0 = TypeBindNode nk ([b] :: nb) l r
+        | (cmp str bst k nk) < 0 = TypeBindNode nk nb (tbind map add l k b) r
+        | otherwise = TypeBindNode nk nb l (tbind map add r k b)
+
+fn :: tbind map get RTypeBindMap String => [RTypeBind]
+      tbind map get TypeBindEmpty _ = []
+      tbind map get (TypeBindNode nk nb l r) k
+        | (cmp str bst k nk) == 0 = nb
+        | (cmp str bst k nk) < 0 = tbind map get l k
+        | otherwise = tbind map get r k
+
+fn :: build tbind map rev [RTypeBind] RTypeBindMap => RTypeBindMap
+      build tbind map rev [] m = m
+      build tbind map rev ((TypeBind k ty):rest) m =
+        build tbind map rev rest (tbind map add m k (TypeBind k ty))
+
+fn :: build tbind map [RTypeBind] => RTypeBindMap
+      build tbind map fns =
+        build tbind map rev (rev type binds fns []) TypeBindEmpty
+
+fn :: tc fst set (RStrSet, [String]) => RStrSet
+      tc fst set (s, _) = s
+
+fn :: tc snd list (RStrSet, [String]) => [String]
+      tc snd list (_, xs) = xs
+
+fn :: tc add ref String RStrSet [String] => RStrSet [String]
+      tc add ref "" seen acc = (seen, acc)
+      tc add ref s seen acc
+        | str set has seen s = (seen, acc)
+        | otherwise = (str set add seen s, [s] :: acc)
+
+fn :: tc refs pat RPattern RStrSet [String] => RStrSet [String]
+      tc refs pat (PatCons h t) seen acc =
+        r1 = tc refs pat h seen acc
+        tc refs pat t (tc fst set r1) (tc snd list r1)
+      tc refs pat (PatTuple ps) seen acc =
+        tc refs pat list ps seen acc
+      tc refs pat (PatCtor c args) seen acc =
+        r1 = tc add ref c seen acc
+        tc refs pat list args (tc fst set r1) (tc snd list r1)
+      tc refs pat _ seen acc = (seen, acc)
+
+fn :: tc refs pat list [RPattern] RStrSet [String] => RStrSet [String]
+      tc refs pat list [] seen acc = (seen, acc)
+      tc refs pat list (p:ps) seen acc =
+        r1 = tc refs pat p seen acc
+        tc refs pat list ps (tc fst set r1) (tc snd list r1)
+
+fn :: tc refs rec args [RExpr] RStrSet [String] => RStrSet [String]
+      tc refs rec args [] seen acc = (seen, acc)
+      tc refs rec args ((EStr fname):val_e:rest) seen acc =
+        r1 = tc add ref fname seen acc
+        r2 = tc refs expr val_e (tc fst set r1) (tc snd list r1)
+        tc refs rec args rest (tc fst set r2) (tc snd list r2)
+      tc refs rec args (e:rest) seen acc =
+        r1 = tc refs expr e seen acc
+        tc refs rec args rest (tc fst set r1) (tc snd list r1)
+
+fn :: tc refs expr RExpr RStrSet [String] => RStrSet [String]
+      tc refs expr (EVar v) seen acc = tc add ref v seen acc
+      tc refs expr (EStrInterp parts) seen acc = tc refs expr list parts seen acc
+      tc refs expr (ENot inner) seen acc = tc refs expr inner seen acc
+      tc refs expr (EOut inner) seen acc = tc refs expr inner seen acc
+      tc refs expr (EWithCtx _ v b) seen acc =
+        r1 = tc refs expr v seen acc
+        tc refs expr b (tc fst set r1) (tc snd list r1)
+      tc refs expr (EWithRegion _ b) seen acc = tc refs expr b seen acc
+      tc refs expr (EEinsum es _) seen acc = tc refs expr list es seen acc
+      tc refs expr (EHadamard _ l _ r _) seen acc =
+        r1 = tc refs expr l seen acc
+        tc refs expr r (tc fst set r1) (tc snd list r1)
+      tc refs expr (EBin bop l r) seen acc =
+        r0 = tc add ref (binop symbol bop) seen acc
+        r1 = tc refs expr l (tc fst set r0) (tc snd list r0)
+        tc refs expr r (tc fst set r1) (tc snd list r1)
+      tc refs expr (ECall "__record_update__" (base_e:rest_args)) seen acc =
+        r1 = tc refs expr base_e seen acc
+        tc refs rec args rest_args (tc fst set r1) (tc snd list r1)
+      tc refs expr (ECall callee args) seen acc =
+        r1 = tc add ref callee seen acc
+        tc refs expr list args (tc fst set r1) (tc snd list r1)
+      tc refs expr (EEcho args) seen acc = tc refs expr list args seen acc
+      tc refs expr (EList elems) seen acc = tc refs expr list elems seen acc
+      tc refs expr (ETuple elems) seen acc = tc refs expr list elems seen acc
+      tc refs expr (ETensor elems) seen acc = tc refs expr list elems seen acc
+      tc refs expr (EIndex b idxs) seen acc =
+        r1 = tc refs expr b seen acc
+        tc refs expr list idxs (tc fst set r1) (tc snd list r1)
+      tc refs expr (EIndexAssign _ idxs v) seen acc =
+        r1 = tc refs expr list idxs seen acc
+        tc refs expr v (tc fst set r1) (tc snd list r1)
+      tc refs expr (ESeqSelect b _) seen acc = tc refs expr b seen acc
+      tc refs expr (EWhere b wbs) seen acc =
+        r1 = tc refs expr b seen acc
+        tc refs where list wbs (tc fst set r1) (tc snd list r1)
+      tc refs expr (EParPipe bs) seen acc = tc refs expr list bs seen acc
+      tc refs expr (EGuard gs) seen acc = tc refs guard list gs seen acc
+      tc refs expr (EBlock ss) seen acc = tc refs stmt list ss seen acc
+      tc refs expr _ seen acc = (seen, acc)
+
+fn :: tc refs expr list [RExpr] RStrSet [String] => RStrSet [String]
+      tc refs expr list [] seen acc = (seen, acc)
+      tc refs expr list (e:es) seen acc =
+        r1 = tc refs expr e seen acc
+        tc refs expr list es (tc fst set r1) (tc snd list r1)
+
+fn :: tc refs where list [RWhereBind] RStrSet [String] => RStrSet [String]
+      tc refs where list [] seen acc = (seen, acc)
+      tc refs where list ((WhereBind e _ _):wbs) seen acc =
+        r1 = tc refs expr e seen acc
+        tc refs where list wbs (tc fst set r1) (tc snd list r1)
+
+fn :: tc refs guard list [RGuard] RStrSet [String] => RStrSet [String]
+      tc refs guard list [] seen acc = (seen, acc)
+      tc refs guard list ((GuardBranch c b):gs) seen acc =
+        r1 = tc refs expr c seen acc
+        r2 = tc refs expr b (tc fst set r1) (tc snd list r1)
+        tc refs guard list gs (tc fst set r2) (tc snd list r2)
+
+fn :: tc refs stmt list [RStmt] RStrSet [String] => RStrSet [String]
+      tc refs stmt list [] seen acc = (seen, acc)
+      tc refs stmt list ((StmtLet _ e):ss) seen acc =
+        r1 = tc refs expr e seen acc
+        tc refs stmt list ss (tc fst set r1) (tc snd list r1)
+      tc refs stmt list ((StmtMut _ e):ss) seen acc =
+        r1 = tc refs expr e seen acc
+        tc refs stmt list ss (tc fst set r1) (tc snd list r1)
+      tc refs stmt list ((StmtExpr e):ss) seen acc =
+        r1 = tc refs expr e seen acc
+        tc refs stmt list ss (tc fst set r1) (tc snd list r1)
+      tc refs stmt list ((StmtIndexAssign _ idxs e):ss) seen acc =
+        r1 = tc refs expr list idxs seen acc
+        r2 = tc refs expr e (tc fst set r1) (tc snd list r1)
+        tc refs stmt list ss (tc fst set r2) (tc snd list r2)
+
+fn :: tc refs cases [RFnCase] RStrSet [String] => RStrSet [String]
+      tc refs cases [] seen acc = (seen, acc)
+      tc refs cases ((FnCase pats gs body):cs) seen acc =
+        r1 = tc refs pat list pats seen acc
+        r2 = tc refs guard list gs (tc fst set r1) (tc snd list r1)
+        r3 = tc refs expr body (tc fst set r2) (tc snd list r2)
+        tc refs cases cs (tc fst set r3) (tc snd list r3)
+
+fn :: collect fns for refs [String] RTypeBindMap [RTypeBind] => [RTypeBind]
+      collect fns for refs [] _ acc = acc
+      collect fns for refs (k:ks) fmap acc =
+        collect fns for refs ks fmap ((tbind map get fmap k) :: acc)
+
+fn :: check all functions acc [String] [RFnDef] RTypeBindMap RTypeBindMap [RTypeError] => [RTypeError]
+      check all functions acc _ [] _ _ acc = rev type errs acc []
+      check all functions acc tnames ((FnDef name param_strs ret_str cases):fs) lmap fmap acc =
         sig_errs = check sig syntax errs param_strs ret_str name
         param_tys = qualify declared adt list tnames (parse type list strs param_strs)
         ret_ty = qualify declared adt tnames (parse type str ret_str)
-        check all functions acc tnames fs locals fns (acc :: sig_errs :: (check fn cases cases name param_tys ret_ty 0 locals fns))
+        refs = tc snd list (tc refs cases cases StrSetEmpty [])
+        loc_binds = collect fns for refs refs lmap []
+        fn_binds = collect fns for refs refs fmap []
+        fn_errs = sig_errs :: (check fn cases cases name param_tys ret_ty 0 loc_binds fn_binds)
+        check all functions acc tnames fs lmap fmap (rev type errs fn_errs acc)
 
 fn :: check all functions [String] [RFnDef] [RTypeBind] [RTypeBind] => [RTypeError]
       check all functions tnames fdefs locals fns =
-        check all functions acc tnames fdefs locals fns []
+        lmap = build tbind map locals
+        fmap = build tbind map fns
+        check all functions acc tnames fdefs lmap fmap []
 
 fn :: convert analysis errors [RAnalysisError] => [RTypeError]
       convert analysis errors []               =  []
@@ -1457,25 +1628,25 @@ fn :: typecheck program RProgram => [RTypeError]
         env_pair = register typedef list tnames all_tdefs (builtin local types) (builtin fn types)
         typecheck with typedef env tnames (Program fdefs tdefs) fdefs env_pair
 
-fn :: check duplicate fndefs acc [RFnDef] [String] [RTypeError] => [RTypeError]
-      check duplicate fndefs acc []       _    acc =  acc
+fn :: check duplicate fndefs acc [RFnDef] RStrSet [RTypeError] => [RTypeError]
+      check duplicate fndefs acc []       _    acc =  rev type errs acc []
       check duplicate fndefs acc ((FnDef "__unresolved_import__" _ _ _):fs) seen acc =
         check duplicate fndefs acc fs seen acc
       check duplicate fndefs acc ((FnDef "__syntax_error__" _ _ _):fs) seen acc =
         check duplicate fndefs acc fs seen acc
       check duplicate fndefs acc ((FnDef name _ _ _):fs) seen acc
-        | str in list name seen =
-          check duplicate fndefs acc fs seen (acc :: [TypeError name ("duplicate function definition '" + name + "'; function is already defined")])
+        | str set has seen name =
+          check duplicate fndefs acc fs seen ([TypeError name ("duplicate function definition '" + name + "'; function is already defined")] :: acc)
         | otherwise =
-          check duplicate fndefs acc fs (seen :: [name]) acc
+          check duplicate fndefs acc fs (str set add seen name) acc
 
-fn :: check duplicate fndefs [RFnDef] [String] => [RTypeError]
-      check duplicate fndefs fdefs    seen     =
-        check duplicate fndefs acc fdefs seen []
+fn :: check duplicate fndefs [RFnDef] => [RTypeError]
+      check duplicate fndefs fdefs =
+        check duplicate fndefs acc fdefs StrSetEmpty []
 
 fn :: typecheck with typedef env [String] RProgram [RFnDef] ([RTypeBind], [RTypeBind]) => [RTypeError]
       typecheck with typedef env tnames prog fdefs (locals, fns0) =
-        dup_errs = check duplicate fndefs fdefs []
+        dup_errs = check duplicate fndefs fdefs
         fns = register fndef sigs tnames fdefs fns0
         ty_errs = check all functions tnames fdefs locals fns
         an_errs = convert analysis errors (analyze program errors prog)

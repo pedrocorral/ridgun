@@ -367,6 +367,37 @@ fn :: compile rprogram RProgram        => RCompiledProg
 
 type RCgSig = CgSig String Int Bool
 
+type RCgSigMap = CgSigMapEmpty | CgSigMapNode String Int Bool RCgSigMap RCgSigMap
+
+fn :: cg sig map put RCgSigMap String Int Bool => RCgSigMap
+      cg sig map put CgSigMapEmpty key arity is_var =
+        CgSigMapNode key arity is_var CgSigMapEmpty CgSigMapEmpty
+      cg sig map put (CgSigMapNode k a v left right) key arity is_var
+        | key == k = CgSigMapNode k arity is_var left right
+        | (cmp str bst key k) < 0 = CgSigMapNode k a v (cg sig map put left key arity is_var) right
+        | otherwise = CgSigMapNode k a v left (cg sig map put right key arity is_var)
+
+fn :: cg sig map put first RCgSigMap String Int Bool => RCgSigMap
+      cg sig map put first CgSigMapEmpty key arity is_var =
+        CgSigMapNode key arity is_var CgSigMapEmpty CgSigMapEmpty
+      cg sig map put first (CgSigMapNode k a v left right) key arity is_var
+        | key == k = CgSigMapNode k a v left right
+        | (cmp str bst key k) < 0 = CgSigMapNode k a v (cg sig map put first left key arity is_var) right
+        | otherwise = CgSigMapNode k a v left (cg sig map put first right key arity is_var)
+
+fn :: build cg sig map [RCgSig] RCgSigMap => RCgSigMap
+      build cg sig map [] tree = tree
+      build cg sig map ((CgSig name arity is_var):rest) tree =
+        build cg sig map rest (cg sig map put first tree name arity is_var)
+
+fn :: lookup cg sig map RCgSigMap String => Bool Int Bool
+      lookup cg sig map CgSigMapEmpty _ = (False, 0, False)
+      lookup cg sig map (CgSigMapNode k arity is_var left right) target
+        | target == k and arity < 0 = (False, 0, False)
+        | target == k = (True, arity, is_var)
+        | (cmp str bst target k) < 0 = lookup cg sig map left target
+        | otherwise = lookup cg sig map right target
+
 fn :: str ends with dots String => Bool
       str ends with dots s      =
         len = str len s
@@ -382,52 +413,43 @@ fn :: infer fndef arity [String] [RFnCase] => Int
       infer fndef arity _        ((FnCase pats _ _):_) = pat list len pats
       infer fndef arity params   []        =  list str len params
 
+fn :: rev cg sigs [RCgSig] [RCgSig] => [RCgSig]
+      rev cg sigs [] acc = acc
+      rev cg sigs (x:xs) acc = rev cg sigs xs ([x] :: acc)
+
 fn :: build cg sigs acc [RFnDef] [RCgSig] => [RCgSig]
-      build cg sigs acc []       acc      =  acc
+      build cg sigs acc []       acc      =  rev cg sigs acc []
       build cg sigs acc ((FnDef name params _ cases):fs) acc =
-        build cg sigs acc fs (acc :: [CgSig name (infer fndef arity params cases) (params has variadic params)])
+        build cg sigs acc fs ([CgSig name (infer fndef arity params cases) (params has variadic params)] :: acc)
 
 fn :: build cg sigs [RFnDef] => [RCgSig]
       build cg sigs fns      =  build cg sigs acc fns []
 
-fn :: lookup var cg sig [RCgSig] String => Bool Int Bool
-      lookup var cg sig []       _      =  (False, 0, False)
-      lookup var cg sig ((CgSig name arity is_var):rest) target
-        | name == target and arity < 0 = (False, 0, False)
-        | name == target = (True, arity, is_var)
-        | otherwise = lookup var cg sig rest target
-
-fn :: lookup cg sig [RCgSig] String => Bool Int Bool
-      lookup cg sig []       _      =  (False, 0, False)
-      lookup cg sig ((CgSig name arity is_var):rest) target
-        | arity >= 0 and name == target = (True, arity, is_var)
-        | otherwise = lookup cg sig rest target
-
-fn :: bind pat cg sigs RPattern [RCgSig] => [RCgSig]
-      bind pat cg sigs (PatVar v) sigs = [CgSig v (0 - 2) False] :: sigs
-      bind pat cg sigs (PatSeqBind v) sigs = [CgSig v (0 - 2) False] :: sigs
+fn :: bind pat cg sigs RPattern RCgSigMap => RCgSigMap
+      bind pat cg sigs (PatVar v) sigs = cg sig map put sigs v (0 - 2) False
+      bind pat cg sigs (PatSeqBind v) sigs = cg sig map put sigs v (0 - 2) False
       bind pat cg sigs (PatCons h t) sigs = bind pat cg sigs t (bind pat cg sigs h sigs)
       bind pat cg sigs (PatTuple ps) sigs = bind pat list cg sigs ps sigs
       bind pat cg sigs (PatCtor _ ps) sigs = bind pat list cg sigs ps sigs
       bind pat cg sigs _ sigs = sigs
 
-fn :: bind pat list cg sigs [RPattern] [RCgSig] => [RCgSig]
+fn :: bind pat list cg sigs [RPattern] RCgSigMap => RCgSigMap
       bind pat list cg sigs [] sigs = sigs
       bind pat list cg sigs (p:ps) sigs = bind pat list cg sigs ps (bind pat cg sigs p sigs)
 
-fn :: bind where cg sigs [RWhereBind] [RCgSig] => [RCgSig]
+fn :: bind where cg sigs [RWhereBind] RCgSigMap => RCgSigMap
       bind where cg sigs [] sigs = sigs
       bind where cg sigs ((WhereBind _ v _):wbs) sigs
-        | v != "" = bind where cg sigs wbs ([CgSig v (0 - 2) False] :: sigs)
+        | v != "" = bind where cg sigs wbs (cg sig map put sigs v (0 - 2) False)
         | otherwise = bind where cg sigs wbs sigs
 
-fn :: prep expr RExpr              [RCgSig] => RExpr
+fn :: prep expr RExpr              RCgSigMap => RExpr
       prep expr (ENot inner)       sigs     =  ENot (prep expr inner sigs)
       prep expr (EOut inner)       sigs     =  EOut (prep expr inner sigs)
       prep expr (EBin bop l r)     sigs     =  EBin bop (prep expr l sigs) (prep expr r sigs)
       prep expr (ECall fname args) sigs     =
         p_args = prep expr list args sigs
-        prep call fname p_args (lookup cg sig sigs fname)
+        prep call fname p_args (lookup cg sig map sigs fname)
       prep expr (EEcho args)       sigs     =  EEcho (prep expr list args sigs)
       prep expr (EStrInterp parts) sigs     =  EStrInterp (prep expr list parts sigs)
       prep expr (EList elems)      sigs     =  EList (prep expr list elems sigs)
@@ -446,7 +468,7 @@ fn :: prep expr RExpr              [RCgSig] => RExpr
       prep expr (EParPipe branches) sigs    =  EParPipe (prep expr list branches sigs)
       prep expr (EWithCtx c v b)   sigs     =  EWithCtx c (prep expr v sigs) (prep expr b sigs)
       prep expr (EWithRegion q b)  sigs     =  EWithRegion q (prep expr b sigs)
-      prep expr (EVar v)           sigs     =  prep var v (lookup var cg sig sigs v)
+      prep expr (EVar v)           sigs     =  prep var v (lookup cg sig map sigs v)
       prep expr e                  _        =  e
 
 fn :: prep var String (Bool, Int, Bool) => RExpr
@@ -459,52 +481,66 @@ fn :: is tuple unpack arg RExpr              => Bool
       is tuple unpack arg (EParPipe _)       =  True
       is tuple unpack arg _                  =  False
 
+fn :: is non tuple expr RExpr              => Bool
+      is non tuple expr (EInt _)           =  True
+      is non tuple expr (EReal _)          =  True
+      is non tuple expr (EStr _)           =  True
+      is non tuple expr (EStrInterp _)     =  True
+      is non tuple expr (EBool _)          =  True
+      is non tuple expr (EChar _)          =  True
+      is non tuple expr (EList _)          =  True
+      is non tuple expr (ETensor _)        =  True
+      is non tuple expr EUnit              =  True
+      is non tuple expr _                  =  False
+
 fn :: prep call String [RExpr]         (Bool, Int, Bool) => RExpr
       prep call fname  args            (True, arity, True)
         | arity <= 1 = ECall fname [EList args]
         | otherwise = ECall fname ((take exprs args (arity - 1)) :: [EList (drop exprs args (arity - 1))])
       prep call fname  (single_arg:[]) (True, 2, False)
-        | not (str starts with fname "__rg_lambda_") =
+        | (not (is non tuple expr single_arg)) and (not (str starts with fname "__rg_lambda_")) =
           ECall "__unpack2__" [EVar fname, single_arg]
       prep call fname  (single_arg:[]) (True, arity, False)
         | arity > 2 and (is tuple unpack arg single_arg) and (not (str starts with fname "__rg_lambda_")) =
           ECall "__unpack2__" [EVar fname, single_arg]
       prep call fname  args            _                 =  ECall fname args
 
-fn :: prep expr list [RExpr] [RCgSig] => [RExpr]
+fn :: prep expr list [RExpr] RCgSigMap => [RExpr]
       prep expr list []      _        =  []
       prep expr list (e:es)  sigs     =  [prep expr e sigs] :: (prep expr list es sigs)
 
-fn :: prep stmt list [RStmt]            [RCgSig] => [RStmt]
+fn :: prep stmt list [RStmt]            RCgSigMap => [RStmt]
       prep stmt list []                 _        =  []
       prep stmt list ((StmtLet v e):ss) sigs     =
-        [StmtLet v (prep expr e sigs)] :: (prep stmt list ss ([CgSig v (0 - 2) False] :: sigs))
+        [StmtLet v (prep expr e sigs)] :: (prep stmt list ss (cg sig map put sigs v (0 - 2) False))
       prep stmt list ((StmtMut v e):ss) sigs     =
-        [StmtMut v (prep expr e sigs)] :: (prep stmt list ss ([CgSig v (0 - 2) False] :: sigs))
+        [StmtMut v (prep expr e sigs)] :: (prep stmt list ss (cg sig map put sigs v (0 - 2) False))
       prep stmt list ((StmtExpr e):ss)  sigs     =  [StmtExpr (prep expr e sigs)] :: (prep stmt list ss sigs)
       prep stmt list ((StmtIndexAssign t idxs e):ss) sigs = [StmtIndexAssign t (prep expr list idxs sigs) (prep expr e sigs)] :: (prep stmt list ss sigs)
 
-fn :: prep where list [RWhereBind] [RCgSig] => [RWhereBind]
+fn :: prep where list [RWhereBind] RCgSigMap => [RWhereBind]
       prep where list []           _        =  []
       prep where list ((WhereBind e v idxs):wbs) sigs = [WhereBind (prep expr e sigs) v idxs] :: (prep where list wbs sigs)
 
-fn :: prep guard list [RGuard] [RCgSig] => [RGuard]
+fn :: prep guard list [RGuard] RCgSigMap => [RGuard]
       prep guard list []       _        =  []
       prep guard list ((GuardBranch c b):gs) sigs = [GuardBranch (prep expr c sigs) (prep expr b sigs)] :: (prep guard list gs sigs)
 
-fn :: prep case list [RFnCase] [RCgSig] => [RFnCase]
+fn :: prep case list [RFnCase] RCgSigMap => [RFnCase]
       prep case list []        _        =  []
       prep case list ((FnCase pats guards body):cs) sigs =
         case_sigs = bind pat list cg sigs pats sigs
         [FnCase pats (prep guard list guards case_sigs) (prep expr body case_sigs)] :: (prep case list cs sigs)
 
-fn :: prep fndef list acc [RFnDef] [RCgSig] [RFnDef] => [RFnDef]
-      prep fndef list acc []       _        acc      =  acc
+fn :: prep fndef list acc [RFnDef] RCgSigMap [RFnDef] => [RFnDef]
+      prep fndef list acc []       _        acc      =  rev fndef list acc []
       prep fndef list acc ((FnDef name params ret_ty cases):fs) sigs acc =
-        prep fndef list acc fs sigs (acc :: [FnDef name params ret_ty (prep case list cases sigs)])
+        prep fndef list acc fs sigs ([FnDef name params ret_ty (prep case list cases sigs)] :: acc)
 
 fn :: prep fndef list [RFnDef] [RCgSig] => [RFnDef]
-      prep fndef list fns      sigs     =  prep fndef list acc fns sigs []
+      prep fndef list fns      sigs     =
+        sig_map = build cg sig map sigs CgSigMapEmpty
+        prep fndef list acc fns sig_map []
 
 -- ── Pure-Ridgun AST Inlining & Tuple Escape Elimination ──────
 
@@ -806,18 +842,24 @@ fn :: opt fndef list [RFnDef] => [RFnDef]
 
 type RStrEntry = StrEntry String Int Int
 
-type RStrPool = StrPool String [RStrEntry]
+type RStrPool = StrPool String RStrIntMap
+
+type RStrPoolAcc = StrPoolAcc RStrSet [String]
 
 type RFnEntry = FnEntry String Int Int
 
 type RFieldEntry = FieldEntry String Int
 
-type RNativeEnv = NativeEnv String Int [String] [RStrEntry] [RFnEntry] [RFieldEntry]
+type RNativeEnv = NativeEnv String Int [String] RStrIntMap RStrIntMap RStrIntMap RStrSet RStrIntMap
 
 type RNativeCode = NativeCode [RNativeInstr] Int Int
 
+fn :: rev native instrs [RNativeInstr] [RNativeInstr] => [RNativeInstr]
+      rev native instrs [] acc = acc
+      rev native instrs (x:xs) acc = rev native instrs xs ([x] :: acc)
+
 fn :: nc instrs RNativeCode => [RNativeInstr]
-      nc instrs (NativeCode instrs _ _) = instrs
+      nc instrs (NativeCode rev_ins _ _) = rev native instrs rev_ins []
 
 fn :: nc lbl RNativeCode => Int
       nc lbl (NativeCode _ lbl _) = lbl
@@ -826,15 +868,15 @@ fn :: nc max sp RNativeCode => Int
       nc max sp (NativeCode _ _ msp) = msp
 
 fn :: nc set lbl RNativeCode Int     => RNativeCode
-      nc set lbl (NativeCode instrs _ msp) new_lbl = NativeCode instrs new_lbl msp
+      nc set lbl (NativeCode rev_ins _ msp) new_lbl = NativeCode rev_ins new_lbl msp
 
 fn :: nc emit RNativeCode RNativeInstr Int     => RNativeCode
-      nc emit (NativeCode instrs lbl msp) ins used_sp =
-        NativeCode (instrs :: [ins]) lbl (max int msp used_sp)
+      nc emit (NativeCode rev_ins lbl msp) ins used_sp =
+        NativeCode ([ins] :: rev_ins) lbl (max int msp used_sp)
 
 fn :: nc emit list RNativeCode [RNativeInstr] Int => RNativeCode
-      nc emit list (NativeCode instrs lbl msp) more used_sp =
-        NativeCode (instrs :: more) lbl (max int msp used_sp)
+      nc emit list (NativeCode rev_ins lbl msp) more used_sp =
+        NativeCode (rev native instrs more rev_ins) lbl (max int msp used_sp)
 
 -- ── String Pool (.rodata) Collection & Interning ─────────────
 
@@ -843,26 +885,35 @@ fn :: join comma [String] => String
       join comma (s:[])   =  s
       join comma (s:ss)   =  s + "," + (join comma ss)
 
-fn :: add ctor str String [String] => [String]
-      add ctor str s acc
-        | is upper ident s = add unique str (ident base name s) (add unique str s acc)
-        | otherwise = add unique str s acc
+fn :: pool add str String RStrPoolAcc => RStrPoolAcc
+      pool add str s (StrPoolAcc seen rev_list)
+        | str set has seen s = StrPoolAcc seen rev_list
+        | otherwise = StrPoolAcc (str set add seen s) ([s] :: rev_list)
 
-fn :: collect pat strs RPattern         [String] => [String]
-      collect pat strs (PatReal r)      acc      =  add unique str r acc
-      collect pat strs (PatStr s)       acc      =  add unique str s acc
+fn :: pool add str list [String] RStrPoolAcc => RStrPoolAcc
+      pool add str list [] acc = acc
+      pool add str list (s:ss) acc = pool add str list ss (pool add str s acc)
+
+fn :: add ctor str String RStrPoolAcc => RStrPoolAcc
+      add ctor str s acc
+        | is upper ident s = pool add str (ident base name s) (pool add str s acc)
+        | otherwise = pool add str s acc
+
+fn :: collect pat strs RPattern         RStrPoolAcc => RStrPoolAcc
+      collect pat strs (PatReal r)      acc      =  pool add str r acc
+      collect pat strs (PatStr s)       acc      =  pool add str s acc
       collect pat strs (PatCons h t)    acc      =  collect pat strs t (collect pat strs h acc)
       collect pat strs (PatTuple ps)    acc      =  collect pat list strs ps acc
       collect pat strs (PatCtor c args) acc      =  collect pat list strs args (add ctor str c acc)
       collect pat strs _                acc      =  acc
 
-fn :: collect pat list strs [RPattern] [String] => [String]
+fn :: collect pat list strs [RPattern] RStrPoolAcc => RStrPoolAcc
       collect pat list strs [] acc = acc
       collect pat list strs (p:ps) acc = collect pat list strs ps (collect pat strs p acc)
 
-fn :: collect expr strs RExpr              [String] => [String]
-      collect expr strs (EReal r)          acc      =  add unique str r acc
-      collect expr strs (EStr s)           acc      =  add unique str s acc
+fn :: collect expr strs RExpr              RStrPoolAcc => RStrPoolAcc
+      collect expr strs (EReal r)          acc      =  pool add str r acc
+      collect expr strs (EStr s)           acc      =  pool add str s acc
       collect expr strs (EVar v)           acc      =  add ctor str v acc
       collect expr strs (ENot inner)       acc      =  collect expr strs inner acc
       collect expr strs (EOut inner)       acc      =  collect expr strs inner acc
@@ -873,24 +924,24 @@ fn :: collect expr strs RExpr              [String] => [String]
       collect expr strs (EList elems)      acc      =  collect expr list strs elems acc
       collect expr strs (ETuple elems)     acc      =  collect expr list strs elems acc
       collect expr strs (ETensor elems)    acc      =  collect expr list strs elems acc
-      collect expr strs (EEinsum es subs)  acc      =  collect expr list strs es (add unique str (join comma subs) acc)
-      collect expr strs (EHadamard _ l s1 r s2) acc =  collect expr strs r (collect expr strs l (add unique str (s1 + "," + s2) acc))
+      collect expr strs (EEinsum es subs)  acc      =  collect expr list strs es (pool add str (join comma subs) acc)
+      collect expr strs (EHadamard _ l s1 r s2) acc =  collect expr strs r (collect expr strs l (pool add str (s1 + "," + s2) acc))
       collect expr strs (EIndex base idxs) acc      =  collect expr list strs idxs (collect expr strs base acc)
       collect expr strs (EIndexAssign _ idxs v) acc =  collect expr strs v (collect expr list strs idxs acc)
-      collect expr strs (ESeqSelect b m)   acc      =  collect expr strs b (add unique str m acc)
+      collect expr strs (ESeqSelect b m)   acc      =  collect expr strs b (pool add str m acc)
       collect expr strs (EBlock stmts)     acc      =  collect stmt list strs stmts acc
       collect expr strs (EGuard guards)    acc      =  collect guard list strs guards acc
       collect expr strs (EWhere body binds) acc     =  collect where list strs binds (collect expr strs body acc)
       collect expr strs (EParPipe branches) acc     =  collect expr list strs branches acc
-      collect expr strs (EWithCtx c v b)   acc      =  collect expr strs b (collect expr strs v (add unique str c acc))
+      collect expr strs (EWithCtx c v b)   acc      =  collect expr strs b (collect expr strs v (pool add str c acc))
       collect expr strs (EWithRegion _ b)  acc      =  collect expr strs b acc
       collect expr strs _                  acc      =  acc
 
-fn :: collect expr list strs [RExpr] [String] => [String]
+fn :: collect expr list strs [RExpr] RStrPoolAcc => RStrPoolAcc
       collect expr list strs [] acc = acc
       collect expr list strs (e:es) acc = collect expr list strs es (collect expr strs e acc)
 
-fn :: collect stmt list strs [RStmt] [String] => [String]
+fn :: collect stmt list strs [RStmt] RStrPoolAcc => RStrPoolAcc
       collect stmt list strs [] acc = acc
       collect stmt list strs ((StmtLet _ e):ss) acc = collect stmt list strs ss (collect expr strs e acc)
       collect stmt list strs ((StmtMut _ e):ss) acc = collect stmt list strs ss (collect expr strs e acc)
@@ -898,51 +949,59 @@ fn :: collect stmt list strs [RStmt] [String] => [String]
       collect stmt list strs ((StmtIndexAssign _ idxs e):ss) acc =
         collect stmt list strs ss (collect expr strs e (collect expr list strs idxs acc))
 
-fn :: collect where list strs [RWhereBind] [String] => [String]
+fn :: collect where list strs [RWhereBind] RStrPoolAcc => RStrPoolAcc
       collect where list strs [] acc = acc
       collect where list strs ((WhereBind e _ _):wbs) acc =
         collect where list strs wbs (collect expr strs e acc)
 
-fn :: collect guard list strs [RGuard] [String] => [String]
+fn :: collect guard list strs [RGuard] RStrPoolAcc => RStrPoolAcc
       collect guard list strs [] acc = acc
       collect guard list strs ((GuardBranch c b):gs) acc =
         collect guard list strs gs (collect expr strs b (collect expr strs c acc))
 
-fn :: collect case list strs [RFnCase] [String] => [String]
+fn :: collect case list strs [RFnCase] RStrPoolAcc => RStrPoolAcc
       collect case list strs [] acc = acc
       collect case list strs ((FnCase pats guards body):cs) acc =
         a1 = collect pat list strs pats acc
         a2 = collect guard list strs guards a1
         collect case list strs cs (collect expr strs body a2)
 
-fn :: collect fndef list strs [RFnDef] [String] => [String]
+fn :: collect fndef list strs [RFnDef] RStrPoolAcc => RStrPoolAcc
       collect fndef list strs [] acc = acc
       collect fndef list strs ((FnDef name _ _ cases):fs) acc =
-        collect fndef list strs fs (collect case list strs cases (add unique str name acc))
+        collect fndef list strs fs (collect case list strs cases (pool add str name acc))
 
-fn :: build str pool loop [String] Int String [RStrEntry] => RStrPool
-      build str pool loop [] _ rodata entries = StrPool rodata entries
-      build str pool loop (s:ss) cur_off rodata entries =
+fn :: pool acc to list RStrPoolAcc => [String]
+      pool acc to list (StrPoolAcc _ rev_list) = rev str list rev_list []
+
+fn :: build str map loop [String] Int RStrIntMap => RStrIntMap
+      build str map loop [] _ mp = mp
+      build str map loop (s:ss) cur_off mp =
         slen = str len s
-        build str pool loop ss (cur_off + slen) (rodata + s) (entries :: [StrEntry s cur_off slen])
+        build str map loop ss (cur_off + slen) (str int map insert mp s cur_off)
 
 fn :: build str pool [RFnDef] [String]   => RStrPool
       build str pool fns      extra_strs =
         base_strs = ["", "+", "-", "*", "/", "%", "Linux", "MacOS", "Windows", "X86_64", "Arm64", "Ok", "Some", "None", "__rg_par_eval__", "ki,k", "i,j", "i,i", "ij,ij"] :: extra_strs
-        all_strs = collect fndef list strs fns base_strs
-        build str pool loop all_strs 0 "" []
+        acc0 = pool add str list base_strs (StrPoolAcc StrSetEmpty [])
+        all_strs = pool acc to list (collect fndef list strs fns acc0)
+        rodata = join str tree all_strs
+        str_map = build str map loop all_strs 0 StrIntEmpty
+        StrPool rodata str_map
 
 fn :: pool rodata RStrPool      => String
       pool rodata (StrPool s _) =  s
 
-fn :: pool entries RStrPool        => [RStrEntry]
-      pool entries (StrPool _ tbl) =  tbl
+fn :: pool str map RStrPool        => RStrIntMap
+      pool str map (StrPool _ mp) =  mp
 
-fn :: lookup str off [RStrEntry] String => Int
-      lookup str off []          _      =  0
-      lookup str off ((StrEntry k off _):rest) target
-        | k == target = off
-        | otherwise = lookup str off rest target
+fn :: non neg int Int => Int
+      non neg int v
+        | v >= 0 = v
+        | otherwise = 0
+
+fn :: lookup str off RStrIntMap String => Int
+      lookup str off mp target = non neg int (str int map lookup mp target)
 
 -- ── Function & Record Field Tables ───────────────────────────
 
@@ -969,45 +1028,49 @@ fn :: collect typedef fields [RTypeDef] [RFieldEntry] => [RFieldEntry]
       collect typedef fields ((TypeDef _ _ fields):ts) acc =
         collect typedef fields ts (collect fields from list fields 0 acc)
 
-fn :: lookup field idx [RFieldEntry] String => Int
-      lookup field idx []            _      =  0
-      lookup field idx ((FieldEntry k idx):rest) target
-        | k == target = idx
-        | otherwise = lookup field idx rest target
+fn :: build field idx map [RFieldEntry] RStrIntMap => RStrIntMap
+      build field idx map [] mp = mp
+      build field idx map ((FieldEntry k idx):rest) mp =
+        build field idx map rest (str int map insert mp k idx)
 
 fn :: collect field names [RFieldEntry] => [String]
       collect field names []            =  []
       collect field names ((FieldEntry k _):rest) = [k] :: (collect field names rest)
 
-fn :: build field cg sigs [RFieldEntry] [String] => [RCgSig]
+fn :: build field cg sigs [RFieldEntry] RStrSet => [RCgSig]
       build field cg sigs [] _ = []
-      build field cg sigs ((FieldEntry fname _):rest) fn_names
-        | str in list fname fn_names = build field cg sigs rest fn_names
-        | otherwise = [CgSig fname 1 False] :: (build field cg sigs rest fn_names)
+      build field cg sigs ((FieldEntry fname _):rest) fn_name_set
+        | str set has fn_name_set fname = build field cg sigs rest fn_name_set
+        | otherwise = [CgSig fname 1 False] :: (build field cg sigs rest fn_name_set)
+
+fn :: rev fn entries [RFnEntry] [RFnEntry] => [RFnEntry]
+      rev fn entries [] acc = acc
+      rev fn entries (x:xs) acc = rev fn entries xs ([x] :: acc)
 
 fn :: build fn table fndefs [RFnDef] Int [RFnEntry] => [RFnEntry]
-      build fn table fndefs [] _ acc = acc
+      build fn table fndefs [] _ acc = rev fn entries acc []
       build fn table fndefs ((FnDef name params _ cases):fs) next_fid acc =
         arity = infer fndef arity params cases
-        build fn table fndefs fs (next_fid + 1) (acc :: [FnEntry name next_fid arity])
+        build fn table fndefs fs (next_fid + 1) ([FnEntry name next_fid arity] :: acc)
 
-fn :: build fn table fields [RFieldEntry] [String] Int [RFnEntry] => [RFnEntry]
-      build fn table fields [] _ _ acc = acc
-      build fn table fields ((FieldEntry fname _):rest) fn_names next_fid acc
-        | str in list fname fn_names = build fn table fields rest fn_names next_fid acc
-        | otherwise = build fn table fields rest fn_names (next_fid + 1) (acc :: [FnEntry fname next_fid 1])
+fn :: build fn table fields [RFieldEntry] RStrSet Int [RFnEntry] => [RFnEntry]
+      build fn table fields [] _ _ acc = rev fn entries acc []
+      build fn table fields ((FieldEntry fname _):rest) fn_name_set next_fid acc
+        | str set has fn_name_set fname = build fn table fields rest fn_name_set next_fid acc
+        | otherwise = build fn table fields rest fn_name_set (next_fid + 1) ([FnEntry fname next_fid 1] :: acc)
 
-fn :: lookup fn id [RFnEntry] String => Int
-      lookup fn id []         _      =  0
-      lookup fn id ((FnEntry k fid _):rest) target
-        | k == target = fid
-        | otherwise = lookup fn id rest target
+fn :: build fn id map [RFnEntry] RStrIntMap => RStrIntMap
+      build fn id map [] mp = mp
+      build fn id map ((FnEntry k fid _):rest) mp =
+        build fn id map rest (str int map insert mp k fid)
 
-fn :: lookup fn arity [RFnEntry] String => Int
-      lookup fn arity []         _      =  -1
-      lookup fn arity ((FnEntry k _ arity):rest) target
-        | k == target = arity
-        | otherwise = lookup fn arity rest target
+fn :: build fn arity map [RFnEntry] RStrIntMap => RStrIntMap
+      build fn arity map [] mp = mp
+      build fn arity map ((FnEntry k _ arity):rest) mp =
+        build fn arity map rest (str int map insert mp k arity)
+
+fn :: lookup fn id map RStrIntMap String => Int
+      lookup fn id map mp target = non neg int (str int map lookup mp target)
 
 fn :: is heavy call name String               => Bool
       is heavy call name "sys_sleep_ms"       =  True
@@ -1097,11 +1160,11 @@ fn :: cases have heavy ops [RFnCase] => Bool
         | (guard list has heavy ops gs) or (expr has heavy ops b) = True
         | otherwise = cases have heavy ops cs
 
-fn :: any str in list [String] [String] => Bool
-      any str in list [] _ = False
-      any str in list (x:xs) targets
-        | str in list x targets = True
-        | otherwise = any str in list xs targets
+fn :: any str in set [String] RStrSet => Bool
+      any str in set [] _ = False
+      any str in set (x:xs) target_set
+        | str set has target_set x = True
+        | otherwise = any str in set xs target_set
 
 fn :: collect direct heavy fns [RFnDef] => [String]
       collect direct heavy fns []       =  []
@@ -1110,42 +1173,37 @@ fn :: collect direct heavy fns [RFnDef] => [String]
           [name] :: (collect direct heavy fns fs)
         | otherwise = collect direct heavy fns fs
 
-fn :: build non heavy ref pairs [RFnDef] [String] => [(String, [String])]
+fn :: build non heavy ref pairs [RFnDef] RStrSet => [(String, [String])]
       build non heavy ref pairs [] _ = []
-      build non heavy ref pairs ((FnDef name _ _ cases):fs) direct_heavy
-        | str in list name direct_heavy = build non heavy ref pairs fs direct_heavy
-        | otherwise = [(name, collect refs cases cases [])] :: (build non heavy ref pairs fs direct_heavy)
+      build non heavy ref pairs ((FnDef name _ _ cases):fs) direct_heavy_set
+        | str set has direct_heavy_set name = build non heavy ref pairs fs direct_heavy_set
+        | otherwise = [(name, collect refs cases cases [])] :: (build non heavy ref pairs fs direct_heavy_set)
 
-fn :: expand heavy pass [(String, [String])] [String] [(String, [String])] Bool => [String] [(String, [String])] Bool
-      expand heavy pass [] heavy rem changed = (heavy, rem, changed)
-      expand heavy pass ((name, refs):rest) heavy rem changed
-        | any str in list refs heavy =
-          expand heavy pass rest (heavy :: [name]) rem True
+fn :: expand heavy pass [(String, [String])] RStrSet [(String, [String])] Bool => RStrSet [(String, [String])] Bool
+      expand heavy pass [] heavy_set rem changed = (heavy_set, rem, changed)
+      expand heavy pass ((name, refs):rest) heavy_set rem changed
+        | any str in set refs heavy_set =
+          expand heavy pass rest (str set add heavy_set name) rem True
         | otherwise =
-          expand heavy pass rest heavy (rem :: [(name, refs)]) changed
+          expand heavy pass rest heavy_set ([(name, refs)] :: rem) changed
 
-fn :: expand heavy fixpoint [(String, [String])] [String] Int => [String]
-      expand heavy fixpoint _ heavy 0 = heavy
-      expand heavy fixpoint [] heavy _ = heavy
-      expand heavy fixpoint pairs heavy rounds =
-        expand heavy step (expand heavy pass pairs heavy [] False) rounds
+fn :: expand heavy fixpoint [(String, [String])] RStrSet Int => RStrSet
+      expand heavy fixpoint _ heavy_set 0 = heavy_set
+      expand heavy fixpoint [] heavy_set _ = heavy_set
+      expand heavy fixpoint pairs heavy_set rounds =
+        expand heavy step (expand heavy pass pairs heavy_set [] False) rounds
 
-fn :: expand heavy step ([String], [(String, [String])], Bool) Int => [String]
+fn :: expand heavy step (RStrSet, [(String, [String])], Bool) Int => RStrSet
       expand heavy step (heavy1, _, False) _ = heavy1
       expand heavy step (heavy1, rem1, True) rounds =
         expand heavy fixpoint rem1 heavy1 (rounds - 1)
 
-fn :: build heavy fn entries [String] [RFnEntry] => [RFnEntry]
-      build heavy fn entries [] acc = acc
-      build heavy fn entries (h:hs) acc =
-        build heavy fn entries hs (acc :: [FnEntry ("__heavy__" + h) 1 (0 - 1)])
-
-fn :: attach heavy fn entries [RFnDef] [String] [RFnEntry] => [RFnEntry]
-      attach heavy fn entries fns _ fn_tbl =
+fn :: compute heavy fn set [RFnDef] => RStrSet
+      compute heavy fn set fns =
         direct_heavy = collect direct heavy fns fns
-        ref_pairs = build non heavy ref pairs fns direct_heavy
-        all_heavy = expand heavy fixpoint ref_pairs direct_heavy 8
-        build heavy fn entries all_heavy fn_tbl
+        direct_set = str list to set direct_heavy StrSetEmpty
+        ref_pairs = build non heavy ref pairs fns direct_set
+        expand heavy fixpoint ref_pairs direct_set 8
 
 -- ── Local Variable Collection & RMM2 Liveness Helpers ────────
 
@@ -1293,32 +1351,34 @@ fn :: cmm remove str String [String] => [String]
 -- ── Environment Accessors & Builtin ID Mapping ───────────────
 
 fn :: env fn name RNativeEnv => String
-      env fn name (NativeEnv fn_name _ _ _ _ _) = fn_name
+      env fn name (NativeEnv fn_name _ _ _ _ _ _ _) = fn_name
 
 fn :: env arity RNativeEnv => Int
-      env arity (NativeEnv _ arity _ _ _ _) = arity
+      env arity (NativeEnv _ arity _ _ _ _ _ _) = arity
 
 fn :: env str off RNativeEnv String => Int
-      env str off (NativeEnv _ _ _ str_tbl _ _) s = lookup str off str_tbl s
+      env str off (NativeEnv _ _ _ str_map _ _ _ _) s = lookup str off str_map s
 
 fn :: env fn id RNativeEnv String => Int
-      env fn id (NativeEnv _ _ _ _ fn_tbl _) fname = lookup fn id fn_tbl fname
+      env fn id (NativeEnv _ _ _ _ fn_id_map _ _ _) fname = lookup fn id map fn_id_map fname
 
 fn :: env fn arity RNativeEnv String => Int
-      env fn arity (NativeEnv _ _ _ _ fn_tbl _) fname = lookup fn arity fn_tbl fname
+      env fn arity (NativeEnv _ _ _ _ _ fn_arity_map _ _) fname = str int map lookup fn_arity_map fname
 
 fn :: env fn is heavy RNativeEnv String => Bool
-      env fn is heavy (NativeEnv _ _ _ _ fn_tbl _) fname =
-        (lookup fn id fn_tbl ("__heavy__" + fname)) > 0
+      env fn is heavy (NativeEnv _ _ _ _ _ _ heavy_set _) fname =
+        str set has heavy_set fname
 
 fn :: env field idx RNativeEnv String => Int
-      env field idx (NativeEnv _ _ _ _ _ field_tbl) fname = lookup field idx field_tbl fname
+      env field idx (NativeEnv _ _ _ _ _ _ _ field_map) fname =
+        non neg int (str int map lookup field_map fname)
 
 fn :: env has field RNativeEnv String => Bool
-      env has field (NativeEnv _ _ _ _ _ field_tbl) fname = has field entry field_tbl fname
+      env has field (NativeEnv _ _ _ _ _ _ _ field_map) fname =
+        (str int map lookup field_map fname) >= 0
 
 fn :: env var slot RNativeEnv String => Int
-      env var slot (NativeEnv _ arity all_locals _ _ _) name =
+      env var slot (NativeEnv _ arity all_locals _ _ _ _ _) name =
         idx = lookup local all_locals name
         env var slot idx arity idx
 
@@ -1931,6 +1991,17 @@ fn :: lower map or closure map RNativeEnv String [RExpr] [String] Int RNativeCod
           st1 = lower expr env list_e bound_locals sp st0
           ins = [NStoreSlot sp, NMakeList (sp + 1) 0, NStoreSlot (sp + 1), NLabel loop_lbl, NMatchNonEmpty sp, NJumpIfZero done_lbl, NListHead sp, NStoreSlot (sp + 2), NCallFn fid (sp + 2) 1, NStoreSlot (sp + 2), NMakeList (sp + 2) 1, NBinOp 14 (sp + 1), NStoreSlot (sp + 1), NListTail sp, NStoreSlot sp, NJump loop_lbl, NLabel done_lbl, NClearLocals sp (sp + 1), NClearLocals (sp + 2) (sp + 3), NMoveSlot (sp + 1)]
           nc emit list st1 ins (sp + 3)
+      lower map or closure map env fname (fn_e:list_e:[]) bound_locals sp st
+        | (select par collection builtin env fname [fn_e, list_e] bound_locals) == 54 =
+          par_off = env str off env "__rg_par_eval__"
+          plain_lbl = nc lbl st
+          loop_lbl = plain_lbl + 1
+          done_lbl = plain_lbl + 2
+          after_lbl = plain_lbl + 3
+          st0 = nc set lbl st (plain_lbl + 4)
+          st1 = lower expr list to slots env [fn_e, list_e] bound_locals sp 0 st0
+          ins_par_clos = [NMatchTuple sp 2, NJumpIfZero plain_lbl, NMakeList (sp + 2) 0, NStoreSlot (sp + 2), NLabel loop_lbl, NMatchNonEmpty (sp + 1), NJumpIfZero done_lbl, NCloneSlot sp, NStoreSlot (sp + 3), NListHead (sp + 1), NStoreSlot (sp + 4), NMakeTuple (sp + 3) 2, NStoreSlot (sp + 3), NMakeList (sp + 3) 1, NBinOp 14 (sp + 2), NStoreSlot (sp + 2), NListTail (sp + 1), NStoreSlot (sp + 1), NJump loop_lbl, NLabel done_lbl, NLoadStrLit par_off 15, NStoreSlot (sp + 3), NMoveSlot (sp + 2), NStoreSlot (sp + 4), NCallBuiltin 54 (sp + 3) 2, NStoreSlot (sp + 2), NClearLocals sp (sp + 2), NClearLocals (sp + 3) (sp + 5), NMoveSlot (sp + 2), NJump after_lbl, NLabel plain_lbl, NCallBuiltin 54 sp 2, NLabel after_lbl]
+          nc emit list st1 ins_par_clos (sp + 6)
       lower map or closure map env fname (fn_e:list_e:[]) bound_locals sp st =
         bid = select par collection builtin env fname [fn_e, list_e] bound_locals
         plain_lbl = nc lbl st
@@ -1958,6 +2029,20 @@ fn :: lower filter or closure filter RNativeEnv String [RExpr] [String] Int RNat
           st1 = lower expr env list_e bound_locals sp st0
           ins = [NStoreSlot sp, NMakeList (sp + 1) 0, NStoreSlot (sp + 1), NLabel loop_lbl, NMatchNonEmpty sp, NJumpIfZero done_lbl, NListHead sp, NStoreSlot (sp + 2), NCallFn fid (sp + 2) 1, NAsBool, NJumpIfZero skip_lbl, NListHead sp, NStoreSlot (sp + 2), NMakeList (sp + 2) 1, NBinOp 14 (sp + 1), NStoreSlot (sp + 1), NLabel skip_lbl, NListTail sp, NStoreSlot sp, NJump loop_lbl, NLabel done_lbl, NClearLocals sp (sp + 1), NClearLocals (sp + 2) (sp + 3), NMoveSlot (sp + 1)]
           nc emit list st1 ins (sp + 3)
+      lower filter or closure filter env fname (fn_e:list_e:[]) bound_locals sp st
+        | (select par collection builtin env fname [fn_e, list_e] bound_locals) == 56 =
+          par_off = env str off env "__rg_par_eval__"
+          plain_lbl = nc lbl st
+          pack_lbl = plain_lbl + 1
+          eval_lbl = plain_lbl + 2
+          zip_lbl = plain_lbl + 3
+          skip_lbl = plain_lbl + 4
+          done_lbl = plain_lbl + 5
+          after_lbl = plain_lbl + 6
+          st0 = nc set lbl st (plain_lbl + 7)
+          st1 = lower expr list to slots env [fn_e, list_e] bound_locals sp 0 st0
+          ins_par_filt = [NMatchTuple sp 2, NJumpIfZero plain_lbl, NMakeList (sp + 2) 0, NStoreSlot (sp + 2), NCloneSlot (sp + 1), NStoreSlot (sp + 3), NLabel pack_lbl, NMatchNonEmpty (sp + 3), NJumpIfZero eval_lbl, NCloneSlot sp, NStoreSlot (sp + 4), NListHead (sp + 3), NStoreSlot (sp + 5), NMakeTuple (sp + 4) 2, NStoreSlot (sp + 4), NMakeList (sp + 4) 1, NBinOp 14 (sp + 2), NStoreSlot (sp + 2), NListTail (sp + 3), NStoreSlot (sp + 3), NJump pack_lbl, NLabel eval_lbl, NLoadStrLit par_off 15, NStoreSlot (sp + 4), NMoveSlot (sp + 2), NStoreSlot (sp + 5), NCallBuiltin 54 (sp + 4) 2, NStoreSlot (sp + 3), NMakeList (sp + 2) 0, NStoreSlot (sp + 2), NLabel zip_lbl, NMatchNonEmpty (sp + 1), NJumpIfZero done_lbl, NListHead (sp + 3), NAsBool, NJumpIfZero skip_lbl, NListHead (sp + 1), NStoreSlot (sp + 4), NMakeList (sp + 4) 1, NBinOp 14 (sp + 2), NStoreSlot (sp + 2), NLabel skip_lbl, NListTail (sp + 1), NStoreSlot (sp + 1), NListTail (sp + 3), NStoreSlot (sp + 3), NJump zip_lbl, NLabel done_lbl, NClearLocals sp (sp + 2), NClearLocals (sp + 3) (sp + 6), NMoveSlot (sp + 2), NJump after_lbl, NLabel plain_lbl, NCallBuiltin 56 sp 2, NLabel after_lbl]
+          nc emit list st1 ins_par_filt (sp + 7)
       lower filter or closure filter env fname (fn_e:list_e:[]) bound_locals sp st =
         bid = select par collection builtin env fname [fn_e, list_e] bound_locals
         plain_lbl = nc lbl st
@@ -2111,6 +2196,22 @@ fn :: lower expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
       lower expr env (EOut inner) bound_locals sp st =
         st1 = lower expr env inner bound_locals sp st
         nc emit st1 NOut sp
+      lower expr env (EBin OpAnd l r) bound_locals sp st =
+        sc_lbl = nc lbl st
+        done_lbl = sc_lbl + 1
+        st0 = nc set lbl st (sc_lbl + 2)
+        st1 = lower expr env l bound_locals sp st0
+        st2 = nc emit list st1 [NStoreSlot sp, NMatchBool sp 0, NJumpIfNonZero sc_lbl] (sp + 1)
+        st3 = lower expr env r bound_locals (sp + 1) st2
+        nc emit list st3 [NBinOp 11 sp, NJump done_lbl, NLabel sc_lbl, NClearLocals sp (sp + 1), NLoadImmRaw 2, NLabel done_lbl] (sp + 2)
+      lower expr env (EBin OpOr l r) bound_locals sp st =
+        sc_lbl = nc lbl st
+        done_lbl = sc_lbl + 1
+        st0 = nc set lbl st (sc_lbl + 2)
+        st1 = lower expr env l bound_locals sp st0
+        st2 = nc emit list st1 [NStoreSlot sp, NMatchBool sp 1, NJumpIfNonZero sc_lbl] (sp + 1)
+        st3 = lower expr env r bound_locals (sp + 1) st2
+        nc emit list st3 [NBinOp 12 sp, NJump done_lbl, NLabel sc_lbl, NClearLocals sp (sp + 1), NLoadImmRaw 6, NLabel done_lbl] (sp + 2)
       lower expr env (EBin bop l r) bound_locals sp st =
         st1 = lower expr env l bound_locals sp st
         st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
@@ -2120,12 +2221,17 @@ fn :: lower expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
         st1 = lower expr env base_e bound_locals sp st
         lower record updates env rest_args bound_locals sp st1
       lower expr env (ECall "__unpack2__" ((EVar fn_target):single_arg:[])) bound_locals sp st =
-        st1 = lower expr env single_arg bound_locals sp st
+        part_lbl = nc lbl st
+        done_lbl = part_lbl + 1
+        st0 = nc set lbl st (part_lbl + 2)
+        st1 = lower expr env single_arg bound_locals sp st0
         fid = env fn id env fn_target
         arity = max int (env fn arity env fn_target) 2
+        off = env str off env fn_target
+        slen = str len fn_target
         unpack_ins = build tuple unpack instrs sp arity 0
-        ins_list = [NStoreSlot sp] :: unpack_ins :: [NClearLocals sp (sp + 1), NCallFn fid (sp + 1) arity]
-        nc emit list st1 ins_list (sp + arity + 1)
+        ins_list = [NStoreSlot sp, NMatchTuple sp arity, NJumpIfZero part_lbl] :: unpack_ins :: [NClearLocals sp (sp + 1), NCallFn fid (sp + 1) arity, NJump done_lbl, NLabel part_lbl, NMoveSlot sp, NStoreSlot (sp + 1), NMakeList (sp + 1) 1, NStoreSlot (sp + 1), NLoadStrLit off slen, NStoreSlot sp, NMakeTuple sp 2, NLabel done_lbl]
+        nc emit list st1 ins_list (sp + arity + 2)
       lower expr env (ECall fname args) bound_locals sp st =
         lower call expr env fname args bound_locals sp st
       lower expr env (EEcho args) bound_locals sp st =
@@ -2877,31 +2983,37 @@ fn :: maybe wrap unit cases String String [RFnCase] => [RFnCase]
         | ret == "()" or ret == "Unit" = wrap unit return cases name cases
         | otherwise = cases
 
-fn :: lower fndef RFnDef [RStrEntry] [RFnEntry] [RFieldEntry] => RNativeFn
-      lower fndef (FnDef name params ret raw_cases) str_tbl fn_tbl field_tbl =
+fn :: lower fndef RFnDef RStrIntMap RStrIntMap RStrIntMap RStrSet RStrIntMap => RNativeFn
+      lower fndef (FnDef name params ret raw_cases) str_map fn_id_map fn_arity_map heavy_set field_map =
         cases = maybe wrap unit cases name ret raw_cases
-        fid = lookup fn id fn_tbl name
+        fid = lookup fn id map fn_id_map name
         arity = infer fndef arity params cases
         all_locals = collect cases all locals cases []
         base_sp = arity + (list str len all_locals)
-        env = NativeEnv name arity all_locals str_tbl fn_tbl field_tbl
+        env = NativeEnv name arity all_locals str_map fn_id_map fn_arity_map heavy_set field_map
         init_st = NativeCode [] 1 (max int (base_sp + 1) 2)
         st1 = lower cases list env cases base_sp init_st
         st2 = nc emit list st1 [NLoadImmRaw 0, NReturn] (base_sp + 1)
         NativeFn fid name arity (nc max sp st2) (nc instrs st2)
 
-fn :: lower fndef list [RFnDef] [RStrEntry] [RFnEntry] [RFieldEntry] => [RNativeFn]
-      lower fndef list [] _ _ _ = []
-      lower fndef list (f:fs) str_tbl fn_tbl field_tbl =
-        [lower fndef f str_tbl fn_tbl field_tbl] :: (lower fndef list fs str_tbl fn_tbl field_tbl)
+fn :: rev native fns [RNativeFn] [RNativeFn] => [RNativeFn]
+      rev native fns [] acc = acc
+      rev native fns (x:xs) acc = rev native fns xs ([x] :: acc)
 
-fn :: lower field getter fns [RFieldEntry] [String] [RFnEntry] => [RNativeFn]
-      lower field getter fns [] _ _ = []
-      lower field getter fns ((FieldEntry fname idx):rest) fn_names fn_tbl
-        | str in list fname fn_names = lower field getter fns rest fn_names fn_tbl
+fn :: lower fndef list acc [RFnDef] RStrIntMap RStrIntMap RStrIntMap RStrSet RStrIntMap [RNativeFn] => [RNativeFn]
+      lower fndef list acc [] _ _ _ _ _ acc = rev native fns acc []
+      lower fndef list acc (f:fs) str_map fn_id_map fn_arity_map heavy_set field_map acc =
+        nf = lower fndef f str_map fn_id_map fn_arity_map heavy_set field_map
+        lower fndef list acc fs str_map fn_id_map fn_arity_map heavy_set field_map ([nf] :: acc)
+
+fn :: lower field getter fns [RFieldEntry] RStrSet RStrIntMap [RNativeFn] => [RNativeFn]
+      lower field getter fns [] _ _ acc = rev native fns acc []
+      lower field getter fns ((FieldEntry fname idx):rest) fn_name_set fn_id_map acc
+        | str set has fn_name_set fname = lower field getter fns rest fn_name_set fn_id_map acc
         | otherwise =
-          fid = lookup fn id fn_tbl fname
-          [NativeFn fid fname 1 2 [NAdtField 0 idx, NReturn]] :: (lower field getter fns rest fn_names fn_tbl)
+          fid = lookup fn id map fn_id_map fname
+          nf = NativeFn fid fname 1 2 [NAdtField 0 idx, NReturn]
+          lower field getter fns rest fn_name_set fn_id_map ([nf] :: acc)
 
 -- ── Call-Graph Tree-Shaking & Dispatch Function Synthesis ────
 
@@ -2955,23 +3067,40 @@ fn :: collect refs cases [RFnCase] [String] => [String]
       collect refs cases ((FnCase _ guards body):cs) acc =
         acc -> collect refs guards guards _ -> collect refs expr body _ -> collect refs cases cs _
 
-fn :: find fndef cases [RFnDef] String => [RFnCase]
-      find fndef cases []       _      =  []
-      find fndef cases ((FnDef name _ _ cases):fs) target
-        | name == target = cases
-        | otherwise = find fndef cases fs target
+type RFnRefsMap = FnRefsEmpty | FnRefsNode String [String] RFnRefsMap RFnRefsMap
 
-fn :: expand reachable worklist [String] [RFnDef] [String] => [String]
-expand reachable worklist []       _        visited  =  visited
-expand reachable worklist (w:ws)   all_fns  visited
-| str in list w visited = expand reachable worklist ws all_fns visited
-        | otherwise = expand reachable worklist (ws :: (collect refs cases (find fndef cases all_fns w) [])) all_fns (visited :: [w])
+fn :: fn refs map lookup RFnRefsMap String => [String]
+      fn refs map lookup FnRefsEmpty _ = []
+      fn refs map lookup (FnRefsNode k v l r) key
+        | key == k = v
+        | (cmp str bst key k) < 0 = fn refs map lookup l key
+        | otherwise = fn refs map lookup r key
 
-fn :: filter reachable fndefs [RFnDef] [String]  => [RFnDef]
-      filter reachable fndefs []       _         =  []
-      filter reachable fndefs ((FnDef name params ret cases):fs) reachable
-        | str in list name reachable = [FnDef name params ret cases] :: (filter reachable fndefs fs reachable)
-        | otherwise = filter reachable fndefs fs reachable
+fn :: fn refs map insert RFnRefsMap String [String] => RFnRefsMap
+      fn refs map insert FnRefsEmpty key val = FnRefsNode key val FnRefsEmpty FnRefsEmpty
+      fn refs map insert (FnRefsNode k v l r) key val
+        | key == k = FnRefsNode k val l r
+        | (cmp str bst key k) < 0 = FnRefsNode k v (fn refs map insert l key val) r
+        | otherwise = FnRefsNode k v l (fn refs map insert r key val)
+
+fn :: build fn refs map [RFnDef] RFnRefsMap => RFnRefsMap
+      build fn refs map [] mp = mp
+      build fn refs map ((FnDef name _ _ cases):fs) mp =
+        build fn refs map fs (fn refs map insert mp name (collect refs cases cases []))
+
+fn :: expand reachable worklist [String] RFnRefsMap RStrSet => RStrSet
+      expand reachable worklist [] _ visited = visited
+      expand reachable worklist (w:ws) refs_map visited
+        | str set has visited w = expand reachable worklist ws refs_map visited
+        | otherwise =
+          refs = fn refs map lookup refs_map w
+          expand reachable worklist (rev str list refs ws) refs_map (str set add visited w)
+
+fn :: filter reachable fndefs [RFnDef] RStrSet [RFnDef] => [RFnDef]
+      filter reachable fndefs [] _ acc = rev fndef list acc []
+      filter reachable fndefs ((FnDef name params ret cases):fs) reachable acc
+        | str set has reachable name = filter reachable fndefs fs reachable ([FnDef name params ret cases] :: acc)
+        | otherwise = filter reachable fndefs fs reachable acc
 
 fn :: collect fn names [RFnDef] => [String]
       collect fn names []       =  []
@@ -2985,35 +3114,112 @@ fn :: find entry fn name [RFnDef] String => String
         | (infer fndef arity params cases) == 0 = find entry fn name fs name
         | otherwise = find entry fn name fs fallback
 
-fn :: build spawn dispatch entry [RFnEntry] [RStrEntry] => [RNativeInstr]
-      build spawn dispatch entry fn_tbl str_tbl =
-        par_off = lookup str off str_tbl "__rg_par_eval__"
-        par_hdr = [NMatchStr 0 par_off 15, NJumpIfZero 1, NTupleGet 1 0, NStoreSlot 2, NTupleGet 1 1, NStoreSlot 1, NMoveSlot 2, NStoreSlot 0, NLabel 1]
-        build spawn dispatch instrs fn_tbl str_tbl 2 par_hdr
+-- ── Dynamic Dispatch Target Collection ──────────────────────
 
-fn :: build spawn dispatch instrs [RFnEntry] [RStrEntry] Int [RNativeInstr] => [RNativeInstr]
-      build spawn dispatch instrs [] _ _ acc =
-        acc :: [NLoadImmRaw 0, NReturn]
-      build spawn dispatch instrs ((FnEntry name fid arity):rest) str_tbl lbl acc
+fn :: collect disp par items [RExpr] RStrIntMap RStrSet => RStrSet
+      collect disp par items [] _ acc = acc
+      collect disp par items ((ECall fname args):es) ar_map acc =
+        collect disp par items es ar_map (collect disp expr list args ar_map (str set add acc fname))
+      collect disp par items (e:es) ar_map acc =
+        collect disp par items es ar_map (collect disp expr e ar_map acc)
+
+fn :: collect disp expr RExpr RStrIntMap RStrSet => RStrSet
+      collect disp expr (EStr s) _ acc = str set add acc s
+      collect disp expr (EVar v) _ acc = str set add acc v
+      collect disp expr (ENot inner) ar_map acc = collect disp expr inner ar_map acc
+      collect disp expr (EOut inner) ar_map acc = collect disp expr inner ar_map acc
+      collect disp expr (EBin _ l r) ar_map acc = collect disp expr r ar_map (collect disp expr l ar_map acc)
+      collect disp expr (ECall "__unpack2__" ((EVar fn_target):args)) ar_map acc =
+        collect disp expr list args ar_map (str set add acc fn_target)
+      collect disp expr (ECall fname args) ar_map acc
+        | (rexpr list len args) > 0 and (str int map lookup ar_map fname) > (rexpr list len args) =
+          collect disp expr list args ar_map (str set add acc fname)
+        | otherwise = collect disp expr list args ar_map acc
+      collect disp expr (EEcho args) ar_map acc = collect disp expr list args ar_map acc
+      collect disp expr (EStrInterp parts) ar_map acc = collect disp expr list parts ar_map acc
+      collect disp expr (EList elems) ar_map acc = collect disp expr list elems ar_map acc
+      collect disp expr (ETuple elems) ar_map acc = collect disp expr list elems ar_map acc
+      collect disp expr (ETensor elems) ar_map acc = collect disp expr list elems ar_map acc
+      collect disp expr (EEinsum es _) ar_map acc = collect disp expr list es ar_map acc
+      collect disp expr (EHadamard _ l _ r _) ar_map acc = collect disp expr r ar_map (collect disp expr l ar_map acc)
+      collect disp expr (EIndex base idxs) ar_map acc = collect disp expr list idxs ar_map (collect disp expr base ar_map acc)
+      collect disp expr (EIndexAssign _ idxs v) ar_map acc = collect disp expr v ar_map (collect disp expr list idxs ar_map acc)
+      collect disp expr (ESeqSelect b _) ar_map acc = collect disp expr b ar_map acc
+      collect disp expr (EBlock stmts) ar_map acc = collect disp stmts stmts ar_map acc
+      collect disp expr (EGuard guards) ar_map acc = collect disp guards guards ar_map acc
+      collect disp expr (EWhere body binds) ar_map acc = collect disp where binds ar_map (collect disp expr body ar_map acc)
+      collect disp expr (EParPipe branches) ar_map acc = collect disp par items branches ar_map acc
+      collect disp expr (EWithCtx _ v b) ar_map acc = collect disp expr b ar_map (collect disp expr v ar_map acc)
+      collect disp expr (EWithRegion _ b) ar_map acc = collect disp expr b ar_map acc
+      collect disp expr _ _ acc = acc
+
+fn :: collect disp expr list [RExpr] RStrIntMap RStrSet => RStrSet
+      collect disp expr list [] _ acc = acc
+      collect disp expr list (e:es) ar_map acc = collect disp expr list es ar_map (collect disp expr e ar_map acc)
+
+fn :: collect disp stmts [RStmt] RStrIntMap RStrSet => RStrSet
+      collect disp stmts [] _ acc = acc
+      collect disp stmts ((StmtLet _ e):ss) ar_map acc = collect disp stmts ss ar_map (collect disp expr e ar_map acc)
+      collect disp stmts ((StmtMut _ e):ss) ar_map acc = collect disp stmts ss ar_map (collect disp expr e ar_map acc)
+      collect disp stmts ((StmtExpr e):ss) ar_map acc = collect disp stmts ss ar_map (collect disp expr e ar_map acc)
+      collect disp stmts ((StmtIndexAssign _ idxs e):ss) ar_map acc =
+        collect disp stmts ss ar_map (collect disp expr e ar_map (collect disp expr list idxs ar_map acc))
+
+fn :: collect disp where [RWhereBind] RStrIntMap RStrSet => RStrSet
+      collect disp where [] _ acc = acc
+      collect disp where ((WhereBind (ECall fname args) _ _):wbs) ar_map acc =
+        collect disp where wbs ar_map (collect disp expr list args ar_map (str set add acc fname))
+      collect disp where ((WhereBind e _ _):wbs) ar_map acc =
+        collect disp where wbs ar_map (collect disp expr e ar_map acc)
+
+fn :: collect disp guards [RGuard] RStrIntMap RStrSet => RStrSet
+      collect disp guards [] _ acc = acc
+      collect disp guards ((GuardBranch c b):gs) ar_map acc =
+        collect disp guards gs ar_map (collect disp expr b ar_map (collect disp expr c ar_map acc))
+
+fn :: collect disp cases [RFnCase] RStrIntMap RStrSet => RStrSet
+      collect disp cases [] _ acc = acc
+      collect disp cases ((FnCase _ gs b):cs) ar_map acc =
+        collect disp cases cs ar_map (collect disp expr b ar_map (collect disp guards gs ar_map acc))
+
+fn :: collect disp fndefs [RFnDef] RStrIntMap RStrSet => RStrSet
+      collect disp fndefs [] _ acc = acc
+      collect disp fndefs ((FnDef _ _ _ cases):fs) ar_map acc =
+        collect disp fndefs fs ar_map (collect disp cases cases ar_map acc)
+
+fn :: build spawn dispatch entry [RFnEntry] RStrIntMap RStrSet => [RNativeInstr]
+      build spawn dispatch entry fn_tbl str_map disp_set =
+        par_off = lookup str off str_map "__rg_par_eval__"
+        par_hdr = [NMatchStr 0 par_off 15, NJumpIfZero 1, NTupleGet 1 0, NStoreSlot 2, NTupleGet 1 1, NStoreSlot 1, NMoveSlot 2, NStoreSlot 0, NLabel 1]
+        clos_hdr = [NMatchTuple 0 2, NJumpIfZero 2, NTupleGet 0 0, NStoreSlot 2, NTupleGet 0 1, NStoreSlot 3, NMoveSlot 1, NStoreSlot 4, NMakeList 4 1, NBinOp 14 3, NStoreSlot 3, NListHead 3, NStoreSlot 4, NListTail 3, NStoreSlot 5, NMoveSlot 4, NStoreSlot 3, NMoveSlot 5, NStoreSlot 4, NCallIndirect2 2 3, NReturn, NLabel 2]
+        init_rev = rev native instrs (par_hdr :: clos_hdr) []
+        build spawn dispatch instrs fn_tbl str_map disp_set 3 init_rev
+
+fn :: build spawn dispatch instrs [RFnEntry] RStrIntMap RStrSet Int [RNativeInstr] => [RNativeInstr]
+      build spawn dispatch instrs [] _ _ _ rev_acc =
+        rev native instrs (rev native instrs [NLoadImmRaw 0, NReturn] rev_acc) []
+      build spawn dispatch instrs ((FnEntry name fid arity):rest) str_map disp_set lbl rev_acc
+        | not (str set has disp_set name) =
+          build spawn dispatch instrs rest str_map disp_set lbl rev_acc
         | arity == 0 =
-          off = lookup str off str_tbl name
+          off = lookup str off str_map name
           arm = [NMatchStr 0 off (str len name), NJumpIfZero lbl, NCallFn fid 2 0, NReturn, NLabel lbl]
-          build spawn dispatch instrs rest str_tbl (lbl + 1) (acc :: arm)
+          build spawn dispatch instrs rest str_map disp_set (lbl + 1) (rev native instrs arm rev_acc)
         | arity == 1 =
-          off = lookup str off str_tbl name
+          off = lookup str off str_map name
           arm = [NMatchStr 0 off (str len name), NJumpIfZero lbl, NMoveSlot 1, NStoreSlot 2, NCallFn fid 2 1, NReturn, NLabel lbl]
-          build spawn dispatch instrs rest str_tbl (lbl + 1) (acc :: arm)
+          build spawn dispatch instrs rest str_map disp_set (lbl + 1) (rev native instrs arm rev_acc)
         | arity == 2 =
-          off = lookup str off str_tbl name
+          off = lookup str off str_map name
           arm = [NMatchStr 0 off (str len name), NJumpIfZero lbl, NTupleGet 1 0, NStoreSlot 2, NTupleGet 1 1, NStoreSlot 3, NCallFn fid 2 2, NReturn, NLabel lbl]
-          build spawn dispatch instrs rest str_tbl (lbl + 1) (acc :: arm)
+          build spawn dispatch instrs rest str_map disp_set (lbl + 1) (rev native instrs arm rev_acc)
         | arity == 3 =
-          off = lookup str off str_tbl name
+          off = lookup str off str_map name
           lbl2 = lbl + 1
           arm = [NMatchStr 0 off (str len name), NJumpIfZero lbl2, NMatchTuple 1 2, NJumpIfZero lbl, NTupleGet 1 0, NStoreSlot 2, NTupleGet 1 1, NStoreSlot 5, NTupleGet 5 0, NStoreSlot 3, NTupleGet 5 1, NStoreSlot 4, NCallFn fid 2 3, NReturn, NLabel lbl, NTupleGet 1 0, NStoreSlot 2, NTupleGet 1 1, NStoreSlot 3, NTupleGet 1 2, NStoreSlot 4, NCallFn fid 2 3, NReturn, NLabel lbl2]
-          build spawn dispatch instrs rest str_tbl (lbl + 2) (acc :: arm)
+          build spawn dispatch instrs rest str_map disp_set (lbl + 2) (rev native instrs arm rev_acc)
         | otherwise =
-          build spawn dispatch instrs rest str_tbl lbl acc
+          build spawn dispatch instrs rest str_map disp_set lbl rev_acc
 
 fn :: highest entry arity [RFnEntry] => Int
       highest entry arity []         =  0
@@ -3032,26 +3238,28 @@ fn :: build call2 unpack list Int Int => [RNativeInstr]
         | otherwise =
           [NListHead 2, NStoreSlot (4 + idx), NListTail 2, NStoreSlot 2] :: (build call2 unpack list (idx + 1) count)
 
-fn :: build call2 dispatch instrs [RFnEntry] [RStrEntry] Int [RNativeInstr] => [RNativeInstr]
-      build call2 dispatch instrs [] _ _ acc =
-        acc :: [NLoadImmRaw 0, NReturn]
-      build call2 dispatch instrs ((FnEntry name fid arity):rest) str_tbl lbl acc
+fn :: build call2 dispatch instrs [RFnEntry] RStrIntMap RStrSet Int [RNativeInstr] => [RNativeInstr]
+      build call2 dispatch instrs [] _ _ _ rev_acc =
+        rev native instrs (rev native instrs [NLoadImmRaw 0, NReturn] rev_acc) []
+      build call2 dispatch instrs ((FnEntry name fid arity):rest) str_map disp_set lbl rev_acc
+        | not (str set has disp_set name) =
+          build call2 dispatch instrs rest str_map disp_set lbl rev_acc
         | arity == 2 =
-          off = lookup str off str_tbl name
+          off = lookup str off str_map name
           lbl_plain = lbl + 1
           lbl_next = lbl + 2
           arm = [NMatchStr 0 off (str len name), NJumpIfZero lbl_next, NMoveSlot 1, NStoreSlot 3, NMatchNonEmpty 2, NJumpIfZero lbl_plain, NListHead 2, NStoreSlot 4, NJump lbl, NLabel lbl_plain, NMoveSlot 2, NStoreSlot 4, NLabel lbl, NCallFn fid 3 2, NReturn, NLabel lbl_next]
-          build call2 dispatch instrs rest str_tbl (lbl + 3) (acc :: arm)
+          build call2 dispatch instrs rest str_map disp_set (lbl + 3) (rev native instrs arm rev_acc)
         | arity >= 3 =
-          off = lookup str off str_tbl name
+          off = lookup str off str_map name
           lbl_tuple = lbl + 1
           lbl_next = lbl + 2
           unpack_list = build call2 unpack list 0 (arity - 1)
           unpack_tup = build call2 unpack tuple 0 (arity - 1)
           arm = [NMatchStr 0 off (str len name), NJumpIfZero lbl_next, NMoveSlot 1, NStoreSlot 3, NMatchNonEmpty 2, NJumpIfZero lbl_tuple] :: unpack_list :: [NJump lbl, NLabel lbl_tuple] :: unpack_tup :: [NLabel lbl, NCallFn fid 3 arity, NReturn, NLabel lbl_next]
-          build call2 dispatch instrs rest str_tbl (lbl + 3) (acc :: arm)
+          build call2 dispatch instrs rest str_map disp_set (lbl + 3) (rev native instrs arm rev_acc)
         | otherwise =
-          build call2 dispatch instrs rest str_tbl lbl acc
+          build call2 dispatch instrs rest str_map disp_set lbl rev_acc
 
 fn :: is overloadable binop name String => Bool
       is overloadable binop name "+"    =  True
@@ -3061,16 +3269,16 @@ fn :: is overloadable binop name String => Bool
       is overloadable binop name "%"    =  True
       is overloadable binop name _      =  False
 
-fn :: build binop dispatch instrs [RFnEntry] [RStrEntry] Int [RNativeInstr] => [RNativeInstr]
-      build binop dispatch instrs [] _ _ acc =
-        acc :: [NLoadImmRaw 0, NReturn]
-      build binop dispatch instrs ((FnEntry name fid arity):rest) str_tbl lbl acc
+fn :: build binop dispatch instrs [RFnEntry] RStrIntMap Int [RNativeInstr] => [RNativeInstr]
+      build binop dispatch instrs [] _ _ rev_acc =
+        rev native instrs (rev native instrs [NLoadImmRaw 0, NReturn] rev_acc) []
+      build binop dispatch instrs ((FnEntry name fid arity):rest) str_map lbl rev_acc
         | arity == 2 and (is overloadable binop name name) =
-          off = lookup str off str_tbl name
+          off = lookup str off str_map name
           arm = [NMatchStr 0 off (str len name), NJumpIfZero lbl, NMoveSlot 1, NStoreSlot 3, NMoveSlot 2, NStoreSlot 4, NCallFn fid 3 2, NReturn, NLabel lbl]
-          build binop dispatch instrs rest str_tbl (lbl + 1) (acc :: arm)
+          build binop dispatch instrs rest str_map (lbl + 1) (rev native instrs arm rev_acc)
         | otherwise =
-          build binop dispatch instrs rest str_tbl lbl acc
+          build binop dispatch instrs rest str_map lbl rev_acc
 
 fn :: is wrapable builtin fn String => Bool
       is wrapable builtin fn name =
@@ -3146,37 +3354,50 @@ fn :: collect builtin val fndefs [RFnDef] [String] => [String]
       collect builtin val fndefs ((FnDef _ _ _ cases):fs) acc =
         collect builtin val fndefs fs (collect builtin val cases cases acc)
 
-fn :: build builtin wrapper fndefs [String] [String] => [RFnDef]
+fn :: build builtin wrapper fndefs [String] RStrSet => [RFnDef]
       build builtin wrapper fndefs [] _ = []
-      build builtin wrapper fndefs (b:bs) existing
-        | str in list b existing = build builtin wrapper fndefs bs existing
-        | otherwise = [make builtin wrapper fndef b (std builtin arity b)] :: (build builtin wrapper fndefs bs existing)
+      build builtin wrapper fndefs (b:bs) existing_set
+        | str set has existing_set b = build builtin wrapper fndefs bs existing_set
+        | otherwise = [make builtin wrapper fndef b (std builtin arity b)] :: (build builtin wrapper fndefs bs existing_set)
 
 fn :: lower program to native RProgram => RNativeProg
       lower program to native (Program raw_fns tys) =
+        entry_name = find entry fn name raw_fns "main"
+        refs_map0 = build fn refs map raw_fns FnRefsEmpty
+        reach_set0 = expand reachable worklist [entry_name] refs_map0 StrSetEmpty
+        reach_raw = filter reachable fndefs raw_fns reach_set0 []
         field_tbl = collect typedef fields tys []
-        raw_fn_names = collect fn names raw_fns
-        b_wrappers = build builtin wrapper fndefs (collect builtin val fndefs raw_fns []) raw_fn_names
-        sigs = (build cg sigs raw_fns) :: (build field cg sigs field_tbl raw_fn_names)
-        all_fns = (opt fndef list (prep fndef list raw_fns sigs)) :: b_wrappers
-        entry_name = find entry fn name all_fns "main"
-        reachable = expand reachable worklist [entry_name] all_fns []
-        fns = filter reachable fndefs all_fns reachable
+        raw_fn_names = collect fn names reach_raw
+        raw_fn_set = str list to set raw_fn_names StrSetEmpty
+        b_val_names = collect builtin val fndefs reach_raw []
+        b_wrappers = build builtin wrapper fndefs b_val_names raw_fn_set
+        sigs = (build cg sigs reach_raw) :: (build field cg sigs field_tbl raw_fn_set)
+        all_fns = (opt fndef list (prep fndef list reach_raw sigs)) :: b_wrappers
+        refs_map = build fn refs map all_fns FnRefsEmpty
+        reachable_set = expand reachable worklist [entry_name] refs_map StrSetEmpty
+        fns = filter reachable fndefs all_fns reachable_set []
         fn_names = collect fn names fns
-        str_pool = build str pool fns (collect field names field_tbl)
+        fn_name_set = str list to set fn_names StrSetEmpty
+        field_names = collect field names field_tbl
+        str_pool = build str pool fns field_names
         rodata_str = pool rodata str_pool
-        str_tbl = pool entries str_pool
+        str_map = pool str map str_pool
         fn_tbl1 = build fn table fndefs fns 5 []
-        fn_tbl2 = build fn table fields field_tbl fn_names (5 + (list str len fn_names)) fn_tbl1
-        fn_tbl = attach heavy fn entries fns fn_names fn_tbl2
-        entry_fid = lookup fn id fn_tbl entry_name
+        fn_tbl = build fn table fields field_tbl fn_name_set (5 + (list str len fn_names)) (rev fn entries fn_tbl1 [])
+        fn_id_map = build fn id map fn_tbl StrIntEmpty
+        fn_arity_map = build fn arity map fn_tbl StrIntEmpty
+        heavy_set = compute heavy fn set fns
+        field_map = build field idx map field_tbl StrIntEmpty
+        disp_set0 = str list to set field_names (str list to set b_val_names StrSetEmpty)
+        disp_set = collect disp fndefs fns fn_arity_map disp_set0
+        entry_fid = lookup fn id map fn_id_map entry_name
         main_wrapper = NativeFn 1 "__rg_entry_main" 0 2 [NCallFn entry_fid 0 (0 - 1), NReturn]
-        spawn_disp = NativeFn 2 "__rg_dispatch_spawn" 2 6 (build spawn dispatch entry fn_tbl str_tbl)
+        spawn_disp = NativeFn 2 "__rg_dispatch_spawn" 2 6 (build spawn dispatch entry fn_tbl str_map disp_set)
         call2_slots = max int 7 (4 + (highest entry arity fn_tbl))
-        call2_disp = NativeFn 3 "__rg_dispatch_call2" 3 call2_slots (build call2 dispatch instrs fn_tbl str_tbl 1 [])
-        binop_disp = NativeFn 4 "__rg_dispatch_binop" 3 6 (build binop dispatch instrs fn_tbl str_tbl 1 [])
-        user_native_fns = lower fndef list fns str_tbl fn_tbl field_tbl
-        field_native_fns = lower field getter fns field_tbl fn_names fn_tbl
+        call2_disp = NativeFn 3 "__rg_dispatch_call2" 3 call2_slots (build call2 dispatch instrs fn_tbl str_map disp_set 1 [])
+        binop_disp = NativeFn 4 "__rg_dispatch_binop" 3 6 (build binop dispatch instrs fn_tbl str_map 1 [])
+        user_native_fns = lower fndef list acc fns str_map fn_id_map fn_arity_map heavy_set field_map []
+        field_native_fns = lower field getter fns field_tbl fn_name_set fn_id_map []
         all_native_fns = [main_wrapper, spawn_disp, call2_disp, binop_disp] :: user_native_fns :: field_native_fns
         NativeProg 1 2 3 4 all_native_fns rodata_str
 
@@ -3188,24 +3409,32 @@ fn :: lower library to native RProgram => RNativeProg
       lower library to native (Program raw_fns tys) =
         field_tbl = collect typedef fields tys []
         raw_fn_names = collect fn names raw_fns
-        b_wrappers = build builtin wrapper fndefs (collect builtin val fndefs raw_fns []) raw_fn_names
-        sigs = (build cg sigs raw_fns) :: (build field cg sigs field_tbl raw_fn_names)
+        raw_fn_set = str list to set raw_fn_names StrSetEmpty
+        b_val_names = collect builtin val fndefs raw_fns []
+        b_wrappers = build builtin wrapper fndefs b_val_names raw_fn_set
+        sigs = (build cg sigs raw_fns) :: (build field cg sigs field_tbl raw_fn_set)
         fns = (opt fndef list (prep fndef list raw_fns sigs)) :: b_wrappers
         fn_names = collect fn names fns
-        str_pool = build str pool fns (collect field names field_tbl)
+        fn_name_set = str list to set fn_names StrSetEmpty
+        field_names = collect field names field_tbl
+        str_pool = build str pool fns field_names
         rodata_str = pool rodata str_pool
-        str_tbl = pool entries str_pool
+        str_map = pool str map str_pool
         fn_tbl1 = build fn table fndefs fns 5 []
-        fn_tbl2 = build fn table fields field_tbl fn_names (5 + (list str len fn_names)) fn_tbl1
-        fn_tbl = attach heavy fn entries fns fn_names fn_tbl2
-        entry_fid = lookup fn id fn_tbl "main"
+        fn_tbl = build fn table fields field_tbl fn_name_set (5 + (list str len fn_names)) (rev fn entries fn_tbl1 [])
+        fn_id_map = build fn id map fn_tbl StrIntEmpty
+        fn_arity_map = build fn arity map fn_tbl StrIntEmpty
+        heavy_set = compute heavy fn set fns
+        field_map = build field idx map field_tbl StrIntEmpty
+        disp_set = str list to set field_names fn_name_set
+        entry_fid = lookup fn id map fn_id_map "main"
         main_wrapper = build lib entry wrapper entry_fid
-        spawn_disp = NativeFn 2 "__rg_dispatch_spawn" 2 6 (build spawn dispatch entry fn_tbl str_tbl)
+        spawn_disp = NativeFn 2 "__rg_dispatch_spawn" 2 6 (build spawn dispatch entry fn_tbl str_map disp_set)
         call2_slots = max int 7 (4 + (highest entry arity fn_tbl))
-        call2_disp = NativeFn 3 "__rg_dispatch_call2" 3 call2_slots (build call2 dispatch instrs fn_tbl str_tbl 1 [])
-        binop_disp = NativeFn 4 "__rg_dispatch_binop" 3 6 (build binop dispatch instrs fn_tbl str_tbl 1 [])
-        user_native_fns = lower fndef list fns str_tbl fn_tbl field_tbl
-        field_native_fns = lower field getter fns field_tbl fn_names fn_tbl
+        call2_disp = NativeFn 3 "__rg_dispatch_call2" 3 call2_slots (build call2 dispatch instrs fn_tbl str_map disp_set 1 [])
+        binop_disp = NativeFn 4 "__rg_dispatch_binop" 3 6 (build binop dispatch instrs fn_tbl str_map 1 [])
+        user_native_fns = lower fndef list acc fns str_map fn_id_map fn_arity_map heavy_set field_map []
+        field_native_fns = lower field getter fns field_tbl fn_name_set fn_id_map []
         all_native_fns = [main_wrapper, spawn_disp, call2_disp, binop_disp] :: user_native_fns :: field_native_fns
         NativeProg 1 2 3 4 all_native_fns rodata_str
 

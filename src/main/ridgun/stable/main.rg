@@ -1,6 +1,6 @@
 -- ============================================================
 -- src/main/ridgun/stable/main.rg
--- `stable` v0.9.28 — The Interactive Build Tool for Ridgun (100% Ridgun)
+-- `stable` v0.9.29 — The Interactive Build Tool for Ridgun (100% Ridgun)
 -- Written in Ridgun's natural-language mixfix operator style (`op :: ...`).
 -- Decoupled from `ridgunc` internals per ADR-0001: delegates `check`,
 -- `compile`, `build`, `build lib`, and test/plugin compilation to the
@@ -850,7 +850,7 @@ op :: sync single dependency String => Int
         dest = ".stable/deps/" + bname
         shell exec 'mkdir -p .stable/deps src/main/ridgun/lib'
         st = fetch dependency source dep into dest
-        shell exec ('if ls "' + dest + '"/target/bundles/*.rglib >/dev/null 2>&1; then cp -f "' + dest + '"/target/bundles/*.rglib .stable/deps/ 2>/dev/null || true; elif ls "' + dest + '"/target/*.rglib >/dev/null 2>&1; then cp -f "' + dest + '"/target/*.rglib .stable/deps/ 2>/dev/null || true; elif ls "' + dest + '"/*.rglib >/dev/null 2>&1; then cp -f "' + dest + '"/*.rglib .stable/deps/ 2>/dev/null || true; else cp -f "' + dest + '"/src/main/ridgun/lib/*.rg src/main/ridgun/lib/ 2>/dev/null || cp -f "' + dest + '"/*.rg src/main/ridgun/lib/ 2>/dev/null || true; fi')
+        shell exec ('rm -rf "' + dest + '"/.stable/deps 2>/dev/null || true; if ls "' + dest + '"/target/bundles/*.rglib >/dev/null 2>&1; then for f in "' + dest + '"/target/bundles/*.rglib; do bn=$(basename "$f" .rglib); if [ "$bn" = "' + bname + '" ] || ( [ ! -e ".stable/deps/$(basename "$f")" ] && [ ! -d ".stable/deps/$bn" ] ); then cp -f "$f" .stable/deps/ 2>/dev/null || true; fi; done; elif ls "' + dest + '"/target/*.rglib >/dev/null 2>&1; then for f in "' + dest + '"/target/*.rglib; do bn=$(basename "$f" .rglib); if [ "$bn" = "' + bname + '" ] || ( [ ! -e ".stable/deps/$(basename "$f")" ] && [ ! -d ".stable/deps/$bn" ] ); then cp -f "$f" .stable/deps/ 2>/dev/null || true; fi; done; elif ls "' + dest + '"/*.rglib >/dev/null 2>&1; then for f in "' + dest + '"/*.rglib; do bn=$(basename "$f" .rglib); if [ "$bn" = "' + bname + '" ] || ( [ ! -e ".stable/deps/$(basename "$f")" ] && [ ! -d ".stable/deps/$bn" ] ); then cp -f "$f" .stable/deps/ 2>/dev/null || true; fi; done; else for f in "' + dest + '"/src/main/ridgun/lib/*.rg "' + dest + '"/*.rg; do [ -f "$f" ] || continue; bn=$(basename "$f" .rg); if [ "$bn" = "' + bname + '" ] || ( [ ! -e "src/main/ridgun/lib/$(basename "$f")" ] && [ ! -d ".stable/deps/$bn" ] ); then cp -f "$f" src/main/ridgun/lib/ 2>/dev/null || true; fi; done; fi')
         log step "dep" "{dep} -> {dest}"
         st
 
@@ -1179,7 +1179,7 @@ op :: dispatch command StableCommand on StableConfig => Bool StableConfig Int
       dispatch command CmdExit on cfg = (False, cfg, 0)
       dispatch command CmdHelp on cfg = (True, cfg, run task help)
       dispatch command CmdVersion on cfg =
-        echo "stable 0.9.28 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
+        echo "stable 0.9.29 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
         (True, cfg, 0)
       dispatch command CmdInfo on cfg = (True, cfg, run task info on cfg)
       dispatch command CmdReload on _ =
@@ -1261,12 +1261,12 @@ op :: report reload config StableConfig name String => Bool StableConfig Int
 
 op :: start interactive shell for StableConfig => ()
       start interactive shell for (ProjectConfig "" ver main_ep sdir tdir out_dir) =
-        log info "Welcome to stable 0.9.28 (Ridgun Build Tool — 100% Ridgun)"
+        log info "Welcome to stable 0.9.29 (Ridgun Build Tool — 100% Ridgun)"
         log info "No build.rg found in current directory. Run 'init' or 'new <name>' to create a project."
         log info "Commands: 'new', 'init', 'help', 'exit'"
         repl loop for (ProjectConfig "" ver main_ep sdir tdir out_dir)
       start interactive shell for (ProjectConfig name_str ver main_ep sdir tdir out_dir) =
-        log info "Welcome to stable 0.9.28 (Ridgun Build Tool — 100% Ridgun)"
+        log info "Welcome to stable 0.9.29 (Ridgun Build Tool — 100% Ridgun)"
         log info "Loading project definition from build.rg ..."
         log info "Set current project to '{name_str}' v{ver} (main: {main_ep})"
         log info "Commands: 'built' (or 'build'), 'run', 'test', 'check', 'compile', 'clean', 'info', 'exit'"

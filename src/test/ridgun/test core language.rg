@@ -427,6 +427,39 @@ fn :: pipe agent worker Int Int => Int Int
         next = st + msg
         (next, next)
 
+type TagRec = tag_label: String, tag_val: Int
+
+fn :: tag rec with String TagRec => TagRec
+      tag rec with pfx r = r with tag_label = pfx + ":" + (tag_label r)
+
+fn :: apply tag fn (TagRec => TagRec) TagRec => TagRec
+      apply tag fn f r = f r
+
+fn :: make typed channel => Channel
+      make typed channel = new channel
+
+fn :: roundtrip typed channel Channel Int => Int
+      roundtrip typed channel ch v =
+        send v through ch
+        receive from ch
+
+fn :: short circuit boom String => Bool
+      short circuit boom path =
+        write file path "EVALUATED"
+        True
+
+fn :: shadow global fn Int => Int
+      shadow global fn double_val = double_val + 1
+
+fn :: status tag Int => String
+      status tag code = "code:{code}"
+
+op :: status tag Int on String => String
+      status tag code on target = "{target}:{code}"
+
+fn :: lstat mode (Bool String Int Int Int String String Int String) => Int
+      lstat mode (_, _, m, _, _, _, _, _, _) = m
+
 fn :: main => ()
       main =
         echo "=== Core Language, ADTs, Mixfix, Variadics & Higher-Order Ops ==="
@@ -604,4 +637,53 @@ fn :: main => ()
         stop ag_pipe
         assert equals ag_total 140
         discard int side effect 21
+        echo "=== v0.9.29 Regression Hardening & Compilation Speed Verification ==="
+        -- TL-001: partial application stored in local variable passed to HOF
+        tag_fn = tag rec with "v1"
+        r_tagged = apply tag fn tag_fn (TagRec "item" 77)
+        assert equals (tag_label r_tagged) "v1:item"
+        assert equals (tag_val r_tagged) 77
+        -- TL-002: lexicographical string relational operators (<, >, <=, >=)
+        assert equals ("alpha" < "beta") True
+        assert equals ("beta" < "alpha") False
+        assert equals ("zebra" > "apple") True
+        assert equals ("same" <= "same") True
+        assert equals ("same" >= "same") True
+        -- TL-003: Channel type annotation unifying with new_channel
+        ch_typed = make typed channel
+        assert equals (roundtrip typed channel ch_typed 909) 909
+        -- RG-100: ||map and ||filter with closure capturing local variable
+        par_captured = [1, 2, 3, 4] ||map (x => x + offset)
+        assert equals par_captured [11, 12, 13, 14]
+        par_filt_captured = [1, 2, 3, 4, 5] ||filter (x => (x + bonus) >= 6)
+        assert equals par_filt_captured [3, 4, 5]
+        -- RG-103: short-circuit evaluation for `and` and `or`
+        sc_marker = "/tmp/__rg_test_short_circuit_marker"
+        shell exec ("rm -f " + sc_marker) -> ()
+        sc_and = False and (short circuit boom sc_marker)
+        sc_or = True or (short circuit boom sc_marker)
+        assert equals sc_and False
+        assert equals sc_or True
+        assert equals (shell exec ("test ! -e " + sc_marker)) 0
+        -- WR-002: parameter shadowing a global function
+        assert equals (shadow global fn 41) 42
+        -- WR-003: 1-arg function coexisting with mixfix operator sharing prefix
+        assert equals (status tag 200) "code:200"
+        assert equals (status tag 200 on "api") "api:200"
+        -- WR-005: write_file creates 0644 (non-executable) and preserves 0600 on overwrite
+        mode_file = "/tmp/__rg_test_write_mode"
+        shell exec ("rm -f " + mode_file) -> ()
+        write file mode_file "hello"
+        assert equals (shell exec ("test ! -x " + mode_file)) 0
+        sys chmod mode_file 384 -> ()
+        write file mode_file "updated"
+        mbits = lstat mode (file lstat mode_file)
+        assert equals (mbits % 512) 384
+        shell exec ("rm -f " + mode_file) -> ()
+        -- WR-004: automated compilation speed regression test (< 5000 ms for check)
+        t_comp_start = sys time ms
+        comp_rc = shell exec "./bin/ridgunc check \"src/test/ridgun/test core language.rg\" > /dev/null"
+        t_comp_elapsed = (sys time ms) - t_comp_start
+        assert equals comp_rc 0
+        assert equals (t_comp_elapsed < 5000) True
         echo "=== All core language tests passed ==="

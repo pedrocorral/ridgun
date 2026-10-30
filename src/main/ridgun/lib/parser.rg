@@ -1774,7 +1774,7 @@ fn :: parse block safe dispatch [RToken]          => [RStmt] [RToken]
         e_res = parse let rhs rest
         finish mut stmt name e_res
       parse block safe dispatch ((TokIdent name):rest)
-        | is top decl start ([TokIdent name] :: rest) = ([], [TokIdent name] :: rest)
+        | (name == "module" or name == "expand") and (is top decl start ([TokIdent name] :: rest)) = ([], [TokIdent name] :: rest)
         | otherwise = parse block line ident name rest
       parse block safe dispatch (TokFn:rest)
         | is top decl start ([TokFn] :: rest) = ([], [TokFn] :: rest)
@@ -2295,12 +2295,20 @@ fn :: lookup var arity [RArityEntry] String => Int
 fn :: lookup arity [RArityEntry] String => Int
       lookup arity []            _      =  -1
       lookup arity ((ArityEntry k v):rest) target
+        | k == target and v == (0 - 2) = 0 - 2
         | v >= 0 and k == target = v
         | otherwise = lookup arity rest target
+
+fn :: has arity prefix shadowed [RArityEntry] String Int => Bool
+      has arity prefix shadowed [] _ _ = False
+      has arity prefix shadowed ((ArityEntry k v):rest) pref plen
+        | v >= 0 and (str starts with k pref) and (str len k) > plen and (str char at k plen) == 95 = True
+        | otherwise = has arity prefix shadowed rest pref plen
 
 fn :: has arity prefix loop [RArityEntry] String Int => Bool
       has arity prefix loop [] _ _ = False
       has arity prefix loop ((ArityEntry k v):rest) pref plen
+        | k == pref and v == (0 - 2) = has arity prefix shadowed rest pref plen
         | v >= 0 and (str starts with k pref) and ((str len k) == plen or (str char at k plen) == 95) = True
         | otherwise = has arity prefix loop rest pref plen
 
@@ -2311,6 +2319,7 @@ fn :: has arity prefix [RArityEntry] String => Bool
 fn :: filter arity prefix loop [RArityEntry] String Int => [RArityEntry]
       filter arity prefix loop [] _ _ = []
       filter arity prefix loop ((ArityEntry k v):rest) pref plen
+        | k == pref and v == (0 - 2) = [ArityEntry k v] :: (filter arity prefix loop rest pref plen)
         | v >= 0 and (str starts with k pref) and ((str len k) == plen or (str char at k plen) == 95) = [ArityEntry k v] :: (filter arity prefix loop rest pref plen)
         | otherwise = filter arity prefix loop rest pref plen
 
@@ -2333,13 +2342,10 @@ fn :: builtin arity entries => [RArityEntry]
       builtin arity entries =
         [ArityEntry "assert_equals" 2, ArityEntry "assert_true" 1, ArityEntry "send_to" 2, ArityEntry "ask_to" 2, ArityEntry "send_through" 2, ArityEntry "receive_from" 1, ArityEntry "try_receive_from" 1, ArityEntry "receive_from_timeout" 2, ArityEntry "stop" 1, ArityEntry "agent_alive" 1, ArityEntry "new_mailbox" 0, ArityEntry "new_channel" 0, ArityEntry "new_bounded_channel" 1, ArityEntry "chan_send" 2, ArityEntry "chan_recv" 1, ArityEntry "chan_try_recv" 1, ArityEntry "str_len" 1, ArityEntry "str_char_at" 2, ArityEntry "str_slice" 3, ArityEntry "str_contains" 2, ArityEntry "str_starts_with" 2, ArityEntry "str_concat" 2, ArityEntry "int_to_str" 1, ArityEntry "str_to_int" 1, ArityEntry "char_from_code" 1, ArityEntry "trim_str" 1, ArityEntry "read_file" 1, ArityEntry "load_rg_source" 1, ArityEntry "read_bytes" 1, ArityEntry "write_bytes" 2, ArityEntry "write_file" 2, ArityEntry "shell_exec" 1, ArityEntry "list_str_len" 1, ArityEntry "list_dir" 1, ArityEntry "file_lstat" 1, ArityEntry "sha256_file" 1, ArityEntry "sha256_str" 1, ArityEntry "sha256_raw" 1, ArityEntry "sha256_bytes" 1, ArityEntry "sys_os" 0, ArityEntry "sys_arch" 0, ArityEntry "sys_mkdir" 2, ArityEntry "sys_chmod" 2, ArityEntry "sys_exec" 3, ArityEntry "sys_chdir" 1, ArityEntry "sys_getcwd" 0, ArityEntry "sys_getenv" 1, ArityEntry "sys_setenv" 2, ArityEntry "sys_exit" 1, ArityEntry "sys_getuid" 0, ArityEntry "sys_getgid" 0, ArityEntry "sys_getpid" 0, ArityEntry "sys_time_ms" 0, ArityEntry "sys_deadline_ms" 0, ArityEntry "sys_remaining_ms" 0, ArityEntry "sys_sleep_ms" 1, ArityEntry "sys_open_mode" 2, ArityEntry "sys_open" 3, ArityEntry "sys_close" 1, ArityEntry "sys_read_fd" 2, ArityEntry "sys_write_fd" 2, ArityEntry "sys_poll" 3, ArityEntry "sys_terminate" 2, ArityEntry "sys_kill" 2, ArityEntry "sys_call" 7, ArityEntry "sys_pipe" 0, ArityEntry "sys_waitpid" 2, ArityEntry "sys_username" 1, ArityEntry "sys_user_groups" 1, ArityEntry "sys_lookup_uid_gid" 1, ArityEntry "sys_setresgid" 1, ArityEntry "sys_setgroups" 1, ArityEntry "sys_setresuid" 1, ArityEntry "sys_execve" 3, ArityEntry "sys_read_pass" 1, ArityEntry "cli_args" 0, ArityEntry "cmm_live_blocks" 0, ArityEntry "cmm_cond_spared" 0, ArityEntry "cmm_cond_freed" 0, ArityEntry "cmm_same_ptr" 2, ArityEntry "seq_map" 2, ArityEntry "par_map" 2, ArityEntry "seq_filter" 2, ArityEntry "par_filter" 2]
 
-fn :: collect fn arities acc [RFnDef] [RArityEntry] => [RArityEntry]
-      collect fn arities acc []       acc           =  acc :: (builtin arity entries)
-      collect fn arities acc ((FnDef name params _ _):fs) acc =
-        collect fn arities acc fs (acc :: [ArityEntry name (fn def arity params)])
-
 fn :: collect fn arities [RFnDef] => [RArityEntry]
-      collect fn arities fns      =  collect fn arities acc fns []
+      collect fn arities [] = builtin arity entries
+      collect fn arities ((FnDef name params _ _):fs) =
+        [ArityEntry name (fn def arity params)] :: (collect fn arities fs)
 
 fn :: field list count [RField] => Int
       field list count []       =  0
@@ -2601,11 +2607,19 @@ fn :: maybe collapse args [RExpr] Int [RArityEntry] => [RExpr]
         | expected_ar >= 0 and (expr list count args) <= expected_ar = args
         | otherwise = collapse fn ref args args arities
 
+fn :: has longer arity in rest [RArityEntry] String [RExpr] Int => Bool
+      has longer arity in rest _ _ [] _ = False
+      has longer arity in rest arities fn_name ((EVar w):rest) idx
+        | (not (is upper ident w)) and (has arity prefix arities (fn_name + "_" + w)) and (can complete op arities (fn_name + "_" + w) rest) and (idx == 0 or (expr list count rest) > 0 or (lookup arity arities (fn_name + "_" + w)) == idx) = True
+        | otherwise = has longer arity in rest arities fn_name rest (idx + 1)
+      has longer arity in rest arities fn_name (_:rest) idx =
+        has longer arity in rest arities fn_name rest (idx + 1)
+
 fn :: has longer arity prefix [RArityEntry] String [RExpr] => Bool
-      has longer arity prefix arities fn_name ((EVar w):rest)
-        | (is upper ident fn_name) or (is upper ident w) = False
-        | otherwise = (has arity prefix arities (fn_name + "_" + w)) and (can complete op arities (fn_name + "_" + w) rest)
-      has longer arity prefix _ _ _ = False
+      has longer arity prefix arities fn_name args
+        | is upper ident fn_name = False
+        | not (has arity prefix shadowed arities fn_name (str len fn_name)) = False
+        | otherwise = has longer arity in rest arities fn_name args 0
 
 fn :: split send to args [RExpr] [RExpr] => Bool [RExpr] RExpr
       split send to args ((EVar "to"):target:[]) acc = (True, acc, target)
@@ -2958,7 +2972,7 @@ fn :: norm call mixfix fallback String [RExpr] [RArityEntry] String Int [RExpr] 
 fn :: finish postfix or partial String [RExpr] [RExpr] String Int [RExpr] [RArityEntry] => RExpr
       finish postfix or partial _ _ ((ECall f a):[]) _ _ _ _ = ECall f a
       finish postfix or partial _ _ _ mangled ar c_ops arities
-        | ar > 1 and (expr list count c_ops) > 0 and (expr list count c_ops) < ar =
+        | ar > 0 and (expr list count c_ops) > 0 =
           ECall mangled (norm expr list c_ops arities)
       finish postfix or partial orig_name normed_args _ _ _ _ _ =
         ECall orig_name normed_args
@@ -3083,27 +3097,195 @@ fn :: norm case body RExpr [RArityEntry] => RExpr
         EWhere (norm expr body ar1) (norm where list binds ar1)
       norm case body body arities = norm expr body arities
 
-fn :: filter arities for wset [RArityEntry] [String] => [RArityEntry]
-      filter arities for wset [] _ = []
-      filter arities for wset ((ArityEntry k v):rest) wset
-        | ident words all in (ident base name k) wset = [ArityEntry k v] :: (filter arities for wset rest wset)
-        | otherwise = filter arities for wset rest wset
+type RStrSet = StrSetEmpty | StrSetNode String RStrSet RStrSet
+type RStrMap = StrMapEmpty | StrMapNode String String RStrMap RStrMap
+type RStrIntMap = StrIntEmpty | StrIntNode String Int RStrIntMap RStrIntMap
+type RPrepArity = PrepArity RArityEntry [String]
+
+fn :: rev str list [String] [String] => [String]
+      rev str list [] acc = acc
+      rev str list (x:xs) acc = rev str list xs ([x] :: acc)
+
+fn :: cmp str chars String String Int Int => Int
+      cmp str chars a b i len
+        | i >= len = 0
+        | (str char at a i) < (str char at b i) = -1
+        | (str char at a i) > (str char at b i) = 1
+        | otherwise = cmp str chars a b (i + 1) len
+
+fn :: str bst prio String => Int
+      str bst prio "" = 0
+      str bst prio s =
+        n = str len s
+        c0 = str char at s 0
+        c1 = str char at s (n - 1)
+        c2 = str char at s ((n - 1) / 2)
+        c3 = str char at s ((n - 1) / 3)
+        ((c1 * 40503) + (c0 * 25163) + (c2 * 15401) + (c3 * 9521) + (n * 5881)) % 65521
+
+fn :: cmp str bst prio String String Int Int => Int
+      cmp str bst prio _ _ pa pb
+        | pa < pb = -1
+        | pa > pb = 1
+      cmp str bst prio a b _ _
+        | (str len a) < (str len b) = -1
+        | (str len a) > (str len b) = 1
+        | otherwise = cmp str chars a b 0 (str len a)
+
+fn :: cmp str bst String String => Int
+      cmp str bst a b
+        | a == b = 0
+        | otherwise = cmp str bst prio a b (str bst prio a) (str bst prio b)
+
+fn :: str set has RStrSet String => Bool
+      str set has StrSetEmpty _ = False
+      str set has (StrSetNode k l r) s
+        | s == k = True
+        | (cmp str bst s k) < 0 = str set has l s
+        | otherwise = str set has r s
+
+fn :: str set add RStrSet String => RStrSet
+      str set add StrSetEmpty s = StrSetNode s StrSetEmpty StrSetEmpty
+      str set add (StrSetNode k l r) s
+        | s == k = StrSetNode k l r
+        | (cmp str bst s k) < 0 = StrSetNode k (str set add l s) r
+        | otherwise = StrSetNode k l (str set add r s)
+
+fn :: str list to set [String] RStrSet => RStrSet
+      str list to set [] acc = acc
+      str list to set (x:xs) acc = str list to set xs (str set add acc x)
+
+fn :: str int map lookup RStrIntMap String => Int
+      str int map lookup StrIntEmpty _ = 0 - 1
+      str int map lookup (StrIntNode k v l r) s
+        | s == k = v
+        | (cmp str bst s k) < 0 = str int map lookup l s
+        | otherwise = str int map lookup r s
+
+fn :: str int map insert RStrIntMap String Int => RStrIntMap
+      str int map insert StrIntEmpty k v = StrIntNode k v StrIntEmpty StrIntEmpty
+      str int map insert (StrIntNode nk nv l r) k v
+        | k == nk = StrIntNode nk v l r
+        | (cmp str bst k nk) < 0 = StrIntNode nk nv (str int map insert l k v) r
+        | otherwise = StrIntNode nk nv l (str int map insert r k v)
+
+fn :: str map get RStrMap String => String
+      str map get StrMapEmpty _ = ""
+      str map get (StrMapNode k v l r) s
+        | s == k = v
+        | (cmp str bst s k) < 0 = str map get l s
+        | otherwise = str map get r s
+
+fn :: str map put RStrMap String String => RStrMap
+      str map put StrMapEmpty k v = StrMapNode k v StrMapEmpty StrMapEmpty
+      str map put (StrMapNode nk nv l r) k v
+        | k == nk = StrMapNode nk nv l r
+        | (cmp str bst k nk) < 0 = StrMapNode nk nv (str map put l k v) r
+        | otherwise = StrMapNode nk nv l (str map put r k v)
+
+fn :: split ident words list String Int Int Int [String] => [String]
+      split ident words list s start pos len acc
+        | pos >= len and start >= len = acc
+        | pos >= len = [str slice s start len] :: acc
+        | (str char at s pos) == 95 and pos > start =
+          split ident words list s (pos + 1) (pos + 1) len ([str slice s start pos] :: acc)
+        | (str char at s pos) == 95 =
+          split ident words list s (pos + 1) (pos + 1) len acc
+        | otherwise =
+          split ident words list s start (pos + 1) len acc
+
+fn :: ident words list String => [String]
+      ident words list "" = []
+      ident words list s = split ident words list s 0 0 (str len s) []
+
+fn :: words all in set [String] RStrSet => Bool
+      words all in set [] _ = False
+      words all in set (w:[]) wset = str set has wset w
+      words all in set (w:ws) wset
+        | str set has wset w = words all in set ws wset
+        | otherwise = False
+
+type RPrepArityMap = PrepArityEmpty | PrepArityNode String [RPrepArity] RPrepArityMap RPrepArityMap
+
+fn :: first ident word loop String Int Int Int => String
+      first ident word loop s start pos len
+        | pos >= len and start >= len = s
+        | pos >= len = str slice s start len
+        | (str char at s pos) == 95 and pos > start = str slice s start pos
+        | (str char at s pos) == 95 = first ident word loop s (pos + 1) (pos + 1) len
+        | otherwise = first ident word loop s start (pos + 1) len
+
+fn :: first ident word String => String
+      first ident word "" = ""
+      first ident word s = first ident word loop s 0 0 (str len s)
+
+fn :: prep arity map add RPrepArityMap String RPrepArity => RPrepArityMap
+      prep arity map add PrepArityEmpty k pa =
+        PrepArityNode k [pa] PrepArityEmpty PrepArityEmpty
+      prep arity map add (PrepArityNode nk npas l r) k pa
+        | (cmp str bst k nk) == 0 = PrepArityNode nk ([pa] :: npas) l r
+        | (cmp str bst k nk) < 0 = PrepArityNode nk npas (prep arity map add l k pa) r
+        | otherwise = PrepArityNode nk npas l (prep arity map add r k pa)
+
+fn :: prep arity map get RPrepArityMap String => [RPrepArity]
+      prep arity map get PrepArityEmpty _ = []
+      prep arity map get (PrepArityNode nk npas l r) k
+        | (cmp str bst k nk) == 0 = npas
+        | (cmp str bst k nk) < 0 = prep arity map get l k
+        | otherwise = prep arity map get r k
+
+fn :: build prep arity map [RArityEntry] RPrepArityMap => RPrepArityMap
+      build prep arity map [] m = m
+      build prep arity map ((ArityEntry k v):rest) m =
+        b = ident base name k
+        fw = first ident word b
+        pa = PrepArity (ArityEntry k v) (ident words list b)
+        build prep arity map rest (prep arity map add m fw pa)
+
+fn :: filter zero arities [RArityEntry] => [RArityEntry]
+      filter zero arities [] = []
+      filter zero arities ((ArityEntry k 0):rest) = [ArityEntry k 0] :: (filter zero arities rest)
+      filter zero arities (_:rest) = filter zero arities rest
+
+fn :: filter nonzero arities [RArityEntry] => [RArityEntry]
+      filter nonzero arities [] = []
+      filter nonzero arities ((ArityEntry _ 0):rest) = filter nonzero arities rest
+      filter nonzero arities (e:rest) = [e] :: (filter nonzero arities rest)
+
+fn :: filter bucket for wset [RPrepArity] RStrSet [RArityEntry] => [RArityEntry]
+      filter bucket for wset [] _ acc = acc
+      filter bucket for wset ((PrepArity ae words):rest) wset acc
+        | words all in set words wset = filter bucket for wset rest wset ([ae] :: acc)
+        | otherwise = filter bucket for wset rest wset acc
+
+fn :: collect arities from wset RStrSet RStrSet RPrepArityMap [RArityEntry] => [RArityEntry]
+      collect arities from wset StrSetEmpty _ _ acc = acc
+      collect arities from wset (StrSetNode kw l r) full_wset pmap acc =
+        acc1 = collect arities from wset l full_wset pmap acc
+        acc2 = filter bucket for wset (prep arity map get pmap kw) full_wset acc1
+        collect arities from wset r full_wset pmap acc2
+
+fn :: arities for wset RStrSet RPrepArityMap => [RArityEntry]
+      arities for wset wset pmap =
+        raw = collect arities from wset wset wset pmap []
+        (filter zero arities raw) :: (filter nonzero arities raw)
 
 fn :: norm case list [RFnCase] [RArityEntry] => [RFnCase]
       norm case list []        _             =  []
-      norm case list ((FnCase pats guards body):cs) arities =
-        wset = collect expr ident words body (collect guard list ident words guards [])
-        filtered_arities = filter arities for wset arities wset
-        case_arities = bind pat list local arities pats filtered_arities
-        [FnCase pats (norm guard list guards case_arities) (norm case body body case_arities)] :: (norm case list cs arities)
+      norm case list ((FnCase pats guards body):cs) fn_arities =
+        case_arities = bind pat list local arities pats fn_arities
+        [FnCase pats (norm guard list guards case_arities) (norm case body body case_arities)] :: (norm case list cs fn_arities)
 
-fn :: norm fndef list acc [RFnDef] [RArityEntry] [RFnDef] => [RFnDef]
-      norm fndef list acc []       _             acc      =  acc
-      norm fndef list acc ((FnDef name params ret_ty cases):fs) arities acc =
-        norm fndef list acc fs arities (acc :: [FnDef name params ret_ty (norm case list cases arities)])
+fn :: norm fndef list acc [RFnDef] RPrepArityMap [RFnDef] => [RFnDef]
+      norm fndef list acc [] _ rev_acc = rev fndef list rev_acc []
+      norm fndef list acc ((FnDef name params ret_ty cases):fs) pmap rev_acc =
+        wset = collect cases words set cases StrSetEmpty
+        fn_arities = arities for wset wset pmap
+        norm fndef list acc fs pmap ([FnDef name params ret_ty (norm case list cases fn_arities)] :: rev_acc)
 
-fn :: norm fndef list [RFnDef] [RArityEntry] => [RFnDef]
-      norm fndef list fns      arities       =  norm fndef list acc fns arities []
+fn :: norm fndef list [RFnDef] RPrepArityMap => [RFnDef]
+      norm fndef list fns pmap =
+        norm fndef list acc fns pmap []
 
 fn :: extract lambda params [RExpr] => [String] RExpr
       extract lambda params (body_e:[]) = ([], body_e)
@@ -3495,14 +3677,18 @@ fn :: lift case step2 [RPattern] [RGuard] (RExpr, Int, [RFnDef]) [RFnCase] => [R
 fn :: finish lift case RFnCase ([RFnCase], Int, [RFnDef]) => [RFnCase] Int [RFnDef]
       finish lift case fc1 (cs1, c3, l3) = ([fc1] :: cs1, c3, l3)
 
+fn :: rev fndef list [RFnDef] [RFnDef] => [RFnDef]
+      rev fndef list [] acc = acc
+      rev fndef list (f:fs) acc = rev fndef list fs ([f] :: acc)
+
 fn :: lift fndef list lambdas [RFnDef] Int [RFnDef] [RFnDef] => [RFnDef]
-      lift fndef list lambdas [] _ lifted acc = acc :: lifted
-      lift fndef list lambdas ((FnDef name params ret_ty cases):fs) cnt lifted acc =
-        lift fndef step name params ret_ty (lift case list lambdas cases cnt lifted) fs acc
+      lift fndef list lambdas [] _ lifted rev_acc = (rev fndef list rev_acc []) :: lifted
+      lift fndef list lambdas ((FnDef name params ret_ty cases):fs) cnt lifted rev_acc =
+        lift fndef step name params ret_ty (lift case list lambdas cases cnt lifted) fs rev_acc
 
 fn :: lift fndef step String [String] String ([RFnCase], Int, [RFnDef]) [RFnDef] [RFnDef] => [RFnDef]
-      lift fndef step name params ret_ty (cs1, c1, l1) fs acc =
-        lift fndef list lambdas fs c1 l1 (acc :: [FnDef name params ret_ty cs1])
+      lift fndef step name params ret_ty (cs1, c1, l1) fs rev_acc =
+        lift fndef list lambdas fs c1 l1 ([FnDef name params ret_ty cs1] :: rev_acc)
 
 fn :: strip ty brackets String => String
       strip ty brackets s
@@ -3583,21 +3769,11 @@ fn :: first case pat arity [RFnCase] => Int
       first case pat arity [] = 0
 
 fn :: collapse fndef poly params [RFnDef] [RArityEntry] [RFnDef] => [RFnDef]
-      collapse fndef poly params [] _ acc = acc
-      collapse fndef poly params ((FnDef name params ret_ty cases):fs) poly_arities acc =
+      collapse fndef poly params [] _ rev_acc = rev fndef list rev_acc []
+      collapse fndef poly params ((FnDef name params ret_ty cases):fs) poly_arities rev_acc =
         pat_ar = first case pat arity cases
         params1 = collapse poly param list params pat_ar poly_arities
-        collapse fndef poly params fs poly_arities (acc :: [FnDef name params1 ret_ty cases])
-
-fn :: filter zero arities [RArityEntry] => [RArityEntry]
-      filter zero arities [] = []
-      filter zero arities ((ArityEntry k 0):rest) = [ArityEntry k 0] :: (filter zero arities rest)
-      filter zero arities (_:rest) = filter zero arities rest
-
-fn :: filter nonzero arities [RArityEntry] => [RArityEntry]
-      filter nonzero arities [] = []
-      filter nonzero arities ((ArityEntry _ 0):rest) = filter nonzero arities rest
-      filter nonzero arities (e:rest) = [e] :: (filter nonzero arities rest)
+        collapse fndef poly params fs poly_arities ([FnDef name params1 ret_ty cases] :: rev_acc)
 
 fn :: normalize program RProgram          => RProgram
       normalize program (Program fns tys) =
@@ -3606,7 +3782,8 @@ fn :: normalize program RProgram          => RProgram
         fns1 = lift fndef list lambdas fns0 0 [] []
         raw_arities = (collect fn arities fns1) :: (collect type arities tys)
         arities = (filter zero arities raw_arities) :: (filter nonzero arities raw_arities)
-        Program (norm fndef list fns1 arities) tys
+        pmap = build prep arity map arities PrepArityEmpty
+        Program (norm fndef list fns1 pmap) tys
 
 -- ── Library & Module Import Resolution (`.rglib` / `.rg`) ────
 
@@ -3687,13 +3864,39 @@ fn :: dep subdir paths String [String] String => [String]
         | otherwise =
           [deps_base + "/" + d + "/target/bundles/" + spec + ".rglib", deps_base + "/" + d + "/target/" + spec + ".rglib", deps_base + "/" + d + "/" + spec + ".rglib", deps_base + "/" + d + "/src/main/ridgun/lib/" + spec + ".rg", deps_base + "/" + d + "/src/main/ridgun/" + spec + ".rg", deps_base + "/" + d + "/src/main/ridgun/" + spec + "/lib.rg"] :: (dep subdir paths deps_base ds spec)
 
+fn :: strip rg suffix String => String
+      strip rg suffix s
+        | (str len s) > 6 and (str slice s ((str len s) - 6) (str len s)) == ".rglib" = str slice s 0 ((str len s) - 6)
+        | (str len s) > 3 and (str slice s ((str len s) - 3) (str len s)) == ".rg" = str slice s 0 ((str len s) - 3)
+        | otherwise = s
+
+fn :: first slash idx String Int Int => Int
+      first slash idx s pos len
+        | pos >= len = 0 - 1
+        | (str char at s pos) == 47 = pos
+        | otherwise = first slash idx s (pos + 1) len
+
+fn :: spec root dir String => String
+      spec root dir spec =
+        base = strip rg suffix spec
+        sl = first slash idx base 0 (str len base)
+        ident mod prefix slice base sl
+
+fn :: spec root dir or strip String String => String
+      spec root dir or strip ""     spec   =  strip rg suffix spec
+      spec root dir or strip r      _      =  r
+
+fn :: spec root dir fallback String => String
+      spec root dir fallback spec =
+        spec root dir or strip (spec root dir spec) spec
+
 fn :: all deps base paths [String] String => [String]
       all deps base paths [] _ = []
       all deps base paths (base:bs) spec
         | str contains spec ".rglib" =
-          [base + "/" + spec] :: (dep subdir paths base (list dir base) spec) :: (all deps base paths bs spec)
+          [base + "/" + spec] :: (dep subdir paths base [spec root dir fallback spec] spec) :: (dep subdir paths base (list dir base) spec) :: (all deps base paths bs spec)
         | otherwise =
-          [base + "/" + spec + ".rglib", base + "/" + spec + ".rg"] :: (dep subdir paths base (list dir base) spec) :: (all deps base paths bs spec)
+          [base + "/" + spec + ".rglib", base + "/" + spec + ".rg"] :: (dep subdir paths base [spec root dir fallback spec] spec) :: (dep subdir paths base (list dir base) spec) :: (all deps base paths bs spec)
 
 fn :: stdlib deps bases String => [String]
       stdlib deps bases pdir =
@@ -4353,12 +4556,27 @@ fn :: is special top fn String => Bool
       is special top fn "__unresolved_import__" = True
       is special top fn _ = False
 
+fn :: collect collided fns fast [RScopedFn] RStrMap RStrSet [String] => [String]
+      collect collided fns fast [] _ _ acc = acc
+      collect collided fns fast ((ScopedFn m _ (FnDef fname _ _ _)):fs) seen_map col_set acc
+        | is special top fn fname = collect collided fns fast fs seen_map col_set acc
+        | otherwise =
+          prev = str map get seen_map fname
+          mk = ":" + m
+          collect collided fns step fs fname mk prev seen_map col_set acc
+
+fn :: collect collided fns step [RScopedFn] String String String RStrMap RStrSet [String] => [String]
+      collect collided fns step fs fname mk "" seen_map col_set acc =
+        collect collided fns fast fs (str map put seen_map fname mk) col_set acc
+      collect collided fns step fs fname mk prev seen_map col_set acc
+        | prev != mk and (not (str set has col_set fname)) =
+          collect collided fns fast fs seen_map (str set add col_set fname) ([fname] :: acc)
+        | otherwise =
+          collect collided fns fast fs seen_map col_set acc
+
 fn :: collect collided fns [RScopedFn] [RScopedFn] [String] => [String]
-      collect collided fns [] _ acc = acc
-      collect collided fns ((ScopedFn m _ (FnDef fname _ _ _)):fs) _ acc
-        | (not (is special top fn fname)) and (not (str in seen list fname acc)) and (other mod has fn fs m fname) =
-          collect collided fns fs fs (add unique seen fname acc)
-        | otherwise = collect collided fns fs fs acc
+      collect collided fns fs _ acc =
+        collect collided fns fast fs StrMapEmpty StrSetEmpty acc
 
 fn :: variants have ctor [RVariant] String => Bool
       variants have ctor [] _ = False
@@ -4511,7 +4729,7 @@ fn :: is builtin or poly type String => Bool
 
 fn :: resolve one type ident String String [RModAlias] [RModAlias] => String
       resolve one type ident tok cur_mod aliases type_map
-        | not (is upper ident tok) = tok
+        | (not (is upper ident tok)) or (is builtin or poly type tok) = tok
         | otherwise =
           t1 = expand mod alias tok cur_mod aliases
           resolve one type step t1 cur_mod aliases type_map
@@ -4558,9 +4776,11 @@ fn :: is builtin ctor ident String => Bool
         | otherwise = False
 
 fn :: resolve ctor ident String String [RModAlias] [RModAlias] => String
-      resolve ctor ident c cur_mod aliases ctor_map =
-        c1 = expand mod alias c cur_mod aliases
-        resolve ctor ident step c1 cur_mod aliases ctor_map
+      resolve ctor ident c cur_mod aliases ctor_map
+        | is builtin ctor ident c = c
+        | otherwise =
+          c1 = expand mod alias c cur_mod aliases
+          resolve ctor ident step c1 cur_mod aliases ctor_map
 
 fn :: resolve ctor ident step String String [RModAlias] [RModAlias] => String
       resolve ctor ident step c1 cur_mod aliases ctor_map
@@ -4617,44 +4837,297 @@ fn :: collect where bound vars [RWhereBind] [String] => [String]
         | v != "" = collect where bound vars wbs ([v] :: acc)
         | otherwise = collect where bound vars wbs acc
 
-fn :: lookup mod fn or field String String [RModAlias] [RModAlias] => String
-      lookup mod fn or field m base fn_map field_map =
+type RModCtx = ModCtx [String] [String] [String] RStrSet RStrMap RStrMap RStrMap RStrMap RStrMap RStrMap RStrMap RStrMap RStrMap
+type RModCtxEntry = ModCtxEntry String RModCtx
+
+fn :: aliases to str map [RModAlias] RStrMap => RStrMap
+      aliases to str map [] acc = acc
+      aliases to str map ((ModAlias k v):rest) acc =
+        aliases to str map rest (str map put acc k v)
+
+fn :: add single mod step String String String RStrMap => RStrMap
+      add single mod step m base "" acc = str map put acc base m
+      add single mod step m base prev acc
+        | prev == m = acc
+        | otherwise = str map put acc base "__multi__"
+
+fn :: add single mod entry String String String RStrMap => RStrMap
+      add single mod entry m base canon acc
+        | canon != base = str map put acc base "__multi__"
+        | otherwise =
+          prev = str map get acc base
+          add single mod step m base prev acc
+
+fn :: build single mod map [RModAlias] RStrMap => RStrMap
+      build single mod map [] acc = acc
+      build single mod map ((ModAlias k v):rest) acc
+        | str contains k "." =
+          m = ident mod prefix k
+          base = ident base name k
+          build single mod map rest (add single mod entry m base v acc)
+        | otherwise = build single mod map rest acc
+
+fn :: mark collided multi [String] RStrMap => RStrMap
+      mark collided multi [] acc = acc
+      mark collided multi (c:cs) acc =
+        mark collided multi cs (str map put acc c "__multi__")
+
+fn :: add ctor single variants String Bool [RVariant] [String] RStrMap => RStrMap
+      add ctor single variants _ _ [] _ acc = acc
+      add ctor single variants mk True ((TypeVariant c _):vs) collided_ctors acc =
+        add ctor single variants mk True vs collided_ctors (str map put acc c "__multi__")
+      add ctor single variants mk False ((TypeVariant c _):vs) collided_ctors acc
+        | str in seen list c collided_ctors =
+          add ctor single variants mk False vs collided_ctors (str map put acc c "__multi__")
+        | otherwise =
+          add ctor single variants mk False vs collided_ctors (add single mod entry mk c c acc)
+
+fn :: build ctor single map [RScopedType] [RScopedType] [String] RStrMap => RStrMap
+      build ctor single map [] _ _ acc = acc
+      build ctor single map ((ScopedType _ _ tdef):ts) all_ts collided_ctors acc
+        | is single variant alias tdef all_ts =
+          build ctor single map ts all_ts collided_ctors acc
+      build ctor single map ((ScopedType m is_exp (TypeDef _ vs _)):ts) all_ts collided_ctors acc =
+        mk = mod key of m
+        acc1 = add ctor single variants mk is_exp vs collided_ctors acc
+        build ctor single map ts all_ts collided_ctors acc1
+
+fn :: add word mod step String String String RStrMap => RStrMap
+      add word mod step w mk "" acc = str map put acc w mk
+      add word mod step _ _ "__builtin__" acc = acc
+      add word mod step _ mk prev acc
+        | prev == mk = acc
+      add word mod step w _ _ acc = str map put acc w "__multi__"
+
+fn :: add word mod one String String RStrMap => RStrMap
+      add word mod one "" _ acc = acc
+      add word mod one w "__builtin__" acc = str map put acc w "__builtin__"
+      add word mod one w mk acc =
+        prev = str map get acc w
+        add word mod step w mk prev acc
+
+fn :: add split ident word mod String Int Int Int String RStrMap => RStrMap
+      add split ident word mod s start pos len mk acc
+        | pos >= len and start >= len = acc
+        | pos >= len = add word mod one (str slice s start len) mk acc
+        | (str char at s pos) == 95 and pos > start =
+          acc1 = add word mod one (str slice s start pos) mk acc
+          add split ident word mod s (pos + 1) (pos + 1) len mk acc1
+        | (str char at s pos) == 95 =
+          add split ident word mod s (pos + 1) (pos + 1) len mk acc
+        | otherwise =
+          add split ident word mod s start (pos + 1) len mk acc
+
+fn :: build builtin word mod map [RArityEntry] RStrMap => RStrMap
+      build builtin word mod map [] acc = acc
+      build builtin word mod map ((ArityEntry k _):rest) acc =
+        acc1 = add split ident word mod k 0 0 (str len k) "__builtin__" acc
+        build builtin word mod map rest acc1
+
+fn :: build fn word mod map [RScopedFn] RStrMap => RStrMap
+      build fn word mod map [] acc = acc
+      build fn word mod map ((ScopedFn m _ (FnDef fname _ _ _)):fs) acc =
+        mk = mod key of m
+        base = ident base name fname
+        acc1 = add split ident word mod base 0 0 (str len base) mk acc
+        build fn word mod map fs acc1
+
+fn :: ctx own RModCtx => [String]
+      ctx own (ModCtx own _ _ _ _ _ _ _ _ _ _ _ _) = own
+
+fn :: ctx direct RModCtx => [String]
+      ctx direct (ModCtx _ d _ _ _ _ _ _ _ _ _ _ _) = d
+
+fn :: ctx trans RModCtx => [String]
+      ctx trans (ModCtx _ _ t _ _ _ _ _ _ _ _ _ _) = t
+
+fn :: ctx vis set RModCtx => RStrSet
+      ctx vis set (ModCtx _ _ _ vs _ _ _ _ _ _ _ _ _) = vs
+
+fn :: ctx type bst RModCtx => RStrMap
+      ctx type bst (ModCtx _ _ _ _ tb _ _ _ _ _ _ _ _) = tb
+
+fn :: ctx type single RModCtx => RStrMap
+      ctx type single (ModCtx _ _ _ _ _ ts _ _ _ _ _ _ _) = ts
+
+fn :: ctx ctor bst RModCtx => RStrMap
+      ctx ctor bst (ModCtx _ _ _ _ _ _ cb _ _ _ _ _ _) = cb
+
+fn :: ctx ctor single RModCtx => RStrMap
+      ctx ctor single (ModCtx _ _ _ _ _ _ _ cs _ _ _ _ _) = cs
+
+fn :: ctx fn bst RModCtx => RStrMap
+      ctx fn bst (ModCtx _ _ _ _ _ _ _ _ fb _ _ _ _) = fb
+
+fn :: ctx field bst RModCtx => RStrMap
+      ctx field bst (ModCtx _ _ _ _ _ _ _ _ _ flb _ _ _) = flb
+
+fn :: ctx field single RModCtx => RStrMap
+      ctx field single (ModCtx _ _ _ _ _ _ _ _ _ _ fls _ _) = fls
+
+fn :: ctx ff single RModCtx => RStrMap
+      ctx ff single (ModCtx _ _ _ _ _ _ _ _ _ _ _ ffs _) = ffs
+
+fn :: ctx word mod RModCtx => RStrMap
+      ctx word mod (ModCtx _ _ _ _ _ _ _ _ _ _ _ _ wm) = wm
+
+fn :: lookup all mod keys bst [String] String RStrMap [String] => [String]
+      lookup all mod keys bst [] _ _ acc = acc
+      lookup all mod keys bst (m:ms) ident map_bst acc =
+        found = str map get map_bst (m + "." + ident)
+        lookup all mod keys bst step ms ident map_bst acc found
+
+fn :: lookup all mod keys bst step [String] String RStrMap [String] String => [String]
+      lookup all mod keys bst step ms ident map_bst acc "" =
+        lookup all mod keys bst ms ident map_bst acc
+      lookup all mod keys bst step ms ident map_bst acc found =
+        lookup all mod keys bst ms ident map_bst (add unique seen end found acc)
+
+fn :: lookup in ctx scope RModCtx String RStrMap => String
+      lookup in ctx scope ctx ident map_bst =
+        own_hits = lookup all mod keys bst (ctx own ctx) ident map_bst []
+        lookup in ctx scope tier1 ctx ident map_bst own_hits
+
+fn :: lookup in ctx scope tier1 RModCtx String RStrMap [String] => String
+      lookup in ctx scope tier1 _ _ _ (h:_) = h
+      lookup in ctx scope tier1 ctx ident map_bst [] =
+        direct_hits = lookup all mod keys bst (ctx direct ctx) ident map_bst []
+        lookup in ctx scope tier2 ctx ident map_bst (select tier hits direct_hits ident)
+
+fn :: lookup in ctx scope tier2 RModCtx String RStrMap String => String
+      lookup in ctx scope tier2 ctx ident map_bst "" =
+        trans_hits = lookup all mod keys bst (ctx trans ctx) ident map_bst []
+        select tier hits trans_hits ident
+      lookup in ctx scope tier2 _ _ _ hit = hit
+
+fn :: resolve one type single dispatch String String RModCtx => String
+      resolve one type single dispatch t1 "" _ = t1
+      resolve one type single dispatch t1 "__multi__" ctx =
+        in_scope = lookup in ctx scope ctx t1 (ctx type bst ctx)
+        default if empty in_scope ("__unimported__." + t1)
+      resolve one type single dispatch t1 m0 ctx
+        | str set has (ctx vis set ctx) m0 = t1
+        | otherwise = "__unimported__." + t1
+
+fn :: resolve one type step ctx String RModCtx => String
+      resolve one type step ctx t1 ctx
+        | str contains t1 "." = default if empty (str map get (ctx type bst ctx) t1) t1
+        | otherwise =
+          m0 = str map get (ctx type single ctx) t1
+          resolve one type single dispatch t1 m0 ctx
+
+fn :: resolve one type ident ctx String String RModCtx [RModAlias] => String
+      resolve one type ident ctx tok cur_mod ctx aliases
+        | (not (is upper ident tok)) or (is builtin or poly type tok) = tok
+        | otherwise =
+          t1 = expand mod alias tok cur_mod aliases
+          resolve one type step ctx t1 ctx
+
+fn :: rewrite type str loop ctx String Int Int String RModCtx [RModAlias] String => String
+      rewrite type str loop ctx s pos len cur_mod ctx aliases acc
+        | pos >= len = acc
+        | is type ident char (str char at s pos) =
+          end_p = scan type ident end s pos len
+          tok = str slice s pos end_p
+          resolved = resolve one type ident ctx tok cur_mod ctx aliases
+          rewrite type str loop ctx s end_p len cur_mod ctx aliases (acc + resolved)
+        | otherwise =
+          ch = str slice s pos (pos + 1)
+          rewrite type str loop ctx s (pos + 1) len cur_mod ctx aliases (acc + ch)
+
+fn :: rewrite type str ctx String String RModCtx [RModAlias] => String
+      rewrite type str ctx s cur_mod ctx aliases =
+        rewrite type str loop ctx s 0 (str len s) cur_mod ctx aliases ""
+
+fn :: rewrite type str list ctx [String] String RModCtx [RModAlias] => [String]
+      rewrite type str list ctx [] _ _ _ = []
+      rewrite type str list ctx (t:ts) cur_mod ctx aliases =
+        [rewrite type str ctx t cur_mod ctx aliases] :: (rewrite type str list ctx ts cur_mod ctx aliases)
+
+fn :: resolve ctor single dispatch String String RModCtx => String
+      resolve ctor single dispatch c1 "" _ = c1
+      resolve ctor single dispatch c1 "__multi__" ctx =
+        in_scope = lookup in ctx scope ctx c1 (ctx ctor bst ctx)
+        default if empty in_scope ("__unimported__." + c1)
+      resolve ctor single dispatch c1 m0 ctx
+        | str set has (ctx vis set ctx) m0 = c1
+        | otherwise = "__unimported__." + c1
+
+fn :: resolve ctor ident ctx String String RModCtx [RModAlias] => String
+      resolve ctor ident ctx c cur_mod ctx aliases
+        | is builtin ctor ident c = c
+        | otherwise =
+          c1 = expand mod alias c cur_mod aliases
+          resolve ctor ident ctx step c1 ctx
+
+fn :: resolve ctor ident ctx step String RModCtx => String
+      resolve ctor ident ctx step c1 ctx
+        | str contains c1 "." =
+          in_scope = lookup in ctx scope ctx c1 (ctx ctor bst ctx)
+          in_direct = str map get (ctx ctor bst ctx) c1
+          resolve ctor dot fallback c1 in_scope in_direct
+        | otherwise =
+          m0 = str map get (ctx ctor single ctx) c1
+          resolve ctor single dispatch c1 m0 ctx
+
+fn :: rewrite pat ctx RPattern String RModCtx [RModAlias] => RPattern
+      rewrite pat ctx (PatCons h t) cur_mod ctx aliases =
+        PatCons (rewrite pat ctx h cur_mod ctx aliases) (rewrite pat ctx t cur_mod ctx aliases)
+      rewrite pat ctx (PatTuple ps) cur_mod ctx aliases =
+        PatTuple (rewrite pat list ctx ps cur_mod ctx aliases)
+      rewrite pat ctx (PatCtor c ps) cur_mod ctx aliases =
+        PatCtor (resolve ctor ident ctx c cur_mod ctx aliases) (rewrite pat list ctx ps cur_mod ctx aliases)
+      rewrite pat ctx p _ _ _ = p
+
+fn :: rewrite pat list ctx [RPattern] String RModCtx [RModAlias] => [RPattern]
+      rewrite pat list ctx [] _ _ _ = []
+      rewrite pat list ctx (p:ps) cur_mod ctx aliases =
+        [rewrite pat ctx p cur_mod ctx aliases] :: (rewrite pat list ctx ps cur_mod ctx aliases)
+
+fn :: lookup mod fn or field ctx String String RModCtx => String
+      lookup mod fn or field ctx m base ctx =
         key = m + "." + base
-        in_fn = lookup str map fn_map key
-        in_fld = lookup str map field_map key
+        in_fn = str map get (ctx fn bst ctx) key
+        in_fld = str map get (ctx field bst ctx) key
         default if empty in_fn in_fld
 
-fn :: lookup all mod fn or field [String] String [RModAlias] [RModAlias] [String] => [String]
-      lookup all mod fn or field [] _ _ _ acc = acc
-      lookup all mod fn or field (m:ms) base fn_map field_map acc =
-        found = lookup mod fn or field m base fn_map field_map
-        lookup all mod ff step ms base fn_map field_map acc found
+fn :: lookup all mod fn or field ctx [String] String RModCtx [String] => [String]
+      lookup all mod fn or field ctx [] _ _ acc = acc
+      lookup all mod fn or field ctx (m:ms) base ctx acc =
+        found = lookup mod fn or field ctx m base ctx
+        lookup all mod ff ctx step ms base ctx acc found
 
-fn :: lookup all mod ff step [String] String [RModAlias] [RModAlias] [String] String => [String]
-      lookup all mod ff step ms base fn_map field_map acc "" =
-        lookup all mod fn or field ms base fn_map field_map acc
-      lookup all mod ff step ms base fn_map field_map acc found =
-        lookup all mod fn or field ms base fn_map field_map (add unique seen end found acc)
+fn :: lookup all mod ff ctx step [String] String RModCtx [String] String => [String]
+      lookup all mod ff ctx step ms base ctx acc "" =
+        lookup all mod fn or field ctx ms base ctx acc
+      lookup all mod ff ctx step ms base ctx acc found =
+        lookup all mod fn or field ctx ms base ctx (add unique seen end found acc)
 
-fn :: lookup scoped fn or field String String [RModAlias] [RModAlias] [RModAlias] => String
-      lookup scoped fn or field cur_mod base aliases fn_map field_map =
-        own = own mods of cur_mod aliases
-        own_hits = lookup all mod fn or field own base fn_map field_map []
-        lookup scoped ff t1 cur_mod base aliases fn_map field_map own_hits
+fn :: lookup scoped ff dispatch String String RModCtx => String
+      lookup scoped ff dispatch base "" _ = lookup scoped ff t3 base ""
+      lookup scoped ff dispatch base "__multi__" ctx =
+        own_hits = lookup all mod fn or field ctx (ctx own ctx) base ctx []
+        lookup scoped ff ctx t1 base ctx own_hits
+      lookup scoped ff dispatch base m0 ctx
+        | str set has (ctx vis set ctx) m0 = base
+        | otherwise = lookup scoped ff t3 base ""
 
-fn :: lookup scoped ff t1 String String [RModAlias] [RModAlias] [RModAlias] [String] => String
-      lookup scoped ff t1 _ _ _ _ _ (h:_) = h
-      lookup scoped ff t1 cur_mod base aliases fn_map field_map [] =
-        direct_imps = direct imports of cur_mod aliases
-        direct_hits = lookup all mod fn or field direct_imps base fn_map field_map []
-        lookup scoped ff t2 cur_mod base direct_imps aliases fn_map field_map (select tier hits direct_hits base)
+fn :: lookup scoped fn or field ctx String RModCtx => String
+      lookup scoped fn or field ctx base ctx =
+        m0 = str map get (ctx ff single ctx) base
+        lookup scoped ff dispatch base m0 ctx
 
-fn :: lookup scoped ff t2 String String [String] [RModAlias] [RModAlias] [RModAlias] String => String
-      lookup scoped ff t2 cur_mod base direct_imps aliases fn_map field_map "" =
-        trans_imps = trans imports of cur_mod direct_imps aliases
-        trans_hits = lookup all mod fn or field trans_imps base fn_map field_map []
+fn :: lookup scoped ff ctx t1 String RModCtx [String] => String
+      lookup scoped ff ctx t1 _ _ (h:_) = h
+      lookup scoped ff ctx t1 base ctx [] =
+        direct_hits = lookup all mod fn or field ctx (ctx direct ctx) base ctx []
+        lookup scoped ff ctx t2 base ctx (select tier hits direct_hits base)
+
+fn :: lookup scoped ff ctx t2 String RModCtx String => String
+      lookup scoped ff ctx t2 base ctx "" =
+        trans_hits = lookup all mod fn or field ctx (ctx trans ctx) base ctx []
         lookup scoped ff t3 base (select tier hits trans_hits base)
-      lookup scoped ff t2 _ _ _ _ _ _ hit = hit
+      lookup scoped ff ctx t2 _ _ hit = hit
 
 fn :: lookup scoped ff t3 String String => String
       lookup scoped ff t3 base ""
@@ -4666,31 +5139,24 @@ fn :: ident has word part String String => Bool
       ident has word part full_name word =
         (full_name == word) or (str starts with full_name (word + "_")) or (str contains full_name ("_" + word + "_")) or ((str len full_name) > (str len word) and (str slice full_name ((str len full_name) - (str len word) - 1) (str len full_name)) == ("_" + word))
 
-fn :: arity list has word part [RArityEntry] String => Bool
-      arity list has word part [] _ = False
-      arity list has word part ((ArityEntry k _):rest) word
-        | ident has word part k word = True
-        | otherwise = arity list has word part rest word
+fn :: fn map has vis word part RStrSet String [RModAlias] => Bool
+      fn map has vis word part _ _ [] = False
+      fn map has vis word part vis_set word ((ModAlias k _):rest)
+        | (str contains k word) and (str set has vis_set (ident mod prefix k)) and (ident has word part (ident base name k) word) = True
+        | otherwise = fn map has vis word part vis_set word rest
 
-fn :: mod has word part in map String String [RModAlias] => Bool
-      mod has word part in map _ _ [] = False
-      mod has word part in map m word ((ModAlias k _):rest)
-        | (str starts with k (m + ".")) and (ident has word part (ident base name k) word) = True
-        | otherwise = mod has word part in map m word rest
+fn :: scope has word part dispatch RModCtx String String [RModAlias] => Bool
+      scope has word part dispatch _ _ "" _ = False
+      scope has word part dispatch _ _ "__builtin__" _ = True
+      scope has word part dispatch ctx word "__multi__" fn_map =
+        fn map has vis word part (ctx vis set ctx) word fn_map
+      scope has word part dispatch ctx _ wm _ =
+        str set has (ctx vis set ctx) wm
 
-fn :: mods have word part [String] String [RModAlias] => Bool
-      mods have word part [] _ _ = False
-      mods have word part (m:ms) word fn_map
-        | mod has word part in map m word fn_map = True
-        | otherwise = mods have word part ms word fn_map
-
-fn :: scope has word part String String [RModAlias] [RModAlias] => Bool
-      scope has word part cur_mod word aliases fn_map =
-        own = own mods of cur_mod aliases
-        direct_imps = direct imports of cur_mod aliases
-        trans_imps = trans imports of cur_mod direct_imps aliases
-        all_vis = own :: direct_imps :: trans_imps
-        (arity list has word part (builtin arity entries) word) or (mods have word part all_vis word fn_map)
+fn :: scope has word part ctx RModCtx String [RModAlias] => Bool
+      scope has word part ctx ctx word fn_map =
+        wm = str map get (ctx word mod ctx) word
+        scope has word part dispatch ctx word wm fn_map
 
 fn :: is mixfix reserved word String => Bool
       is mixfix reserved word "to" = True
@@ -4714,138 +5180,147 @@ fn :: is mixfix reserved word String => Bool
       is mixfix reserved word "stop" = True
       is mixfix reserved word _ = False
 
-fn :: collect unimported ff names [String] [RModAlias] [String] => [String]
-      collect unimported ff names _ [] acc = acc
-      collect unimported ff names vis_mods ((ModAlias k _):rest) acc =
-        m = ident mod prefix k
-        base = ident base name k
-        collect unimp ff step vis_mods m base rest acc
-
-fn :: collect unimp ff step [String] String String [RModAlias] [String] => [String]
-      collect unimp ff step vis_mods m base rest acc
-        | (m != "") and (not (str in seen list m vis_mods)) =
-          collect unimported ff names vis_mods rest (add unique seen base acc)
-        | otherwise =
-          collect unimported ff names vis_mods rest acc
-
-fn :: compute mod special ff String [String] [String] [RModAlias] [RModAlias] [RModAlias] => [String]
-      compute mod special ff cur_mod collided_fns collided_fields aliases fn_map field_map =
+fn :: compute mod ctx String [RModAlias] RModCtx => RModCtx
+      compute mod ctx cur_mod aliases (ModCtx _ _ _ _ tb ts cb cs fb flb fls ffs wm) =
         own = own mods of cur_mod aliases
         direct_imps = direct imports of cur_mod aliases
         trans_imps = trans imports of cur_mod direct_imps aliases
-        vis_mods = own :: direct_imps :: trans_imps
-        unimp1 = collect unimported ff names vis_mods fn_map []
-        unimp2 = collect unimported ff names vis_mods field_map unimp1
-        collided_fns :: collided_fields :: unimp2
+        vis_set = str list to set (own :: direct_imps :: trans_imps) StrSetEmpty
+        ModCtx own direct_imps trans_imps vis_set tb ts cb cs fb flb fls ffs wm
 
-fn :: special has word or prefix String [String] => Bool
-      special has word or prefix _ [] = False
-      special has word or prefix w (s:ss)
-        | s == w or (str starts with s (w + "_")) = True
-        | otherwise = special has word or prefix w ss
+fn :: lookup mod ctx cache String [RModCtxEntry] => Bool RModCtx
+      lookup mod ctx cache _ [] =
+        (False, ModCtx [] [] [] StrSetEmpty StrMapEmpty StrMapEmpty StrMapEmpty StrMapEmpty StrMapEmpty StrMapEmpty StrMapEmpty StrMapEmpty StrMapEmpty)
+      lookup mod ctx cache target ((ModCtxEntry m ctx):rest)
+        | m == target = (True, ctx)
+        | otherwise = lookup mod ctx cache target rest
 
-fn :: args touch special [RExpr] [String] => Bool
-      args touch special ((EVar w):rest) special_ff
+fn :: get or compute mod ctx step String [RModAlias] RModCtx [RModCtxEntry] (Bool, RModCtx) => RModCtx [RModCtxEntry]
+      get or compute mod ctx step _ _ _ cache (True, found_ctx) = (found_ctx, cache)
+      get or compute mod ctx step m aliases base_ctx cache (False, _) =
+        c1 = compute mod ctx m aliases base_ctx
+        (c1, [ModCtxEntry m c1] :: cache)
+
+fn :: get or compute mod ctx String [RModAlias] RModCtx [RModCtxEntry] => RModCtx [RModCtxEntry]
+      get or compute mod ctx m aliases base_ctx cache =
+        get or compute mod ctx step m aliases base_ctx cache (lookup mod ctx cache m cache)
+
+fn :: is in ctx sp step String RModCtx => Bool
+      is in ctx sp step "" _ = False
+      is in ctx sp step "__multi__" _ = True
+      is in ctx sp step m0 ctx = not (str set has (ctx vis set ctx) m0)
+
+fn :: is in ctx sp set String RModCtx => Bool
+      is in ctx sp set v ctx =
+        m0 = str map get (ctx ff single ctx) v
+        is in ctx sp step m0 ctx
+
+fn :: call candidates in special set String [RExpr] RModCtx => Bool
+      call candidates in special set acc_base ((EVar w):rest) ctx
         | (is lower ident w) and (not (str contains w ".")) =
-          (str in seen list w special_ff) or (args touch special rest special_ff)
-      args touch special _ _ = False
+          (is in ctx sp set acc_base ctx) or (is in ctx sp set w ctx) or (call candidates in special set (acc_base + "_" + w) rest ctx)
+      call candidates in special set acc_base _ ctx =
+        is in ctx sp set acc_base ctx
 
-fn :: resolve lower ident String String [String] [String] [RModAlias] [RModAlias] [RModAlias] => String
-      resolve lower ident v cur_mod locals special_ff aliases fn_map field_map
+fn :: resolve lower ident String String [String] RModCtx [RModAlias] [RModAlias] [RModAlias] => String
+      resolve lower ident v cur_mod locals special_ff aliases fn_map _
         | str in seen list v locals = v
-        | (not (str contains v ".")) and (not (str in seen list v special_ff)) = v
+        | (not (str contains v ".")) and (not (is in ctx sp set v special_ff)) = v
         | otherwise =
           v1 = expand mod alias v cur_mod aliases
-          resolve lower ident step v1 cur_mod aliases fn_map field_map
+          resolve lower ident step v1 special_ff fn_map
 
-fn :: resolve lower ident step String String [RModAlias] [RModAlias] [RModAlias] => String
-      resolve lower ident step v1 cur_mod aliases fn_map field_map
+fn :: resolve lower ident step String RModCtx [RModAlias] => String
+      resolve lower ident step v1 ctx fn_map
         | str contains v1 "." =
-          in_fn = lookup str map fn_map v1
-          in_fld = lookup str map field_map v1
+          in_fn = str map get (ctx fn bst ctx) v1
+          in_fld = str map get (ctx field bst ctx) v1
           default if empty in_fn (default if empty in_fld v1)
         | otherwise =
-          in_scope = lookup scoped fn or field cur_mod v1 aliases fn_map field_map
-          resolve lower plain fallback v1 cur_mod aliases fn_map field_map in_scope
+          in_scope = lookup scoped fn or field ctx v1 ctx
+          resolve lower plain fallback v1 ctx fn_map in_scope
 
-fn :: resolve lower plain fallback String String [RModAlias] [RModAlias] [RModAlias] String => String
-      resolve lower plain fallback v1 cur_mod aliases fn_map field_map ""
+fn :: resolve lower plain fallback String RModCtx [RModAlias] String => String
+      resolve lower plain fallback v1 ctx fn_map ""
         | is mixfix reserved word v1 = v1
-        | ((map has base ident fn_map v1) or (map has base ident field_map v1)) and (not (scope has word part cur_mod v1 aliases fn_map)) = "__unimported__." + v1
+        | ((str map get (ctx ff single ctx) v1) != "") and (not (scope has word part ctx ctx v1 fn_map)) = "__unimported__." + v1
         | otherwise = v1
-      resolve lower plain fallback _ _ _ _ _ in_scope = in_scope
+      resolve lower plain fallback _ _ _ in_scope = in_scope
 
-fn :: resolve field str String String [RModAlias] [RModAlias] => String
-      resolve field str fname cur_mod aliases field_map =
+fn :: resolve field single dispatch String String RModCtx => String
+      resolve field single dispatch f1 "" _ = f1
+      resolve field single dispatch f1 "__multi__" ctx =
+        in_scope = lookup in ctx scope ctx f1 (ctx field bst ctx)
+        default if empty in_scope ("__unimported__." + f1)
+      resolve field single dispatch f1 m0 ctx
+        | str set has (ctx vis set ctx) m0 = f1
+        | otherwise = "__unimported__." + f1
+
+fn :: resolve field str String String RModCtx [RModAlias] => String
+      resolve field str fname cur_mod ctx aliases =
         f1 = expand mod alias fname cur_mod aliases
-        resolve field str step f1 cur_mod aliases field_map
+        resolve field str step f1 ctx
 
-fn :: resolve field str step String String [RModAlias] [RModAlias] => String
-      resolve field str step f1 cur_mod aliases field_map
-        | str contains f1 "." = default if empty (lookup str map field_map f1) f1
+fn :: resolve field str step String RModCtx => String
+      resolve field str step f1 ctx
+        | str contains f1 "." = default if empty (str map get (ctx field bst ctx) f1) f1
         | otherwise =
-          in_scope = lookup in mod scope cur_mod f1 aliases field_map
-          resolve field plain fallback f1 field_map in_scope
+          m0 = str map get (ctx field single ctx) f1
+          resolve field single dispatch f1 m0 ctx
 
-fn :: resolve field plain fallback String [RModAlias] String => String
-      resolve field plain fallback f1 field_map ""
-        | map has base ident field_map f1 = "__unimported__." + f1
-        | otherwise = f1
-      resolve field plain fallback _ _ in_scope = in_scope
-
-fn :: try consume mod words String String [RExpr] [RExpr] [RModAlias] [RModAlias] => String [RExpr] [RExpr]
-      try consume mod words m acc_base consumed ((EVar w):rest) fn_map field_map
+fn :: try consume mod words String String [RExpr] [RExpr] RModCtx => String [RExpr] [RExpr]
+      try consume mod words m acc_base consumed ((EVar w):rest) ctx
         | (is lower ident w) and (not (str contains w ".")) =
           cand = acc_base + "_" + w
-          deeper = try consume mod words m cand (consumed :: [EVar w]) rest fn_map field_map
-          select mod words m acc_base consumed ((EVar w):rest) fn_map field_map deeper
-      try consume mod words m acc_base consumed args fn_map field_map =
-        resolved = lookup mod fn or field m acc_base fn_map field_map
+          deeper = try consume mod words m cand (consumed :: [EVar w]) rest ctx
+          select mod words m acc_base consumed ((EVar w):rest) ctx deeper
+      try consume mod words m acc_base consumed args ctx =
+        resolved = lookup mod fn or field ctx m acc_base ctx
         (resolved, consumed, args)
 
-fn :: select mod words String String [RExpr] [RExpr] [RModAlias] [RModAlias] (String, [RExpr], [RExpr]) => String [RExpr] [RExpr]
-      select mod words m acc_base consumed orig_args fn_map field_map ("", _, _) =
-        (lookup mod fn or field m acc_base fn_map field_map, consumed, orig_args)
-      select mod words _ _ _ _ _ _ deeper_match = deeper_match
+fn :: select mod words String String [RExpr] [RExpr] RModCtx (String, [RExpr], [RExpr]) => String [RExpr] [RExpr]
+      select mod words m acc_base consumed orig_args ctx ("", _, _) =
+        (lookup mod fn or field ctx m acc_base ctx, consumed, orig_args)
+      select mod words _ _ _ _ _ deeper_match = deeper_match
 
-fn :: try consume scoped words String String [RExpr] [RExpr] [RModAlias] [RModAlias] [RModAlias] => String [RExpr] [RExpr]
-      try consume scoped words cur_mod acc_base consumed ((EVar w):rest) aliases fn_map field_map
+fn :: try consume scoped words String [RExpr] [RExpr] RModCtx => String [RExpr] [RExpr]
+      try consume scoped words acc_base consumed ((EVar w):rest) ctx
         | (is lower ident w) and (not (str contains w ".")) =
           cand = acc_base + "_" + w
-          deeper = try consume scoped words cur_mod cand (consumed :: [EVar w]) rest aliases fn_map field_map
-          select scoped words cur_mod acc_base consumed ((EVar w):rest) aliases fn_map field_map deeper
-      try consume scoped words cur_mod acc_base consumed args aliases fn_map field_map =
-        resolved = lookup scoped fn or field cur_mod acc_base aliases fn_map field_map
+          deeper = try consume scoped words cand (consumed :: [EVar w]) rest ctx
+          select scoped words acc_base consumed ((EVar w):rest) ctx deeper
+      try consume scoped words acc_base consumed args ctx =
+        resolved = lookup scoped fn or field ctx acc_base ctx
         (resolved, consumed, args)
 
-fn :: select scoped words String String [RExpr] [RExpr] [RModAlias] [RModAlias] [RModAlias] (String, [RExpr], [RExpr]) => String [RExpr] [RExpr]
-      select scoped words cur_mod acc_base consumed orig_args aliases fn_map field_map ("", _, _) =
-        (lookup scoped fn or field cur_mod acc_base aliases fn_map field_map, consumed, orig_args)
-      select scoped words _ _ _ _ _ _ _ deeper_match = deeper_match
+fn :: select scoped words String [RExpr] [RExpr] RModCtx (String, [RExpr], [RExpr]) => String [RExpr] [RExpr]
+      select scoped words acc_base consumed orig_args ctx ("", _, _) =
+        (lookup scoped fn or field ctx acc_base ctx, consumed, orig_args)
+      select scoped words _ _ _ _ deeper_match = deeper_match
 
-fn :: lookup any unimported ff String [RModAlias] [RModAlias] => String
-      lookup any unimported ff base fn_map field_map
-        | (map has base ident fn_map base) or (map has base ident field_map base) = "__unimported__." + base
+fn :: lookup any unimported ff String RModCtx => String
+      lookup any unimported ff base ctx
+        | (str map get (ctx ff single ctx) base) != "" = "__unimported__." + base
         | otherwise = ""
 
-fn :: try consume unimported words String [RExpr] [RExpr] [RModAlias] [RModAlias] => String [RExpr] [RExpr]
-      try consume unimported words acc_base consumed ((EVar w):rest) fn_map field_map
+fn :: try consume unimported words String [RExpr] [RExpr] RModCtx => String [RExpr] [RExpr]
+      try consume unimported words acc_base consumed ((EVar w):rest) ctx
         | (is lower ident w) and (not (str contains w ".")) =
           cand = acc_base + "_" + w
-          deeper = try consume unimported words cand (consumed :: [EVar w]) rest fn_map field_map
-          select unimported words acc_base consumed ((EVar w):rest) fn_map field_map deeper
-      try consume unimported words acc_base consumed args fn_map field_map =
-        (lookup any unimported ff acc_base fn_map field_map, consumed, args)
+          deeper = try consume unimported words cand (consumed :: [EVar w]) rest ctx
+          select unimported words acc_base consumed ((EVar w):rest) ctx deeper
+      try consume unimported words acc_base consumed args ctx =
+        (lookup any unimported ff acc_base ctx, consumed, args)
 
-fn :: select unimported words String [RExpr] [RExpr] [RModAlias] [RModAlias] (String, [RExpr], [RExpr]) => String [RExpr] [RExpr]
-      select unimported words acc_base consumed orig_args fn_map field_map ("", _, _) =
-        (lookup any unimported ff acc_base fn_map field_map, consumed, orig_args)
-      select unimported words _ _ _ _ _ deeper_match = deeper_match
+fn :: select unimported words String [RExpr] [RExpr] RModCtx (String, [RExpr], [RExpr]) => String [RExpr] [RExpr]
+      select unimported words acc_base consumed orig_args ctx ("", _, _) =
+        (lookup any unimported ff acc_base ctx, consumed, orig_args)
+      select unimported words _ _ _ _ deeper_match = deeper_match
 
-fn :: rewrite rec update args [RExpr] String [String] [String] [RModAlias] [RModAlias] [RModAlias] [RModAlias] => [RExpr]
+fn :: rewrite rec update args [RExpr] String [String] RModCtx [RModAlias] [RModAlias] [RModAlias] [RModAlias] => [RExpr]
       rewrite rec update args [] _ _ _ _ _ _ _ = []
       rewrite rec update args ((EStr fname):val_e:rest) cur_mod locals special_ff aliases ctor_map fn_map field_map =
-        f_canon = resolve field str fname cur_mod aliases field_map
+        f_canon = resolve field str fname cur_mod special_ff aliases
         val_r = rewrite expr val_e cur_mod locals special_ff aliases ctor_map fn_map field_map
         [EStr f_canon, val_r] :: (rewrite rec update args rest cur_mod locals special_ff aliases ctor_map fn_map field_map)
       rewrite rec update args (e:rest) cur_mod locals special_ff aliases ctor_map fn_map field_map =
@@ -4859,7 +5334,7 @@ fn :: collect lambda param strs [RExpr] [String] => [String]
       collect lambda param strs (_:rest) acc =
         collect lambda param strs rest acc
 
-fn :: rewrite lambda args [RExpr] String [String] [String] [RModAlias] [RModAlias] [RModAlias] [RModAlias] => [RExpr]
+fn :: rewrite lambda args [RExpr] String [String] RModCtx [RModAlias] [RModAlias] [RModAlias] [RModAlias] => [RExpr]
       rewrite lambda args [] _ _ _ _ _ _ _ = []
       rewrite lambda args (body_e:[]) cur_mod locals special_ff aliases ctor_map fn_map field_map =
         [rewrite expr body_e cur_mod locals special_ff aliases ctor_map fn_map field_map]
@@ -4870,14 +5345,14 @@ fn :: unpack rewritten infix call String [RExpr] RExpr => [RExpr]
       unpack rewritten infix call _ _ (ECall rw rrest) = [EVar rw] :: rrest
       unpack rewritten infix call orig_w orig_rest _ = [EVar orig_w] :: orig_rest
 
-fn :: rewrite local call args [RExpr] String [String] [String] [RModAlias] [RModAlias] [RModAlias] [RModAlias] => [RExpr]
+fn :: rewrite local call args [RExpr] String [String] RModCtx [RModAlias] [RModAlias] [RModAlias] [RModAlias] => [RExpr]
       rewrite local call args ((EVar w):rest) cur_mod locals special_ff aliases ctor_map fn_map field_map
         | (not (str in seen list w locals)) and (not (is upper ident w)) and (w != "with") and (w != "and") and (w != "or") =
           unpack rewritten infix call w rest (rewrite call expr w rest cur_mod locals special_ff aliases ctor_map fn_map field_map)
       rewrite local call args args cur_mod locals special_ff aliases ctor_map fn_map field_map =
         rewrite expr list args cur_mod locals special_ff aliases ctor_map fn_map field_map
 
-fn :: rewrite call expr String [RExpr] String [String] [String] [RModAlias] [RModAlias] [RModAlias] [RModAlias] => RExpr
+fn :: rewrite call expr String [RExpr] String [String] RModCtx [RModAlias] [RModAlias] [RModAlias] [RModAlias] => RExpr
       rewrite call expr "__lambda__" args cur_mod locals special_ff aliases ctor_map fn_map field_map =
         locals1 = collect lambda param strs args locals
         ECall "__lambda__" (rewrite lambda args args cur_mod locals1 special_ff aliases ctor_map fn_map field_map)
@@ -4886,54 +5361,54 @@ fn :: rewrite call expr String [RExpr] String [String] [String] [RModAlias] [RMo
         ECall "__record_update__" ([base_r] :: (rewrite rec update args rest cur_mod locals special_ff aliases ctor_map fn_map field_map))
       rewrite call expr fn_name args cur_mod locals special_ff aliases ctor_map fn_map field_map
         | is upper ident fn_name =
-          ECall (resolve ctor ident fn_name cur_mod aliases ctor_map) (rewrite expr list args cur_mod locals special_ff aliases ctor_map fn_map field_map)
+          ECall (resolve ctor ident ctx fn_name cur_mod special_ff aliases) (rewrite expr list args cur_mod locals special_ff aliases ctor_map fn_map field_map)
         | str in seen list fn_name locals =
           ECall fn_name (rewrite local call args args cur_mod locals special_ff aliases ctor_map fn_map field_map)
         | otherwise =
           fn1 = expand mod alias fn_name cur_mod aliases
           rewrite call lower fn1 args cur_mod locals special_ff aliases ctor_map fn_map field_map
 
-fn :: rewrite call lower String [RExpr] String [String] [String] [RModAlias] [RModAlias] [RModAlias] [RModAlias] => RExpr
+fn :: rewrite call lower String [RExpr] String [String] RModCtx [RModAlias] [RModAlias] [RModAlias] [RModAlias] => RExpr
       rewrite call lower fn1 orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map
         | str contains fn1 "." =
           m = ident mod prefix fn1
           base = ident base name fn1
-          finish qual mod call fn1 orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map (try consume mod words m base [] orig_args fn_map field_map)
-        | (not (special has word or prefix fn1 special_ff)) and (not (args touch special orig_args special_ff)) =
+          finish qual mod call fn1 orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map (try consume mod words m base [] orig_args special_ff)
+        | not (call candidates in special set fn1 orig_args special_ff) =
           ECall fn1 (rewrite expr list orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map)
         | otherwise =
-          finish scoped mod call fn1 orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map (try consume scoped words cur_mod fn1 [] orig_args aliases fn_map field_map)
+          finish scoped mod call fn1 orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map (try consume scoped words fn1 [] orig_args special_ff)
 
-fn :: finish qual mod call String [RExpr] String [String] [String] [RModAlias] [RModAlias] [RModAlias] [RModAlias] (String, [RExpr], [RExpr]) => RExpr
+fn :: finish qual mod call String [RExpr] String [String] RModCtx [RModAlias] [RModAlias] [RModAlias] [RModAlias] (String, [RExpr], [RExpr]) => RExpr
       finish qual mod call fn1 orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map ("", _, _) =
         ECall fn1 (rewrite expr list orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map)
       finish qual mod call _ _ cur_mod locals special_ff aliases ctor_map fn_map field_map (resolved_fn, _, rem_args) =
         ECall resolved_fn (rewrite expr list rem_args cur_mod locals special_ff aliases ctor_map fn_map field_map)
 
-fn :: finish scoped mod call String [RExpr] String [String] [String] [RModAlias] [RModAlias] [RModAlias] [RModAlias] (String, [RExpr], [RExpr]) => RExpr
+fn :: finish scoped mod call String [RExpr] String [String] RModCtx [RModAlias] [RModAlias] [RModAlias] [RModAlias] (String, [RExpr], [RExpr]) => RExpr
       finish scoped mod call fn1 orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map ("", _, _)
         | is mixfix reserved word fn1 =
           ECall fn1 (rewrite expr list orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map)
         | otherwise =
-          finish unimp mod call fn1 orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map (try consume unimported words fn1 [] orig_args fn_map field_map)
+          finish unimp mod call fn1 orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map (try consume unimported words fn1 [] orig_args special_ff)
       finish scoped mod call fn1 _ cur_mod locals special_ff aliases ctor_map fn_map field_map (resolved_fn, consumed_words, rem_args)
         | str contains resolved_fn "." =
           ECall resolved_fn (rewrite expr list rem_args cur_mod locals special_ff aliases ctor_map fn_map field_map)
         | otherwise =
           ECall fn1 (consumed_words :: (rewrite expr list rem_args cur_mod locals special_ff aliases ctor_map fn_map field_map))
 
-fn :: finish unimp mod call String [RExpr] String [String] [String] [RModAlias] [RModAlias] [RModAlias] [RModAlias] (String, [RExpr], [RExpr]) => RExpr
+fn :: finish unimp mod call String [RExpr] String [String] RModCtx [RModAlias] [RModAlias] [RModAlias] [RModAlias] (String, [RExpr], [RExpr]) => RExpr
       finish unimp mod call fn1 orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map ("", _, _) =
         ECall fn1 (rewrite expr list orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map)
       finish unimp mod call fn1 orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map (unimp_fn, _, rem_args)
-        | scope has word part cur_mod fn1 aliases fn_map =
+        | scope has word part ctx special_ff fn1 fn_map =
           ECall fn1 (rewrite expr list orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map)
         | otherwise =
           ECall unimp_fn (rewrite expr list rem_args cur_mod locals special_ff aliases ctor_map fn_map field_map)
 
-fn :: rewrite expr RExpr String [String] [String] [RModAlias] [RModAlias] [RModAlias] [RModAlias] => RExpr
-      rewrite expr (EVar v) cur_mod locals special_ff aliases ctor_map fn_map field_map
-        | is upper ident v = EVar (resolve ctor ident v cur_mod aliases ctor_map)
+fn :: rewrite expr RExpr String [String] RModCtx [RModAlias] [RModAlias] [RModAlias] [RModAlias] => RExpr
+      rewrite expr (EVar v) cur_mod locals special_ff aliases _ fn_map field_map
+        | is upper ident v = EVar (resolve ctor ident ctx v cur_mod special_ff aliases)
         | otherwise = EVar (resolve lower ident v cur_mod locals special_ff aliases fn_map field_map)
       rewrite expr (ENot inner) cur_mod locals special_ff aliases ctor_map fn_map field_map =
         ENot (rewrite expr inner cur_mod locals special_ff aliases ctor_map fn_map field_map)
@@ -4978,18 +5453,18 @@ fn :: rewrite expr RExpr String [String] [String] [RModAlias] [RModAlias] [RModA
         EWithRegion q (rewrite expr b cur_mod locals special_ff aliases ctor_map fn_map field_map)
       rewrite expr e _ _ _ _ _ _ _ = e
 
-fn :: rewrite expr list [RExpr] String [String] [String] [RModAlias] [RModAlias] [RModAlias] [RModAlias] => [RExpr]
+fn :: rewrite expr list [RExpr] String [String] RModCtx [RModAlias] [RModAlias] [RModAlias] [RModAlias] => [RExpr]
       rewrite expr list [] _ _ _ _ _ _ _ = []
       rewrite expr list (e:es) cur_mod locals special_ff aliases ctor_map fn_map field_map =
         [rewrite expr e cur_mod locals special_ff aliases ctor_map fn_map field_map] :: (rewrite expr list es cur_mod locals special_ff aliases ctor_map fn_map field_map)
 
-fn :: is scoped pipe var target String String [String] [RModAlias] [RModAlias] [RModAlias] => Bool
-      is scoped pipe var target cur_mod v locals aliases fn_map field_map
+fn :: is scoped pipe var target String [String] RModCtx => Bool
+      is scoped pipe var target v locals ctx
         | str in seen list v locals = True
         | (v == "echo") or (is upper ident v) or (str contains v ".") or (is std builtin v) = False
-        | otherwise = (lookup scoped fn or field cur_mod v aliases fn_map field_map) == ""
+        | otherwise = (lookup scoped fn or field ctx v ctx) == ""
 
-fn :: rewrite stmt list [RStmt] String [String] [String] [RModAlias] [RModAlias] [RModAlias] [RModAlias] => [RStmt]
+fn :: rewrite stmt list [RStmt] String [String] RModCtx [RModAlias] [RModAlias] [RModAlias] [RModAlias] => [RStmt]
       rewrite stmt list [] _ _ _ _ _ _ _ = []
       rewrite stmt list ((StmtLet v e):ss) cur_mod locals special_ff aliases ctor_map fn_map field_map =
         e1 = rewrite expr e cur_mod locals special_ff aliases ctor_map fn_map field_map
@@ -4998,7 +5473,7 @@ fn :: rewrite stmt list [RStmt] String [String] [String] [RModAlias] [RModAlias]
         e1 = rewrite expr e cur_mod locals special_ff aliases ctor_map fn_map field_map
         [StmtMut v e1] :: (rewrite stmt list ss cur_mod ([v] :: locals) special_ff aliases ctor_map fn_map field_map)
       rewrite stmt list ((StmtExpr (ECall "__pipe__" (left_e:(EVar v):[]))):ss) cur_mod locals special_ff aliases ctor_map fn_map field_map
-        | is scoped pipe var target cur_mod v locals aliases fn_map field_map =
+        | is scoped pipe var target v locals special_ff =
           l1 = rewrite expr left_e cur_mod locals special_ff aliases ctor_map fn_map field_map
           [StmtExpr (ECall "__pipe__" [l1, EVar v])] :: (rewrite stmt list ss cur_mod ([v] :: locals) special_ff aliases ctor_map fn_map field_map)
       rewrite stmt list ((StmtExpr e):ss) cur_mod locals special_ff aliases ctor_map fn_map field_map =
@@ -5006,224 +5481,219 @@ fn :: rewrite stmt list [RStmt] String [String] [String] [RModAlias] [RModAlias]
       rewrite stmt list ((StmtIndexAssign t idxs e):ss) cur_mod locals special_ff aliases ctor_map fn_map field_map =
         [StmtIndexAssign t (rewrite expr list idxs cur_mod locals special_ff aliases ctor_map fn_map field_map) (rewrite expr e cur_mod locals special_ff aliases ctor_map fn_map field_map)] :: (rewrite stmt list ss cur_mod locals special_ff aliases ctor_map fn_map field_map)
 
-fn :: rewrite guard list [RGuard] String [String] [String] [RModAlias] [RModAlias] [RModAlias] [RModAlias] => [RGuard]
+fn :: rewrite guard list [RGuard] String [String] RModCtx [RModAlias] [RModAlias] [RModAlias] [RModAlias] => [RGuard]
       rewrite guard list [] _ _ _ _ _ _ _ = []
       rewrite guard list ((GuardBranch c b):gs) cur_mod locals special_ff aliases ctor_map fn_map field_map =
         [GuardBranch (rewrite expr c cur_mod locals special_ff aliases ctor_map fn_map field_map) (rewrite expr b cur_mod locals special_ff aliases ctor_map fn_map field_map)] :: (rewrite guard list gs cur_mod locals special_ff aliases ctor_map fn_map field_map)
 
-fn :: rewrite where list [RWhereBind] String [String] [String] [RModAlias] [RModAlias] [RModAlias] [RModAlias] => [RWhereBind]
+fn :: rewrite where list [RWhereBind] String [String] RModCtx [RModAlias] [RModAlias] [RModAlias] [RModAlias] => [RWhereBind]
       rewrite where list [] _ _ _ _ _ _ _ = []
       rewrite where list ((WhereBind e v idxs):wbs) cur_mod locals special_ff aliases ctor_map fn_map field_map =
         [WhereBind (rewrite expr e cur_mod locals special_ff aliases ctor_map fn_map field_map) v idxs] :: (rewrite where list wbs cur_mod locals special_ff aliases ctor_map fn_map field_map)
 
-fn :: rewrite fn cases [RFnCase] String [String] [RModAlias] [RModAlias] [RModAlias] [RModAlias] => [RFnCase]
+fn :: rewrite fn cases [RFnCase] String RModCtx [RModAlias] [RModAlias] [RModAlias] [RModAlias] => [RFnCase]
       rewrite fn cases [] _ _ _ _ _ _ = []
       rewrite fn cases ((FnCase pats guards body):cs) cur_mod special_ff aliases ctor_map fn_map field_map =
-        pats1 = rewrite pat list pats cur_mod aliases ctor_map
+        pats1 = rewrite pat list ctx pats cur_mod special_ff aliases
         locals = collect pat list bound vars pats1 []
         guards1 = rewrite guard list guards cur_mod locals special_ff aliases ctor_map fn_map field_map
         body1 = rewrite expr body cur_mod locals special_ff aliases ctor_map fn_map field_map
         [FnCase pats1 guards1 body1] :: (rewrite fn cases cs cur_mod special_ff aliases ctor_map fn_map field_map)
 
-fn :: rewrite variants [RVariant] String [RModAlias] [RModAlias] => [RVariant]
-      rewrite variants [] _ _ _ = []
-      rewrite variants ((TypeVariant c args):vs) cur_mod aliases type_map =
-        [TypeVariant c (rewrite type str list args cur_mod aliases type_map)] :: (rewrite variants vs cur_mod aliases type_map)
+fn :: rewrite variants ctx [RVariant] String RModCtx [RModAlias] => [RVariant]
+      rewrite variants ctx [] _ _ _ = []
+      rewrite variants ctx ((TypeVariant c args):vs) cur_mod ctx aliases =
+        [TypeVariant c (rewrite type str list ctx args cur_mod ctx aliases)] :: (rewrite variants ctx vs cur_mod ctx aliases)
 
-fn :: rewrite fields [RField] String [String] [RModAlias] [RModAlias] => [RField]
-      rewrite fields [] _ _ _ _ = []
-      rewrite fields ((TypeField fname fty):fs) cur_mod collided_fields aliases type_map =
+fn :: rewrite fields ctx [RField] String RModCtx [String] [RModAlias] => [RField]
+      rewrite fields ctx [] _ _ _ _ = []
+      rewrite fields ctx ((TypeField fname fty):fs) cur_mod ctx collided_fields aliases =
         canon_f = canon scoped name cur_mod fname collided_fields
-        [TypeField canon_f (rewrite type str fty cur_mod aliases type_map)] :: (rewrite fields fs cur_mod collided_fields aliases type_map)
+        [TypeField canon_f (rewrite type str ctx fty cur_mod ctx aliases)] :: (rewrite fields ctx fs cur_mod ctx collided_fields aliases)
 
-fn :: rewrite and merge types [RScopedType] [RScopedType] [String] [String] [RModAlias] [RModAlias] [RTypeDef] => [RTypeDef]
-      rewrite and merge types [] _ _ _ _ _ acc = acc
-      rewrite and merge types ((ScopedType _ _ tdef):ts) all_ts collided_types collided_fields aliases type_map acc
-        | is single variant alias tdef all_ts =
-          rewrite and merge types ts all_ts collided_types collided_fields aliases type_map acc
-      rewrite and merge types ((ScopedType m True (TypeDef tname vs fs)):ts) all_ts collided_types collided_fields aliases type_map acc =
-        canon_t = resolve one type ident tname m aliases type_map
-        vs1 = rewrite variants vs m aliases type_map
-        fs1 = rewrite fields fs m collided_fields aliases type_map
-        rewrite and merge types ts all_ts collided_types collided_fields aliases type_map (merge type def acc (TypeDef canon_t vs1 fs1))
-      rewrite and merge types ((ScopedType m False (TypeDef tname vs fs)):ts) all_ts collided_types collided_fields aliases type_map acc =
+fn :: rewrite and merge types step [RScopedType] [RScopedType] Bool String String [RVariant] [RField] (RModCtx, [RModCtxEntry]) RModCtx [String] [String] [RModAlias] [RTypeDef] => [RTypeDef] [RModCtxEntry]
+      rewrite and merge types step ts all_ts True m tname vs fs (ctx, cache1) base_ctx collided_types collided_fields aliases acc =
+        canon_t = resolve one type ident ctx tname m ctx aliases
+        vs1 = rewrite variants ctx vs m ctx aliases
+        fs1 = rewrite fields ctx fs m ctx collided_fields aliases
+        rewrite and merge types cached ts all_ts m ctx cache1 base_ctx collided_types collided_fields aliases (merge type def acc (TypeDef canon_t vs1 fs1))
+      rewrite and merge types step ts all_ts False m tname vs fs (ctx, cache1) base_ctx collided_types collided_fields aliases acc =
         canon_t = canon scoped name m tname collided_types
-        vs1 = rewrite variants vs m aliases type_map
-        fs1 = rewrite fields fs m collided_fields aliases type_map
-        rewrite and merge types ts all_ts collided_types collided_fields aliases type_map (merge type def acc (TypeDef canon_t vs1 fs1))
+        vs1 = rewrite variants ctx vs m ctx aliases
+        fs1 = rewrite fields ctx fs m ctx collided_fields aliases
+        rewrite and merge types cached ts all_ts m ctx cache1 base_ctx collided_types collided_fields aliases (merge type def acc (TypeDef canon_t vs1 fs1))
 
-fn :: rewrite and merge fns cached [RScopedFn] String [String] [String] [String] [RModAlias] [RModAlias] [RModAlias] [RModAlias] [RModAlias] [RFnDef] => [RFnDef]
-      rewrite and merge fns cached [] _ _ _ _ _ _ _ _ _ acc = acc
-      rewrite and merge fns cached ((ScopedFn m in_lib (FnDef fname ps ret cs)):fs) cached_m cached_sp collided_fns collided_fields aliases type_map ctor_map fn_map field_map acc
+fn :: rewrite and merge types cached [RScopedType] [RScopedType] String RModCtx [RModCtxEntry] RModCtx [String] [String] [RModAlias] [RTypeDef] => [RTypeDef] [RModCtxEntry]
+      rewrite and merge types cached [] _ _ _ cache _ _ _ _ acc = (acc, cache)
+      rewrite and merge types cached ((ScopedType _ _ tdef):ts) all_ts cached_m cached_ctx cache base_ctx collided_types collided_fields aliases acc
+        | is single variant alias tdef all_ts =
+          rewrite and merge types cached ts all_ts cached_m cached_ctx cache base_ctx collided_types collided_fields aliases acc
+      rewrite and merge types cached ((ScopedType m is_exp (TypeDef tname vs fs)):ts) all_ts cached_m cached_ctx cache base_ctx collided_types collided_fields aliases acc
         | m == cached_m =
-          canon_fn = canon scoped name m fname collided_fns
-          ps1 = rewrite type str list ps m aliases type_map
-          ret1 = rewrite type str ret m aliases type_map
-          cs1 = rewrite fn cases cs m cached_sp aliases ctor_map fn_map field_map
-          acc1 = merge fn def scoped acc (FnDef canon_fn ps1 ret1 cs1) in_lib
-          rewrite and merge fns cached fs cached_m cached_sp collided_fns collided_fields aliases type_map ctor_map fn_map field_map acc1
+          rewrite and merge types step ts all_ts is_exp m tname vs fs (cached_ctx, cache) base_ctx collided_types collided_fields aliases acc
         | otherwise =
-          sp1 = compute mod special ff m collided_fns collided_fields aliases fn_map field_map
-          canon_fn = canon scoped name m fname collided_fns
-          ps1 = rewrite type str list ps m aliases type_map
-          ret1 = rewrite type str ret m aliases type_map
-          cs1 = rewrite fn cases cs m sp1 aliases ctor_map fn_map field_map
-          acc1 = merge fn def scoped acc (FnDef canon_fn ps1 ret1 cs1) in_lib
-          rewrite and merge fns cached fs m sp1 collided_fns collided_fields aliases type_map ctor_map fn_map field_map acc1
+          c_pair = get or compute mod ctx m aliases base_ctx cache
+          rewrite and merge types step ts all_ts is_exp m tname vs fs c_pair base_ctx collided_types collided_fields aliases acc
 
-fn :: add split ident words loop String Int Int Int [String] => [String]
-      add split ident words loop s start pos len acc
+fn :: merge fn def scoped fast [RFnDef] RStrSet RFnDef Bool => [RFnDef] RStrSet
+      merge fn def scoped fast rev_acc seen_fns (FnDef name ps ret cs) in_lib
+        | not (str set has seen_fns name) =
+          ([FnDef name ps ret cs] :: rev_acc, str set add seen_fns name)
+        | (cases have any adt ctor cs) and (has extensible fn def rev_acc (FnDef name ps ret cs)) =
+          (update fn def rev_acc (FnDef name ps ret cs), seen_fns)
+        | in_lib and (name != "__unresolved_import__") and (name != "__syntax_error__") =
+          (rev_acc, seen_fns)
+        | otherwise =
+          ([FnDef name ps ret cs] :: rev_acc, seen_fns)
+
+fn :: rewrite and merge fn step [RScopedFn] String Bool String [String] String [RFnCase] (RModCtx, [RModCtxEntry]) RModCtx [String] [String] [RModAlias] [RModAlias] [RModAlias] [RModAlias] [RModAlias] ([RFnDef], RStrSet) => [RFnDef]
+      rewrite and merge fn step fs m in_lib fname ps ret cs (sp1, cache1) base_ctx collided_fns collided_fields aliases type_map ctor_map fn_map field_map (rev_acc, seen_fns) =
+        canon_fn = canon scoped name m fname collided_fns
+        ps1 = rewrite type str list ctx ps m sp1 aliases
+        ret1 = rewrite type str ctx ret m sp1 aliases
+        cs1 = rewrite fn cases cs m sp1 aliases ctor_map fn_map field_map
+        acc_pair = merge fn def scoped fast rev_acc seen_fns (FnDef canon_fn ps1 ret1 cs1) in_lib
+        rewrite and merge fns cached fs m sp1 cache1 base_ctx collided_fns collided_fields aliases type_map ctor_map fn_map field_map acc_pair
+
+fn :: rewrite and merge fns cached [RScopedFn] String RModCtx [RModCtxEntry] RModCtx [String] [String] [RModAlias] [RModAlias] [RModAlias] [RModAlias] [RModAlias] ([RFnDef], RStrSet) => [RFnDef]
+      rewrite and merge fns cached [] _ _ _ _ _ _ _ _ _ _ _ (rev_acc, _) = rev fndef list rev_acc []
+      rewrite and merge fns cached ((ScopedFn m in_lib (FnDef fname ps ret cs)):fs) cached_m cached_sp cache base_ctx collided_fns collided_fields aliases type_map ctor_map fn_map field_map acc_state
+        | m == cached_m =
+          rewrite and merge fn step fs m in_lib fname ps ret cs (cached_sp, cache) base_ctx collided_fns collided_fields aliases type_map ctor_map fn_map field_map acc_state
+        | otherwise =
+          c_pair = get or compute mod ctx m aliases base_ctx cache
+          rewrite and merge fn step fs m in_lib fname ps ret cs c_pair base_ctx collided_fns collided_fields aliases type_map ctor_map fn_map field_map acc_state
+
+fn :: add split ident words set String Int Int Int RStrSet => RStrSet
+      add split ident words set s start pos len acc
         | pos >= len and start >= len = acc
-        | pos >= len = add unique seen (str slice s start len) acc
+        | pos >= len = str set add acc (str slice s start len)
         | (str char at s pos) == 95 and pos > start =
-          acc1 = add unique seen (str slice s start pos) acc
-          add split ident words loop s (pos + 1) (pos + 1) len acc1
+          acc1 = str set add acc (str slice s start pos)
+          add split ident words set s (pos + 1) (pos + 1) len acc1
         | (str char at s pos) == 95 =
-          add split ident words loop s (pos + 1) (pos + 1) len acc
+          add split ident words set s (pos + 1) (pos + 1) len acc
         | otherwise =
-          add split ident words loop s start (pos + 1) len acc
+          add split ident words set s start (pos + 1) len acc
 
-fn :: add ident words String [String] => [String]
-      add ident words "" acc = acc
-      add ident words raw_s acc =
+fn :: add ident words set String RStrSet => RStrSet
+      add ident words set "" acc = acc
+      add ident words set raw_s acc =
         s = ident base name raw_s
-        add split ident words loop s 0 0 (str len s) acc
+        add split ident words set s 0 0 (str len s) acc
 
-fn :: ident words all in loop String Int Int Int [String] => Bool
-      ident words all in loop s start pos len words
+fn :: ident words all in set loop String Int Int Int RStrSet => Bool
+      ident words all in set loop s start pos len wset
         | pos >= len and start >= len = True
-        | pos >= len = str in seen list (str slice s start len) words
+        | pos >= len = str set has wset (str slice s start len)
         | (str char at s pos) == 95 and pos > start =
-          (str in seen list (str slice s start pos) words) and (ident words all in loop s (pos + 1) (pos + 1) len words)
+          (str set has wset (str slice s start pos)) and (ident words all in set loop s (pos + 1) (pos + 1) len wset)
         | (str char at s pos) == 95 =
-          ident words all in loop s (pos + 1) (pos + 1) len words
+          ident words all in set loop s (pos + 1) (pos + 1) len wset
         | otherwise =
-          ident words all in loop s start (pos + 1) len words
+          ident words all in set loop s start (pos + 1) len wset
 
-fn :: ident words all in String [String] => Bool
-      ident words all in "" _ = False
-      ident words all in fname words =
-        ident words all in loop fname 0 0 (str len fname) words
+fn :: ident words all in set String RStrSet => Bool
+      ident words all in set "" _ = False
+      ident words all in set fname wset =
+        ident words all in set loop fname 0 0 (str len fname) wset
 
-fn :: collect expr ident words RExpr [String] => [String]
-      collect expr ident words (EVar v) acc = add ident words v acc
-      collect expr ident words (ENot inner) acc = collect expr ident words inner (add unique seen "not" acc)
-      collect expr ident words (EOut inner) acc = collect expr ident words inner (add unique seen "out" acc)
-      collect expr ident words (EBin OpAnd l r) acc = collect expr ident words r (collect expr ident words l (add unique seen "and" acc))
-      collect expr ident words (EBin OpOr l r) acc = collect expr ident words r (collect expr ident words l (add unique seen "or" acc))
-      collect expr ident words (EBin OpXor l r) acc = collect expr ident words r (collect expr ident words l (add unique seen "xor" acc))
-      collect expr ident words (EBin OpAdd l r) acc = collect expr ident words r (collect expr ident words l (add unique seen "+" acc))
-      collect expr ident words (EBin OpSub l r) acc = collect expr ident words r (collect expr ident words l (add unique seen "-" acc))
-      collect expr ident words (EBin OpMul l r) acc = collect expr ident words r (collect expr ident words l (add unique seen "*" acc))
-      collect expr ident words (EBin OpDiv l r) acc = collect expr ident words r (collect expr ident words l (add unique seen "/" acc))
-      collect expr ident words (EBin OpMod l r) acc = collect expr ident words r (collect expr ident words l (add unique seen "%" acc))
-      collect expr ident words (EBin _ l r) acc = collect expr ident words r (collect expr ident words l acc)
-      collect expr ident words (ECall fn_name args) acc =
-        collect expr list ident words args (add ident words fn_name acc)
-      collect expr ident words (EEcho args) acc = collect expr list ident words args acc
-      collect expr ident words (EStrInterp parts) acc = collect expr list ident words parts acc
-      collect expr ident words (EList elems) acc = collect expr list ident words elems acc
-      collect expr ident words (ETuple elems) acc = collect expr list ident words elems acc
-      collect expr ident words (ETensor elems) acc = collect expr list ident words elems acc
-      collect expr ident words (EEinsum es _) acc = collect expr list ident words es acc
-      collect expr ident words (EHadamard _ l _ r _) acc = collect expr ident words r (collect expr ident words l acc)
-      collect expr ident words (EIndex b idxs) acc = collect expr list ident words idxs (collect expr ident words b acc)
-      collect expr ident words (EIndexAssign t idxs v) acc = collect expr ident words v (collect expr list ident words idxs (add ident words t acc))
-      collect expr ident words (ESeqSelect b _) acc = collect expr ident words b acc
-      collect expr ident words (EBlock stmts) acc = collect stmt list ident words stmts acc
-      collect expr ident words (EGuard gs) acc = collect guard list ident words gs acc
-      collect expr ident words (EWhere b wbs) acc = collect where list ident words wbs (collect expr ident words b acc)
-      collect expr ident words (EParPipe bs) acc = collect expr list ident words bs acc
-      collect expr ident words (EWithCtx _ v b) acc = collect expr ident words b (collect expr ident words v acc)
-      collect expr ident words (EWithRegion _ b) acc = collect expr ident words b acc
-      collect expr ident words _ acc = acc
+fn :: collect expr ident words set RExpr RStrSet => RStrSet
+      collect expr ident words set (EVar v) acc = add ident words set v acc
+      collect expr ident words set (ENot inner) acc = collect expr ident words set inner (str set add acc "not")
+      collect expr ident words set (EOut inner) acc = collect expr ident words set inner (str set add acc "out")
+      collect expr ident words set (EBin OpAnd l r) acc = collect expr ident words set r (collect expr ident words set l (str set add acc "and"))
+      collect expr ident words set (EBin OpOr l r) acc = collect expr ident words set r (collect expr ident words set l (str set add acc "or"))
+      collect expr ident words set (EBin OpXor l r) acc = collect expr ident words set r (collect expr ident words set l (str set add acc "xor"))
+      collect expr ident words set (EBin OpAdd l r) acc = collect expr ident words set r (collect expr ident words set l (str set add acc "+"))
+      collect expr ident words set (EBin OpSub l r) acc = collect expr ident words set r (collect expr ident words set l (str set add acc "-"))
+      collect expr ident words set (EBin OpMul l r) acc = collect expr ident words set r (collect expr ident words set l (str set add acc "*"))
+      collect expr ident words set (EBin OpDiv l r) acc = collect expr ident words set r (collect expr ident words set l (str set add acc "/"))
+      collect expr ident words set (EBin OpMod l r) acc = collect expr ident words set r (collect expr ident words set l (str set add acc "%"))
+      collect expr ident words set (EBin _ l r) acc = collect expr ident words set r (collect expr ident words set l acc)
+      collect expr ident words set (ECall fn_name args) acc =
+        collect expr list ident words set args (add ident words set fn_name acc)
+      collect expr ident words set (EEcho args) acc = collect expr list ident words set args acc
+      collect expr ident words set (EStrInterp parts) acc = collect expr list ident words set parts acc
+      collect expr ident words set (EList elems) acc = collect expr list ident words set elems acc
+      collect expr ident words set (ETuple elems) acc = collect expr list ident words set elems acc
+      collect expr ident words set (ETensor elems) acc = collect expr list ident words set elems acc
+      collect expr ident words set (EEinsum es _) acc = collect expr list ident words set es acc
+      collect expr ident words set (EHadamard _ l _ r _) acc = collect expr ident words set r (collect expr ident words set l acc)
+      collect expr ident words set (EIndex b idxs) acc = collect expr list ident words set idxs (collect expr ident words set b acc)
+      collect expr ident words set (EIndexAssign t idxs v) acc = collect expr ident words set v (collect expr list ident words set idxs (add ident words set t acc))
+      collect expr ident words set (ESeqSelect b _) acc = collect expr ident words set b acc
+      collect expr ident words set (EBlock stmts) acc = collect stmt list ident words set stmts acc
+      collect expr ident words set (EGuard gs) acc = collect guard list ident words set gs acc
+      collect expr ident words set (EWhere b wbs) acc = collect where list ident words set wbs (collect expr ident words set b acc)
+      collect expr ident words set (EParPipe bs) acc = collect expr list ident words set bs acc
+      collect expr ident words set (EWithCtx _ v b) acc = collect expr ident words set b (collect expr ident words set v acc)
+      collect expr ident words set (EWithRegion _ b) acc = collect expr ident words set b acc
+      collect expr ident words set _ acc = acc
 
-fn :: collect expr list ident words [RExpr] [String] => [String]
-      collect expr list ident words [] acc = acc
-      collect expr list ident words (e:es) acc = collect expr list ident words es (collect expr ident words e acc)
+fn :: collect expr list ident words set [RExpr] RStrSet => RStrSet
+      collect expr list ident words set [] acc = acc
+      collect expr list ident words set (e:es) acc = collect expr list ident words set es (collect expr ident words set e acc)
 
-fn :: collect stmt list ident words [RStmt] [String] => [String]
-      collect stmt list ident words [] acc = acc
-      collect stmt list ident words ((StmtLet _ e):ss) acc = collect stmt list ident words ss (collect expr ident words e acc)
-      collect stmt list ident words ((StmtMut _ e):ss) acc = collect stmt list ident words ss (collect expr ident words e acc)
-      collect stmt list ident words ((StmtExpr e):ss) acc = collect stmt list ident words ss (collect expr ident words e acc)
-      collect stmt list ident words ((StmtIndexAssign t idxs e):ss) acc = collect stmt list ident words ss (collect expr ident words (EIndexAssign t idxs e) acc)
+fn :: collect stmt list ident words set [RStmt] RStrSet => RStrSet
+      collect stmt list ident words set [] acc = acc
+      collect stmt list ident words set ((StmtLet _ e):ss) acc = collect stmt list ident words set ss (collect expr ident words set e acc)
+      collect stmt list ident words set ((StmtMut _ e):ss) acc = collect stmt list ident words set ss (collect expr ident words set e acc)
+      collect stmt list ident words set ((StmtExpr e):ss) acc = collect stmt list ident words set ss (collect expr ident words set e acc)
+      collect stmt list ident words set ((StmtIndexAssign t idxs e):ss) acc = collect stmt list ident words set ss (collect expr ident words set (EIndexAssign t idxs e) acc)
 
-fn :: collect guard list ident words [RGuard] [String] => [String]
-      collect guard list ident words [] acc = acc
-      collect guard list ident words ((GuardBranch c b):gs) acc = collect guard list ident words gs (collect expr ident words b (collect expr ident words c acc))
+fn :: collect guard list ident words set [RGuard] RStrSet => RStrSet
+      collect guard list ident words set [] acc = acc
+      collect guard list ident words set ((GuardBranch c b):gs) acc = collect guard list ident words set gs (collect expr ident words set b (collect expr ident words set c acc))
 
-fn :: collect where list ident words [RWhereBind] [String] => [String]
-      collect where list ident words [] acc = acc
-      collect where list ident words ((WhereBind e _ _):wbs) acc = collect where list ident words wbs (collect expr ident words e acc)
+fn :: collect where list ident words set [RWhereBind] RStrSet => RStrSet
+      collect where list ident words set [] acc = acc
+      collect where list ident words set ((WhereBind e _ _):wbs) acc = collect where list ident words set wbs (collect expr ident words set e acc)
 
-fn :: collect cases word sets [RFnCase] [[String]] => [[String]]
-      collect cases word sets [] acc = acc
-      collect cases word sets ((FnCase _ gs body):cs) acc =
-        wset = collect expr ident words body (collect guard list ident words gs [])
-        collect cases word sets cs ([wset] :: acc)
-
-fn :: any case has all words String [[String]] => Bool
-      any case has all words _ [] = False
-      any case has all words fname (wset:wsets)
-        | ident words all in fname wset = True
-        | otherwise = any case has all words fname wsets
-
-fn :: has any word set [[String]] => Bool
-      has any word set [] = False
-      has any word set (_:_) = True
+fn :: collect cases words set [RFnCase] RStrSet => RStrSet
+      collect cases words set [] acc = acc
+      collect cases words set ((FnCase _ gs body):cs) acc =
+        acc1 = collect expr ident words set body (collect guard list ident words set gs acc)
+        collect cases words set cs acc1
 
 fn :: is root scoped fn RScopedFn => Bool
       is root scoped fn (ScopedFn _ False _) = True
       is root scoped fn (ScopedFn _ True (FnDef fname _ _ _)) =
         is special top fn fname
 
-fn :: collect root word sets [RScopedFn] [[String]] => [[String]]
-      collect root word sets [] acc = acc
-      collect root word sets (sf:sfs) acc
+fn :: collect root words set [RScopedFn] RStrSet => RStrSet
+      collect root words set [] acc = acc
+      collect root words set (sf:sfs) acc
         | is root scoped fn sf =
-          collect root word sets step sf sfs acc
-        | otherwise = collect root word sets sfs acc
+          collect root words set step sf sfs acc
+        | otherwise = collect root words set sfs acc
 
-fn :: collect root word sets step RScopedFn [RScopedFn] [[String]] => [[String]]
-      collect root word sets step (ScopedFn _ _ (FnDef _ _ _ cs)) sfs acc =
-        collect root word sets sfs (collect cases word sets cs acc)
+fn :: collect root words set step RScopedFn [RScopedFn] RStrSet => RStrSet
+      collect root words set step (ScopedFn _ _ (FnDef _ _ _ cs)) sfs acc =
+        collect root words set sfs (collect cases words set cs acc)
 
-fn :: collect all fname word sets [RScopedFn] String [[String]] => [[String]]
-      collect all fname word sets [] _ acc = acc
-      collect all fname word sets ((ScopedFn _ True (FnDef fn_k _ _ cs)):sfs) target acc
-        | fn_k == target = collect all fname word sets sfs target (collect cases word sets cs acc)
-        | otherwise = collect all fname word sets sfs target acc
-      collect all fname word sets (_:sfs) target acc =
-        collect all fname word sets sfs target acc
-
-fn :: expand reachable words pass [RScopedFn] [RScopedFn] [[String]] [[String]] [String] => [[String]] [String]
-      expand reachable words pass [] _ _ next_sets reached = (next_sets, reached)
-      expand reachable words pass ((ScopedFn _ True (FnDef fname _ _ _)):sfs) all_sfs frontier next_sets reached =
-        expand reach step fname sfs all_sfs frontier next_sets reached
-      expand reachable words pass (_:sfs) all_sfs frontier next_sets reached =
-        expand reachable words pass sfs all_sfs frontier next_sets reached
-
-fn :: expand reach step String [RScopedFn] [RScopedFn] [[String]] [[String]] [String] => [[String]] [String]
-      expand reach step fname sfs all_sfs frontier next_sets reached
-        | (not (str in seen list fname reached)) and (any case has all words fname frontier) =
-          next_sets1 = collect all fname word sets all_sfs fname next_sets
-          expand reachable words pass sfs all_sfs frontier next_sets1 ([fname] :: reached)
+fn :: expand reachable words set pass [RScopedFn] RStrSet Bool RStrSet => RStrSet Bool RStrSet
+      expand reachable words set pass [] wset changed reached = (wset, changed, reached)
+      expand reachable words set pass ((ScopedFn _ True (FnDef fname _ _ cs)):sfs) wset changed reached
+        | (not (str set has reached fname)) and (ident words all in set fname wset) =
+          wset1 = collect cases words set cs wset
+          expand reachable words set pass sfs wset1 True (str set add reached fname)
         | otherwise =
-          expand reachable words pass sfs all_sfs frontier next_sets reached
+          expand reachable words set pass sfs wset changed reached
+      expand reachable words set pass (_:sfs) wset changed reached =
+        expand reachable words set pass sfs wset changed reached
 
-fn :: expand reachable words fix [RScopedFn] ([[String]], [String]) => [String]
-      expand reachable words fix sfs (frontier, reached)
-        | not (has any word set frontier) = reached
-        | otherwise =
-          expand reachable words fix sfs (expand reachable words pass sfs sfs frontier [] reached)
+fn :: expand reachable words set fix [RScopedFn] (RStrSet, Bool, RStrSet) => RStrSet
+      expand reachable words set fix _ (_, False, reached) = reached
+      expand reachable words set fix sfs (wset, True, reached) =
+        expand reachable words set fix sfs (expand reachable words set pass sfs wset False reached)
 
-fn :: filter reachable scoped fns [RScopedFn] [String] => [RScopedFn]
+fn :: filter reachable scoped fns [RScopedFn] RStrSet => [RScopedFn]
       filter reachable scoped fns [] _ = []
       filter reachable scoped fns (sf:sfs) reached
         | is root scoped fn sf = [sf] :: (filter reachable scoped fns sfs reached)
       filter reachable scoped fns ((ScopedFn m True (FnDef fname ps ret cs)):sfs) reached
-        | str in seen list fname reached =
+        | str set has reached fname =
           [ScopedFn m True (FnDef fname ps ret cs)] :: (filter reachable scoped fns sfs reached)
         | otherwise = filter reachable scoped fns sfs reached
 
@@ -5240,8 +5710,8 @@ fn :: has any lib fn [RScopedFn] => Bool
 fn :: prune unreachable lib fns [RScopedFn] => [RScopedFn]
       prune unreachable lib fns s_fns
         | (has any user fn s_fns) and (has any lib fn s_fns) =
-          init_sets = collect root word sets s_fns []
-          reached = expand reachable words fix s_fns (init_sets, [])
+          init_wset = collect root words set s_fns StrSetEmpty
+          reached = expand reachable words set fix s_fns (init_wset, True, StrSetEmpty)
           filter reachable scoped fns s_fns reached
         | otherwise = s_fns
 
@@ -5250,10 +5720,14 @@ fn :: merge plain scoped types [RScopedType] [RTypeDef] => [RTypeDef]
       merge plain scoped types ((ScopedType _ _ tdef):ts) acc =
         merge plain scoped types ts (merge type def acc tdef)
 
+fn :: merge plain scoped fns fast [RScopedFn] ([RFnDef], RStrSet) => [RFnDef]
+      merge plain scoped fns fast [] (rev_acc, _) = rev fndef list rev_acc []
+      merge plain scoped fns fast ((ScopedFn _ in_lib fdef):fs) (rev_acc, seen_fns) =
+        merge plain scoped fns fast fs (merge fn def scoped fast rev_acc seen_fns fdef in_lib)
+
 fn :: merge plain scoped fns [RScopedFn] [RFnDef] => [RFnDef]
-      merge plain scoped fns [] acc = acc
-      merge plain scoped fns ((ScopedFn _ in_lib fdef):fs) acc =
-        merge plain scoped fns fs (merge fn def scoped acc fdef in_lib)
+      merge plain scoped fns s_fns _ =
+        merge plain scoped fns fast s_fns ([], StrSetEmpty)
 
 fn :: is compiler builtin ident String => Bool
       is compiler builtin ident "assert_equals" = False
@@ -5261,30 +5735,30 @@ fn :: is compiler builtin ident String => Bool
       is compiler builtin ident s =
         (is std builtin s) or ((lookup arity (builtin arity entries) s) >= 0)
 
-fn :: collect field base names [RField] [String] => [String]
+fn :: collect field base names [RField] RStrSet => RStrSet
       collect field base names [] acc = acc
       collect field base names ((TypeField fname _):fs) acc =
-        collect field base names fs (add unique seen (ident base name fname) acc)
+        collect field base names fs (str set add acc (ident base name fname))
 
-fn :: collect typedef field names [RTypeDef] [String] => [String]
+fn :: collect typedef field names [RTypeDef] RStrSet => RStrSet
       collect typedef field names [] acc = acc
       collect typedef field names ((TypeDef _ _ fs):ts) acc =
         collect typedef field names ts (collect field base names fs acc)
 
-fn :: collect scoped type field names [RScopedType] [String] => [String]
+fn :: collect scoped type field names [RScopedType] RStrSet => RStrSet
       collect scoped type field names [] acc = acc
       collect scoped type field names ((ScopedType _ _ (TypeDef _ _ fs)):ts) acc =
         collect scoped type field names ts (collect field base names fs acc)
 
-fn :: collect fndef base names [RFnDef] [String] => [String]
+fn :: collect fndef base names [RFnDef] RStrSet => RStrSet
       collect fndef base names [] acc = acc
       collect fndef base names ((FnDef fname _ _ _):fs) acc =
-        collect fndef base names fs (add unique seen (ident base name fname) acc)
+        collect fndef base names fs (str set add acc (ident base name fname))
 
-fn :: collect scoped fn base names [RScopedFn] [String] => [String]
+fn :: collect scoped fn base names [RScopedFn] RStrSet => RStrSet
       collect scoped fn base names [] acc = acc
       collect scoped fn base names ((ScopedFn _ _ (FnDef fname _ _ _)):fs) acc =
-        collect scoped fn base names fs (add unique seen (ident base name fname) acc)
+        collect scoped fn base names fs (str set add acc (ident base name fname))
 
 fn :: expr mentions var RExpr String => Bool
       expr mentions var (EVar w) target =
@@ -5340,17 +5814,17 @@ fn :: where list mentions var [RWhereBind] String => Bool
       where list mentions var ((WhereBind e _ _):wbs) target =
         (expr mentions var e target) or (where list mentions var wbs target)
 
-fn :: should encode base underscores String String [String] [String] Bool => Bool
+fn :: should encode base underscores String String [String] RStrSet Bool => Bool
       should encode base underscores v base locals field_names encode_builtins
         | not (str contains base "_") = False
         | (str starts with base "__") or (str starts with base ":") = False
         | (str in seen list v locals) or (str in seen list base locals) = False
         | (is subscript ident v) and ((is upper ident v) or (str in seen list (extract fst str (split subscript v)) locals)) = False
-        | str in seen list base field_names = False
+        | str set has field_names base = False
         | (not encode_builtins) and (is compiler builtin ident base) = False
         | otherwise = True
 
-fn :: should encode ident underscores String [String] [String] Bool => Bool
+fn :: should encode ident underscores String [String] RStrSet Bool => Bool
       should encode ident underscores v locals field_names encode_builtins
         | v == "_" or v == "__" or v == "___" = False
         | is upper ident v = False
@@ -5359,21 +5833,21 @@ fn :: should encode ident underscores String [String] [String] Bool => Bool
           base = ident base name v
           should encode base underscores v base locals field_names encode_builtins
 
-fn :: encode ident underscores String [String] [String] Bool => String
+fn :: encode ident underscores String [String] RStrSet Bool => String
       encode ident underscores v locals field_names encode_builtins
         | not (should encode ident underscores v locals field_names encode_builtins) = v
         | str contains v "." =
           (ident mod prefix v) + "." + (encode literal underscores (ident base name v))
         | otherwise = encode literal underscores v
 
-fn :: encode lambda args underscores [RExpr] [String] [String] [String] Bool => [RExpr]
+fn :: encode lambda args underscores [RExpr] [String] RStrSet RStrSet Bool => [RExpr]
       encode lambda args underscores [] _ _ _ _ = []
       encode lambda args underscores (body_e:[]) locals field_names fn_names encode_builtins =
         [encode expr underscores body_e locals field_names fn_names encode_builtins]
       encode lambda args underscores (p:rest) locals field_names fn_names encode_builtins =
         [p] :: (encode lambda args underscores rest locals field_names fn_names encode_builtins)
 
-fn :: encode rec update args underscores [RExpr] [String] [String] [String] Bool => [RExpr]
+fn :: encode rec update args underscores [RExpr] [String] RStrSet RStrSet Bool => [RExpr]
       encode rec update args underscores [] _ _ _ _ = []
       encode rec update args underscores ((EStr fname):val_e:rest) locals field_names fn_names encode_builtins =
         val1 = encode expr underscores val_e locals field_names fn_names encode_builtins
@@ -5381,16 +5855,16 @@ fn :: encode rec update args underscores [RExpr] [String] [String] [String] Bool
       encode rec update args underscores (e:rest) locals field_names fn_names encode_builtins =
         [encode expr underscores e locals field_names fn_names encode_builtins] :: (encode rec update args underscores rest locals field_names fn_names encode_builtins)
 
-fn :: is encode pipe var target String [RStmt] [String] [String] [String] => Bool
+fn :: is encode pipe var target String [RStmt] [String] RStrSet RStrSet => Bool
       is encode pipe var target v ss locals field_names fn_names
         | (v == "echo") or (is upper ident v) or (str contains v ".") or (is compiler builtin ident v) = False
         | str in seen list v locals = True
-        | str in seen list v field_names = False
-        | str in seen list (encode literal underscores v) fn_names = False
+        | str set has field_names v = False
+        | str set has fn_names (encode literal underscores v) = False
         | (is subscript ident v) and ((is upper ident v) or (str in seen list (extract fst str (split subscript v)) locals)) = True
         | otherwise = stmt list mentions var ss v
 
-fn :: encode expr underscores RExpr [String] [String] [String] Bool => RExpr
+fn :: encode expr underscores RExpr [String] RStrSet RStrSet Bool => RExpr
       encode expr underscores (EVar v) locals field_names _ encode_builtins =
         EVar (encode ident underscores v locals field_names encode_builtins)
       encode expr underscores (ENot inner) locals field_names fn_names encode_builtins =
@@ -5442,12 +5916,12 @@ fn :: encode expr underscores RExpr [String] [String] [String] Bool => RExpr
         EWithRegion q (encode expr underscores b locals field_names fn_names encode_builtins)
       encode expr underscores e _ _ _ _ = e
 
-fn :: encode expr list underscores [RExpr] [String] [String] [String] Bool => [RExpr]
+fn :: encode expr list underscores [RExpr] [String] RStrSet RStrSet Bool => [RExpr]
       encode expr list underscores [] _ _ _ _ = []
       encode expr list underscores (e:es) locals field_names fn_names encode_builtins =
         [encode expr underscores e locals field_names fn_names encode_builtins] :: (encode expr list underscores es locals field_names fn_names encode_builtins)
 
-fn :: encode stmt list underscores [RStmt] [String] [String] [String] Bool => [RStmt]
+fn :: encode stmt list underscores [RStmt] [String] RStrSet RStrSet Bool => [RStmt]
       encode stmt list underscores [] _ _ _ _ = []
       encode stmt list underscores ((StmtLet v e):ss) locals field_names fn_names encode_builtins =
         e1 = encode expr underscores e locals field_names fn_names encode_builtins
@@ -5464,17 +5938,17 @@ fn :: encode stmt list underscores [RStmt] [String] [String] [String] Bool => [R
       encode stmt list underscores ((StmtIndexAssign t idxs e):ss) locals field_names fn_names encode_builtins =
         [StmtIndexAssign t (encode expr list underscores idxs locals field_names fn_names encode_builtins) (encode expr underscores e locals field_names fn_names encode_builtins)] :: (encode stmt list underscores ss locals field_names fn_names encode_builtins)
 
-fn :: encode guard list underscores [RGuard] [String] [String] [String] Bool => [RGuard]
+fn :: encode guard list underscores [RGuard] [String] RStrSet RStrSet Bool => [RGuard]
       encode guard list underscores [] _ _ _ _ = []
       encode guard list underscores ((GuardBranch c b):gs) locals field_names fn_names encode_builtins =
         [GuardBranch (encode expr underscores c locals field_names fn_names encode_builtins) (encode expr underscores b locals field_names fn_names encode_builtins)] :: (encode guard list underscores gs locals field_names fn_names encode_builtins)
 
-fn :: encode where list underscores [RWhereBind] [String] [String] [String] Bool => [RWhereBind]
+fn :: encode where list underscores [RWhereBind] [String] RStrSet RStrSet Bool => [RWhereBind]
       encode where list underscores [] _ _ _ _ = []
       encode where list underscores ((WhereBind e v idxs):wbs) locals field_names fn_names encode_builtins =
         [WhereBind (encode expr underscores e locals field_names fn_names encode_builtins) v idxs] :: (encode where list underscores wbs locals field_names fn_names encode_builtins)
 
-fn :: encode fn cases underscores [RFnCase] [String] [String] Bool => [RFnCase]
+fn :: encode fn cases underscores [RFnCase] RStrSet RStrSet Bool => [RFnCase]
       encode fn cases underscores [] _ _ _ = []
       encode fn cases underscores ((FnCase pats guards body):cs) field_names fn_names encode_builtins =
         locals = collect pat list bound vars pats []
@@ -5484,49 +5958,66 @@ fn :: encode fn cases underscores [RFnCase] [String] [String] Bool => [RFnCase]
 
 fn :: encode fndef list underscores [RFnDef] [RTypeDef] Bool => [RFnDef]
       encode fndef list underscores fns tys encode_builtins =
-        field_names = collect typedef field names tys []
-        fn_names = collect fndef base names fns []
+        field_names = collect typedef field names tys StrSetEmpty
+        fn_names = collect fndef base names fns StrSetEmpty
         encode fndef list underscores loop fns field_names fn_names encode_builtins
 
-fn :: encode fndef list underscores loop [RFnDef] [String] [String] Bool => [RFnDef]
+fn :: encode fndef list underscores loop [RFnDef] RStrSet RStrSet Bool => [RFnDef]
       encode fndef list underscores loop [] _ _ _ = []
       encode fndef list underscores loop ((FnDef fname ps ret cs):fs) field_names fn_names encode_builtins =
         [FnDef fname ps ret (encode fn cases underscores cs field_names fn_names encode_builtins)] :: (encode fndef list underscores loop fs field_names fn_names encode_builtins)
 
-fn :: encode scoped fn list [RScopedFn] [String] [String] Bool => [RScopedFn]
+fn :: encode scoped fn list [RScopedFn] RStrSet RStrSet Bool => [RScopedFn]
       encode scoped fn list [] _ _ _ = []
       encode scoped fn list ((ScopedFn m in_lib (FnDef fname ps ret cs)):fs) field_names fn_names encode_builtins =
         [ScopedFn m in_lib (FnDef fname ps ret (encode fn cases underscores cs field_names fn_names encode_builtins))] :: (encode scoped fn list fs field_names fn_names encode_builtins)
 
 fn :: encode all scoped fns [RScopedFn] [RScopedType] => [RScopedFn]
       encode all scoped fns raw_s_fns s_tys =
-        field_names = collect scoped type field names s_tys []
-        fn_names = collect scoped fn base names raw_s_fns []
+        field_names = collect scoped type field names s_tys StrSetEmpty
+        fn_names = collect scoped fn base names raw_s_fns StrSetEmpty
         encode scoped fn list raw_s_fns field_names fn_names False
 
 fn :: resolve scoped state [RScopedFn] [RScopedType] [RModAlias] => RProgram
-      resolve scoped state raw_s_fns s_tys aliases =
-        enc_s_fns = encode all scoped fns raw_s_fns s_tys
-        resolve scoped state encoded enc_s_fns s_tys aliases
+      resolve scoped state raw_s_fns s_tys aliases
+        | not (has any scoped mod raw_s_fns s_tys aliases) =
+          enc_s_fns = encode all scoped fns raw_s_fns s_tys
+          Program (merge plain scoped fns enc_s_fns []) (merge plain scoped types s_tys [])
+        | otherwise =
+          enc_s_fns = encode all scoped fns raw_s_fns s_tys
+          s_fns = prune unreachable lib fns enc_s_fns
+          resolve scoped state encoded s_fns s_tys aliases
+
+fn :: resolve scoped state finish ([RTypeDef], [RModCtxEntry]) [RScopedFn] RModCtx [String] [String] [RModAlias] [RModAlias] [RModAlias] [RModAlias] [RModAlias] => RProgram
+      resolve scoped state finish (tys_out, cache1) s_fns init_ctx collided_fns collided_fields aliases type_map ctor_map fn_map field_map =
+        fns_out = rewrite and merge fns cached s_fns "__none__" init_ctx cache1 init_ctx collided_fns collided_fields aliases type_map ctor_map fn_map field_map ([], StrSetEmpty)
+        Program fns_out tys_out
 
 fn :: resolve scoped state encoded [RScopedFn] [RScopedType] [RModAlias] => RProgram
-      resolve scoped state encoded raw_s_fns s_tys aliases
-        | not (has any scoped mod raw_s_fns s_tys aliases) =
-          Program (merge plain scoped fns raw_s_fns []) (merge plain scoped types s_tys [])
-        | otherwise =
-          s_fns = prune unreachable lib fns raw_s_fns
-          collided_types = collect collided types s_tys s_tys []
-          collided_fields = collect collided fields s_tys s_tys []
-          collided_fns = collect collided fns s_fns s_fns []
-          collided_ctors = collect collided ctors s_tys s_tys []
-          base_tmap = build base type map s_tys s_tys collided_types
-          type_map = build alias type map s_tys s_tys collided_types aliases base_tmap
-          ctor_map = build ctor map s_tys s_tys collided_types collided_ctors type_map
-          field_map = build field map s_tys collided_fields
-          fn_map = build fn map s_fns collided_fns
-          tys_out = rewrite and merge types s_tys s_tys collided_types collided_fields aliases type_map []
-          fns_out = rewrite and merge fns cached s_fns "__none__" [] collided_fns collided_fields aliases type_map ctor_map fn_map field_map []
-          Program fns_out tys_out
+      resolve scoped state encoded s_fns s_tys aliases =
+        collided_types = collect collided types s_tys s_tys []
+        collided_fields = collect collided fields s_tys s_tys []
+        collided_fns = collect collided fns s_fns s_fns []
+        collided_ctors = collect collided ctors s_tys s_tys []
+        base_tmap = build base type map s_tys s_tys collided_types
+        type_map = build alias type map s_tys s_tys collided_types aliases base_tmap
+        ctor_map = build ctor map s_tys s_tys collided_types collided_ctors type_map
+        field_map = build field map s_tys collided_fields
+        fn_map = build fn map s_fns collided_fns
+        tb = aliases to str map type_map StrMapEmpty
+        ts = mark collided multi collided_types (build single mod map type_map StrMapEmpty)
+        cb = aliases to str map ctor_map StrMapEmpty
+        cs = build ctor single map s_tys s_tys collided_ctors ts
+        fb = aliases to str map fn_map StrMapEmpty
+        flb = aliases to str map field_map StrMapEmpty
+        fls = mark collided multi collided_fields (build single mod map field_map StrMapEmpty)
+        ffs0 = build single mod map field_map (build single mod map fn_map StrMapEmpty)
+        ffs = mark collided multi collided_fields (mark collided multi collided_fns ffs0)
+        wm0 = build builtin word mod map (builtin arity entries) StrMapEmpty
+        wm = build fn word mod map s_fns wm0
+        init_ctx = ModCtx [] [] [] StrSetEmpty tb ts cb cs fb flb fls ffs wm
+        ty_res = rewrite and merge types cached s_tys s_tys "__none__" init_ctx [] init_ctx collided_types collided_fields aliases []
+        resolve scoped state finish ty_res s_fns init_ctx collided_fns collided_fields aliases type_map ctor_map fn_map field_map
 
 -- ── Top-Level Program Loop ──────────────────────────────────
 
@@ -5542,83 +6033,212 @@ fn :: line has colon colon [RToken]          => Bool
       line has colon colon (TokColonColon:_) =  True
       line has colon colon (_:ts)            =  line has colon colon ts
 
+fn :: rev scoped fns [RScopedFn] [RScopedFn] => [RScopedFn]
+      rev scoped fns [] acc = acc
+      rev scoped fns (x:xs) acc = rev scoped fns xs ([x] :: acc)
+
+fn :: rev scoped types [RScopedType] [RScopedType] => [RScopedType]
+      rev scoped types [] acc = acc
+      rev scoped types (x:xs) acc = rev scoped types xs ([x] :: acc)
+
 fn :: add scoped fndefs [RFnDef] String Bool [RScopedFn] => [RScopedFn]
       add scoped fndefs [] _ _ acc = acc
       add scoped fndefs (f:fs) cur_mod in_lib acc =
-        add scoped fndefs fs cur_mod in_lib (acc :: [ScopedFn cur_mod in_lib f])
+        add scoped fndefs fs cur_mod in_lib ([ScopedFn cur_mod in_lib f] :: acc)
 
-fn :: parse items after fn mod (RFnDef, [RToken]) [RScopedFn] [RScopedType] [RModAlias] [String] Bool => [RScopedFn] [RScopedType] [RModAlias]
-      parse items after fn mod (fdef, rest) s_fns s_tys aliases mod_stack in_lib =
-        cur_mod = cur mod of stack mod_stack
-        parse items mod rest (s_fns :: [ScopedFn cur_mod in_lib fdef]) s_tys aliases mod_stack in_lib
+fn :: rev decl toks [RToken] [RToken] => [RToken]
+      rev decl toks [] acc = acc
+      rev decl toks (x:xs) acc = rev decl toks xs ([x] :: acc)
 
-fn :: parse items after fndefs mod ([RFnDef], [RToken]) [RScopedFn] [RScopedType] [RModAlias] [String] Bool => [RScopedFn] [RScopedType] [RModAlias]
-      parse items after fndefs mod (new_fns, rest) s_fns s_tys aliases mod_stack in_lib =
-        cur_mod = cur mod of stack mod_stack
-        parse items mod rest (add scoped fndefs new_fns cur_mod in_lib s_fns) s_tys aliases mod_stack in_lib
+fn :: is top chunk boundary [RToken] => Bool
+      is top chunk boundary [] = True
+      is top chunk boundary (TokEof:_) = True
+      is top chunk boundary (TokAt:_) = True
+      is top chunk boundary ((TokIdent "RGC1"):_) = True
+      is top chunk boundary ts = is top decl start ts
 
-fn :: parse items after type mod Bool (RTypeDef, [RToken]) [RScopedFn] [RScopedType] [RModAlias] [String] Bool => [RScopedFn] [RScopedType] [RModAlias]
-      parse items after type mod is_exp (tdef, rest) s_fns s_tys aliases mod_stack in_lib =
+fn :: split top decl chunk [RToken] [RToken] => [RToken] [RToken]
+      split top decl chunk [] rev_acc =
+        (rev decl toks ([TokEof] :: rev_acc) [], [])
+      split top decl chunk (TokEof:_) rev_acc =
+        (rev decl toks ([TokEof] :: rev_acc) [], [])
+      split top decl chunk (TokNewline:rest) rev_acc =
+        after_nl = skip newlines rest
+        split top decl chunk nl after_nl ([TokNewline] :: rev_acc)
+      split top decl chunk (t:rest) rev_acc =
+        split top decl chunk rest ([t] :: rev_acc)
+
+fn :: split top decl chunk nl [RToken] [RToken] => [RToken] [RToken]
+      split top decl chunk nl after_nl rev_acc
+        | is top chunk boundary after_nl =
+          (rev decl toks ([TokEof] :: rev_acc) [], after_nl)
+        | otherwise =
+          split top decl chunk after_nl rev_acc
+
+fn :: has non eof tok [RToken] => Bool
+      has non eof tok [] = False
+      has non eof tok (TokEof:_) = False
+      has non eof tok (TokNewline:rest) = has non eof tok rest
+      has non eof tok (_:_) = True
+
+fn :: continue after rem [RToken] ([RScopedFn], [RScopedType], [RModAlias]) [String] Bool => [RScopedFn] [RScopedType] [RModAlias]
+      continue after rem after_chunk (s_fns1, s_tys1, aliases1) mod_stack in_lib =
+        parse items loop after_chunk s_fns1 s_tys1 aliases1 mod_stack in_lib
+
+fn :: drain rem chunk [RToken] [RToken] [RScopedFn] [RScopedType] [RModAlias] [String] Bool => [RScopedFn] [RScopedType] [RModAlias]
+      drain rem chunk rem_chunk after_chunk s_fns s_tys aliases mod_stack in_lib
+        | has non eof tok rem_chunk =
+          rem_res = parse items loop rem_chunk s_fns s_tys aliases mod_stack in_lib
+          continue after rem after_chunk rem_res mod_stack in_lib
+        | otherwise =
+          parse items loop after_chunk s_fns s_tys aliases mod_stack in_lib
+
+fn :: parse items after fn mod (RFnDef, [RToken]) [RToken] [RScopedFn] [RScopedType] [RModAlias] [String] Bool => [RScopedFn] [RScopedType] [RModAlias]
+      parse items after fn mod (fdef, rem_chunk) after_chunk s_fns s_tys aliases mod_stack in_lib =
         cur_mod = cur mod of stack mod_stack
-        parse items mod rest s_fns (s_tys :: [ScopedType cur_mod is_exp tdef]) aliases mod_stack in_lib
+        drain rem chunk rem_chunk after_chunk ([ScopedFn cur_mod in_lib fdef] :: s_fns) s_tys aliases mod_stack in_lib
+
+fn :: parse items after fndefs mod ([RFnDef], [RToken]) [RToken] [RScopedFn] [RScopedType] [RModAlias] [String] Bool => [RScopedFn] [RScopedType] [RModAlias]
+      parse items after fndefs mod (new_fns, rem_chunk) after_chunk s_fns s_tys aliases mod_stack in_lib =
+        cur_mod = cur mod of stack mod_stack
+        drain rem chunk rem_chunk after_chunk (add scoped fndefs new_fns cur_mod in_lib s_fns) s_tys aliases mod_stack in_lib
+
+fn :: parse items after type mod Bool (RTypeDef, [RToken]) [RToken] [RScopedFn] [RScopedType] [RModAlias] [String] Bool => [RScopedFn] [RScopedType] [RModAlias]
+      parse items after type mod is_exp (tdef, rem_chunk) after_chunk s_fns s_tys aliases mod_stack in_lib =
+        cur_mod = cur mod of stack mod_stack
+        drain rem chunk rem_chunk after_chunk s_fns ([ScopedType cur_mod is_exp tdef] :: s_tys) aliases mod_stack in_lib
+
+fn :: parse chunk fn ([RToken], [RToken]) [RScopedFn] [RScopedType] [RModAlias] [String] Bool => [RScopedFn] [RScopedType] [RModAlias]
+      parse chunk fn (chunk, after_chunk) s_fns s_tys aliases mod_stack in_lib =
+        parse items after fn mod (parse fn decl chunk) after_chunk s_fns s_tys aliases mod_stack in_lib
+
+fn :: parse chunk op ([RToken], [RToken]) [RScopedFn] [RScopedType] [RModAlias] [String] Bool => [RScopedFn] [RScopedType] [RModAlias]
+      parse chunk op (chunk, after_chunk) s_fns s_tys aliases mod_stack in_lib =
+        parse items after fn mod (parse op decl chunk) after_chunk s_fns s_tys aliases mod_stack in_lib
+
+fn :: parse chunk hw ([RToken], [RToken]) [RScopedFn] [RScopedType] [RModAlias] [String] Bool => [RScopedFn] [RScopedType] [RModAlias]
+      parse chunk hw (chunk, after_chunk) s_fns s_tys aliases mod_stack in_lib =
+        parse items after fndefs mod (parse hardware decl chunk) after_chunk s_fns s_tys aliases mod_stack in_lib
+
+fn :: parse chunk type Bool ([RToken], [RToken]) [RScopedFn] [RScopedType] [RModAlias] [String] Bool => [RScopedFn] [RScopedType] [RModAlias]
+      parse chunk type is_exp (chunk, after_chunk) s_fns s_tys aliases mod_stack in_lib =
+        parse items after type mod is_exp (parse type decl chunk) after_chunk s_fns s_tys aliases mod_stack in_lib
+
+fn :: parse chunk bare ([RToken], [RToken]) [RScopedFn] [RScopedType] [RModAlias] [String] Bool => [RScopedFn] [RScopedType] [RModAlias]
+      parse chunk bare (chunk, after_chunk) s_fns s_tys aliases mod_stack in_lib =
+        parse items after fn mod (parse bare decl chunk) after_chunk s_fns s_tys aliases mod_stack in_lib
+
+fn :: tok to err str RToken => String
+      tok to err str (TokIdent s) = s
+      tok to err str (TokInt n) = int to str n
+      tok to err str (TokStr s) = "\"" + s + "\""
+      tok to err str TokLParen = "("
+      tok to err str TokRParen = ")"
+      tok to err str TokLBracket = "["
+      tok to err str TokRBracket = "]"
+      tok to err str TokLBrace = "{"
+      tok to err str TokRBrace = "}"
+      tok to err str TokComma = ","
+      tok to err str TokEquals = "="
+      tok to err str TokPipe = "|"
+      tok to err str TokArrow = "->"
+      tok to err str TokFatArrow = "=>"
+      tok to err str TokColon = ":"
+      tok to err str TokColonColon = "::"
+      tok to err str _ = "?"
+
+fn :: join syntax err tok String String => String
+      join syntax err tok cur    ""     =  cur
+      join syntax err tok cur    nxt    =  cur + " " + nxt
+
+fn :: syntax err tok preview [RToken] Int => String
+      syntax err tok preview [] _ = ""
+      syntax err tok preview (TokNewline:_) _ = ""
+      syntax err tok preview (TokEof:_) _ = ""
+      syntax err tok preview (t:rest) n
+        | n <= 0 = ""
+        | otherwise =
+          join syntax err tok (tok to err str t) (syntax err tok preview rest (n - 1))
+
+fn :: last scoped fn in mod [RScopedFn] String String => String
+      last scoped fn in mod [] _ acc = acc
+      last scoped fn in mod ((ScopedFn m _ (FnDef fname _ _ _)):rest) target acc
+        | m == target and fname != "__syntax_error__" = fname
+        | otherwise = last scoped fn in mod rest target acc
+
+fn :: format syntax err loc String String String => String
+      format syntax err loc tok_prev "" "" =
+        "unknown or invalid top-level declaration near '" + tok_prev + "' (check for unmatched ')' or ']')"
+      format syntax err loc tok_prev "" last_fn =
+        "unknown or invalid top-level declaration near '" + tok_prev + "' after '" + last_fn + "' (check for unmatched ')' or ']')"
+      format syntax err loc tok_prev cur_mod "" =
+        "unknown or invalid top-level declaration near '" + tok_prev + "' in module '" + cur_mod + "' (check for unmatched ')' or ']')"
+      format syntax err loc tok_prev cur_mod last_fn =
+        "unknown or invalid top-level declaration near '" + tok_prev + "' in module '" + cur_mod + "' after '" + last_fn + "' (check for unmatched ')' or ']')"
+
+fn :: finish parse items mod ([RScopedFn], [RScopedType], [RModAlias]) => [RScopedFn] [RScopedType] [RModAlias]
+      finish parse items mod (s_fns, s_tys, aliases) =
+        (rev scoped fns s_fns [], rev scoped types s_tys [], aliases)
 
 fn :: parse items mod [RToken] [RScopedFn] [RScopedType] [RModAlias] [String] Bool => [RScopedFn] [RScopedType] [RModAlias]
-      parse items mod []                 s_fns s_tys aliases _         _      =  (s_fns, s_tys, aliases)
-      parse items mod (TokEof:_)         s_fns s_tys aliases _         _      =  (s_fns, s_tys, aliases)
-      parse items mod (TokNewline:rest)  s_fns s_tys aliases mod_stack in_lib =  parse items mod rest s_fns s_tys aliases mod_stack in_lib
-      parse items mod (TokAt:(TokIdent "__rg_user_src__"):rest) s_fns s_tys aliases _ _ =
-        parse items mod (skip to newline rest) s_fns s_tys aliases [] False
-      parse items mod (TokAt:(TokIdent "__rg_mod_enter__"):(TokIdent mname):rest) s_fns s_tys aliases mod_stack in_lib =
-        parse items mod (skip to newline rest) s_fns s_tys aliases ([":" + mname] :: mod_stack) in_lib
-      parse items mod (TokAt:(TokIdent "__rg_mod_exit__"):rest) s_fns s_tys aliases mod_stack in_lib =
+      parse items mod toks s_fns s_tys aliases mod_stack in_lib =
+        finish parse items mod (parse items loop toks s_fns s_tys aliases mod_stack in_lib)
+
+fn :: parse items loop [RToken] [RScopedFn] [RScopedType] [RModAlias] [String] Bool => [RScopedFn] [RScopedType] [RModAlias]
+      parse items loop []                 s_fns s_tys aliases _         _      =  (s_fns, s_tys, aliases)
+      parse items loop (TokEof:_)         s_fns s_tys aliases _         _      =  (s_fns, s_tys, aliases)
+      parse items loop (TokNewline:rest)  s_fns s_tys aliases mod_stack in_lib =  parse items loop rest s_fns s_tys aliases mod_stack in_lib
+      parse items loop (TokAt:(TokIdent "__rg_user_src__"):rest) s_fns s_tys aliases _ _ =
+        parse items loop (skip to newline rest) s_fns s_tys aliases [] False
+      parse items loop (TokAt:(TokIdent "__rg_mod_enter__"):(TokIdent mname):rest) s_fns s_tys aliases mod_stack in_lib =
+        parse items loop (skip to newline rest) s_fns s_tys aliases ([":" + mname] :: mod_stack) in_lib
+      parse items loop (TokAt:(TokIdent "__rg_mod_exit__"):rest) s_fns s_tys aliases mod_stack in_lib =
         child_mod = cur mod of stack mod_stack
         rest_stack = pop mod stack mod_stack
         parent_mod = cur mod of stack rest_stack
         aliases1 = record exit import in_lib rest_stack parent_mod child_mod aliases
-        parse items mod (skip to newline rest) s_fns s_tys aliases1 rest_stack in_lib
-      parse items mod (TokAt:(TokIdent "__rg_mod_import__"):(TokIdent target):rest) s_fns s_tys aliases mod_stack in_lib =
+        parse items loop (skip to newline rest) s_fns s_tys aliases1 rest_stack in_lib
+      parse items loop (TokAt:(TokIdent "__rg_mod_import__"):(TokIdent target):rest) s_fns s_tys aliases mod_stack in_lib =
         cur_mod = cur mod of stack mod_stack
-        parse items mod (skip to newline rest) s_fns s_tys (add mod import cur_mod target aliases) mod_stack in_lib
-      parse items mod (TokAt:(TokIdent "__rg_mod_alias__"):(TokIdent al):(TokIdent target):rest) s_fns s_tys aliases mod_stack in_lib =
+        parse items loop (skip to newline rest) s_fns s_tys (add mod import cur_mod target aliases) mod_stack in_lib
+      parse items loop (TokAt:(TokIdent "__rg_mod_alias__"):(TokIdent al):(TokIdent target):rest) s_fns s_tys aliases mod_stack in_lib =
         cur_mod = cur mod of stack mod_stack
         aliases1 = add scoped alias cur_mod al target (add mod import cur_mod target aliases)
-        parse items mod (skip to newline rest) s_fns s_tys aliases1 mod_stack in_lib
-      parse items mod (TokAt:rest)       s_fns s_tys aliases mod_stack in_lib =
-        parse items mod (skip to newline rest) s_fns s_tys aliases mod_stack in_lib
-      parse items mod ((TokIdent "RGC1"):rest) s_fns s_tys aliases mod_stack in_lib =
-        parse items mod (skip to newline rest) s_fns s_tys aliases mod_stack in_lib
-      parse items mod ((TokIdent "module"):TokColonColon:(TokIdent mname):rest) s_fns s_tys aliases mod_stack in_lib =
+        parse items loop (skip to newline rest) s_fns s_tys aliases1 mod_stack in_lib
+      parse items loop (TokAt:rest)       s_fns s_tys aliases mod_stack in_lib =
+        parse items loop (skip to newline rest) s_fns s_tys aliases mod_stack in_lib
+      parse items loop ((TokIdent "RGC1"):rest) s_fns s_tys aliases mod_stack in_lib =
+        parse items loop (skip to newline rest) s_fns s_tys aliases mod_stack in_lib
+      parse items loop ((TokIdent "module"):TokColonColon:(TokIdent mname):rest) s_fns s_tys aliases mod_stack in_lib =
         new_stack = set explicit mod mname mod_stack
         new_mod = cur mod of stack new_stack
         aliases1 = record enter rename mod_stack new_mod aliases
-        parse items mod (skip to newline rest) s_fns s_tys aliases1 new_stack in_lib
-      parse items mod (TokImport:rest)   s_fns s_tys aliases mod_stack in_lib =
+        parse items loop (skip to newline rest) s_fns s_tys aliases1 new_stack in_lib
+      parse items loop (TokImport:rest)   s_fns s_tys aliases mod_stack in_lib =
         cur_mod = cur mod of stack mod_stack
-        parse items mod (skip to newline rest) s_fns s_tys (parse inline import rest cur_mod aliases) mod_stack in_lib
-      parse items mod (TokFn:rest)       s_fns s_tys aliases mod_stack in_lib =
-        f_res = parse fn decl ([TokFn] :: rest)
-        parse items after fn mod f_res s_fns s_tys aliases mod_stack in_lib
-      parse items mod (TokOp:rest)       s_fns s_tys aliases mod_stack in_lib =
-        o_res = parse op decl ([TokOp] :: rest)
-        parse items after fn mod o_res s_fns s_tys aliases mod_stack in_lib
-      parse items mod (TokHardware:rest) s_fns s_tys aliases mod_stack in_lib =
-        hw_res = parse hardware decl ([TokHardware] :: rest)
-        parse items after fndefs mod hw_res s_fns s_tys aliases mod_stack in_lib
-      parse items mod (TokType:(TokIdent name):rest) s_fns s_tys aliases mod_stack in_lib
+        parse items loop (skip to newline rest) s_fns s_tys (parse inline import rest cur_mod aliases) mod_stack in_lib
+      parse items loop (TokFn:rest)       s_fns s_tys aliases mod_stack in_lib =
+        parse chunk fn (split top decl chunk rest [TokFn]) s_fns s_tys aliases mod_stack in_lib
+      parse items loop (TokOp:rest)       s_fns s_tys aliases mod_stack in_lib =
+        parse chunk op (split top decl chunk rest [TokOp]) s_fns s_tys aliases mod_stack in_lib
+      parse items loop (TokHardware:rest) s_fns s_tys aliases mod_stack in_lib =
+        parse chunk hw (split top decl chunk rest [TokHardware]) s_fns s_tys aliases mod_stack in_lib
+      parse items loop (TokType:(TokIdent name):rest) s_fns s_tys aliases mod_stack in_lib
         | (is upper ident name) and (has type params then eq rest) =
-          t_res = parse type decl ([TokType, TokIdent name] :: rest)
-          parse items after type mod False t_res s_fns s_tys aliases mod_stack in_lib
-      parse items mod ((TokIdent "expand"):TokType:(TokIdent name):rest) s_fns s_tys aliases mod_stack in_lib
+          parse chunk type False (split top decl chunk rest [TokIdent name, TokType]) s_fns s_tys aliases mod_stack in_lib
+      parse items loop ((TokIdent "expand"):TokType:(TokIdent name):rest) s_fns s_tys aliases mod_stack in_lib
         | (is upper ident name) and (has type params then eq rest) =
-          t_res = parse type decl ([TokType, TokIdent name] :: rest)
-          parse items after type mod True t_res s_fns s_tys aliases mod_stack in_lib
-      parse items mod ts                 s_fns s_tys aliases mod_stack in_lib
+          parse chunk type True (split top decl chunk rest [TokIdent name, TokType]) s_fns s_tys aliases mod_stack in_lib
+      parse items loop ts                 s_fns s_tys aliases mod_stack in_lib
         | (not (line has colon colon ts)) and (line has fat arrow ts) =
-          parse items after fn mod (parse bare decl ts) s_fns s_tys aliases mod_stack in_lib
+          parse chunk bare (split top decl chunk ts []) s_fns s_tys aliases mod_stack in_lib
         | otherwise =
-          err_fn = FnDef "__syntax_error__" [] "Int" [FnCase [] [] (ECall "__syntax_error__" [EStr "unknown or invalid top-level declaration"])]
           cur_mod = cur mod of stack mod_stack
-          parse items mod (skip to newline (tok tail ts)) (s_fns :: [ScopedFn cur_mod in_lib err_fn]) s_tys aliases mod_stack in_lib
+          last_fn = last scoped fn in mod s_fns cur_mod ""
+          tok_prev = syntax err tok preview ts 4
+          err_msg = format syntax err loc tok_prev cur_mod last_fn
+          err_fn = FnDef "__syntax_error__" [] "Int" [FnCase [] [] (ECall "__syntax_error__" [EStr err_msg])]
+          parse items loop (skip to newline (tok tail ts)) ([ScopedFn cur_mod in_lib err_fn] :: s_fns) s_tys aliases mod_stack in_lib
 
 fn :: skip to user src marker [RToken] => [RToken]
       skip to user src marker [] = []
@@ -5639,8 +6259,8 @@ fn :: filter non lib scoped fns [RScopedFn] => [RFnDef]
 
 fn :: finish strict user fns ([RScopedFn], [RScopedType], [RModAlias]) => [RFnDef]
       finish strict user fns (raw_s_fns, s_tys, _) =
-        field_names = collect scoped type field names s_tys []
-        fn_names = collect scoped fn base names raw_s_fns []
+        field_names = collect scoped type field names s_tys StrSetEmpty
+        fn_names = collect scoped fn base names raw_s_fns StrSetEmpty
         enc_s_fns = encode scoped fn list raw_s_fns field_names fn_names True
         filter non lib scoped fns enc_s_fns
 

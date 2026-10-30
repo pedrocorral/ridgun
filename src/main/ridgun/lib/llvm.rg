@@ -15,10 +15,14 @@ import x86_64
 
 -- ── Tree-Based O(N log N) String Concatenation ──────────────
 
+fn :: llvm rev strs [String] [String] => [String]
+      llvm rev strs [] acc = acc
+      llvm rev strs (x:xs) acc = llvm rev strs xs ([x] :: acc)
+
 fn :: join str pairs [String] [String] => [String]
-      join str pairs [] acc = acc
-      join str pairs (a:[]) acc = acc :: [a]
-      join str pairs (a:b:rest) acc = join str pairs rest (acc :: [a + b])
+      join str pairs [] acc = llvm rev strs acc []
+      join str pairs (a:[]) acc = llvm rev strs ([a] :: acc) []
+      join str pairs (a:b:rest) acc = join str pairs rest ([a + b] :: acc)
 
 fn :: join str tree [String] => String
       join str tree []       =  ""
@@ -391,10 +395,10 @@ fn :: emit llvm instr RNativeInstr Int Int Int => String
         "  br label %epilogue_exit\ndead_{step}:\n"
 
 fn :: emit llvm instr list [RNativeInstr] Int Int Int [String] => [String]
-      emit llvm instr list [] _ _ _ acc = acc
+      emit llvm instr list [] _ _ _ acc = llvm rev strs acc []
       emit llvm instr list (ins:rest) step num_slots rodata_len acc =
         line = emit llvm instr ins step num_slots rodata_len
-        emit llvm instr list rest (step + 1) num_slots rodata_len (acc :: [line])
+        emit llvm instr list rest (step + 1) num_slots rodata_len ([line] :: acc)
 
 fn :: llvm alloc slots Int => Int
       llvm alloc slots n
@@ -443,10 +447,10 @@ fn :: emit llvm fn RNativeFn Int => String
           join str tree ([hdr] :: body_chunks :: [ftr])
 
 fn :: emit llvm fn list [RNativeFn] Int [String] => [String]
-      emit llvm fn list [] _ acc = acc
+      emit llvm fn list [] _ acc = llvm rev strs acc []
       emit llvm fn list (f:fs) rodata_len acc =
         fn_ir = emit llvm fn f rodata_len
-        emit llvm fn list fs rodata_len (acc :: [fn_ir])
+        emit llvm fn list fs rodata_len ([fn_ir] :: acc)
 
 fn :: llvm target triple String => String
       llvm target triple "arm64"       =  "aarch64-unknown-linux-gnu"
@@ -505,8 +509,8 @@ fn :: build llvm x8664 executable RNativeProg String     => Int
         ll_path = tmp_base + ".ll"
         bc_path = tmp_base + ".bc"
         obj_path = tmp_base + ".o"
-        rt_path = "/tmp/__rg_llvm_cache_v0_9_21_s2.rt"
-        lds_path = "/tmp/__rg_llvm_cache_v0_9_21_s2.lds"
+        rt_path = "/tmp/__rg_llvm_cache_v0_9_29.rt"
+        lds_path = "/tmp/__rg_llvm_cache_v0_9_29.lds"
         ensure cached rt files rt_path lds_path
         nprog -> emit llvm ir -> write file ll_path _
         cmd = "/usr/bin/opt -O2 \"" + ll_path + "\" -o \"" + bc_path + "\" && /usr/bin/llc -O2 -filetype=obj \"" + bc_path + "\" -o \"" + obj_path + "\" && /usr/bin/ld -n --no-warn-rwx-segments -T \"" + lds_path + "\" -b binary \"" + rt_path + "\" -b elf64-x86-64 \"" + obj_path + "\" -o \"" + output_bin + "\""
@@ -519,8 +523,8 @@ fn :: build llvm x8664 so library RNativeProg String    => Int
         ll_path = tmp_base + ".ll"
         bc_path = tmp_base + ".bc"
         obj_path = tmp_base + ".o"
-        rt_path = "/tmp/__rg_llvm_cache_v0_9_21_s2.rt"
-        lds_path = "/tmp/__rg_llvm_cache_v0_9_21_s2.lds"
+        rt_path = "/tmp/__rg_llvm_cache_v0_9_29.rt"
+        lds_path = "/tmp/__rg_llvm_cache_v0_9_29.lds"
         ensure cached rt files rt_path lds_path
         nprog -> emit llvm ir -> write file ll_path _
         cmd = "/usr/bin/opt -O2 \"" + ll_path + "\" -o \"" + bc_path + "\" && /usr/bin/llc -O2 -relocation-model=pic -filetype=obj \"" + bc_path + "\" -o \"" + obj_path + "\" && /usr/bin/ld -shared -n --no-warn-rwx-segments -T \"" + lds_path + "\" -b binary \"" + rt_path + "\" -b elf64-x86-64 \"" + obj_path + "\" -o \"" + output_so + "\""

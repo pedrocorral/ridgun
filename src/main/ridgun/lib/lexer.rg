@@ -206,27 +206,23 @@ fn :: lex one tok String Int Int Int Int => RToken Int
         | is alpha c = tok ident src pos len
         | otherwise = (TokNewline, pos + 1)
 
-fn :: tok pair tok (RToken, Int) => RToken
-      tok pair tok (tok, _)      =  tok
+fn :: rev tok list [RToken] [RToken] => [RToken]
+      rev tok list []       acc      =  acc
+      rev tok list (x:xs)   acc      =  rev tok list xs ([x] :: acc)
 
-fn :: tok pair pos (RToken, Int) => Int
-      tok pair pos (_, next_p)   =  next_p
-
-fn :: lex next tok String Int Int => RToken
-      lex next tok src p len = tok pair tok (lex one tok src p len (str char at src p) (str char at src (p + 1)))
-
-fn :: lex next pos String Int Int => Int
-      lex next pos src p len = tok pair pos (lex one tok src p len (str char at src p) (str char at src (p + 1)))
+fn :: lex step (RToken, Int) String Int [RToken] => [RToken]
+      lex step (tok, next_p) src len rev_acc =
+        lex loop at src (skip ws src next_p len) len ([tok] :: rev_acc)
 
 fn :: lex loop String Int Int [RToken] => [RToken]
-      lex loop src pos len acc =
+      lex loop src pos len rev_acc =
         p = skip ws src pos len
-        lex loop at src p len acc
+        lex loop at src p len rev_acc
 
 fn :: lex loop at String Int Int [RToken] => [RToken]
-      lex loop at src p len acc
-        | p >= len = acc :: [TokEof]
-        | otherwise = lex loop at src (skip ws src (lex next pos src p len) len) len (acc :: [lex next tok src p len])
+      lex loop at src p len rev_acc
+        | p >= len = rev tok list ([TokEof] :: rev_acc) []
+        | otherwise = lex step (lex one tok src p len (str char at src p) (str char at src (p + 1))) src len rev_acc
 
 fn :: tokenize src String => [RToken]
       tokenize src src    =  lex loop src 0 (str len src) []

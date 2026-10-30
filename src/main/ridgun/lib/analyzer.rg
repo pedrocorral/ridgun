@@ -70,6 +70,29 @@ fn :: strategy to str RExecStrategy => String
 
 -- ── Summary Table Lookup & Update ───────────────────────────
 
+type RSummaryMap = SummaryEmpty | SummaryNode String RFnSummary RSummaryMap RSummaryMap
+
+fn :: summary map get RSummaryMap String => Bool RFnSummary
+      summary map get SummaryEmpty name =
+        (False, FnSummary name [] False TierTrivial StratInlineSequential)
+      summary map get (SummaryNode k v l r) name
+        | (cmp str bst name k) == 0 = (True, v)
+        | (cmp str bst name k) < 0 = summary map get l name
+        | otherwise = summary map get r name
+
+fn :: summary map put RSummaryMap String RFnSummary => RSummaryMap
+      summary map put SummaryEmpty k v =
+        SummaryNode k v SummaryEmpty SummaryEmpty
+      summary map put (SummaryNode nk nv l r) k v
+        | (cmp str bst k nk) == 0 = SummaryNode nk v l r
+        | (cmp str bst k nk) < 0 = SummaryNode nk nv (summary map put l k v) r
+        | otherwise = SummaryNode nk nv l (summary map put r k v)
+
+fn :: build summary map [RFnSummary] RSummaryMap => RSummaryMap
+      build summary map [] m = m
+      build summary map ((FnSummary sname effs yld cost strat):rest) m =
+        build summary map rest (summary map put m sname (FnSummary sname effs yld cost strat))
+
 fn :: lookup fn summary [RFnSummary] String => Bool RFnSummary
       lookup fn summary []           name   =
         (False, FnSummary name [] False TierTrivial StratInlineSequential)
@@ -152,9 +175,9 @@ fn :: max int Int Int => Int
         | a >= b = a
         | otherwise = b
 
-fn :: collect expr effects RExpr String [RFnSummary] [String] Bool RCostTier => [String] Bool RCostTier
+fn :: collect expr effects RExpr String RSummaryMap [String] Bool RCostTier => [String] Bool RCostTier
       collect expr effects (ECall callee args) cur_fn summaries muts yld cost =
-        after_call = apply callee summary callee args cur_fn (lookup fn summary summaries callee) muts yld cost
+        after_call = apply callee summary callee args cur_fn (summary map get summaries callee) muts yld cost
         collect expr list effects tuple args cur_fn summaries after_call
       collect expr effects (EIndexAssign target idxs val) cur_fn summaries muts yld cost =
         muts1 = add unique str target muts
@@ -201,21 +224,21 @@ fn :: collect expr effects RExpr String [RFnSummary] [String] Bool RCostTier => 
         collect expr list effects tuple idxs cur_fn summaries r1
       collect expr effects _ _ _ muts yld cost = (muts, yld, cost)
 
-fn :: collect expr effects tuple RExpr String [RFnSummary] ([String], Bool, RCostTier) => [String] Bool RCostTier
+fn :: collect expr effects tuple RExpr String RSummaryMap ([String], Bool, RCostTier) => [String] Bool RCostTier
       collect expr effects tuple e cur_fn summaries (muts, yld, cost) =
         collect expr effects e cur_fn summaries muts yld cost
 
-fn :: collect expr list effects [RExpr] String [RFnSummary] [String] Bool RCostTier => [String] Bool RCostTier
+fn :: collect expr list effects [RExpr] String RSummaryMap [String] Bool RCostTier => [String] Bool RCostTier
       collect expr list effects [] _ _ muts yld cost = (muts, yld, cost)
       collect expr list effects (e:es) cur_fn summaries muts yld cost =
         r1 = collect expr effects e cur_fn summaries muts yld cost
         collect expr list effects tuple es cur_fn summaries r1
 
-fn :: collect expr list effects tuple [RExpr] String [RFnSummary] ([String], Bool, RCostTier) => [String] Bool RCostTier
+fn :: collect expr list effects tuple [RExpr] String RSummaryMap ([String], Bool, RCostTier) => [String] Bool RCostTier
       collect expr list effects tuple es cur_fn summaries (muts, yld, cost) =
         collect expr list effects es cur_fn summaries muts yld cost
 
-fn :: collect stmt list effects [RStmt] String [RFnSummary] [String] Bool RCostTier => [String] Bool RCostTier
+fn :: collect stmt list effects [RStmt] String RSummaryMap [String] Bool RCostTier => [String] Bool RCostTier
       collect stmt list effects [] _ _ muts yld cost = (muts, yld, cost)
       collect stmt list effects ((StmtLet _ e):ss) cur_fn summaries muts yld cost =
         r1 = collect expr effects e cur_fn summaries muts yld cost
@@ -232,17 +255,17 @@ fn :: collect stmt list effects [RStmt] String [RFnSummary] [String] Bool RCostT
         r_val = collect expr effects tuple e cur_fn summaries r_idxs
         collect stmt list effects tuple ss cur_fn summaries r_val
 
-fn :: collect stmt list effects tuple [RStmt] String [RFnSummary] ([String], Bool, RCostTier) => [String] Bool RCostTier
+fn :: collect stmt list effects tuple [RStmt] String RSummaryMap ([String], Bool, RCostTier) => [String] Bool RCostTier
       collect stmt list effects tuple ss cur_fn summaries (muts, yld, cost) =
         collect stmt list effects ss cur_fn summaries muts yld cost
 
-fn :: collect where effects [RWhereBind] String [RFnSummary] [String] Bool RCostTier => [String] Bool RCostTier
+fn :: collect where effects [RWhereBind] String RSummaryMap [String] Bool RCostTier => [String] Bool RCostTier
       collect where effects [] _ _ muts yld cost = (muts, yld, cost)
       collect where effects ((WhereBind e target idxs):wbs) cur_fn summaries muts yld cost
         | (int list len idxs) > 0 = collect where effects tuple wbs cur_fn summaries (collect expr effects e cur_fn summaries (add unique str target muts) yld cost)
         | otherwise = collect where effects tuple wbs cur_fn summaries (collect expr effects e cur_fn summaries muts yld cost)
 
-fn :: collect where effects tuple [RWhereBind] String [RFnSummary] ([String], Bool, RCostTier) => [String] Bool RCostTier
+fn :: collect where effects tuple [RWhereBind] String RSummaryMap ([String], Bool, RCostTier) => [String] Bool RCostTier
       collect where effects tuple wbs cur_fn summaries (muts, yld, cost) =
         collect where effects wbs cur_fn summaries muts yld cost
 
@@ -263,7 +286,8 @@ fn :: compute call cost String String Bool RCostTier RCostTier => RCostTier
 
 fn :: classify expr strategy RExpr String [RFnSummary] => RExecStrategy
       classify expr strategy expr cur_fn summaries =
-        finish expr strategy (collect expr effects expr cur_fn summaries [] False TierTrivial)
+        smap = build summary map summaries SummaryEmpty
+        finish expr strategy (collect expr effects expr cur_fn smap [] False TierTrivial)
 
 fn :: finish expr strategy ([String], Bool, RCostTier) => RExecStrategy
       finish expr strategy (_, yld, cost)              =  select exec strategy yld cost
@@ -283,25 +307,25 @@ fn :: update param effects [RPattern] [RParamEffect] [String] => [RParamEffect]
       update param effects (_:ps) (e:es) muts =
         [e] :: (update param effects ps es muts)
 
-fn :: collect guards effects [RGuard] String [RFnSummary] [String] Bool RCostTier => [String] Bool RCostTier
+fn :: collect guards effects [RGuard] String RSummaryMap [String] Bool RCostTier => [String] Bool RCostTier
       collect guards effects [] _ _ muts yld cost = (muts, yld, cost)
       collect guards effects ((GuardBranch c b):gs) fn_name summaries muts yld cost =
         r1 = collect expr effects c fn_name summaries muts yld cost
         r2 = collect expr effects tuple b fn_name summaries r1
         collect guards effects tuple gs fn_name summaries r2
 
-fn :: collect guards effects tuple [RGuard] String [RFnSummary] ([String], Bool, RCostTier) => [String] Bool RCostTier
+fn :: collect guards effects tuple [RGuard] String RSummaryMap ([String], Bool, RCostTier) => [String] Bool RCostTier
       collect guards effects tuple gs fn_name summaries (muts, yld, cost) =
         collect guards effects gs fn_name summaries muts yld cost
 
-fn :: collect cases summary [RFnCase] String [RFnSummary] [RParamEffect] Bool RCostTier => [RParamEffect] Bool RCostTier
+fn :: collect cases summary [RFnCase] String RSummaryMap [RParamEffect] Bool RCostTier => [RParamEffect] Bool RCostTier
       collect cases summary [] _ _ effs yld cost = (effs, yld, cost)
       collect cases summary ((FnCase pats guards body):cs) fn_name summaries effs yld cost =
         r_body = collect expr effects body fn_name summaries [] yld cost
         r_all = collect guards effects tuple guards fn_name summaries r_body
         collect cases step pats cs fn_name summaries effs r_all
 
-fn :: collect cases step [RPattern] [RFnCase] String [RFnSummary] [RParamEffect] ([String], Bool, RCostTier) => [RParamEffect] Bool RCostTier
+fn :: collect cases step [RPattern] [RFnCase] String RSummaryMap [RParamEffect] ([String], Bool, RCostTier) => [RParamEffect] Bool RCostTier
       collect cases step pats cs fn_name summaries effs (case_muts, yld1, cost1) =
         effs1 = update param effects pats effs case_muts
         collect cases summary cs fn_name summaries effs1 yld1 cost1
@@ -312,7 +336,7 @@ fn :: adjust recursive cost Int        RCostTier => RCostTier
         | self_calls > 1 = TierDynamicRecursive
         | otherwise = cost
 
-fn :: compute one fn summary RFnDef [RFnSummary] => RFnSummary
+fn :: compute one fn summary RFnDef RSummaryMap => RFnSummary
       compute one fn summary (FnDef name params _ cases) summaries =
         init_effs = init readonly effects params
         self_calls = count case calls name cases
@@ -334,29 +358,36 @@ fn :: is nontrivial summary RFnSummary                             => Bool
       is nontrivial summary (FnSummary _ effs False TierTrivial _) =  has mut effect effs
       is nontrivial summary _                                      =  True
 
-fn :: add nontrivial summary RFnSummary [RFnSummary] => [RFnSummary]
-      add nontrivial summary s          summaries
-        | is nontrivial summary s = summaries :: [s]
-        | otherwise = summaries
+fn :: rev fn summaries [RFnSummary] [RFnSummary] => [RFnSummary]
+      rev fn summaries [] acc = acc
+      rev fn summaries (x:xs) acc = rev fn summaries xs ([x] :: acc)
+
+fn :: add nontrivial summary map RFnSummary RSummaryMap => RSummaryMap
+      add nontrivial summary map (FnSummary sname effs yld cost strat) smap
+        | is nontrivial summary (FnSummary sname effs yld cost strat) =
+          summary map put smap sname (FnSummary sname effs yld cost strat)
+        | otherwise = smap
 
 fn :: filter nontrivial summaries acc [RFnSummary] [RFnSummary] => [RFnSummary]
-      filter nontrivial summaries acc []           acc          =  acc
+      filter nontrivial summaries acc []           acc          =  rev fn summaries acc []
       filter nontrivial summaries acc (s:ss)       acc
-        | is nontrivial summary s = filter nontrivial summaries acc ss (acc :: [s])
-        | otherwise = filter nontrivial summaries acc ss acc
+        | is nontrivial summary s = filter nontrivial summaries acc ss ([s] :: acc)
+      filter nontrivial summaries acc (_:ss)       acc =
+        filter nontrivial summaries acc ss acc
 
 fn :: filter nontrivial summaries [RFnSummary] => [RFnSummary]
       filter nontrivial summaries ss           =  filter nontrivial summaries acc ss []
 
-fn :: compute summaries pass acc [RFnDef] [RFnSummary] [RFnSummary] => [RFnSummary]
-      compute summaries pass acc []       _            acc          =  acc
-      compute summaries pass acc (f:fs)   cur_summaries acc         =
-        s = compute one fn summary f cur_summaries
-        compute summaries pass acc fs (add nontrivial summary s cur_summaries) (acc :: [s])
+fn :: compute summaries pass acc [RFnDef] RSummaryMap [RFnSummary] => [RFnSummary]
+      compute summaries pass acc []       _    acc = rev fn summaries acc []
+      compute summaries pass acc (f:fs)   smap acc =
+        s = compute one fn summary f smap
+        compute summaries pass acc fs (add nontrivial summary map s smap) ([s] :: acc)
 
 fn :: compute summaries pass [RFnDef] [RFnSummary]  => [RFnSummary]
       compute summaries pass fns      cur_summaries =
-        compute summaries pass acc fns cur_summaries []
+        smap = build summary map cur_summaries SummaryEmpty
+        compute summaries pass acc fns smap []
 
 fn :: infer all summaries RProgram        => [RFnSummary]
       infer all summaries (Program fns _) =
@@ -469,7 +500,8 @@ fn :: collect bind accesses RWhereBind [RFnSummary] => [String] [String]
       collect bind accesses (WhereBind expr target idxs) summaries =
         reads = collect free vars expr []
         init_muts = init target mut target idxs
-        eff_res = collect expr effects expr "" summaries init_muts False TierTrivial
+        smap = build summary map summaries SummaryEmpty
+        eff_res = collect expr effects expr "" smap init_muts False TierTrivial
         extract reads and muts reads eff_res
 
 fn :: init target mut String [Int] => [String]
@@ -697,10 +729,14 @@ fn :: check cases safety [RFnCase] String [String] [RFnSummary] => [RAnalysisErr
 fn :: extract analysis errs ([String], [RAnalysisError]) [RAnalysisError] => [RAnalysisError]
       extract analysis errs (_, errs) more = errs :: more
 
+fn :: rev analysis errs [RAnalysisError] [RAnalysisError] => [RAnalysisError]
+      rev analysis errs [] acc = acc
+      rev analysis errs (x:xs) acc = rev analysis errs xs ([x] :: acc)
+
 fn :: check all fns safety acc [RFnDef] [RFnSummary] [RAnalysisError] => [RAnalysisError]
-      check all fns safety acc [] _ acc = acc
+      check all fns safety acc [] _ acc = rev analysis errs acc []
       check all fns safety acc ((FnDef name param_types _ cases):fs) summaries acc =
-        check all fns safety acc fs summaries (acc :: (check cases safety cases name param_types summaries))
+        check all fns safety acc fs summaries (rev analysis errs (check cases safety cases name param_types summaries) acc)
 
 fn :: check all fns safety [RFnDef] [RFnSummary] => [RAnalysisError]
       check all fns safety fns summaries =
@@ -716,9 +752,9 @@ fn :: check program with summaries RProgram [RFnSummary] => [RAnalysisError]
         check all fns safety fns summaries
 
 fn :: format summaries acc [RFnSummary] [String] => [String]
-      format summaries acc [] acc = acc
+      format summaries acc [] acc = rev str list acc []
       format summaries acc ((FnSummary name _ _ _ strat):ss) acc =
-        format summaries acc ss (acc :: [name + ":" + (strategy to str strat)])
+        format summaries acc ss ([name + ":" + (strategy to str strat)] :: acc)
 
 fn :: format summaries [RFnSummary] => [String]
       format summaries ss           =  format summaries acc ss []
