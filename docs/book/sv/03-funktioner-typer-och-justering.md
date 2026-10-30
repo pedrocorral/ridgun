@@ -18,14 +18,14 @@ Du kan skriva rubrikraden på två sätt:
 
 ### Alternativ A: Rakt på sak (utan prefix)
 ```ridgun
-tillampa_rabatt Int  Int     => Int
-tillampa_rabatt pris procent =  pris - (pris * procent / 100)
+tillampa rabatt Int  Int     => Int
+tillampa rabatt pris procent =  pris - (pris * procent / 100)
 ```
 
 ### Alternativ B: Med uttrycklig etikett (`fn ::`)
 ```ridgun
-fn :: tillampa_rabatt Int  Int     => Int
-      tillampa_rabatt pris procent =  pris - (pris * procent / 100)
+fn :: tillampa rabatt Int  Int     => Int
+      tillampa rabatt pris procent =  pris - (pris * procent / 100)
 ```
 
 *"Hallå där, varför finns båda två?"*
@@ -33,7 +33,7 @@ Därför att smaken är som baken:
 - Vissa föredrar att funktioner börjar ända ute i vänstermarginalen utan att behöva skriva `fn ::` varje gång (pilen `=>` ropar trots allt redan ut över hela rummet att den raden är en typsignatur).
 - Andra föredrar att ha en vänsterkolumn vigd åt etiketterna (`fn ::`, `op ::`, `type`, `import`) för att snabbt kunna överblicka filen visuellt.
 
-Kompilatorn och `stable format` förstår båda två till fullo. Dessutom kan orden `fn` och `op` användas fritt som en del av namnet på vilken funktion eller operator som helst (till exempel `fn :: op`, `op :: fn` eller `op :: op`), och om en funktion returnerar flera värden skrivs returtyperna i kanoniskt/strikt läge åtskilda med mellanslag efter `=>` (`dividera_med_rest Int Int => Int Int`).
+Kompilatorn och `stable format` förstår båda två till fullo. Dessutom kan orden `fn` och `op` användas fritt som en del av namnet på vilken funktion eller operator som helst (till exempel `fn :: op`, `op :: fn` eller `op :: op`), och om en funktion returnerar flera värden skrivs returtyperna i kanoniskt/strikt läge åtskilda med mellanslag efter `=>` (`dividera med rest Int Int => Int Int`).
 
 ---
 
@@ -68,7 +68,7 @@ De skalära typerna i Ridgun är raka och utan överraskningar:
 | `U64` | 64-bitars heltal utan tecken (`u64`) med inbyggd modulär och bitvis aritmetik | `u64 0`, `u64 0x6a09e667f3bcc908`, `a ^ b`, `a << u64 13` |
 | `Float` / `Real` | Decimaltal med dubbel precision (`f64`) | `3.14159`, `0.001`, `-2.5` |
 | `String` | Oföränderlig textsträng | `"Hej"`, `'ra\sokvag'` |
-| `Char` | Teckenkod | Returneras av `str_char_at` |
+| `Char` | Teckenkod | Returneras av `str char at` |
 | `Bool` | Klassisk boolesk typ | `True`, `False` |
 | `()` | Tom (*Unit*, när du bara skriver ut eller gör I/O) | `()` |
 
@@ -107,19 +107,19 @@ ordersammanfattning vara   antal pris =
 Det du skriver inom enkla citattecken kommer ut **exakt som det står**, utan att röra vare sig omvända snedstreck `\` eller måsvingar `{}`. Perfekt när du genererar kod i ett annat språk, skriver skalkommandon eller arbetar med sökvägar fulla av snedstreck:
 
 ```ridgun
-sed_kommando => String
-sed_kommando =  's/\([0-9]+\)/[\1]/g'
+sed kommando => String
+sed kommando =  's/\([0-9]+\)/[\1]/g'
 ```
 
 ### Din verktygslåda för strängar (`String`)
 Att slå ihop strängar är så enkelt som att addera dem med `+`: `"Hej, " + namn`. Och när du behöver utföra finlir på en text har du dessa inbyggda funktioner redo utan att behöva importera något:
 
-- `str_len s` $\rightarrow$ längden på `s`.
-- `str_char_at s i` $\rightarrow$ numerisk kod (`Int`) för tecknet på position `i` (`-1` om du hamnar utanför).
-- `str_slice s start slut` $\rightarrow$ klipper ut från `start` till `slut` (exklusive `slut`).
-- `char_from_code c` $\rightarrow$ omvandlar en numerisk kod (`Int`, t.ex. `10` för `\n` eller `34` för `"`) till en `String` med 1 tecken.
-- `str_contains s nal` och `str_starts_with s prefix` $\rightarrow$ returnerar `True` eller `False`.
-- `int_to_str n` och `str_to_int s` $\rightarrow$ omvandlar från tal till text och tvärtom (`str_to_int` förstår till och med `"0xFF"`!).
+- `str len s` $\rightarrow$ längden på `s`.
+- `str char at s i` $\rightarrow$ numerisk kod (`Int`) för tecknet på position `i` (`-1` om du hamnar utanför).
+- `str slice s start slut` $\rightarrow$ klipper ut från `start` till `slut` (exklusive `slut`).
+- `char from code c` $\rightarrow$ omvandlar en numerisk kod (`Int`, t.ex. `10` för `\n` eller `34` för `"`) till en `String` med 1 tecken.
+- `str contains s nal` och `str starts with s prefix` $\rightarrow$ returnerar `True` eller `False`.
+- `int to str n` och `str to int s` $\rightarrow$ omvandlar från tal till text och tvärtom (`str to int` förstår till och med `"0xFF"`!).
 
 ---
 
@@ -130,8 +130,8 @@ När en funktion inte får plats på en enda rad gör du en radbrytning efter `=
 Titta på hur ett block läses steg för steg:
 
 ```ridgun
-berakna_faktura Int Int      => Int
-berakna_faktura bas moms_pct =
+berakna faktura Int Int      => Int
+berakna faktura bas moms_pct =
   skatt = bas * moms_pct / 100
   expeditionsavgift = 50
   echo "Specifikation -> Bas:" bas "Skatt:" skatt
@@ -142,8 +142,8 @@ Fyra gyllene regler som gör blocken i Ridgun rena och enhetliga:
 1. **Oföränderligt (*immutable*) som standard utan `let` eller `const`**: du skriver `skatt = ...` och har direkt din lokala oföränderliga konstant. Om du av misstag försöker skriva över `skatt = 99` längre ner i samma block bromsar kompilatorn dig tvärt.
 2. **Uttryckliga föränderliga variabler med `mut`**: när du verkligen vill uppdatera en lokal ackumulator steg för steg inuti en funktion deklarerar du den med **`mut`** och tilldelar den sedan fritt nya värden med `=`:
    ```ridgun
-   tillampa_tillagg Int  => Int
-   tillampa_tillagg pris =
+   tillampa tillagg Int  => Int
+   tillampa tillagg pris =
      mut total = pris
      total = total + 10
      total = total * 2
@@ -154,6 +154,6 @@ Fyra gyllene regler som gör blocken i Ridgun rena och enhetliga:
    - **`(ingenting)`**: indragna sekventiella rader (som ovan).
    - **`|`**: ett träd av villkorsvakter.
    - **`||`**: en graf av parallella beräkningar med `->`.
-4. **Det sista uttrycket är alltid resultatet**: `bas + skatt + expeditionsavgift` är vad `berakna_faktura` returnerar. Utan `return`.
+4. **Det sista uttrycket är alltid resultatet**: `bas + skatt + expeditionsavgift` är vad `berakna faktura` returnerar. Utan `return`.
 
 I **Kapitel 04** ska vi se hur man fattar komplexa beslut — inklusive beslutsträd i flera nivåer med `|.` — utan att någonsin skriva ett `if/else` eller en `while`-loop: välkommen till världen av **booleska vakter** och **svansrekursion utan extra kostnad**.

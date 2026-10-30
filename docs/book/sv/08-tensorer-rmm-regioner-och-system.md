@@ -33,7 +33,7 @@ Och vad händer när du stoppar in strukturer i andra strukturer (`xs = [a, b]`)
    - `xs = [a, b]` $\rightarrow$ listan `xs` föds med `1`, och eftersom den sparar referenser till `a` och `b` stiger båda till `2`.
    - Om du tilldelar om en muterbar variabel (`mut x = ...` och sedan `x = ny`), lägger `RMM2` först på **`+1`** på det nya värdet innan den drar av **`-1`** från det gamla.
 3. **När funktionen avslutas får lokala variabler som INTE returneras `-1`**: om en strukturs räknare når `0` frigörs dess minne på fläcken och **sprider `-1` i kaskad, ett i taget, till vart och ett av dess direkta barn**.
-4. **Värdet som returneras av funktionen undantas under transporten**: det får sitt `-1` som lokal variabel men förstörs inte när det passerar `return`, så att när anroparen skriver `c = min_funktion ()`, lämnar tilldelningens `+1` räknaren på exakt `1`.
+4. **Värdet som returneras av funktionen undantas under transporten**: det får sitt `-1` som lokal variabel men förstörs inte när det passerar `return`, så att när anroparen skriver `c = min funktion ()`, lämnar tilldelningens `+1` räknaren på exakt `1`.
 
 ```ridgun
 valj Bool [Int] [Int] => [Int]
@@ -41,8 +41,8 @@ valj cond a     b     =
   | cond      = a
   | otherwise = b
 
-exempel_rmm2 Bool => Int
-exempel_rmm2 cond =
+exempel rmm2 Bool => Int
+exempel rmm2 cond =
   a = [10, 20, 30]         -- M1 (rc = 1)
   b = [40, 50, 60]         -- M2 (rc = 1)
   c = valj cond a b        -- `c` får +1; den som inte valdes dör precis här (rc -> 0)
@@ -56,11 +56,11 @@ exempel_rmm2 cond =
 Utöver `RMM1` och `RMM2` kan du, när du bearbetar ett externt nätverkspaket, en enorm fil eller ett parti opålitliga data och vill sätta ett **strikt tak för RAM-minnet**, kapsla in beräkningen i ett **`with region`**-block:
 
 ```ridgun
-bearbeta_ram String => Result
-bearbeta_ram radata =
+bearbeta ram String => Result
+bearbeta ram radata =
   with region 64_KB do
-    rena = map rensa_rad (dela_rader radata)
-    rakna_giltiga rena
+    rena = map rensa rad (dela rader radata)
+    rakna giltiga rena
 ```
 
 1. **Garanterad kvot i hårdvara/körtidsmiljö**: om något inuti blocket försöker reservera ens en enda byte över `64_KB` (`65 536` byte) avbryter körtidsmiljön blocket snyggt, frigör hela den tillfälliga arenan på konstant tid $O(1)$ och returnerar `Err OutOfMemory` utan att krascha processen.
@@ -80,8 +80,8 @@ I Ridgun är **`Tensor`** förstklassiga inbyggda medborgare och deras dimension
 
 ```ridgun
 -- Om (N × K) och (K × M) går in, måste det ovillkorligen komma ut (N × M)!
-multiplicera_matriser Tensor[N, K] Tensor[K, M] => Tensor[N, M]
-multiplicera_matriser a            b            =  a_ik @ b_kj
+multiplicera matriser Tensor[N, K] Tensor[K, M] => Tensor[N, M]
+multiplicera matriser a            b            =  a_ik @ b_kj
 ```
 
 Lägg märke till två spektakulära detaljer:
@@ -92,8 +92,8 @@ Lägg märke till två spektakulära detaljer:
 3. **Högpresterande typade tensorer (`Tensor[U64 * N]`) och mutering *in-place* med `t_(i, j)`**:
    I kryptografiska system, fysiksimuleringar eller linjär algebra kan du deklarera platta tensorer över ett sammanhängande block av teckenlösa 64-bitars heltal (`Tensor[U64 * 4]`, `Tensor[U64 * 8 * 16]`), operera parallellt med `^` (inbyggd block-XOR) och läsa eller skriva element på $O(1)$-tid med den uttryckliga indexsyntaxen `t_(i)` eller `t_(i, j)`:
    ```ridgun
-   skapa_tillstandsblock => Tensor[U64 * 2 * 2]
-   skapa_tillstandsblock =
+   skapa tillstandsblock => Tensor[U64 * 2 * 2]
+   skapa tillstandsblock =
      mut m = tensor fill [2, 2] (u64 0)
      m_(0, 1) = u64 0x6a09e667f3bcc908
      m
@@ -115,16 +115,16 @@ Och för att arbeta med operativsystemet:
 
 | Primitiv | Signatur | Vad den gör |
 |---|---|---|
-| `cli_args` | `=> [String]` | Kommandoradsargument (`argv`). |
-| `read_file` / `write_file` | `String => String` / `String String => ()` | Läsning och skrivning av hela filer på disk. |
-| `read_bytes` / `write_bytes` | `String => [Int]` / `String [Int] => ()` | Exakt binär läsning och skrivning byte för byte (`0..255`). |
-| `list_dir` / `file_lstat` | `String => [String]` / `String => ...` | Listning av kataloger och inspektion av POSIX-metadata (`lstat`). |
-| `sha256_file` / `sha256_str` / `sha256_raw` | `String => String` | Inbyggd kryptografisk SHA-256-hash (64 tecken hexadecimalt eller rått 32-bytes binärt sammandrag med `sha256 raw` / `sha256 bytes`). |
-| `sys_exec` / `shell_exec` | `... => Int` | Körning av operativsystemprocesser. |
-| `sys_getcwd` / `sys_chdir` | `=> String` / `String => Int` | Fråga efter eller byt aktuell arbetskatalog. |
-| `sys_getenv` / `sys_setenv` | `String => String` / `String String => Int` | Processens miljövariabler. |
-| `sys_getuid` / `sys_getgid` | `=> Int` | Processens faktiska UID och GID (`doas`, säkerhetsverktyg). |
-| `sys_exit` | `Int => ()` | Avsluta processen med returkod. |
+| `cli args` | `=> [String]` | Kommandoradsargument (`argv`). |
+| `read file` / `write file` | `String => String` / `String String => ()` | Läsning och skrivning av hela filer på disk. |
+| `read bytes` / `write bytes` | `String => [Int]` / `String [Int] => ()` | Exakt binär läsning och skrivning byte för byte (`0..255`). |
+| `list dir` / `file lstat` | `String => [String]` / `String => ...` | Listning av kataloger och inspektion av POSIX-metadata (`lstat`). |
+| `sha256 file` / `sha256 str` / `sha256 raw` | `String => String` | Inbyggd kryptografisk SHA-256-hash (64 tecken hexadecimalt eller rått 32-bytes binärt sammandrag med `sha256 raw` / `sha256 bytes`). |
+| `sys exec` / `shell exec` | `... => Int` | Körning av operativsystemprocesser. |
+| `sys getcwd` / `sys chdir` | `=> String` / `String => Int` | Fråga efter eller byt aktuell arbetskatalog. |
+| `sys getenv` / `sys setenv` | `String => String` / `String String => Int` | Processens miljövariabler. |
+| `sys getuid` / `sys getgid` | `=> Int` | Processens faktiska UID och GID (`doas`, säkerhetsverktyg). |
+| `sys exit` | `Int => ()` | Avsluta processen med returkod. |
 
 ---
 
@@ -150,50 +150,50 @@ Låt oss knyta ihop allt vi har lärt oss från Kapitel 01 fram till hit i ett r
 type Matvarden = fil: String, rader: Int, bytes: Int
 
 -- 2. Vi räknar radbrytningar (ASCII-kod 10) med TCO-svansrekursion (Kapitel 04)
-fn :: rakna_radbrytningar String Int Int  Int => Int
-      rakna_radbrytningar text   pos slut ack =
+fn :: rakna radbrytningar String Int Int  Int => Int
+      rakna radbrytningar text   pos slut ack =
         | pos >= slut                   = ack
-        | (str_char_at text pos) == 10  = rakna_radbrytningar text (pos + 1) slut (ack + 1)
-        | otherwise                     = rakna_radbrytningar text (pos + 1) slut ack
+        | (str char at text pos) == 10  = rakna radbrytningar text (pos + 1) slut (ack + 1)
+        | otherwise                     = rakna radbrytningar text (pos + 1) slut ack
 
-fn :: antal_rader String => Int
-      antal_rader text   =  rakna_radbrytningar text 0 (str_len text) 0
+fn :: antal rader String => Int
+      antal rader text   =  rakna radbrytningar text 0 (str len text) 0
 
 -- 3. Vi analyserar en fil och returnerar dess Matvarden-struktur
-fn :: analysera_fil String  => Matvarden
-      analysera_fil sokvag  =
-        innehall = read_file sokvag
-        || antal_rader innehall -> n_rader
-        || str_len innehall     -> n_bytes ||.
+fn :: analysera fil String  => Matvarden
+      analysera fil sokvag  =
+        innehall = read file sokvag
+        || antal rader innehall -> n_rader
+        || str len innehall     -> n_bytes ||.
         Matvarden sokvag n_rader n_bytes
 
 -- 4. Vi formaterar varje rad och summerar totaler med `fold` och `||` (Kapitel 07)
-fn :: formatera_matvarde Matvarden => String
-      formatera_matvarde m         =  "{rader m}\t{bytes m}\t{fil m}"
+fn :: formatera matvarde Matvarden => String
+      formatera matvarde m         =  "{rader m}\t{bytes m}\t{fil m}"
 
-fn :: summera_rader Int Matvarden => Int
-      summera_rader acc m         =  acc + (rader m)
+fn :: summera rader Int Matvarden => Int
+      summera rader acc m         =  acc + (rader m)
 
-fn :: summera_bytes Int Matvarden => Int
-      summera_bytes acc m         =  acc + (bytes m)
+fn :: summera bytes Int Matvarden => Int
+      summera bytes acc m         =  acc + (bytes m)
 
-fn :: generera_rapport [String] => String
-      generera_rapport sokvagar =
-        matvarden = ||map analysera_fil sokvagar
-        || map formatera_matvarde matvarden -> rader_ut
-        || fold summera_rader 0 matvarden   -> total_r
-        || fold summera_bytes 0 matvarden   -> total_b ||.
+fn :: generera rapport [String] => String
+      generera rapport sokvagar =
+        matvarden = ||map analysera fil sokvagar
+        || map formatera matvarde matvarden -> rader_ut
+        || fold summera rader 0 matvarden   -> total_r
+        || fold summera bytes 0 matvarden   -> total_b ||.
         "{rader_ut}\nTotalt: {total_r} rader, {total_b} byte"
 
 fn :: main => ()
       main =
-        echo (generera_rapport ["README.md", "AGENTS.md"])
+        echo (generera rapport ["README.md", "AGENTS.md"])
 ```
 
 Stanna upp en sekund och titta på dessa ~40 rader kod:
 - Det finns inte ett enda `null`, inget okontrollerat undantag och inget `Mutex`.
-- `rakna_radbrytningar` kompileras till en inbyggd `loop` med 0 byte stackminne tack vare automatisk TCO.
-- `||map analysera_fil sokvagar` bearbetar filerna parallellt på alla kärnor i din processor, och `||`-blocket beräknar samtidigt de formaterade raderna, totalt antal rader och totalt antal byte.
+- `rakna radbrytningar` kompileras till en inbyggd `loop` med 0 byte stackminne tack vare automatisk TCO.
+- `||map analysera fil sokvagar` bearbetar filerna parallellt på alla kärnor i din processor, och `||`-blocket beräknar samtidigt de formaterade raderna, totalt antal rader och totalt antal byte.
 - Det tillfälliga minnet frigörs deterministiskt via **`RMM1`/`RMM2`**.
 - Och när du kör `ridgunc build rg_wc.rg -o rg-wc` får du en fristående inbyggd binär på ~350 KB, färdig att kopieras till `/usr/local/bin`.
 

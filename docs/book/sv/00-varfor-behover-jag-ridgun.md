@@ -80,9 +80,9 @@ Därför behöver du inte hantera trådar i Ridgun för att utnyttja din process
 ```ridgun
 manadsrapport Data => Rapport
 manadsrapport d    =  kombinera nat_matt disk_matt cpu_matt
-  || analysera_nat d  -> nat_matt
-  || analysera_disk d -> disk_matt
-  || analysera_cpu d  -> cpu_matt
+  || analysera nat d  -> nat_matt
+  || analysera disk d -> disk_matt
+  || analysera cpu d  -> cpu_matt
 ```
 
 Du har bara skrivit tre rena rader som anger varifrån varje datamängd kommer. Kompilatorn ser att de tre grenarna är oberoende och vet att den kan starta dem parallellt utan minsta risk för vare sig *data race* eller *deadlock*.
@@ -111,10 +111,10 @@ Klassiska funktionella språk (Haskell, OCaml, Erlang, Clojure) är underbara f�
 Ridgun ger dig **hela elegansen från den rent funktionella världen, men med Ridguns minneshantering (`RMM`: statisk `RMM1` och kaskadräknad `RMM2`) plus lexikala regioner med exakt kvot (`with region`)**:
 
 ```ridgun
-tolka_paket String => Result
-tolka_paket radata =
+tolka paket String => Result
+tolka paket radata =
   with region 16_KB do
-    avkoda_ram radata
+    avkoda ram radata
 ```
 
 Varje tillfällig struktur frigörs deterministiskt av kompilatorn (`RMM1` / `RMM2`) i samma ögonblick som den slutar användas, och om en angripare skickar ett skadligt paket utformat för att spränga minnet klipps regionen omedelbart när den passerar byte 16 384, frigör sin arena i $O(1)$ och returnerar `Err OutOfMemory`. Inga kraschade processer, inga GC-pauser och inga minnesläckor.

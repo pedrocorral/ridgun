@@ -20,7 +20,7 @@ Ridgun avoids exposing raw Linux-only syscall numbers or OS-specific bitflags in
 2. **Layer 1 — Cross-Platform PAL Primitives (`sys open mode`, `sys open`, `sys close`, `sys read fd`, `sys write fd`, `sys poll`, `sys terminate`, `sys kill`, `sys call`)**:
    - All flag masks and poll event masks passed to Layer 1 primitives use **Ridgun PAL Normalized Constants**.
    - Each backend (`x86_64.rg` ELF64, `arm64.rg` ELF64, and future `Mach-O` macOS / `PE64` Windows backends) translates those normalized constants into the native OS kernel ABI (`openat`/`poll`/`kill` on Linux, `open`/`poll`/`kill` on macOS, `CreateFileW`/`WaitForSingleObject`/`WSAPoll`/`TerminateProcess` on Windows).
-   - Both natural-language space-separated syntax (`sys open mode path "r"`) and underscore-separated syntax (`sys_open_mode path "r"`) are accepted identically.
+   - Both natural-language space-separated syntax (`sys open mode path "r"`) and underscore-separated syntax (`sys open mode path "r"`) are accepted identically.
 
 3. **Layer 2 — Declarative Execution Quotas (`with timeout <duration> do`)**:
    - Integer literals support duration suffixes: `_ms` (`* 1`), `_s` (`* 1000`), and `_min` (`* 60000`).

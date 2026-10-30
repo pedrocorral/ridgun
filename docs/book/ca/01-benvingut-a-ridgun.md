@@ -124,10 +124,10 @@ Hi ha **vuit coses** que hem dissenyat i integrat a Ridgun que no trobaràs junt
 En altres llenguatges funcionals un bloc de variables locals només ordena expressions que després s'avaluen en un únic fil.
 En Ridgun, **un bloc `||` amb fletxes `->` és un Graf Acíclic Dirigit (DAG) d'execució paral·lela** sense ni tan sols necessitar escriure paraules clau extra com `where`:
 ```ridgun
-informe_anual Int => Int
-informe_anual id  =  ingressos - despeses
-  || calcular_vendes id -> ingressos
-  || calcular_costos id -> despeses
+informe anual Int => Int
+informe anual id  =  ingressos - despeses
+  || calcular vendes id -> ingressos
+  || calcular costos id -> despeses
 ```
 Tu dibuixes les fletxes de flux (`->`). El compilador analitza qui depèn de qui, **verifica estàticament que no hagis creat cap cicle infinit**, i llança les branques independents en paral·lel sense que escriguis ni un sol `async`, `await`, `Future` ni `Mutex`.
 
@@ -135,9 +135,9 @@ Tu dibuixes les fletxes de flux (`->`). El compilador analitza qui depèn de qui
 En altres llenguatges, programar amb actors o agents t'obliga a crear classes especials, implementar *traits*, gestionar *locks* o infectar les teves funcions amb `async`.
 En Ridgun, **qualsevol funció pura normal (`fn ::` o `op ::`) es converteix directament en un agent autònom —amb o sense estat aïllat— usant `agent`**:
 ```ridgun
-atendre_http (Sessio, String) => (Sessio, String)
+atendre http (Sessio, String) => (Sessio, String)
 ...
-servidor = agent atendre_http sessio_inicial
+servidor = agent atendre http sessio_inicial
 send "GET /perfil" to servidor
 resposta = receive from servidor
 stop servidor
@@ -158,13 +158,13 @@ Ningú més tracta la signatura i les equacions com una única matriu visual ver
 En la majoria dels llenguatges, o t'aguantes amb `+`, `-`, `*` o com a molt defineixes un operador binari críptic com `<|>` que ningú sap què significa.
 En Ridgun pots crear **operadors que són frases llegibles amb tants buits tipats com vulguis** (incloent-hi paraules contextuals com `type` o `with`):
 ```ridgun
-op :: Int limitat_entre Int i Int => Int
-      x   limitat_entre min i max =
+op :: Int limitat entre Int i Int => Int
+      x   limitat entre min i max =
         | x < min   = min
         | x > max   = max
         | otherwise = x
 ```
-I després al teu codi escrius `velocitat limitat_entre 0 i 120`. Es llegeix com català (o anglès), però està 100% tipat i compilat a codi natiu.
+I després al teu codi escrius `velocitat limitat entre 0 i 120`. Es llegeix com català (o anglès), però està 100% tipat i compilat a codi natiu.
 
 ### 5. Màscares visuals sobre seqüències (`s(_ + _)` i `-> (+ _ _ +) ->`)
 Alguna vegada has hagut d'escriure una amanida d'índexs o obrir una tupla amb variables mudes només per quedar-te amb dues posicions concretes?

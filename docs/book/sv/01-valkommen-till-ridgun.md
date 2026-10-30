@@ -126,8 +126,8 @@ I Ridgun är **ett `||`-block med pilar `->` en riktad acyklisk graf (DAG) för 
 ```ridgun
 arsrapport Int => Int
 arsrapport id  =  intakter - utgifter
-  || berakna_forsaljning id -> intakter
-  || berakna_kostnader id   -> utgifter
+  || berakna forsaljning id -> intakter
+  || berakna kostnader id   -> utgifter
 ```
 Du ritar flödespilarna (`->`). Kompilatorn analyserar vem som beror på vem, **verifierar statiskt att du inte har skapat någon oändlig cykel** och startar de oberoende grenarna parallellt utan att du skriver ett enda `async`, `await`, `Future` eller `Mutex`.
 
@@ -135,9 +135,9 @@ Du ritar flödespilarna (`->`). Kompilatorn analyserar vem som beror på vem, **
 I andra språk tvingar aktörs- eller agentprogrammering dig att skapa specialklasser, implementera *traits*, hantera lås eller smitta ner dina funktioner med `async`.
 I Ridgun **förvandlas vilken vanlig ren funktion som helst (`fn ::` eller `op ::`) direkt till en autonom agent — med eller utan isolerat tillstånd — med hjälp av `agent`**:
 ```ridgun
-hantera_http (Session, String) => (Session, String)
+hantera http (Session, String) => (Session, String)
 ...
-server = agent hantera_http startsession
+server = agent hantera http startsession
 send "GET /profil" to server
 svar = receive from server
 stop server
@@ -158,13 +158,13 @@ Ingen annan behandlar signaturen och ekvationerna som en enda visuell matris som
 I de flesta språk får du antingen nöja dig med `+`, `-`, `*` eller på sin höjd definiera en kryptisk binär operator som `<|>` som ingen vet vad den betyder.
 I Ridgun kan du skapa **operatorer som är läsbara fraser med så många typade platser du vill** (inklusive kontextuella ord som `type` eller `with`):
 ```ridgun
-op :: Int begransad_mellan Int och Int => Int
-      x   begransad_mellan min och max =
+op :: Int begransad mellan Int och Int => Int
+      x   begransad mellan min och max =
         | x < min   = min
         | x > max   = max
         | otherwise = x
 ```
-Och sedan skriver du i din kod `hastighet begransad_mellan 0 och 120`. Det läses som vanlig svenska (eller engelska), men är till 100 % typat och kompilerat till maskinkod.
+Och sedan skriver du i din kod `hastighet begransad mellan 0 och 120`. Det läses som vanlig svenska (eller engelska), men är till 100 % typat och kompilerat till maskinkod.
 
 ### 5. Visuella masker över sekvenser (`s(_ + _)` och `-> (+ _ _ +) ->`)
 Har du någonsin behövt skriva en hel sallad av index eller packa upp en tupel med dummyvariabler bara för att behålla två specifika positioner?
@@ -177,8 +177,8 @@ Noll indexaritmetik, noll *off-by-one*-fel.
 I Rust, TypeScript eller Java måste du fylla raden med vinkelparenteser när en funktion är generisk: `fn byt_plats<A, B>(par: (A, B)) -> (B, A)`.
 I Ridgun använder du helt enkelt en fristående versal:
 ```ridgun
-byt_plats (A, B) => (B, A)
-byt_plats (x, y) =  (y, x)
+byt plats (A, B) => (B, A)
+byt plats (x, y) =  (y, x)
 ```
 *"Men tänk om jag i mitt program vill ha en riktig typ som heter `type A`?"* — Inga problem: i Ridgun **är det dina `type`-deklarationer som bestämmer**. Om `type A` inte finns är `A` generisk; i samma ögonblick som du definierar `type A = ...` blir den din konkreta typ i hela modulen.
 

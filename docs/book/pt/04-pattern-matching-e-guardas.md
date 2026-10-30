@@ -18,18 +18,18 @@ Vamos vê-las em ação.
 No capítulo anterior já vimos uma amostra. Em vez de receber uma variável genérica `x` e abrir dentro da função cinco `if (x == ...)`, em Ridgun coloca os casos diretamente à porta de entrada da função:
 
 ```ridgun
-codigo_http Int => String
-codigo_http 200 =  "OK: Tudo correu sobre rodas"
-codigo_http 301 =  "Movido permanentemente"
-codigo_http 404 =  "Não encontrado (já procuraste debaixo do sofá?)"
-codigo_http 500 =  "Fogo no servidor"
-codigo_http n   =  "Código desconhecido: {n}"
+codigo http Int => String
+codigo http 200 =  "OK: Tudo correu sobre rodas"
+codigo http 301 =  "Movido permanentemente"
+codigo http 404 =  "Não encontrado (já procuraste debaixo do sofá?)"
+codigo http 500 =  "Fogo no servidor"
+codigo http n   =  "Código desconhecido: {n}"
 ```
 
 O Ridgun testa as linhas **de cima para baixo**:
 - Se entrar `404`, salta direto para a terceira linha.
 - Se entrar `418`, nenhuma das quatro primeiras linhas coincide, pelo que cai na última (`n`), que apanha qualquer inteiro e lhe dá o nome `n` para que o possa imprimir.
-- E se no último caso nem sequer lhe importar que número era? Põe um sublinhado `_` (*wildcard*) e esquece: `codigo_http _ = "Outro código"`.
+- E se no último caso nem sequer lhe importar que número era? Põe um sublinhado `_` (*wildcard*) e esquece: `codigo http _ = "Outro código"`.
 
 ---
 
@@ -65,14 +65,14 @@ Em Ridgun, como `|` já é o símbolo sagrado das guardas e dos tipos algébrico
 - **`and`**: cumprem-se as duas coisas com avaliação em curto-circuito (`idade >= 18 and tem_carta`).
 - **`or`**: cumpre-se pelo menos uma com avaliação em curto-circuito (`dia == "sabado" or dia == "domingo"`).
 - **`xor`**: cumpre-se uma ou outra, mas não as duas ao mesmo tempo.
-- **`not`**: inverte o booleano (`not (esta_vazio texto)`).
+- **`not`**: inverte o booleano (`not (esta vazio texto)`).
 - **`<`, `>`, `<=`, `>=`**: comparam tanto números (`Int`, `Float`) como cadeias **`String` em ordem lexicográfica UTF-8** (`"alfa" < "beta"`).
 
 Veja como fica limpo o clássico problema dos anos bissextos:
 
 ```ridgun
-e_bissexto Int => Bool
-e_bissexto a =
+e bissexto Int => Bool
+e bissexto a =
   | (a % 400) == 0                  = True
   | (a % 4) == 0 and (a % 100) != 0 = True
   | otherwise                       = False
@@ -84,8 +84,8 @@ Zero símbolos crípticos. Alguém que não conhece Ridgun lê isto e entende à
 Como em Ridgun todo o `=` segue a mesma regra, **também pode usar `|` para atribuir uma variável local** sem ter de criar uma função auxiliar à parte:
 
 ```ridgun
-preco_bilhete Int  Bool               => Int
-preco_bilhete base e_familia_numerosa =
+preco bilhete Int  Bool               => Int
+preco bilhete base e_familia_numerosa =
   desconto =
     | e_familia_numerosa = 20
     | base > 100         = 10
@@ -99,8 +99,8 @@ preco_bilhete base e_familia_numerosa =
 Pode aninhar `|` dentro de `|` tantos níveis quantos quiser. E quando um bloco `|` aninhado termina mas por baixo continuam mais ramos de um nível pai (ou mais instruções do bloco), coloca **`|.`** no final da sua última linha (`| otherwise = valor |.`) para indicar sem qualquer ambiguidade que essa subárvore fecha e volta ao nível anterior:
 
 ```ridgun
-encaminhar_pedido Int    Int   Bool     Bool    Int        Int      => Int
-encaminhar_pedido metodo papel assinado e_admin tamanho_kb limitado =
+encaminhar pedido Int    Int   Bool     Bool    Int        Int      => Int
+encaminhar pedido metodo papel assinado e_admin tamanho_kb limitado =
   | metodo == 0 =
     | tamanho_kb == 0 = 204
     | otherwise       = 200 |.
@@ -131,8 +131,8 @@ Repare como é limpo:
 Tal como depois do `=` de uma função normal pode abrir um bloco indentado de várias linhas, **depois do `=` de qualquer guarda `| cond =` ou `| otherwise =` também pode fazer uma quebra de linha e abrir um bloco sequencial**:
 
 ```ridgun
-ajustar_janela Int Int    => Int
-ajustar_janela idx limite =
+ajustar janela Int Int    => Int
+ajustar janela idx limite =
   | idx >= limite =
       topo = limite - 1
       escalado = topo * 2
@@ -159,26 +159,26 @@ Repare nestas duas funções que contam para trás desde `n` até `0` somando os
 
 ```ridgun
 -- Versão A: Recursão NORMAL (deixa trabalho pendente para o regresso)
-somar_lento Int => Int
-somar_lento 0   =  0
-somar_lento n   =  n + (somar_lento (n - 1))
+somar lento Int => Int
+somar lento 0   =  0
+somar lento n   =  n + (somar lento (n - 1))
 
 -- Versão B: Recursão DE CAUDA (leva a conta em dia em `acumulado`)
-somar_rapido_loop Int Int       => Int
-somar_rapido_loop 0   acumulado =  acumulado
-somar_rapido_loop n   acumulado =  somar_rapido_loop (n - 1) (acumulado + n)
+somar rapido loop Int Int       => Int
+somar rapido loop 0   acumulado =  acumulado
+somar rapido loop n   acumulado =  somar rapido loop (n - 1) (acumulado + n)
 ```
 
-- Na **Versão A**, antes de poder somar `n + ...`, a função tem de esperar que termine `somar_lento (n - 1)`. Isso obriga o computador a guardar `n` na pilha em cada passo.
-- Na **Versão B**, a chamada a `somar_rapido_loop` **é a última coisa que acontece na linha**. Não fica nada pendente atrás dela. Já lhe passa a soma atualizada em `acumulado + n`.
+- Na **Versão A**, antes de poder somar `n + ...`, a função tem de esperar que termine `somar lento (n - 1)`. Isso obriga o computador a guardar `n` na pilha em cada passo.
+- Na **Versão B**, a chamada a `somar rapido loop` **é a última coisa que acontece na linha**. Não fica nada pendente atrás dela. Já lhe passa a soma atualizada em `acumulado + n`.
 
 ### O truque de magia do `ridgunc` (TCO: *Tail-Call Optimization*)
-Quando o `ridgunc` compila `somar_rapido_loop`, vê que a função se chama a si mesma no final da cláusula e diz:
+Quando o `ridgunc` compila `somar rapido loop`, vê que a função se chama a si mesma no final da cláusula e diz:
 
 > *"Para que vou criar um novo registo de pilha se o atual já não serve para nada? Vou sobrescrever `n` com `n - 1`, sobrescrever `acumulado` com `acumulado + n` e saltar para o princípio com um `loop { ... continue; }` nativo."*
 
 Resultado:
-1. Pode chamar `somar_rapido_loop 100_000_000 0` (cem milhões de voltas) e **gastará exatamente 0 bytes extra de pilha**.
+1. Pode chamar `somar rapido loop 100_000_000 0` (cem milhões de voltas) e **gastará exatamente 0 bytes extra de pilha**.
 2. É tão rápido quanto um ciclo `while` escrito à mão em Rust ou C, mas sem ter tido de declarar uma única variável mutável no seu código Ridgun.
 
 ---
@@ -188,17 +188,17 @@ Resultado:
 Sempre que noutra linguagem pensaria *"vou fazer um ciclo `while` com um índice `i` e um acumulador"*, em Ridgun escreve um par de funções como este (a função principal limpa e a sua ajudante `_loop` de cauda):
 
 ```ridgun
-procurar_caracter_loop String Int Int Int       => Int
-procurar_caracter_loop texto  pos fim procurado =
+procurar caracter loop String Int Int Int       => Int
+procurar caracter loop texto  pos fim procurado =
   | pos >= fim                           = -1
-  | (str_char_at texto pos) == procurado = pos
-  | otherwise                            = procurar_caracter_loop texto (pos + 1) fim procurado
+  | (str char at texto pos) == procurado = pos
+  | otherwise                            = procurar caracter loop texto (pos + 1) fim procurado
 
-procurar_caracter String Int       => Int
-procurar_caracter texto  procurado =  procurar_caracter_loop texto 0 (str_len texto) procurado
+procurar caracter String Int       => Int
+procurar caracter texto  procurado =  procurar caracter loop texto 0 (str len texto) procurado
 ```
 
-Repare nas três guardas de `procurar_caracter_loop`:
+Repare nas três guardas de `procurar caracter loop`:
 1. Cheguei ao fim (`pos >= fim`)? Devolvo `-1` (fim do ciclo).
 2. Encontrei o carácter em `pos`? Devolvo `pos` (fim do ciclo).
 3. Não é este? Passo ao seguinte (`pos + 1`) com uma chamada de cauda (que o compilador converte em `continue;`).

@@ -31,13 +31,13 @@ En Ridgun no comptes índexs; **desmuntes la llista pel cap**:
 Mira quin goig fa sumar una llista o comptar quants elements té:
 
 ```ridgun
-sumar_llista [Int]  => Int
-sumar_llista []     =  0
-sumar_llista (x:xs) =  x + (sumar_llista xs)
+sumar llista [Int]  => Int
+sumar llista []     =  0
+sumar llista (x:xs) =  x + (sumar llista xs)
 
-comptar_elements [A]    => Int
-comptar_elements []     =  0
-comptar_elements (_:xs) =  1 + (comptar_elements xs)
+comptar elements [A]    => Int
+comptar elements []     =  0
+comptar elements (_:xs) =  1 + (comptar elements xs)
 ```
 
 I un detall tècnic que t'alegrarà el dia: en Ridgun, treure la cua `xs` a `(x:xs)` **no copia la resta de la llista en memòria**. Internament és una vista sobre el mateix vector que només avança el punter d'inici en `1` ($O(1)$ instantani).
@@ -46,11 +46,11 @@ I un detall tècnic que t'alegrarà el dia: en Ridgun, treure la cua `xs` a `(x:
 El patró `:` dóna moltíssim joc quan estàs analitzant ordres o protocols:
 
 ```ridgun
-interpretar_ordre [String]                => String
-interpretar_ordre []                      =  "No has escrit res"
-interpretar_ordre ("ajuda":_)             =  "Mostrant l'ajuda..."
-interpretar_ordre ("copiar":origen:dest:[]) = "Copiant de {origen} a {dest}"
-interpretar_ordre (cmd:_)                 =  "Ordre desconeguda: {cmd}"
+interpretar ordre [String]                => String
+interpretar ordre []                      =  "No has escrit res"
+interpretar ordre ("ajuda":_)             =  "Mostrant l'ajuda..."
+interpretar ordre ("copiar":origen:dest:[]) = "Copiant de {origen} a {dest}"
+interpretar ordre (cmd:_)                 =  "Ordre desconeguda: {cmd}"
 ```
 
 Mira la tercera fila: `("copiar":origen:dest:[])` comprova d'un sol cop que la llista tingui **exactament 3 elements**, que el primer sigui `"copiar"`, i et deixa el segon i el tercer servits en safata a `origen` i `dest`. Intenta escriure això en C o Java i veuràs quantes línies d'`args.length == 3 && args[0].equals("copiar")` et surten.
@@ -59,11 +59,11 @@ Mira la tercera fila: `("copiar":origen:dest:[])` comprova d'un sol cop que la l
 Quan ets al costat dret de l'`=` (en una expressió) i vols enganxar dues llistes, fas servir **`::`**:
 
 ```ridgun
-enganxar_llistes [Int] [Int] => [Int]
-enganxar_llistes a     b     =  a :: b
+enganxar llistes [Int] [Int] => [Int]
+enganxar llistes a     b     =  a :: b
 
-afegir_darrere [Int] Int => [Int]
-afegir_darrere xs    x   =  xs :: [x]
+afegir darrere [Int] Int => [Int]
+afegir darrere xs    x   =  xs :: [x]
 ```
 
 *(Regla mnemotècnica ràpida: un sol `:` als patrons desmunta la llista; dos `::` a les expressions enganxen dues llistes).*
@@ -74,18 +74,18 @@ I si de debò vols treure l'element número 5 directament sense recórrer res? F
 
 ## 5.2. Funcions variàdiques (`T...`): "Passa'm tots els que vulguis!"
 
-De vegades vols que qui cridi la teva funció pugui escriure `maxim_de 4 19 2 88 7` còmodament, sense obligar-lo a envoltar els números entre claudàtors `[4, 19, 2, 88, 7]`.
+De vegades vols que qui cridi la teva funció pugui escriure `maxim de 4 19 2 88 7` còmodament, sense obligar-lo a envoltar els números entre claudàtors `[4, 19, 2, 88, 7]`.
 
 Posa tres punts **`...`** darrere de l'últim tipus de la teva signatura, i dins de la teva funció ho rebràs automàticament empaquetat com una llista:
 
 ```ridgun
-sumar_diversos Int... => Int
-sumar_diversos nums   =  sumar_llista nums
+sumar diversos Int... => Int
+sumar diversos nums   =  sumar llista nums
 
 main => ()
 main =
-  echo (sumar_diversos 10 20 30)      -- Imprimeix 60
-  echo (sumar_diversos 1 2 3 4 5 6 7) -- Imprimeix 28
+  echo (sumar diversos 10 20 30)      -- Imprimeix 60
+  echo (sumar diversos 1 2 3 4 5 6 7) -- Imprimeix 28
 ```
 
 ---
@@ -97,32 +97,32 @@ En molts llenguatges retornar dues coses des d'una funció és un maldecap: o cr
 En Ridgun retornes una **tupla** `(A, B)`:
 
 ```ridgun
-dividir_i_residu Int Int => (Int, Int)
-dividir_i_residu a   b   =  (a / b, a % b)
+dividir i residu Int Int => (Int, Int)
+dividir i residu a   b   =  (a / b, a % b)
 ```
 
 Fins i tot et pots estalviar els parèntesis a la línia de la signatura si et resulta més net:
-`dividir_i_residu Int Int => Int Int`.
+`dividir i residu Int Int => Int Int`.
 
 ### Com obrir una tupla
 Igual que la crees amb `(a, b)`, l'obres als arguments de qualsevol funció amb `(quocient, residu)`:
 
 ```ridgun
-explicar_divisio (Int, Int)         => String
-explicar_divisio (quocient, residu) =  "Hi cap a {quocient} i en sobren {residu}"
+explicar divisio (Int, Int)         => String
+explicar divisio (quocient, residu) =  "Hi cap a {quocient} i en sobren {residu}"
 ```
 
 ### El detall estrella: Desempaquetament automàtic entre funcions
-Suposa que tens `dividir_i_residu` (que retorna una tupla de 2 enters) i una altra funció `sumar_parell Int Int => Int` (que espera 2 enters solts). En Ridgun no has d'obrir la tupla a mà en una variable intermèdia; pots endollar una funció dins de l'altra directament:
+Suposa que tens `dividir i residu` (que retorna una tupla de 2 enters) i una altra funció `sumar parell Int Int => Int` (que espera 2 enters solts). En Ridgun no has d'obrir la tupla a mà en una variable intermèdia; pots endollar una funció dins de l'altra directament:
 
 ```ridgun
-sumar_parell Int Int => Int
-sumar_parell x   y   =  x + y
+sumar parell Int Int => Int
+sumar parell x   y   =  x + y
 
 main => ()
 main =
-  -- dividir_i_residu 17 5 retorna (3, 2), i sumar_parell rep 3 i 2 directament:
-  echo (sumar_parell (dividir_i_residu 17 5))  -- Imprimeix 5
+  -- dividir i residu 17 5 retorna (3, 2), i sumar parell rep 3 i 2 directament:
+  echo (sumar parell (dividir i residu 17 5))  -- Imprimeix 5
 ```
 
 ---
@@ -142,16 +142,16 @@ Li apliques a `s` una **màscara de tupla amb `+` (queda-te'l) i `_` (descarta'l
 Mira-ho funcionant:
 
 ```ridgun
-el_del_mig Int Int Int => Int
-el_del_mig (s)         =  s(_ + _)
+el del mig Int Int Int => Int
+el del mig (s)         =  s(_ + _)
 
-descartar_dos_primers Int... => [Int]
-descartar_dos_primers (s)    =  s(_ _ +...)
+descartar dos primers Int... => [Int]
+descartar dos primers (s)    =  s(_ _ +...)
 
 main => ()
 main =
-  echo (el_del_mig 100 42 999)             -- Imprimeix 42
-  echo (descartar_dos_primers 1 2 10 20 30) -- Imprimeix [10, 20, 30]
+  echo (el del mig 100 42 999)             -- Imprimeix 42
+  echo (descartar dos primers 1 2 10 20 30) -- Imprimeix [10, 20, 30]
 ```
 
 I el millor de tot: pots intercalar una màscara posicional **`(+ _ _ +)`** **directament al mig d'una canonada `->`**! Si una funció retorna una tupla de diversos valors i la funció següent només en necessita dos, filtres la tupla al vol i Ridgun desempaquetarà els elements supervivents com a arguments separats de l'etapa següent:

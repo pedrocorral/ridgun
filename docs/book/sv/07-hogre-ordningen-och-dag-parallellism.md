@@ -45,13 +45,13 @@ main =
 Du skickar in en funktion som returnerar `Bool` (ett *predikat*) och en lista:
 
 ```ridgun
-ar_positiv Int => Bool
-ar_positiv n   =  n > 0
+ar positiv Int => Bool
+ar positiv n   =  n > 0
 
 main => ()
 main =
-  rena = filter ar_positiv [-5, 10, 0, -2, 42]
-  rena_par = ||filter ar_positiv [-5, 10, 0, -2, 42]
+  rena = filter ar positiv [-5, 10, 0, -2, 42]
+  rena_par = ||filter ar positiv [-5, 10, 0, -2, 42]
   echo rena      -- Skriver ut [10, 42]
   echo rena_par  -- Skriver ut [10, 42]
 ```
@@ -60,20 +60,20 @@ main =
 Du skickar in en kombinerande funktion med två argument `(Ackumulerat Element => Ackumulerat)`, startvärdet och listan:
 
 ```ridgun
-ackumulera_produkt Int Int => Int
-ackumulera_produkt acc x   =  acc * x
+ackumulera produkt Int Int => Int
+ackumulera produkt acc x   =  acc * x
 
 main => ()
 main =
-  echo (fold ackumulera_produkt 1 [2, 3, 4, 5])  -- 1 * 2 * 3 * 4 * 5 = 120
+  echo (fold ackumulera produkt 1 [2, 3, 4, 5])  -- 1 * 2 * 3 * 4 * 5 = 120
 ```
 
 ### Hur skriver jag en egen funktion som tar emot en annan funktion?
 Hur enkelt som helst: i typsignaturen sätter du den inbjudna funktionens signatur inom parentes `(Indata => Utdata)`:
 
 ```ridgun
-kor_tva_ganger (A => A) A => A
-kor_tva_ganger f        x =  f (f x)
+kor tva ganger (A => A) A => A
+kor tva ganger f        x =  f (f x)
 ```
 
 ### 4. Idiomatiska pipelines från vänster till höger (`->`) — 100 % Ridgun-stil!
@@ -144,8 +144,8 @@ fact Int => Int
 fact 0   =  1
 fact n   =  n * (fact (n - 1))
 
-super_berakning => Int
-super_berakning =  vanster_gren + hoger_gren
+super berakning => Int
+super berakning =  vanster_gren + hoger_gren
   || fib 10 -> vanster_gren
   || fact 6 -> hoger_gren
 ```
@@ -180,8 +180,8 @@ Men tänk om du bara vill starta två eller tre beräkningar parallellt och saml
 Då använder du `||` direkt:
 
 ```ridgun
-parallellt_par Int => (Int, Int)
-parallellt_par n   =
+parallellt par Int => (Int, Int)
+parallellt par n   =
   || fib n
   || fact n
 ```

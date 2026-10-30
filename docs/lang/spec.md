@@ -253,7 +253,7 @@ raw_nums map (x => x * 3)
 - **Universal Rule for Functions & Operators**: Any value coming from the left of `->` (or left of an infix call `x op a b`) enters as the **first argument** of the right-hand function or operator:
   - `x -> f a b` $\equiv$ `x f a b` $\equiv$ `f x a b`
   - Works seamlessly for both `fn ::` declarations and `op ::` mixfix declarations without duplicating signatures.
-  - If a downstream function needs the piped value at a non-first parameter position, an explicit `_` placeholder places the piped value at `_` (`payload -> write_file output_path _`).
+  - If a downstream function needs the piped value at a non-first parameter position, an explicit `_` placeholder places the piped value at `_` (`payload -> write file output_path _`).
 - **Collection Combinators (`map`, `||map`, `filter`, `||filter`, `fold`)**: Accept the collection either in traditional prefix position (`map f xs`, `filter g xs`, `fold f init xs`) or from the left of an infix/pipeline stage (`xs map f`, `xs -> map f`, `xs filter g`, `xs -> filter g`, `xs fold init f`, `xs -> fold init f`).
 - **Agent Stages (`-> send to`, `-> ask to`)**: Piping into `-> send to ag` or `-> ask to ag` passes the left value as the message (`[5, 10, 15] -> sum int list -> send to worker_ag`).
 - **Terminal Variable Binding (`-> var`)**: When a pipeline statement in a sequential block ends with `-> var` (where `var` is a local variable name rather than a declared function), it binds `var` (`var = <pipeline_result>`) for the remainder of the block.
@@ -268,21 +268,21 @@ parse header packet "v0.9.9" -> (+ _ _ +) -> combine code msg -> status_line
 
 #### 4. `_ =`-Free Side-Effect Statements & Explicit Unit Discard (`-> ()`)
 
-In sequential blocks, side-effect statements (`echo`, `write_file`, `write_bytes`, `shell_exec`, `log info`, `print_error_lines`, `sys_mkdir`, etc.) are written directly **without `_ =` boilerplate**:
+In sequential blocks, side-effect statements (`echo`, `write file`, `write bytes`, `shell exec`, `log info`, `print error lines`, `sys mkdir`, etc.) are written directly **without `_ =` boilerplate**:
 
 ```ridgun
 verify strict if enabled strict_mode input_path
-s_errs -> format_type_errors -> print_error_lines
+s_errs -> format type errors -> print error lines
 echo "[ridgunc --strict] {input_path}: {err_c} error(s) found."
-sys_exit 1
+sys exit 1
 ```
 
-When the **final expression** of a `=> ()` function calls a helper that returns a non-`()` value (such as `shell_exec : String => Int`), append `-> ()` to evaluate the expression, discard its return value, and yield `()`:
+When the **final expression** of a `=> ()` function calls a helper that returns a non-`()` value (such as `shell exec : String => Int`), append `-> ()` to evaluate the expression, discard its return value, and yield `()`:
 
 ```ridgun
 fn :: exec built run Int => ()
-      exec built run 0   =  shell_exec "./target/app" -> ()
-      exec built run _   =  sys_exit 1
+      exec built run 0   =  shell exec "./target/app" -> ()
+      exec built run _   =  sys exit 1
 ```
 
 #### 5. Point-Free Sequence Operator Chaining
@@ -363,8 +363,8 @@ False                                    -- boolean false
 `True` and `False` are constructors — they can be used in expressions, passed as arguments, and pattern-matched:
 
 ```ridgun
-fn :: is_valid Int => Bool
-      is_valid n =
+fn :: is valid Int => Bool
+      is valid n =
         | n > 0     = True
         | otherwise = False
 ```
@@ -398,27 +398,27 @@ Lists are a built-in **immutable** recursive type with dedicated syntax. No manu
 **Type syntax:** `[type]` — a list of elements of the given type.
 
 ```ridgun
-fn :: sum_list [Int] => Int
+fn :: sum list [Int] => Int
 fn :: reverse [Int] => [Int]
 ```
 
 **Literal syntax:** `[elem1, elem2, ...]` — a list literal. `[]` is the empty list.
 
 ```ridgun
-fn :: my_list => [Int]
-my_list = [1, 2, 3, 4, 5]
+fn :: my list => [Int]
+my list = [1, 2, 3, 4, 5]
 ```
 
 **Cons-pattern matching:** `(x:xs)` — destructures a list into its head `x` and tail `xs`. `[]` matches the empty list. Use `_` as a wildcard that matches but does not bind.
 
 ```ridgun
-fn :: sum_list [Int] => Int
-      sum_list []     = 0
-      sum_list (x:xs) = x + sum_list xs
+fn :: sum list [Int] => Int
+      sum list []     = 0
+      sum list (x:xs) = x + sum list xs
 
-fn :: list_length [Int] => Int
-      list_length []     = 0
-      list_length (_:xs) = 1 + list_length xs
+fn :: list length [Int] => Int
+      list length []     = 0
+      list length (_:xs) = 1 + list length xs
 ```
 
 **Concatenation:** `::` joins two lists (or sequences).
@@ -515,12 +515,12 @@ fn :: process Int Real => Bool   -- params: seq(Int, Real)
 **Seq binding (`(name)`)** — wrapping a parameter name in parentheses binds all parameters as a single seq variable:
 
 ```ridgun
-fn :: first_of_seq Int Int => Int
-      first_of_seq (s)     =  s(+ _)
+fn :: first of seq Int Int => Int
+      first of seq (s)     =  s(+ _)
 
 -- Equivalent without seq binding:
-fn :: first_of Int Int => Int
-      first_of s   _   => s
+fn :: first of Int Int => Int
+      first of s   _   => s
 ```
 
 **Mask selector (`s(+ _)`)** — extracts elements by mask, where `+` selects a position and `_` skips it:
@@ -535,8 +535,8 @@ s(_ _ _ +)            -- skip 1st-3rd, select 4th
 **Index selector (`s(0 3)`)** — extracts elements by their zero-based positions:
 
 ```ridgun
-fn :: extreme_points Int Int Int Int => Int Int
-      extreme_points (s)             =  s(0 3)
+fn :: extreme points Int Int Int Int => Int Int
+      extreme points (s)             =  s(0 3)
 ```
 
 **Flat join (`:`)** — concatenates two sequences into a single flat sequence:
@@ -569,13 +569,13 @@ type Point = x: Real, y: Real
 Fields are accessed by name as functions (`host c`, `port c`), and updated functionally using `with` and colons `:`:
 
 ```ridgun
-fn :: get_host Conf => String
-      get_host c    =  host c
+fn :: get host Conf => String
+      get host c    =  host c
 
 -- Functional record update (creates a new Conf with updated fields;
 -- mutates in place via Arc::try_unwrap when the record is uniquely owned):
-fn :: enable_tls Conf => Conf
-      enable_tls c    =  c with tls: True, port: 443
+fn :: enable tls Conf => Conf
+      enable tls c    =  c with tls: True, port: 443
 ```
 
 #### Sum Types (variants)
@@ -701,7 +701,7 @@ Every `.rg` file or `.rglib` bundle defines a module namespace (derived from its
    - Each module `M` (including the root application module) resolves unqualified types, constructors, record fields, functions, and multi-word calls strictly against `M`'s own import graph in three priority tiers:
      - **Tier 1 — Own Module (`M`)**: Declarations in `M` itself (across all files sharing `module :: M`) always take highest priority.
      - **Tier 2 — Direct Imports of `M`**: If `M` does not define the name, `ridgunc` searches modules directly imported by `M` (`import D`). If a single direct import `D` defines the name, it resolves unambiguously to `D`'s declaration even if other modules in the compilation unit (transitive dependencies, sibling modules, or the root application) also define the same name. If two or more direct imports of `M` define the same name and `M` does not define it, unqualified references are rejected as ambiguous (`__ambiguous__.<name>`) and must be qualified (`d1.<name>` vs `d2.<name>`).
-     - **Tier 3 — Transitive Imports of `M`**: Consulted only when neither Tier 1 nor Tier 2 defines the name. Consequently, a direct import in `M` (`import json`) cleanly shadows a transitive helper (`codec.json_get_str` imported internally by `solstice`) without forcing `solstice` or `M` to rename or qualify its calls.
+     - **Tier 3 — Transitive Imports of `M`**: Consulted only when neither Tier 1 nor Tier 2 defines the name. Consequently, a direct import in `M` (`import json`) cleanly shadows a transitive helper (`codec.json get str` imported internally by `solstice`) without forcing `solstice` or `M` to rename or qualify its calls.
    - **Isolation from Unimported Sibling Modules and the Root Application**: Declarations defined only in modules that `M` has not imported (neither directly nor transitively) — including sibling libraries imported by the root application or declarations in the root application itself when compiling an imported library `M` — are invisible to unqualified lookup inside `M` (`__unimported__.<name>`).
 
 ---
@@ -753,35 +753,35 @@ Each guard branch ends with `=`, so its body can itself be a sequential block (`
   - Both **inline placement at the end of the last line** (`| otherwise = val |.`, the canonical compact style) and placement on the next line (`|.`) are valid:
 
 ```ridgun
-fn :: evaluate_payment Account Customer Payment => String
-      evaluate_payment account customer payment =
-        | is_locked account   = "REJECTED_ACCOUNT_LOCKED"
+fn :: evaluate payment Account Customer Payment => String
+      evaluate payment account customer payment =
+        | is locked account   = "REJECTED_ACCOUNT_LOCKED"
         | amount payment <= 0 = "ERROR_INVALID_AMOUNT"
         | otherwise =
             | tier customer == "ENTERPRISE" =
                 | amount payment > 50000 =
-                    | has_dual_signature payment = "APPROVED_ENTERPRISE_DUAL_SIG"
+                    | has dual signature payment = "APPROVED_ENTERPRISE_DUAL_SIG"
                     | tenure customer > 10       = "RISK_COMMITTEE_REVIEW"
                     | otherwise                  = "REJECTED_ENTERPRISE_LIMIT" |.
                 | country payment != "US" =
-                    | is_whitelisted (country payment) = "APPROVED_ENTERPRISE_INTL"
+                    | is whitelisted (country payment) = "APPROVED_ENTERPRISE_INTL"
                     | otherwise                        = "HELD_COMPLIANCE_INTL" |.
                 | otherwise = "APPROVED_ENTERPRISE_STANDARD" |.
             | tier customer == "VIP" =
                 | amount payment > 10000 =
-                    | has_2fa payment = "APPROVED_VIP_2FA"
+                    | has 2fa payment = "APPROVED_VIP_2FA"
                     | otherwise       = "REQUEST_VIP_SMS" |.
                 | otherwise = "APPROVED_VIP_DIRECT" |.
             | otherwise =
                 | amount payment > 1000 =
-                    | has_2fa payment and risk payment < 30 = "APPROVED_RETAIL_2FA"
+                    | has 2fa payment and risk payment < 30 = "APPROVED_RETAIL_2FA"
                     | otherwise                             = "REJECTED_RETAIL_RISK" |.
                 | otherwise = "APPROVED_RETAIL_LOW_AMOUNT"
 
-fn :: charge_order Payment => Int
-      charge_order payment =
-        || fetch_base_fee payment     -> base_fee
-        || compute_risk_score payment -> risk_score ||.
+fn :: charge order Payment => Int
+      charge order payment =
+        || fetch base fee payment     -> base_fee
+        || compute risk score payment -> risk_score ||.
         surcharge =
           | risk_score > 80 = 50
           | otherwise       = 0 |.
@@ -826,9 +826,9 @@ fn :: length List => Int
       length Empty         =  0
       length (Cons _ rest) =  1 + length rest
 
-fn :: sum_tree Tree              => Int
-      sum_tree (Leaf n)          =  n
-      sum_tree (Node left right) =  sum_tree left + sum_tree right
+fn :: sum tree Tree              => Int
+      sum tree (Leaf n)          =  n
+      sum tree (Node left right) =  sum tree left + sum tree right
 ```
 
 ---
@@ -840,10 +840,10 @@ Ridgun unifies all parallel execution under `||` (`where` is removed):
 ### Named Parallel DAG Bindings (`|| expr -> var`)
 
 ```ridgun
-fn :: compute_total Int Int => Int
-      compute_total a   b   =  x + y + z
-        || heavy_calc a     -> x
-        || heavy_calc b     -> y
+fn :: compute total Int Int => Int
+      compute total a   b   =  x + y + z
+        || heavy calc a     -> x
+        || heavy calc b     -> y
         || combine x y      -> z
 ```
 
@@ -856,8 +856,8 @@ fn :: compute_total Int Int => Int
 ```ridgun
 op :: run Conf and Conf in parallel => Res, Res
       run a    and b    in parallel =
-        || run_process a
-        || run_process b
+        || run process a
+        || run process b
 ```
 
 Each `||` line runs as a separate parallel green thread, and results are returned as a tuple in declaration order (or joined when placed inside a sequential block).
@@ -868,11 +868,11 @@ For streaming data and producer-consumer topologies across green threads, Ridgun
 
 | Built-in Function / Operator | Signature | Purpose |
 |---|---|---|
-| `new_channel` | `() => Channel` | Create an unbounded typed channel |
-| `new_bounded_channel` | `Int => Channel` | Create a bounded channel with backpressure capacity |
-| `send_through` | `T Channel => ()` | Send a value into a channel (blocks if bounded and full) |
-| `receive_from` | `Channel => T` | Receive the next value from a channel |
-| `try_receive_from` | `Channel => Option` | Non-blocking poll returning `Some v` or `None` |
+| `new channel` | `() => Channel` | Create an unbounded typed channel |
+| `new bounded channel` | `Int => Channel` | Create a bounded channel with backpressure capacity |
+| `send through` | `T Channel => ()` | Send a value into a channel (blocks if bounded and full) |
+| `receive from` | `Channel => T` | Receive the next value from a channel |
+| `try receive from` | `Channel => Option` | Non-blocking poll returning `Some v` or `None` |
 
 ---
 
@@ -909,8 +909,8 @@ op :: String out => String
 "step 1 done" out                        -- prints: step 1 done
 
 -- Chaining: out returns the string, so it can be passed onward
-fn :: log_and_process String => String
-      log_and_process s = process (s out) and report
+fn :: log and process String => String
+      log and process s = process (s out) and report
 ```
 
 ### Summary
@@ -1043,13 +1043,13 @@ Ridgun provides standard sequential collection combinators (`map`, `filter`, `fo
 ## Verbatim File I/O, Byte Streams & POSIX Built-ins (`FR-VM-001`, `FR-VM-002`)
 
 1. **Verbatim File & Byte Stream I/O (`FR-VM-001`)**:
-   - `read_file : String => String` reads file contents verbatim (preserving `\r\n` and exact EOF newline presence/absence, and never running the compiler's `.rg` `import` preprocessor on data files).
-   - `load_rg_source : String => String` is used exclusively by the compiler toolchain when loading `.rg` source files with `import` splicing.
-   - `read_bytes : String => [Int]` and `write_bytes : String [Int] => ()` read and write raw binary byte streams (`0..255`, including `0x00` NUL and `0x80..0xFF`).
+   - `read file : String => String` reads file contents verbatim (preserving `\r\n` and exact EOF newline presence/absence, and never running the compiler's `.rg` `import` preprocessor on data files).
+   - `load rg source : String => String` is used exclusively by the compiler toolchain when loading `.rg` source files with `import` splicing.
+   - `read bytes : String => [Int]` and `write bytes : String [Int] => ()` read and write raw binary byte streams (`0..255`, including `0x00` NUL and `0x80..0xFF`).
 2. **POSIX Filesystem, Process & Security Built-ins (`FR-VM-002`)**:
-   - **Filesystem**: `list_dir`, `file_lstat`, `sha256_file`, `sys_mkdir`, `sys_chmod`.
-   - **Process & Environment**: `sys_exec`, `sys_chdir`, `sys_getcwd`, `sys_getenv`, `sys_setenv`, `sys_exit`.
-   - **Security & Privilege Separation**: `sys_getuid`, `sys_getgid`, `sys_username`, `sys_user_groups`, `sys_lookup_uid_gid`, `sys_setresgid`, `sys_setgroups`, `sys_setresuid`, `sys_execve`, `sys_read_pass`.
+   - **Filesystem**: `list dir`, `file lstat`, `sha256 file`, `sys mkdir`, `sys chmod`.
+   - **Process & Environment**: `sys exec`, `sys chdir`, `sys getcwd`, `sys getenv`, `sys setenv`, `sys exit`.
+   - **Security & Privilege Separation**: `sys getuid`, `sys getgid`, `sys username`, `sys user groups`, `sys lookup uid gid`, `sys setresgid`, `sys setgroups`, `sys setresuid`, `sys execve`, `sys read pass`.
 3. **Cross-Platform PAL I/O, Polling, Process Primitives, Target ADTs & Declarative `with timeout` Quotas (`FR-COMP-007`)**:
    - **Pre-Declared Target Platform ADTs**:
      - `type SysOs = Linux | MacOS | Windows` (`sys os => SysOs`, open to extension via `expand type SysOs = ...`)
@@ -1068,7 +1068,7 @@ Ridgun provides standard sequential collection combinators (`map`, `filter`, `fo
      - `sys time ms => Int` and `sys sleep ms Int => ()` (monotonic millisecond clock and sleep)
      - `sys deadline ms => Int` and `sys remaining ms => Int` (active lexical timeout deadline and remaining milliseconds, or `-1` when unbounded)
    - **Layer 2 — Declarative `with timeout <duration> do` Execution Quota**:
-     - Just as `with region 64_KB do` sets a lexical byte quota, `with timeout 500_ms do` (or combined `with region 64_KB, timeout 500_ms do`) sets a lexical execution deadline (`sys_time_ms + duration_ms`) on the current thread context and restores the previous deadline upon block exit:
+     - Just as `with region 64_KB do` sets a lexical byte quota, `with timeout 500_ms do` (or combined `with region 64_KB, timeout 500_ms do`) sets a lexical execution deadline (`sys time ms + duration_ms`) on the current thread context and restores the previous deadline upon block exit:
        ```ridgun
        with timeout 500_ms do
          rem = sys remaining ms
@@ -1089,22 +1089,22 @@ Ridgun manages heap memory (`String`, `[a]`, `(a, b)`, ADTs, `Tensor`) determini
 1. **Policy `RMM1` — Compiled Memory Management (CMM Linear + Conditional)**:
    - Applied when control flow and called functions are statically known at compile time over non-nested bindings:
      - **Linear CMM (`rg_cmm_move` / `rg_cmm_drop`)**: The compiler determines the exact last-use statement of every local variable at compile time, moving returned variables (`rg_cmm_move(&mut lv_x)`) and emitting unconditional deallocation (`rg_cmm_drop(&mut lv_x)`) immediately after a variable's last use when no may-aliases remain live.
-     - **Conditional CMM (`rg_cmm_drop_unless` / `ptr(a) != ptr(c)`)**: When a static branching call (`c = choose_list cond a b`) returns one of several candidate inputs and one or more candidates remain live alongside `c`, the compiler builds the **Ancestor May-Alias Table (`RCmmAlias`)** and emits a 1-cycle pointer-identity guard at each variable's static last-use statement:
+     - **Conditional CMM (`rg_cmm_drop_unless` / `ptr(a) != ptr(c)`)**: When a static branching call (`c = choose list cond a b`) returns one of several candidate inputs and one or more candidates remain live alongside `c`, the compiler builds the **Ancestor May-Alias Table (`RCmmAlias`)** and emits a 1-cycle pointer-identity guard at each variable's static last-use statement:
        ```ridgun
-       a = make_a ()               -- Allocates M1
-       b = make_b ()               -- Allocates M2
-       c = choose_list cond a b    -- b dies here while c is live -> if ptr(b) != ptr(c) { free(b) }
-       print_list a                -- a dies here while c is live -> if ptr(a) != ptr(c) { free(a) }
-       consume_list c              -- c dies here (no live peers) -> free(c) (unconditional)
+       a = make a ()               -- Allocates M1
+       b = make b ()               -- Allocates M2
+       c = choose list cond a b    -- b dies here while c is live -> if ptr(b) != ptr(c) { free(b) }
+       print list a                -- a dies here while c is live -> if ptr(a) != ptr(c) { free(a) }
+       consume list c              -- c dies here (no live peers) -> free(c) (unconditional)
        ```
 2. **Policy `RMM2` — Assignment & Cascaded Structure Counting (Active Policy)**:
-   - Unifies memory management across functions, branching returns (`choose_list`), nested containers (`xs = [a, b, ..., z]`, `xs[3] = a`), mutable local variables (`mut x = ...`), and multi-thread execution:
+   - Unifies memory management across functions, branching returns (`choose list`), nested containers (`xs = [a, b, ..., z]`, `xs[3] = a`), mutable local variables (`mut x = ...`), and multi-thread execution:
      - **Primitive Scalars (`Int`, `Real`, `Bool`, `()`)**: Never counted; copied by value on the stack/registers.
      - **Incoming Function Arguments (`pats`)**: **Never touched** (`+0` on entry, `-0` on exit).
      - **Internal Local Variables (`x = ...` / `mut x = ...`)**: Receive **`+1` on assignment** (`x = expr`, `xs[3] = a`). On mutable reassignment (`x = new_expr`), `new_expr` receives `+1` before old `x` receives `-1`.
      - **End of Function / Scope Exit**:
        - Non-returned internal local variables receive `-1` first: if `rc == 0`, the parent block is freed and **cascades `-1` one by one to each direct child structure** (recursively freeing any child whose `rc` reaches `0`).
-       - A returned internal local variable (`return a`) receives `-1` (or is moved via `rg_cmm_move`), and even if its `rc` is `0` in transit, it is **spared** so the caller's assignment (`c = make_pair ()`) adds `+1` (`0 + 1 = 1`). When an incoming argument is returned (`choose_list cond a b`), it was untouched inside the function (`rc = 1`), so the caller's `c = choose_list cond a b` adds `+1` (`1 + 1 = 2`, shared between `a` and `c`).
+       - A returned internal local variable (`return a`) receives `-1` (or is moved via `rg_cmm_move`), and even if its `rc` is `0` in transit, it is **spared** so the caller's assignment (`c = make pair ()`) adds `+1` (`0 + 1 = 1`). When an incoming argument is returned (`choose list cond a b`), it was untouched inside the function (`rc = 1`), so the caller's `c = choose list cond a b` adds `+1` (`1 + 1 = 2`, shared between `a` and `c`).
 3. **Policy `RMM3`** *(Reserved)*:
    - Reserved for a subsequent aggressive static optimization policy.
    - See [`docs/etc/cmm_architecture.md`](../etc/cmm_architecture.md) for the complete `RMM1` and `RMM2` specification.

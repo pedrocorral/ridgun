@@ -1,18 +1,18 @@
 ---
-updated: 2026-10-30T19:00
+updated: 2026-10-30T20:29
 active_task: none
 agent_runtime: antigravity
 ---
 # Session state — read this first when resuming
 
 ## Where we are (3 lines max)
-- Completed `TASK-0046`: expanded regression test coverage for `TASK-0045` (`edtech-orm`) across `src/test/ridgun/test core language.rg`, `src/test/ridgun/test lib and plugins.rg` (multi-module `.rg` and `.rglib`), and `tests/cases/` (`tests/run.rg`).
+- Completed `TASK-0047`: replaced all underscore-separated `fn`/`op`/builtin names with canonical space-separated names across all 7 editions of The Ridgun Book (`docs/book/{es,ca,gl,eu,en,pt,sv}/`) and `docs/lang/` while preserving underscores in variables, parameters, record fields, and tensor indices; regenerated all HTML books.
 
 ## Files to load for the active task (nothing else)
-- `docs/road-map/completed/2026-10/TASK-0046-add-comprehensive-unit-multi-module-and-acceptance.md`
+- `docs/road-map/completed/2026-10/TASK-0047-remove-underscores-from-fn-op-names-and-calls-acro.md`
 
 ## Last verified facts (tests green? migrations applied? env?)
-- `test core language.rg`, `test lib and plugins.rg`, `tests/run.rg`, and `aix docs validate` pass with 0 errors.
+- `bash docs/book/build_book.sh` and `aix docs validate` pass with 0 errors.
 
 ## Immediate next action
 - Await next user instruction.

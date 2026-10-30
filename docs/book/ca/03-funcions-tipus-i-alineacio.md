@@ -18,14 +18,14 @@ Pots escriure la capçalera de dues maneres:
 
 ### Opció A: Directa al gra (sense prefix)
 ```ridgun
-aplicar_descompte Int  Int         => Int
-aplicar_descompte preu percentatge =  preu - (preu * percentatge / 100)
+aplicar descompte Int  Int         => Int
+aplicar descompte preu percentatge =  preu - (preu * percentatge / 100)
 ```
 
 ### Opció B: Amb etiqueta explícita (`fn ::`)
 ```ridgun
-fn :: aplicar_descompte Int  Int         => Int
-      aplicar_descompte preu percentatge =  preu - (preu * percentatge / 100)
+fn :: aplicar descompte Int  Int         => Int
+      aplicar descompte preu percentatge =  preu - (preu * percentatge / 100)
 ```
 
 *"Escolta, i per què existeixen totes dues?"*
@@ -33,7 +33,7 @@ Perquè per a gustos, els colors:
 - Hi ha qui prefereix que les funcions comencin enganxades al marge esquerre sense escriure `fn ::` cada vegada (al cap i a la fi, la fletxa `=>` ja crida als quatre vents que aquella línia és una signatura de tipus).
 - I hi ha qui prefereix tenir una columna esquerra dedicada a les etiquetes (`fn ::`, `op ::`, `type`, `import`) per escanejar el fitxer visualment.
 
-El compilador i `stable format` entenen totes dues a la perfecció. A més, les paraules `fn` i `op` es poden fer servir lliurement com a part del nom de qualsevol funció o operador (per exemple `fn :: op`, `op :: fn` o `op :: op`), i si una funció retorna múltiples valors, en mode canònic/estricte els tipus de sortida s'escriuen separats per espais després de `=>` (`dividir_amb_residu Int Int => Int Int`).
+El compilador i `stable format` entenen totes dues a la perfecció. A més, les paraules `fn` i `op` es poden fer servir lliurement com a part del nom de qualsevol funció o operador (per exemple `fn :: op`, `op :: fn` o `op :: op`), i si una funció retorna múltiples valors, en mode canònic/estricte els tipus de sortida s'escriuen separats per espais després de `=>` (`dividir amb residu Int Int => Int Int`).
 
 ---
 
@@ -42,11 +42,11 @@ El compilador i `stable format` entenen totes dues a la perfecció. A més, les 
 Mira aquesta funció que calcula el cost d'un enviament segons el país i si és urgent:
 
 ```ridgun
-cost_enviament String Bool  Int => Int
-cost_enviament "ES"   False _   =  5
-cost_enviament "ES"   True  _   =  12
-cost_enviament _      False pes =  10 + (pes * 2)
-cost_enviament _      True  pes =  25 + (pes * 4)
+cost enviament String Bool  Int => Int
+cost enviament "ES"   False _   =  5
+cost enviament "ES"   True  _   =  12
+cost enviament _      False pes =  10 + (pes * 2)
+cost enviament _      True  pes =  25 + (pes * 4)
 ```
 
 Fes la prova: tapa la meitat dreta de la pantalla i mira només les tres columnes d'entrada:
@@ -68,7 +68,7 @@ Els tipus escalars de Ridgun són directes i sense sorpreses:
 | `U64` | Enter de 64 bits sense signe (`u64`) amb aritmètica modular i bit a bit nativa | `u64 0`, `u64 0x6a09e667f3bcc908`, `a ^ b`, `a << u64 13` |
 | `Float` / `Real` | Decimal de doble precisió (`f64`) | `3.14159`, `0.001`, `-2.5` |
 | `String` | Cadena de text immutable | `"Hola"`, `'ruta\crua'` |
-| `Char` | Codi de caràcter | Retornat per `str_char_at` |
+| `Char` | Codi de caràcter | Retornat per `str char at` |
 | `Bool` | Booleà de tota la vida | `True`, `False` |
 | `()` | Buit (*Unit*, quan només imprimeixes o fas I/O) | `()` |
 
@@ -76,14 +76,14 @@ Els tipus escalars de Ridgun són directes i sense sorpreses:
 En Ridgun els literals numèrics accepten directament els sufixos **`_KB`**, **`_MB`** i **`_GB`**, a més de guions baixos `_` per separar grups de xifres:
 
 ```ridgun
-mida_buffer => Int
-mida_buffer =  64_KB        -- El compilador ho tradueix a 65536
+mida buffer => Int
+mida buffer =  64_KB        -- El compilador ho tradueix a 65536
 
-limit_fitxer => Int
-limit_fitxer =  16_MB       -- El compilador ho tradueix a 16777216
+limit fitxer => Int
+limit fitxer =  16_MB       -- El compilador ho tradueix a 16777216
 
-mascara_octet => Int
-mascara_octet =  0xFF_00    -- Hexadecimal net i llegible
+mascara octet => Int
+mascara octet =  0xFF_00    -- Hexadecimal net i llegible
 ```
 
 ---
@@ -96,8 +96,8 @@ En molts llenguatges les cometes simples i dobles fan exactament el mateix (un m
 Interpreten escapaments (`\n`, `\t`, `\"`, `\\`) i **avaluen qualsevol variable o expressió que posis entre claus `{...}`**:
 
 ```ridgun
-resum_comanda String Int Int  => String
-resum_comanda item   uts preu =
+resum comanda String Int Int  => String
+resum comanda item   uts preu =
   "Has demanat {uts}x {item}. Total a pagar: {uts * preu} euros."
 ```
 
@@ -107,19 +107,19 @@ resum_comanda item   uts preu =
 El que escrius entre cometes simples surt **tal qual**, sense tocar ni una barra invertida `\`, ni una clau `{}`. Perfecte per a quan generes codi en un altre llenguatge, escrius ordres de shell o treballes amb rutes plenes de barres:
 
 ```ridgun
-ordre_sed => String
-ordre_sed =  's/\([0-9]+\)/[\1]/g'
+ordre sed => String
+ordre sed =  's/\([0-9]+\)/[\1]/g'
 ```
 
 ### La teva caixa d'eines per a cadenes (`String`)
 Unir cadenes és tan simple com sumar-les amb `+`: `"Hola, " + nom`. I quan necessites fer cirurgia fina sobre un text, tens aquestes funcions natives a punt sense importar res:
 
-- `str_len s` $\rightarrow$ longitud de `s`.
-- `str_char_at s i` $\rightarrow$ codi numèric (`Int`) del caràcter a la posició `i` (`-1` si et passes).
-- `str_slice s inici fi` $\rightarrow$ retalla des d'`inici` fins a `fi` (sense incloure `fi`).
-- `char_from_code c` $\rightarrow$ converteix un codi numèric (`Int`, p. ex. `10` per a `\n` o `34` per a `"`) en un `String` d'1 caràcter.
-- `str_contains s agulla` i `str_starts_with s prefix` $\rightarrow$ retornen `True` o `False`.
-- `int_to_str n` i `str_to_int s` $\rightarrow$ converteixen de número a text i viceversa (`str_to_int` entén fins i tot `"0xFF"`!).
+- `str len s` $\rightarrow$ longitud de `s`.
+- `str char at s i` $\rightarrow$ codi numèric (`Int`) del caràcter a la posició `i` (`-1` si et passes).
+- `str slice s inici fi` $\rightarrow$ retalla des d'`inici` fins a `fi` (sense incloure `fi`).
+- `char from code c` $\rightarrow$ converteix un codi numèric (`Int`, p. ex. `10` per a `\n` o `34` per a `"`) en un `String` d'1 caràcter.
+- `str contains s agulla` i `str starts with s prefix` $\rightarrow$ retornen `True` o `False`.
+- `int to str n` i `str to int s` $\rightarrow$ converteixen de número a text i viceversa (`str to int` entén fins i tot `"0xFF"`!).
 
 ---
 
@@ -130,8 +130,8 @@ Quan una funció no cap en una sola línia, fas un salt de línia després de l'
 Mira com es llegeix un bloc pas a pas:
 
 ```ridgun
-calcular_factura Int  Int     => Int
-calcular_factura base iva_pct =
+calcular factura Int  Int     => Int
+calcular factura base iva_pct =
   impostos = base * iva_pct / 100
   despeses_gestio = 5
   echo "Desglossament -> Base:" base "Impostos:" impostos
@@ -142,8 +142,8 @@ Quatre regles d'or que fan que els blocs en Ridgun siguin nets i uniformes:
 1. **Immutable per defecte sense `let` ni `const`**: escrius `impostos = ...` i ja tens la teva constant local immutable. Si per descuit intentes sobreescriure `impostos = 99` més avall en el mateix bloc, el compilador et frena en sec.
 2. **Variables mutables explícites amb `mut`**: quan de debò vols anar actualitzant un acumulador local pas a pas dins d'una funció, el declares amb **`mut`** i després el reassignes lliurement amb `=`:
    ```ridgun
-   aplicar_recarrecs Int  => Int
-   aplicar_recarrecs preu =
+   aplicar recarrecs Int  => Int
+   aplicar recarrecs preu =
      mut total = preu
      total = total + 10
      total = total * 2
@@ -154,6 +154,6 @@ Quatre regles d'or que fan que els blocs en Ridgun siguin nets i uniformes:
    - **`(res)`**: línies seqüencials sagnades (com a dalt).
    - **`|`**: un arbre de guardes condicionals.
    - **`||`**: un graf de càlculs en paral·lel amb `->`.
-4. **L'última expressió és sempre el resultat**: `base + impostos + despeses_gestio` és el que retorna `calcular_factura`. Sense `return`.
+4. **L'última expressió és sempre el resultat**: `base + impostos + despeses_gestio` és el que retorna `calcular factura`. Sense `return`.
 
 Al **Capítol 04** veurem com prendre decisions complexes —incloent-hi arbres de decisió de diversos nivells amb `|.`— sense escriure mai un `if/else` ni un bucle `while`: benvingut al món de les **guardes booleanes** i la **recursió de cua de cost zero**.

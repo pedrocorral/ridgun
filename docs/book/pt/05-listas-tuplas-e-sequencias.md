@@ -31,13 +31,13 @@ Em Ridgun não conta índices; **desmonta a lista pela cabeça**:
 Veja que gosto dá somar uma lista ou contar quantos elementos tem:
 
 ```ridgun
-somar_lista [Int]  => Int
-somar_lista []     =  0
-somar_lista (x:xs) =  x + (somar_lista xs)
+somar lista [Int]  => Int
+somar lista []     =  0
+somar lista (x:xs) =  x + (somar lista xs)
 
-contar_elementos [A]    => Int
-contar_elementos []     =  0
-contar_elementos (_:xs) =  1 + (contar_elementos xs)
+contar elementos [A]    => Int
+contar elementos []     =  0
+contar elementos (_:xs) =  1 + (contar elementos xs)
 ```
 
 E um detalhe técnico que lhe vai alegrar o dia: em Ridgun, extrair a cauda `xs` em `(x:xs)` **não copia o resto da lista em memória**. Internamente é uma vista sobre o mesmo vetor que só avança o ponteiro de início em `1` ($O(1)$ instantâneo).
@@ -46,11 +46,11 @@ E um detalhe técnico que lhe vai alegrar o dia: em Ridgun, extrair a cauda `xs`
 O padrão `:` dá imenso jeito quando está a analisar comandos ou protocolos:
 
 ```ridgun
-interpretar_comando [String]                  => String
-interpretar_comando []                        =  "Não escreveste nada"
-interpretar_comando ("ajuda":_)               =  "A mostrar a ajuda..."
-interpretar_comando ("copiar":origem:dest:[]) =  "A copiar de {origem} para {dest}"
-interpretar_comando (cmd:_)                   =  "Comando desconhecido: {cmd}"
+interpretar comando [String]                  => String
+interpretar comando []                        =  "Não escreveste nada"
+interpretar comando ("ajuda":_)               =  "A mostrar a ajuda..."
+interpretar comando ("copiar":origem:dest:[]) =  "A copiar de {origem} para {dest}"
+interpretar comando (cmd:_)                   =  "Comando desconhecido: {cmd}"
 ```
 
 Repare na terceira linha: `("copiar":origem:dest:[])` verifica de uma só vez que a lista tem **exatamente 3 elementos**, que o primeiro é `"copiar"`, e deixa-lhe o segundo e o terceiro servidos numa bandeja em `origem` e `dest`. Tente escrever isso em C ou Java e verá quantas linhas de `args.length == 3 && args[0].equals("copiar")` lhe saem.
@@ -59,11 +59,11 @@ Repare na terceira linha: `("copiar":origem:dest:[])` verifica de uma só vez qu
 Quando está do lado direito do `=` (numa expressão) e quer colar duas listas, usa **`::`**:
 
 ```ridgun
-colar_listas [Int] [Int] => [Int]
-colar_listas a     b     =  a :: b
+colar listas [Int] [Int] => [Int]
+colar listas a     b     =  a :: b
 
-adicionar_atras [Int] Int => [Int]
-adicionar_atras xs    x   =  xs :: [x]
+adicionar atras [Int] Int => [Int]
+adicionar atras xs    x   =  xs :: [x]
 ```
 
 *(Regra mnemónica rápida: um único `:` nos padrões desmonta a lista; dois `::` nas expressões colam duas listas).*
@@ -74,18 +74,18 @@ E se realmente quiser extrair o elemento número 5 diretamente sem percorrer nad
 
 ## 5.2. Funções variádicas (`T...`): "Passe-me todos os que quiser!"
 
-Às vezes quer que quem chama a sua função possa escrever `maximo_de 4 19 2 88 7` comodamente, sem o obrigar a envolver os números entre parênteses retos `[4, 19, 2, 88, 7]`.
+Às vezes quer que quem chama a sua função possa escrever `maximo de 4 19 2 88 7` comodamente, sem o obrigar a envolver os números entre parênteses retos `[4, 19, 2, 88, 7]`.
 
 Ponha três pontos **`...`** atrás do último tipo da sua assinatura, e dentro da sua função recebê-lo-á automaticamente empacotado como uma lista:
 
 ```ridgun
-somar_varios Int... => Int
-somar_varios nums   =  somar_lista nums
+somar varios Int... => Int
+somar varios nums   =  somar lista nums
 
 main => ()
 main =
-  echo (somar_varios 10 20 30)       -- Imprime 60
-  echo (somar_varios 1 2 3 4 5 6 7)  -- Imprime 28
+  echo (somar varios 10 20 30)       -- Imprime 60
+  echo (somar varios 1 2 3 4 5 6 7)  -- Imprime 28
 ```
 
 ---
@@ -97,32 +97,32 @@ Em muitas linguagens devolver duas coisas a partir de uma função é uma dor de
 Em Ridgun devolve uma **tupla** `(A, B)`:
 
 ```ridgun
-dividir_e_resto Int Int => (Int, Int)
-dividir_e_resto a   b   =  (a / b, a % b)
+dividir e resto Int Int => (Int, Int)
+dividir e resto a   b   =  (a / b, a % b)
 ```
 
 Pode inclusive poupar os parênteses na linha da assinatura se lhe parecer mais limpo:
-`dividir_e_resto Int Int => Int Int`.
+`dividir e resto Int Int => Int Int`.
 
 ### Como abrir uma tupla
 Tal como a cria com `(a, b)`, abre-a nos argumentos de qualquer função com `(quociente, resto)`:
 
 ```ridgun
-explicar_divisao (Int, Int)         => String
-explicar_divisao (quociente, resto) =  "Cabe {quociente} e sobram {resto}"
+explicar divisao (Int, Int)         => String
+explicar divisao (quociente, resto) =  "Cabe {quociente} e sobram {resto}"
 ```
 
 ### O detalhe estrela: Desempacotamento automático entre funções
-Suponha que tem `dividir_e_resto` (que devolve uma tupla de 2 inteiros) e outra função `somar_par Int Int => Int` (que espera 2 inteiros soltos). Em Ridgun não tem de abrir a tupla à mão numa variável intermédia; pode ligar uma função dentro da outra diretamente:
+Suponha que tem `dividir e resto` (que devolve uma tupla de 2 inteiros) e outra função `somar par Int Int => Int` (que espera 2 inteiros soltos). Em Ridgun não tem de abrir a tupla à mão numa variável intermédia; pode ligar uma função dentro da outra diretamente:
 
 ```ridgun
-somar_par Int Int => Int
-somar_par x   y   =  x + y
+somar par Int Int => Int
+somar par x   y   =  x + y
 
 main => ()
 main =
-  -- dividir_e_resto 17 5 devolve (3, 2), e somar_par recebe 3 e 2 diretamente:
-  echo (somar_par (dividir_e_resto 17 5))  -- Imprime 5
+  -- dividir e resto 17 5 devolve (3, 2), e somar par recebe 3 e 2 diretamente:
+  echo (somar par (dividir e resto 17 5))  -- Imprime 5
 ```
 
 ---
@@ -142,16 +142,16 @@ Aplica a `s` uma **máscara de tupla com `+` (fica com ele) e `_` (descarta-o)**
 Veja isto a funcionar:
 
 ```ridgun
-o_do_meio Int Int Int => Int
-o_do_meio (s)         =  s(_ + _)
+o do meio Int Int Int => Int
+o do meio (s)         =  s(_ + _)
 
-descartar_dois_primeiros Int... => [Int]
-descartar_dois_primeiros (s)    =  s(_ _ +...)
+descartar dois primeiros Int... => [Int]
+descartar dois primeiros (s)    =  s(_ _ +...)
 
 main => ()
 main =
-  echo (o_do_meio 100 42 999)                 -- Imprime 42
-  echo (descartar_dois_primeiros 1 2 10 20 30)  -- Imprime [10, 20, 30]
+  echo (o do meio 100 42 999)                 -- Imprime 42
+  echo (descartar dois primeiros 1 2 10 20 30)  -- Imprime [10, 20, 30]
 ```
 
 E o melhor de tudo: pode intercalar uma máscara posicional **`(+ _ _ +)`** **diretamente no meio de uma tubagem `->`**! Se uma função devolver uma tupla de vários valores e a função seguinte só precisar de dois deles, filtra a tupla em linha e o Ridgun desempacotará os elementos sobreviventes como argumentos separados da etapa seguinte:

@@ -31,13 +31,13 @@ I Ridgun räknar du inte index; **du plockar isär listan från huvudet**:
 Titta så smidigt det är att summera en lista eller räkna hur många element den har:
 
 ```ridgun
-summera_lista [Int]  => Int
-summera_lista []     =  0
-summera_lista (x:xs) =  x + (summera_lista xs)
+summera lista [Int]  => Int
+summera lista []     =  0
+summera lista (x:xs) =  x + (summera lista xs)
 
-rakna_element [A]    => Int
-rakna_element []     =  0
-rakna_element (_:xs) =  1 + (rakna_element xs)
+rakna element [A]    => Int
+rakna element []     =  0
+rakna element (_:xs) =  1 + (rakna element xs)
 ```
 
 Och en teknisk detalj som kommer att göra dig glad: i Ridgun **kopierar inte `(x:xs)` resten av listan i minnet** när svansen `xs` plockas ut. Internt är det en vy över samma vektor som bara flyttar fram startpekaren med `1` (omedelbart i $O(1)$).
@@ -46,11 +46,11 @@ Och en teknisk detalj som kommer att göra dig glad: i Ridgun **kopierar inte `(
 Mönstret `:` är otroligt användbart när du tolkar kommandon eller protokoll:
 
 ```ridgun
-tolka_kommando [String]                 => String
-tolka_kommando []                       =  "Du har inte skrivit något"
-tolka_kommando ("hjalp":_)              =  "Visar hjälpen..."
-tolka_kommando ("kopiera":kalla:mal:[]) =  "Kopierar från {kalla} till {mal}"
-tolka_kommando (cmd:_)                  =  "Okänt kommando: {cmd}"
+tolka kommando [String]                 => String
+tolka kommando []                       =  "Du har inte skrivit något"
+tolka kommando ("hjalp":_)              =  "Visar hjälpen..."
+tolka kommando ("kopiera":kalla:mal:[]) =  "Kopierar från {kalla} till {mal}"
+tolka kommando (cmd:_)                  =  "Okänt kommando: {cmd}"
 ```
 
 Titta på tredje raden: `("kopiera":kalla:mal:[])` kontrollerar i ett enda slag att listan har **exakt 3 element**, att det första är `"kopiera"`, och serverar det andra och tredje på silverfat i `kalla` och `mal`. Försök skriva det i C eller Java så får du se hur många rader med `args.length == 3 && args[0].equals("kopiera")` det blir.
@@ -59,11 +59,11 @@ Titta på tredje raden: `("kopiera":kalla:mal:[])` kontrollerar i ett enda slag 
 När du befinner dig till höger om `=` (i ett uttryck) och vill foga ihop två listor använder du **`::`**:
 
 ```ridgun
-foga_listor [Int] [Int] => [Int]
-foga_listor a     b     =  a :: b
+foga listor [Int] [Int] => [Int]
+foga listor a     b     =  a :: b
 
-lagg_till_sist [Int] Int => [Int]
-lagg_till_sist xs    x   =  xs :: [x]
+lagg till sist [Int] Int => [Int]
+lagg till sist xs    x   =  xs :: [x]
 ```
 
 *(Snabb minnesregel: ett enkelt `:` i mönster plockar isär listan; dubbla `::` i uttryck fogar ihop två listor).*
@@ -74,18 +74,18 @@ Och om du verkligen vill hämta element nummer 5 direkt utan att stega igenom n�
 
 ## 5.2. Variadiska funktioner (`T...`): "Skicka in hur många du vill!"
 
-Ibland vill du att den som anropar din funktion bekvämt ska kunna skriva `max_av 4 19 2 88 7`, utan att tvingas linda in talen i hakparenteser `[4, 19, 2, 88, 7]`.
+Ibland vill du att den som anropar din funktion bekvämt ska kunna skriva `max av 4 19 2 88 7`, utan att tvingas linda in talen i hakparenteser `[4, 19, 2, 88, 7]`.
 
 Sätt tre punkter **`...`** efter den sista typen i din signatur, så får du inuti funktionen automatiskt in argumenten paketerade som en lista:
 
 ```ridgun
-summera_flera Int... => Int
-summera_flera tal    =  summera_lista tal
+summera flera Int... => Int
+summera flera tal    =  summera lista tal
 
 main => ()
 main =
-  echo (summera_flera 10 20 30)       -- Skriver ut 60
-  echo (summera_flera 1 2 3 4 5 6 7)  -- Skriver ut 28
+  echo (summera flera 10 20 30)       -- Skriver ut 60
+  echo (summera flera 1 2 3 4 5 6 7)  -- Skriver ut 28
 ```
 
 ---
@@ -97,32 +97,32 @@ I många språk är det en plåga att returnera två saker från en funktion: an
 I Ridgun returnerar du en **tupel** `(A, B)`:
 
 ```ridgun
-kvot_och_rest Int Int => (Int, Int)
-kvot_och_rest a   b   =  (a / b, a % b)
+kvot och rest Int Int => (Int, Int)
+kvot och rest a   b   =  (a / b, a % b)
 ```
 
 Du kan till och med spara in parenteserna på signaturraden om du tycker att det ser renare ut:
-`kvot_och_rest Int Int => Int Int`.
+`kvot och rest Int Int => Int Int`.
 
 ### Hur man öppnar en tupel
 Precis som du skapar den med `(a, b)` öppnar du den i argumenten till vilken funktion som helst med `(kvot, rest)`:
 
 ```ridgun
-forklara_division (Int, Int)   => String
-forklara_division (kvot, rest) =  "Det går {kvot} gånger och blir {rest} över"
+forklara division (Int, Int)   => String
+forklara division (kvot, rest) =  "Det går {kvot} gånger och blir {rest} över"
 ```
 
 ### Stjärndetaljen: Automatisk uppackning mellan funktioner
-Anta att du har `kvot_och_rest` (som returnerar en tupel med 2 heltal) och en annan funktion `summera_par Int Int => Int` (som förväntar sig 2 fristående heltal). I Ridgun behöver du inte packa upp tupeln för hand i en mellanliggande variabel; du kan koppla in den ena funktionen rakt i den andra:
+Anta att du har `kvot och rest` (som returnerar en tupel med 2 heltal) och en annan funktion `summera par Int Int => Int` (som förväntar sig 2 fristående heltal). I Ridgun behöver du inte packa upp tupeln för hand i en mellanliggande variabel; du kan koppla in den ena funktionen rakt i den andra:
 
 ```ridgun
-summera_par Int Int => Int
-summera_par x   y   =  x + y
+summera par Int Int => Int
+summera par x   y   =  x + y
 
 main => ()
 main =
-  -- kvot_och_rest 17 5 returnerar (3, 2), och summera_par tar emot 3 och 2 direkt:
-  echo (summera_par (kvot_och_rest 17 5))  -- Skriver ut 5
+  -- kvot och rest 17 5 returnerar (3, 2), och summera par tar emot 3 och 2 direkt:
+  echo (summera par (kvot och rest 17 5))  -- Skriver ut 5
 ```
 
 ---
@@ -142,16 +142,16 @@ Då lägger du på en **tupelmask med `+` (behåll) och `_` (kasta)** på `s`:
 Se hur det fungerar i praktiken:
 
 ```ridgun
-den_i_mitten Int Int Int => Int
-den_i_mitten (s)         =  s(_ + _)
+den i mitten Int Int Int => Int
+den i mitten (s)         =  s(_ + _)
 
-kasta_tva_forsta Int... => [Int]
-kasta_tva_forsta (s)    =  s(_ _ +...)
+kasta tva forsta Int... => [Int]
+kasta tva forsta (s)    =  s(_ _ +...)
 
 main => ()
 main =
-  echo (den_i_mitten 100 42 999)        -- Skriver ut 42
-  echo (kasta_tva_forsta 1 2 10 20 30)  -- Skriver ut [10, 20, 30]
+  echo (den i mitten 100 42 999)        -- Skriver ut 42
+  echo (kasta tva forsta 1 2 10 20 30)  -- Skriver ut [10, 20, 30]
 ```
 
 Och det bästa av allt: du kan skjuta in en positionsmask **`(+ _ _ +)`** **rakt in i en idiomatisk `->`-pipeline**! Om en funktion returnerar en tupel med flera värden och nästa funktion bara behöver två av dem, filtrerar du tupeln i farten och Ridgun packar upp de överlevande elementen direkt som separata argument till nästa steg:

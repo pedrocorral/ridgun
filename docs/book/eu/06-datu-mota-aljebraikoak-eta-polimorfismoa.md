@@ -22,24 +22,24 @@ Lerro hori idazte hutsarekin, Ridgunek **lau gauza** oparitzen dizkizu automatik
 
 ### 1. `Zerbitzaria` eraikitzailea
 ```ridgun
-nire_nodoa => Zerbitzaria
-nire_nodoa =  Zerbitzaria "api.adibidea.eus" 443 True
+nire nodoa => Zerbitzaria
+nire nodoa =  Zerbitzaria "api.adibidea.eus" 443 True
 ```
 
 ### 2. *Getter* funtzio puru bat eremu bakoitzerako (`ostalaria`, `ataka`, `tls_aktibo`)
 Ez duzu `s.getOstalaria()` edo antzekorik idatzi behar; eremu-izen bakoitza zuzenean datu hori ateratzen duen funtzio bat da:
 
 ```ridgun
-konexio_urla Zerbitzaria => String
-konexio_urla zrb         =  "Konektatu hona: " + (ostalaria zrb) + " {ataka zrb} atakan"
+konexio urla Zerbitzaria => String
+konexio urla zrb         =  "Konektatu hona: " + (ostalaria zrb) + " {ataka zrb} atakan"
 ```
 
 ### 3. Erregistroen eguneratze funtzionala (`with eremua: balioa`)
 Imajinatu 12 edo 15 eremuko konfigurazio-erregistro bat (`ls` komando baten edo web-zerbitzari baten aukerak bezala) eta eremu bat edo bi bakarrik aldatu nahi dituzula gainerakoak ukitu gabe. Erregistroa 15 eremuak eskuz pasatuz berreraiki beharrean, **`with`** eta bi puntu **`:`** erabiltzen dituzu (`type`-aren definizioan bezalaxe):
 
 ```ridgun
-aktibatu_garapen_modua Zerbitzaria => Zerbitzaria
-aktibatu_garapen_modua zrb         =  zrb with ataka: 8080, tls_aktibo: False
+aktibatu garapen modua Zerbitzaria => Zerbitzaria
+aktibatu garapen modua zrb         =  zrb with ataka: 8080, tls_aktibo: False
 ```
 
 Bi munduetako onena:
@@ -48,9 +48,9 @@ Bi munduetako onena:
 
 ### 4. *Pattern matching* osoa erregistroa erditik ireki nahi baduzu
 ```ridgun
-ataka_segurua_da Zerbitzaria                    => Bool
-ataka_segurua_da (Zerbitzaria _ 443 True)       =  True
-ataka_segurua_da _                              =  False
+ataka segurua da Zerbitzaria                    => Bool
+ataka segurua da (Zerbitzaria _ 443 True)       =  True
+ataka segurua da _                              =  False
 ```
 
 ---
@@ -70,10 +70,10 @@ type OrdainketaMetodoa = Txartela String Int | Transferentzia String | Eskudirua
 Eta begira zer gertatzen den funtzio batean `OrdainketaMetodoa` bat prozesatzen duzunean:
 
 ```ridgun
-deskribatu_ordainketa OrdainketaMetodoa      => String
-deskribatu_ordainketa (Txartela zenb _)      =  "{zenb}-rekin amaitutako txartel bidezko ordainketa"
-deskribatu_ordainketa (Transferentzia ibana) =  "Transferentzia {ibana} kontutik"
-deskribatu_ordainketa Eskudirua              =  "Eskudirutan ordaintzea leihatilan"
+deskribatu ordainketa OrdainketaMetodoa      => String
+deskribatu ordainketa (Txartela zenb _)      =  "{zenb}-rekin amaitutako txartel bidezko ordainketa"
+deskribatu ordainketa (Transferentzia ibana) =  "Transferentzia {ibana} kontutik"
+deskribatu ordainketa Eskudirua              =  "Eskudirutan ordaintzea leihatilan"
 ```
 
 Aldaera bakoitzak (`Txartela`, `Transferentzia`, `Eskudirua`) berarentzat zentzua duten datuak soilik daramatza itsatsita. **Ezinezkoa** da hutsez `ibana` bat zintzilik duen `Eskudirua` ordainketa bat eraikitzea.
@@ -91,13 +91,13 @@ Ridgunen (Haskell edo Rusten bezalaxe), bi segundotan batuketa-mota bat sortzen 
 ```ridgun
 type GelaxkaBalioa = Osokoa Int | Testua String | Hutsa
 
-formateatu_gelaxka GelaxkaBalioa => String
-formateatu_gelaxka (Osokoa n)    =  "Zenbakia: {n}"
-formateatu_gelaxka (Testua s)    =  "Testua: {s}"
-formateatu_gelaxka Hutsa         =  "(hutsik)"
+formateatu gelaxka GelaxkaBalioa => String
+formateatu gelaxka (Osokoa n)    =  "Zenbakia: {n}"
+formateatu gelaxka (Testua s)    =  "Testua: {s}"
+formateatu gelaxka Hutsa         =  "(hutsik)"
 
-nire_errenkada => [GelaxkaBalioa]
-nire_errenkada =  [Osokoa 1, Testua "bi", Hutsa]
+nire errenkada => [GelaxkaBalioa]
+nire errenkada =  [Osokoa 1, Testua "bi", Hutsa]
 ```
 
 Ikusten duzu aldea?
@@ -114,13 +114,13 @@ Ridgunen `null` existitzen ez denez eta airean lehertzen diren salbuespenik (`th
 2. **`Result`**: edo eragiketa ondo atera da (**`Ok balioa`**), edo arrazoi zehatz bategatik huts egin du (**`Err errorea`**).
 
 ```ridgun
-bilatu_zatiketa Int Int => Result
-bilatu_zatiketa _   0   =  Err "Ei! Ezin da zeroz zatitu"
-bilatu_zatiketa a   b   =  Ok (a / b)
+bilatu zatiketa Int Int => Result
+bilatu zatiketa _   0   =  Err "Ei! Ezin da zeroz zatitu"
+bilatu zatiketa a   b   =  Ok (a / b)
 
-inprimatu_em Result    => ()
-inprimatu_em (Ok n)    =  echo "Emaitza {n} da"
-inprimatu_em (Err msg) =  echo "Hutsegite kontrolatua: {msg}"
+inprimatu em Result    => ()
+inprimatu em (Ok n)    =  echo "Emaitza {n} da"
+inprimatu em (Err msg) =  echo "Hutsegite kontrolatua: {msg}"
 ```
 
 Inork ezin du errore bat deskuiduz alde batera utzi, `Result` motak berak barruan `Ok` bat ala `Err` bat dagoen begiratzera behartzen zaituelako.
@@ -134,19 +134,19 @@ Demagun `(x, y)` bikote bat alderantzikatzen duen edo zerrenda bateko lehen elem
 Ridgunen, mota-sinadura bateko **edozein letra larri banakok (`A`-tik `Z`-ra)** automatikoki **komodin-mota polimorfiko (mota-aldagai)** gisa funtzionatzen du:
 
 ```ridgun
-buru_segurua [A]    A          => A
-buru_segurua []     lehenetsia =  lehenetsia
-buru_segurua (x:_)  _          =  x
+buru segurua [A]    A          => A
+buru segurua []     lehenetsia =  lehenetsia
+buru segurua (x:_)  _          =  x
 
-biratu_bikotea (A, B) => (B, A)
-biratu_bikotea (x, y) =  (y, x)
+biratu bikotea (A, B) => (B, A)
+biratu bikotea (x, y) =  (y, x)
 ```
 
-Erreparatu `buru_segurua [A] A => A`-ren magiari:
+Erreparatu `buru segurua [A] A => A`-ren magiari:
 - Ez da kontrolik gabeko `Any` bat: **`[A]` zerrendaren motak, `lehenetsia` balioaren motak (`A`) eta itzulitako motak (`A`) bera izan behar dutela** dio.
-- `buru_segurua [10, 20] 0` deitzen baduzu, konpiladoreak hariak lotzen ditu (`A = Int`) eta `Int` bat itzultzen dizu.
-- `buru_segurua ["a", "b"] "bat_ere_ez"` deitzen baduzu, hariak lotzen ditu (`A = String`) eta `String` bat itzultzen dizu.
-- Baina tranpa egiten saiatzen bazara eta `buru_segurua [10, 20] "bat_ere_ez"` deitzen baduzu, zas! Konpiladoreak lehorrean gelditzen zaitu, lehen argumentuak `A` `Int` dela dioelako eta bigarrenak `A` `String` dela.
+- `buru segurua [10, 20] 0` deitzen baduzu, konpiladoreak hariak lotzen ditu (`A = Int`) eta `Int` bat itzultzen dizu.
+- `buru segurua ["a", "b"] "bat_ere_ez"` deitzen baduzu, hariak lotzen ditu (`A = String`) eta `String` bat itzultzen dizu.
+- Baina tranpa egiten saiatzen bazara eta `buru segurua [10, 20] "bat_ere_ez"` deitzen baduzu, zas! Konpiladoreak lehorrean gelditzen zaitu, lehen argumentuak `A` `Int` dela dioelako eta bigarrenak `A` `String` dela.
 
 ---
 

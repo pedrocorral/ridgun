@@ -31,13 +31,13 @@ Ridgunen ez dituzu indizeak zenbatzen; **zerrenda burutik desmuntatzen duzu**:
 Begira zein gozamena den zerrenda bat batzea edo zenbat elementu dituen zenbatzea:
 
 ```ridgun
-batu_zerrenda [Int]  => Int
-batu_zerrenda []     =  0
-batu_zerrenda (x:xs) =  x + (batu_zerrenda xs)
+batu zerrenda [Int]  => Int
+batu zerrenda []     =  0
+batu zerrenda (x:xs) =  x + (batu zerrenda xs)
 
-zenbatu_elementuak [A]    => Int
-zenbatu_elementuak []     =  0
-zenbatu_elementuak (_:xs) =  1 + (zenbatu_elementuak xs)
+zenbatu elementuak [A]    => Int
+zenbatu elementuak []     =  0
+zenbatu elementuak (_:xs) =  1 + (zenbatu elementuak xs)
 ```
 
 Eta eguna alaituko dizun xehetasun tekniko bat: Ridgunen, `(x:xs)` ereduan `xs` isatsa ateratzeak **ez du gainerako zerrenda memorian kopiatzen**. Barnean bektore beraren gaineko ikuspegi bat da, hasierako erakuslea `1`ean aurreratzen duena soilik (berehalako $O(1)$).
@@ -46,11 +46,11 @@ Eta eguna alaituko dizun xehetasun tekniko bat: Ridgunen, `(x:xs)` ereduan `xs` 
 `:` ereduak joko handia ematen du komandoak edo protokoloak analizatzen ari zarenean:
 
 ```ridgun
-interpretatu_komandoa [String]                   => String
-interpretatu_komandoa []                         =  "Ez duzu ezer idatzi"
-interpretatu_komandoa ("laguntza":_)             =  "Laguntza erakusten..."
-interpretatu_komandoa ("kopiatu":jatorria:helm:[]) = "{jatorria}-tik {helm}-ra kopiatzen"
-interpretatu_komandoa (cmd:_)                    =  "Komando ezezaguna: {cmd}"
+interpretatu komandoa [String]                   => String
+interpretatu komandoa []                         =  "Ez duzu ezer idatzi"
+interpretatu komandoa ("laguntza":_)             =  "Laguntza erakusten..."
+interpretatu komandoa ("kopiatu":jatorria:helm:[]) = "{jatorria}-tik {helm}-ra kopiatzen"
+interpretatu komandoa (cmd:_)                    =  "Komando ezezaguna: {cmd}"
 ```
 
 Begira hirugarren errenkadari: `("kopiatu":jatorria:helm:[])` ereduak kolpe bakar batez egiaztatzen du zerrendak **zehazki 3 elementu** dituela, lehenengoa `"kopiatu"` dela, eta bigarrena eta hirugarrena erretiluan zerbitzatuta uzten dizkizu `jatorria` eta `helm` aldagaietan. Saiatu hori C edo Javan idazten eta ikusiko duzu zenbat `args.length == 3 && args[0].equals("kopiatu")` lerro ateratzen zaizkizun.
@@ -59,11 +59,11 @@ Begira hirugarren errenkadari: `("kopiatu":jatorria:helm:[])` ereduak kolpe baka
 `=` ikurraren eskuinaldean zaudenean (adierazpen batean) eta bi zerrenda itsatsi nahi dituzunean, **`::`** erabiltzen duzu:
 
 ```ridgun
-itsatsi_zerrendak [Int] [Int] => [Int]
-itsatsi_zerrendak a     b     =  a :: b
+itsatsi zerrendak [Int] [Int] => [Int]
+itsatsi zerrendak a     b     =  a :: b
 
-gehitu_atzean [Int] Int => [Int]
-gehitu_atzean xs    x   =  xs :: [x]
+gehitu atzean [Int] Int => [Int]
+gehitu atzean xs    x   =  xs :: [x]
 ```
 
 *(Erregela mnemotekniko azkarra: `:` bakar batek ereduetan zerrenda desmuntatzen du; bi `::`-k adierazpenetan bi zerrenda itsasten dituzte).*
@@ -79,13 +79,13 @@ Batzuetan nahi duzu zure funtzioari deitzen dionak `maximoa 4 19 2 88 7` eroso i
 Jarri hiru puntu **`...`** zure sinadurako azken motaren atzean, eta zure funtzioaren barruan zerrenda gisa paketatuta jasoko duzu automatikoki:
 
 ```ridgun
-batu_hainbat Int... => Int
-batu_hainbat zenb   =  batu_zerrenda zenb
+batu hainbat Int... => Int
+batu hainbat zenb   =  batu zerrenda zenb
 
 main => ()
 main =
-  echo (batu_hainbat 10 20 30)       -- 60 inprimatzen du
-  echo (batu_hainbat 1 2 3 4 5 6 7)  -- 28 inprimatzen du
+  echo (batu hainbat 10 20 30)       -- 60 inprimatzen du
+  echo (batu hainbat 1 2 3 4 5 6 7)  -- 28 inprimatzen du
 ```
 
 ---
@@ -97,32 +97,32 @@ Lengoaia askotan funtzio batetik bi gauza itzultzea buruko mina da: edo `Emaitza
 Ridgunen `(A, B)` **tupla** bat itzultzen duzu:
 
 ```ridgun
-zatitu_eta_hondarra Int Int => (Int, Int)
-zatitu_eta_hondarra a   b   =  (a / b, a % b)
+zatitu eta hondarra Int Int => (Int, Int)
+zatitu eta hondarra a   b   =  (a / b, a % b)
 ```
 
 Parentesiak ere aurrez ditzakezu sinaduraren lerroan garbiago iruditzen bazaizu:
-`zatitu_eta_hondarra Int Int => Int Int`.
+`zatitu eta hondarra Int Int => Int Int`.
 
 ### Nola ireki tupla bat
 `(a, b)`-rekin sortzen duzun bezalaxe, edozein funtzioren argumentuetan `(zatidura, hondarra)`-rekin irekitzen duzu:
 
 ```ridgun
-azaldu_zatiketa (Int, Int)           => String
-azaldu_zatiketa (zatidura, hondarra) =  "{zatidura} aldiz sartzen da eta {hondarra} geratzen dira"
+azaldu zatiketa (Int, Int)           => String
+azaldu zatiketa (zatidura, hondarra) =  "{zatidura} aldiz sartzen da eta {hondarra} geratzen dira"
 ```
 
 ### Xehetasun izarra: Despaketatze automatikoa funtzioen artean
-Demagun `zatitu_eta_hondarra` (2 osokoko tupla bat itzultzen duena) eta beste funtzio bat `batu_bikotea Int Int => Int` (2 osoko solte espero dituena) dituzula. Ridgunen ez duzu tupla eskuz ireki behar tarteko aldagai batean; funtzio bat bestearen barruan zuzenean entxufatu dezakezu:
+Demagun `zatitu eta hondarra` (2 osokoko tupla bat itzultzen duena) eta beste funtzio bat `batu bikotea Int Int => Int` (2 osoko solte espero dituena) dituzula. Ridgunen ez duzu tupla eskuz ireki behar tarteko aldagai batean; funtzio bat bestearen barruan zuzenean entxufatu dezakezu:
 
 ```ridgun
-batu_bikotea Int Int => Int
-batu_bikotea x   y   =  x + y
+batu bikotea Int Int => Int
+batu bikotea x   y   =  x + y
 
 main => ()
 main =
-  -- zatitu_eta_hondarra 17 5 deiak (3, 2) itzultzen du, eta batu_bikotea-k 3 eta 2 zuzenean jasotzen ditu:
-  echo (batu_bikotea (zatitu_eta_hondarra 17 5))  -- 5 inprimatzen du
+  -- zatitu eta hondarra 17 5 deiak (3, 2) itzultzen du, eta batu bikotea-k 3 eta 2 zuzenean jasotzen ditu:
+  echo (batu bikotea (zatitu eta hondarra 17 5))  -- 5 inprimatzen du
 ```
 
 ---
@@ -145,13 +145,13 @@ Begira nola funtzionatzen duen:
 erdikoa Int Int Int => Int
 erdikoa (s)         =  s(_ + _)
 
-baztertu_lehen_biak Int... => [Int]
-baztertu_lehen_biak (s)    =  s(_ _ +...)
+baztertu lehen biak Int... => [Int]
+baztertu lehen biak (s)    =  s(_ _ +...)
 
 main => ()
 main =
   echo (erdikoa 100 42 999)              -- 42 inprimatzen du
-  echo (baztertu_lehen_biak 1 2 10 20 30) -- [10, 20, 30] inprimatzen du
+  echo (baztertu lehen biak 1 2 10 20 30) -- [10, 20, 30] inprimatzen du
 ```
 
 Eta onena: **`(+ _ _ +)`** maskara posizional bat **zuzenean `->` hodi baten erdian** tartean sar dezakezu! Funtzio batek hainbat baliotako tupla bat itzultzen badu eta hurrengo funtzioak horietako bi bakarrik behar baditu, tupla hegaldian iragazten duzu eta Ridgunek bizirik atera diren elementuak hurrengo urratseko argumentu bereizi gisa desegituratuko ditu:

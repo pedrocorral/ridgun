@@ -22,24 +22,24 @@ By writing that single line, Ridgun automatically gives you **four things** for 
 
 ### 1. The `Server` constructor
 ```ridgun
-my_node => Server
-my_node =  Server "api.example.com" 443 True
+my node => Server
+my node =  Server "api.example.com" 443 True
 ```
 
 ### 2. A pure *getter* function for every field (`host`, `port`, `tls_enabled`)
 You don't write `s.getHost()` or anything like that; each field name is directly a function that extracts that piece of data:
 
 ```ridgun
-connection_url Server => String
-connection_url srv    =  "Connect to " + (host srv) + " on port {port srv}"
+connection url Server => String
+connection url srv    =  "Connect to " + (host srv) + " on port {port srv}"
 ```
 
 ### 3. Functional record update (`with field: value`)
 Imagine a configuration record with 12 or 15 fields (like the flags of an `ls` command or a web server) and you want to change just one or two fields without touching the rest. Instead of rebuilding the entire record by passing all 15 fields by hand, you use **`with`** and colons **`:`** (matching the exact syntax of the `type` definition):
 
 ```ridgun
-enable_dev_mode Server => Server
-enable_dev_mode srv    =  srv with port: 8080, tls_enabled: False
+enable dev mode Server => Server
+enable dev mode srv    =  srv with port: 8080, tls_enabled: False
 ```
 
 The best of both worlds:
@@ -48,9 +48,9 @@ The best of both worlds:
 
 ### 4. Full *pattern matching* whenever you want to unpack the record directly
 ```ridgun
-is_secure_port Server              => Bool
-is_secure_port (Server _ 443 True) =  True
-is_secure_port _                   =  False
+is secure port Server              => Bool
+is secure port (Server _ 443 True) =  True
+is secure port _                   =  False
 ```
 
 ---
@@ -70,10 +70,10 @@ type PaymentMethod = Card String Int | Transfer String | Cash
 And look what happens when you process a `PaymentMethod` in a function:
 
 ```ridgun
-describe_payment PaymentMethod   => String
-describe_payment (Card num _)    =  "Card payment ending in {num}"
-describe_payment (Transfer iban) =  "Bank transfer from account {iban}"
-describe_payment Cash            =  "Cash payment at the counter"
+describe payment PaymentMethod   => String
+describe payment (Card num _)    =  "Card payment ending in {num}"
+describe payment (Transfer iban) =  "Bank transfer from account {iban}"
+describe payment Cash            =  "Cash payment at the counter"
 ```
 
 Each variant (`Card`, `Transfer`, `Cash`) carries only the data that makes sense for it. It is **impossible** to construct a `Cash` payment with a dangling `iban` attached by mistake.
@@ -91,13 +91,13 @@ In Ridgun (just like in Haskell or Rust), it takes two seconds to define a sum t
 ```ridgun
 type CellValue = Integer Int | Text String | Empty
 
-format_cell CellValue   => String
-format_cell (Integer n) =  "Number: {n}"
-format_cell (Text s)    =  "Text: {s}"
-format_cell Empty       =  "(empty)"
+format cell CellValue   => String
+format cell (Integer n) =  "Number: {n}"
+format cell (Text s)    =  "Text: {s}"
+format cell Empty       =  "(empty)"
 
-my_row => [CellValue]
-my_row =  [Integer 1, Text "two", Empty]
+my row => [CellValue]
+my row =  [Integer 1, Text "two", Empty]
 ```
 
 See the difference?
@@ -114,13 +114,13 @@ Because Ridgun has neither `null` nor uncaught exceptions flying through the cal
 2. **`Result`**: either the operation succeeded (**`Ok value`**), or it failed for a specific reason (**`Err error`**).
 
 ```ridgun
-safe_divide Int Int => Result
-safe_divide _   0   =  Err "Hey! Cannot divide by zero"
-safe_divide a   b   =  Ok (a / b)
+safe divide Int Int => Result
+safe divide _   0   =  Err "Hey! Cannot divide by zero"
+safe divide a   b   =  Ok (a / b)
 
-print_result Result    => ()
-print_result (Ok n)    =  echo "The result is {n}"
-print_result (Err msg) =  echo "Handled failure: {msg}"
+print result Result    => ()
+print result (Ok n)    =  echo "The result is {n}"
+print result (Err msg) =  echo "Handled failure: {msg}"
 ```
 
 Nobody can accidentally ignore an error because the `Result` type itself forces you to check whether there is an `Ok` or an `Err` inside.
@@ -134,19 +134,19 @@ Suppose you write a function that swaps a pair `(x, y)` or extracts the first el
 In Ridgun, **any single uppercase letter (`A` through `Z`)** in a type signature automatically acts as a **polymorphic type wildcard (type variable)**:
 
 ```ridgun
-safe_head [A]   A       => A
-safe_head []    default =  default
-safe_head (x:_) _       =  x
+safe head [A]   A       => A
+safe head []    default =  default
+safe head (x:_) _       =  x
 
-swap_pair (A, B) => (B, A)
-swap_pair (x, y) =  (y, x)
+swap pair (A, B) => (B, A)
+swap pair (x, y) =  (y, x)
 ```
 
-Notice the magic of `safe_head [A] A => A`:
+Notice the magic of `safe head [A] A => A`:
 - It is not a lawless `Any`: it states that **the element type of the list `[A]`, the type of the fallback value `default` (`A`), and the return type (`A`) must all be the exact same type**.
-- If you call `safe_head [10, 20] 0`, the compiler connects the dots (`A = Int`) and returns an `Int`.
-- If you call `safe_head ["a", "b"] "none"`, it connects the dots (`A = String`) and returns a `String`.
-- But if you try to cheat and call `safe_head [10, 20] "none"`, boom! The compiler stops you cold because the first argument says `A` is `Int` while the second says `A` is `String`.
+- If you call `safe head [10, 20] 0`, the compiler connects the dots (`A = Int`) and returns an `Int`.
+- If you call `safe head ["a", "b"] "none"`, it connects the dots (`A = String`) and returns a `String`.
+- But if you try to cheat and call `safe head [10, 20] "none"`, boom! The compiler stops you cold because the first argument says `A` is `Int` while the second says `A` is `String`.
 
 ---
 
@@ -168,16 +168,16 @@ op :: Complex + Complex => Complex
 In an operator signature, **capitalized words (`Int`, `String`, `A`..`Z`) or bracketed/parenthesized types (`[Int]`, `(A, B)`) are the argument slots**, and **lowercase words become part of the operator phrase** (including everyday words like `type` or `with`, which are contextual in Ridgun and never get in your way):
 
 ```ridgun
-op :: when Bool then A else_val A => A
-      when True then v else_val _ =  v
-      when False then _ else_val f = f
+op :: when Bool then A else A => A
+      when True then v else _ =  v
+      when False then _ else f = f
 
 op :: format String type String with Int => String
       format label  type kind   with w   =  "{label} ({kind}, width={w})"
 
 main => ()
 main =
-  message = when (10 > 5) then "Ten wins!" else_val "Impossible"
+  message = when (10 > 5) then "Ten wins!" else "Impossible"
   echo message
   echo (format "panel" type "bordered" with 80)
 ```

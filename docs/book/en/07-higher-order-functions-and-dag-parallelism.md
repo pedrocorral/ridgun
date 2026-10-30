@@ -45,13 +45,13 @@ main =
 You pass a function that returns `Bool` (a *predicate*) and a list:
 
 ```ridgun
-is_positive Int => Bool
-is_positive n   =  n > 0
+is positive Int => Bool
+is positive n   =  n > 0
 
 main => ()
 main =
-  clean = filter is_positive [-5, 10, 0, -2, 42]
-  clean_par = ||filter is_positive [-5, 10, 0, -2, 42]
+  clean = filter is positive [-5, 10, 0, -2, 42]
+  clean_par = ||filter is positive [-5, 10, 0, -2, 42]
   echo clean      -- Prints [10, 42]
   echo clean_par  -- Prints [10, 42]
 ```
@@ -60,20 +60,20 @@ main =
 You pass a two-argument combining function `(Accumulator Element => Accumulator)`, the initial value, and the list:
 
 ```ridgun
-multiply_acc Int Int => Int
-multiply_acc acc x   =  acc * x
+multiply acc Int Int => Int
+multiply acc acc x   =  acc * x
 
 main => ()
 main =
-  echo (fold multiply_acc 1 [2, 3, 4, 5])  -- 1 * 2 * 3 * 4 * 5 = 120
+  echo (fold multiply acc 1 [2, 3, 4, 5])  -- 1 * 2 * 3 * 4 * 5 = 120
 ```
 
 ### How Do I Write My Own Function That Accepts Another Function?
 Very easily: in the type signature, wrap the guest function's signature in parentheses `(Input => Output)`:
 
 ```ridgun
-run_twice (A => A) A => A
-run_twice f        x =  f (f x)
+run twice (A => A) A => A
+run twice f        x =  f (f x)
 ```
 
 ### 4. Idiomatic Left-to-Right Pipelines (`->`) — The 100% Ridgun Way!
@@ -144,8 +144,8 @@ fact Int => Int
 fact 0   =  1
 fact n   =  n * (fact (n - 1))
 
-super_calc => Int
-super_calc =  left_branch + right_branch
+super calc => Int
+super calc =  left_branch + right_branch
   || fib 10 -> left_branch
   || fact 6 -> right_branch
 ```
@@ -161,8 +161,8 @@ Read it out loud:
 You can even build a multi-stage pipeline inside the same `||` block—either attached to the bottom of an expression or right after `=`—and the compiler will figure out all by itself which stages can run simultaneously and which ones must wait:
 
 ```ridgun
-quarterly_balance Int  => Int
-quarterly_balance base =
+quarterly balance Int  => Int
+quarterly balance base =
   || base * 100                -> gross_sales
   || base * 40                 -> fixed_costs
   || gross_sales - fixed_costs -> gross_profit ||.
@@ -180,8 +180,8 @@ What if you just want to launch two or three calculations in parallel and collec
 Use `||` directly:
 
 ```ridgun
-parallel_pair Int => (Int, Int)
-parallel_pair n   =
+parallel pair Int => (Int, Int)
+parallel pair n   =
   || fib n
   || fact n
 ```

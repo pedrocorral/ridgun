@@ -31,13 +31,13 @@ In Ridgun you don't count indices; **you take the list apart from the head**:
 Look how satisfying it is to sum a list or count how many elements it has:
 
 ```ridgun
-sum_list [Int]  => Int
-sum_list []     =  0
-sum_list (x:xs) =  x + (sum_list xs)
+sum list [Int]  => Int
+sum list []     =  0
+sum list (x:xs) =  x + (sum list xs)
 
-count_elements [A]    => Int
-count_elements []     =  0
-count_elements (_:xs) =  1 + (count_elements xs)
+count elements [A]    => Int
+count elements []     =  0
+count elements (_:xs) =  1 + (count elements xs)
 ```
 
 And here is a technical detail that will make your day: in Ridgun, taking the tail `xs` in `(x:xs)` **does not copy the rest of the list in memory**. Internally it is a zero-copy view over the same backing vector that simply advances the start offset by `1` (instantaneous $O(1)$).
@@ -46,11 +46,11 @@ And here is a technical detail that will make your day: in Ridgun, taking the ta
 The `:` pattern shines when you are parsing commands or network protocols:
 
 ```ridgun
-parse_command [String]            => String
-parse_command []                  =  "You didn't type anything"
-parse_command ("help":_)          =  "Showing help..."
-parse_command ("copy":src:dst:[]) =  "Copying from {src} to {dst}"
-parse_command (cmd:_)             =  "Unknown command: {cmd}"
+parse command [String]            => String
+parse command []                  =  "You didn't type anything"
+parse command ("help":_)          =  "Showing help..."
+parse command ("copy":src:dst:[]) =  "Copying from {src} to {dst}"
+parse command (cmd:_)             =  "Unknown command: {cmd}"
 ```
 
 Look at the third row: `("copy":src:dst:[])` verifies in a single stroke that the list has **exactly 3 elements**, that the first one is `"copy"`, and hands you the second and third elements on a silver platter in `src` and `dst`. Try writing that in C or Java and count how many lines of `args.length == 3 && args[0].equals("copy")` you end up with.
@@ -59,11 +59,11 @@ Look at the third row: `("copy":src:dst:[])` verifies in a single stroke that th
 When you are on the right-hand side of `=` (in an expression) and want to concatenate two lists, use **`::`**:
 
 ```ridgun
-join_lists [Int] [Int] => [Int]
-join_lists a     b     =  a :: b
+join lists [Int] [Int] => [Int]
+join lists a     b     =  a :: b
 
-append_item [Int] Int => [Int]
-append_item xs    x   =  xs :: [x]
+append item [Int] Int => [Int]
+append item xs    x   =  xs :: [x]
 ```
 
 *(Quick mnemonic rule: a single `:` in patterns takes a list apart; a double `::` in expressions glues two lists together).*
@@ -74,7 +74,7 @@ And what if you genuinely want to grab element number 5 directly without travers
 
 ## 5.2. Variadic Functions (`T...`): "Pass Me as Many as You Want!"
 
-Sometimes you want callers of your function to write `max_of 4 19 2 88 7` comfortably, without forcing them to wrap the numbers in square brackets `[4, 19, 2, 88, 7]`.
+Sometimes you want callers of your function to write `max of 4 19 2 88 7` comfortably, without forcing them to wrap the numbers in square brackets `[4, 19, 2, 88, 7]`.
 
 Put three dots **`...`** after the last type in your signature, and inside your function you will automatically receive those arguments packaged as a list:
 

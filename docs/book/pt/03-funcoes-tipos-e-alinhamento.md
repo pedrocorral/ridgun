@@ -18,14 +18,14 @@ Pode escrever o cabeçalho de duas maneiras:
 
 ### Opção A: Direta ao assunto (sem prefixo)
 ```ridgun
-aplicar_desconto Int   Int         => Int
-aplicar_desconto preco percentagem =  preco - (preco * percentagem / 100)
+aplicar desconto Int   Int         => Int
+aplicar desconto preco percentagem =  preco - (preco * percentagem / 100)
 ```
 
 ### Opção B: Com etiqueta explícita (`fn ::`)
 ```ridgun
-fn :: aplicar_desconto Int   Int         => Int
-      aplicar_desconto preco percentagem =  preco - (preco * percentagem / 100)
+fn :: aplicar desconto Int   Int         => Int
+      aplicar desconto preco percentagem =  preco - (preco * percentagem / 100)
 ```
 
 *"Olha lá, e porque é que existem as duas?"*
@@ -33,7 +33,7 @@ Porque gostos não se discutem:
 - Há quem prefira que as funções comecem encostadas à margem esquerda sem escrever `fn ::` de cada vez (afinal de contas, a seta `=>` já grita aos quatro ventos que essa linha é uma assinatura de tipos).
 - E há quem prefira ter uma coluna esquerda dedicada às etiquetas (`fn ::`, `op ::`, `type`, `import`) para percorrer o ficheiro visualmente.
 
-O compilador e o `stable format` entendem ambas na perfeição. Além disso, as palavras `fn` e `op` podem ser usadas livremente como parte do nome de qualquer função ou operador (por exemplo `fn :: op`, `op :: fn` ou `op :: op`), e se uma função devolver múltiplos valores, em modo canónico/estrito os tipos de saída escrevem-se separados por espaços após `=>` (`dividir_com_resto Int Int => Int Int`).
+O compilador e o `stable format` entendem ambas na perfeição. Além disso, as palavras `fn` e `op` podem ser usadas livremente como parte do nome de qualquer função ou operador (por exemplo `fn :: op`, `op :: fn` ou `op :: op`), e se uma função devolver múltiplos valores, em modo canónico/estrito os tipos de saída escrevem-se separados por espaços após `=>` (`dividir com resto Int Int => Int Int`).
 
 ---
 
@@ -42,11 +42,11 @@ O compilador e o `stable format` entendem ambas na perfeição. Além disso, as 
 Veja esta função que calcula o custo de um envio segundo o país e se é urgente:
 
 ```ridgun
-custo_envio String Bool  Int  => Int
-custo_envio "PT"   False _    =  5
-custo_envio "PT"   True  _    =  12
-custo_envio _      False peso =  10 + (peso * 2)
-custo_envio _      True  peso =  25 + (peso * 4)
+custo envio String Bool  Int  => Int
+custo envio "PT"   False _    =  5
+custo envio "PT"   True  _    =  12
+custo envio _      False peso =  10 + (peso * 2)
+custo envio _      True  peso =  25 + (peso * 4)
 ```
 
 Faça o teste: tape a metade direita do ecrã e olhe apenas para as três colunas de entrada:
@@ -68,7 +68,7 @@ Os tipos escalares do Ridgun são diretos e sem surpresas:
 | `U64` | Inteiro de 64 bits sem sinal (`u64`) com aritmética modular e bit a bit nativa | `u64 0`, `u64 0x6a09e667f3bcc908`, `a ^ b`, `a << u64 13` |
 | `Float` / `Real` | Decimal de precisão dupla (`f64`) | `3.14159`, `0.001`, `-2.5` |
 | `String` | Cadeia de texto imutável | `"Olá"`, `'caminho\bruto'` |
-| `Char` | Código de carácter | Devolvido por `str_char_at` |
+| `Char` | Código de carácter | Devolvido por `str char at` |
 | `Bool` | Booleano clássico | `True`, `False` |
 | `()` | Vazio (*Unit*, quando só imprime ou faz I/O) | `()` |
 
@@ -76,14 +76,14 @@ Os tipos escalares do Ridgun são diretos e sem surpresas:
 Em Ridgun os literais numéricos aceitam diretamente os sufixos **`_KB`**, **`_MB`** e **`_GB`**, além de sublinhados `_` para separar grupos de algarismos:
 
 ```ridgun
-tamanho_buffer => Int
-tamanho_buffer =  64_KB      -- O compilador traduz para 65536
+tamanho buffer => Int
+tamanho buffer =  64_KB      -- O compilador traduz para 65536
 
-limite_ficheiro => Int
-limite_ficheiro =  16_MB     -- O compilador traduz para 16777216
+limite ficheiro => Int
+limite ficheiro =  16_MB     -- O compilador traduz para 16777216
 
-mascara_octeto => Int
-mascara_octeto =  0xFF_00    -- Hexadecimal limpo e legível
+mascara octeto => Int
+mascara octeto =  0xFF_00    -- Hexadecimal limpo e legível
 ```
 
 ---
@@ -96,8 +96,8 @@ Em muitas linguagens as aspas simples e duplas fazem exatamente o mesmo (um desp
 Interpretam escapes (`\n`, `\t`, `\"`, `\\`) e **avaliam qualquer variável ou expressão que coloque entre chavetas `{...}`**:
 
 ```ridgun
-resumo_encomenda String Int Int   => String
-resumo_encomenda item   un  preco =
+resumo encomenda String Int Int   => String
+resumo encomenda item   un  preco =
   "Encomendaste {un}x {item}. Total a pagar: {un * preco} euros."
 ```
 
@@ -107,19 +107,19 @@ resumo_encomenda item   un  preco =
 O que escreve entre aspas simples sai **tal e qual**, sem tocar numa única barra invertida `\`, nem numa chaveta `{}`. Perfeito para quando gera código noutra linguagem, escreve comandos de shell ou trabalha com caminhos cheios de barras:
 
 ```ridgun
-comando_sed => String
-comando_sed =  's/\([0-9]+\)/[\1]/g'
+comando sed => String
+comando sed =  's/\([0-9]+\)/[\1]/g'
 ```
 
 ### A sua caixa de ferramentas para cadeias (`String`)
 Unir cadeias é tão simples como somá-las com `+`: `"Olá, " + nome`. E quando precisa de fazer cirurgia fina sobre um texto, tem estas funções nativas prontas sem importar nada:
 
-- `str_len s` $\rightarrow$ comprimento de `s`.
-- `str_char_at s i` $\rightarrow$ código numérico (`Int`) do carácter na posição `i` (`-1` se sair fora dos limites).
-- `str_slice s inicio fim` $\rightarrow$ recorta desde `inicio` até `fim` (sem incluir `fim`).
-- `char_from_code c` $\rightarrow$ converte um código numérico (`Int`, p. ex. `10` para `\n` ou `34` para `"`) numa `String` de 1 carácter.
-- `str_contains s agulha` e `str_starts_with s prefixo` $\rightarrow$ devolvem `True` ou `False`.
-- `int_to_str n` e `str_to_int s` $\rightarrow$ convertem de número para texto e vice-versa (o `str_to_int` entende inclusive `"0xFF"`!).
+- `str len s` $\rightarrow$ comprimento de `s`.
+- `str char at s i` $\rightarrow$ código numérico (`Int`) do carácter na posição `i` (`-1` se sair fora dos limites).
+- `str slice s inicio fim` $\rightarrow$ recorta desde `inicio` até `fim` (sem incluir `fim`).
+- `char from code c` $\rightarrow$ converte um código numérico (`Int`, p. ex. `10` para `\n` ou `34` para `"`) numa `String` de 1 carácter.
+- `str contains s agulha` e `str starts with s prefixo` $\rightarrow$ devolvem `True` ou `False`.
+- `int to str n` e `str to int s` $\rightarrow$ convertem de número para texto e vice-versa (o `str to int` entende inclusive `"0xFF"`!).
 
 ---
 
@@ -130,8 +130,8 @@ Quando uma função não cabe numa única linha, faz uma quebra de linha depois 
 Veja como se lê um bloco passo a passo:
 
 ```ridgun
-calcular_fatura Int  Int     => Int
-calcular_fatura base iva_pct =
+calcular fatura Int  Int     => Int
+calcular fatura base iva_pct =
   impostos = base * iva_pct / 100
   despesas_gestao = 5
   echo "Detalhe -> Base:" base "Impostos:" impostos
@@ -142,8 +142,8 @@ Quatro regras de ouro que tornam os blocos em Ridgun limpos e uniformes:
 1. **Imutável por omissão sem `let` nem `const`**: escreve `impostos = ...` e já tem a sua constante local imutável. Se por descuido tentar sobrescrever `impostos = 99` mais abaixo no mesmo bloco, o compilador trava-o a fundo.
 2. **Variáveis mutáveis explícitas com `mut`**: quando realmente quer ir atualizando um acumulador local passo a passo dentro de uma função, declara-o com **`mut`** e depois reatribui-o livremente com `=`:
    ```ridgun
-   aplicar_sobretaxas Int   => Int
-   aplicar_sobretaxas preco =
+   aplicar sobretaxas Int   => Int
+   aplicar sobretaxas preco =
      mut total = preco
      total = total + 10
      total = total * 2
@@ -154,6 +154,6 @@ Quatro regras de ouro que tornam os blocos em Ridgun limpos e uniformes:
    - **`(nada)`**: linhas sequenciais indentadas (como acima).
    - **`|`**: uma árvore de guardas condicionais.
    - **`||`**: um grafo de cálculos em paralelo com `->`.
-4. **A última expressão é sempre o resultado**: `base + impostos + despesas_gestao` é o que devolve `calcular_fatura`. Sem `return`.
+4. **A última expressão é sempre o resultado**: `base + impostos + despesas_gestao` é o que devolve `calcular fatura`. Sem `return`.
 
 No **Capítulo 04** vamos ver como tomar decisões complexas — incluindo árvores de decisão de vários níveis com `|.` — sem escrever jamais um `if/else` nem um ciclo `while`: bem-vindo ao mundo das **guardas booleanas** e da **recursão de cauda de custo zero**.

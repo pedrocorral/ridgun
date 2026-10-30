@@ -124,10 +124,10 @@ There are **eight things** we designed and integrated into Ridgun that you won't
 In other functional languages, a local binding block merely orders expressions that are then evaluated on a single thread.
 In Ridgun, **a `||` block with `->` arrows is a parallel-execution Directed Acyclic Graph (DAG)** without even needing extra keywords like `where`:
 ```ridgun
-annual_report Int => Int
-annual_report id  =  revenue - expenses
-  || compute_sales id -> revenue
-  || compute_costs id -> expenses
+annual report Int => Int
+annual report id  =  revenue - expenses
+  || compute sales id -> revenue
+  || compute costs id -> expenses
 ```
 You draw the dataflow arrows (`->`). The compiler analyzes what depends on what, **statically verifies that you haven't created any infinite dependency cycles**, and launches independent branches in parallel without you writing a single `async`, `await`, `Future`, or `Mutex`.
 
@@ -135,9 +135,9 @@ You draw the dataflow arrows (`->`). The compiler analyzes what depends on what,
 In other languages, programming with actors or agents forces you to define special classes, implement traits, juggle locks, or infect your functions with `async`.
 In Ridgun, **any ordinary pure function (`fn ::` or `op ::`) turns directly into an autonomous agent—stateless or with isolated state—using `agent`**:
 ```ridgun
-serve_http (Session, String) => (Session, String)
+serve http (Session, String) => (Session, String)
 ...
-server = agent serve_http initial_session
+server = agent serve http initial_session
 send "GET /profile" to server
 reply = receive from server
 stop server
@@ -158,13 +158,13 @@ No other language treats the signature and its equations as a single visual matr
 In most languages, you either settle for `+`, `-`, `*` or at best define a cryptic binary operator like `<|>` that nobody can read.
 In Ridgun you can create **operators that read like natural phrases with as many typed slots as you want** (even using contextual words like `type` or `with`):
 ```ridgun
-op :: Int clamped_between Int and_max Int => Int
-      x   clamped_between min and_max max =
+op :: Int clamped between Int and Int => Int
+      x   clamped between min and max =
         | x < min   = min
         | x > max   = max
         | otherwise = x
 ```
-And then in your code you write `speed clamped_between 0 and_max 120`. It reads like plain English, yet it is 100% statically typed and compiled to native machine code.
+And then in your code you write `speed clamped between 0 and 120`. It reads like plain English, yet it is 100% statically typed and compiled to native machine code.
 
 ### 5. Visual sequence masks (`s(_ + _)` and `-> (+ _ _ +) ->`)
 Have you ever had to write an index salad like `filter(\(i, x) -> i % 2 == 0)` or unpack a tuple with dummy variables just to keep two specific positions?

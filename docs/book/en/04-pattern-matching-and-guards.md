@@ -18,18 +18,18 @@ Let's see them in action.
 We saw a preview of this in the previous chapter. Instead of taking a generic variable `x` and opening five `if (x == ...)` branches inside the function body, in Ridgun you put the cases right at the front door of the function:
 
 ```ridgun
-http_status Int => String
-http_status 200 =  "OK: Everything went smoothly"
-http_status 301 =  "Moved permanently"
-http_status 404 =  "Not found (did you check under the couch?)"
-http_status 500 =  "Server is on fire"
-http_status n   =  "Unknown status code: {n}"
+http status Int => String
+http status 200 =  "OK: Everything went smoothly"
+http status 301 =  "Moved permanently"
+http status 404 =  "Not found (did you check under the couch?)"
+http status 500 =  "Server is on fire"
+http status n   =  "Unknown status code: {n}"
 ```
 
 Ridgun tests the rows **from top to bottom**:
 - If `404` comes in, it jumps straight to the third row.
 - If `418` comes in, none of the first four rows match, so it falls through to the last row (`n`), which catches any integer and names it `n` so you can format it.
-- And what if in the last case you don't even care what number it was? Put an underscore `_` (*wildcard*) and forget about it: `http_status _ = "Other status code"`.
+- And what if in the last case you don't even care what number it was? Put an underscore `_` (*wildcard*) and forget about it: `http status _ = "Other status code"`.
 
 ---
 
@@ -65,14 +65,14 @@ In Ridgun, since `|` is already the sacred symbol for guards and algebraic data 
 - **`and`**: both sides must hold, using short-circuit evaluation (`age >= 18 and has_license`: if the left side is `False`, the right side is not evaluated).
 - **`or`**: at least one side holds, using short-circuit evaluation (`day == "saturday" or day == "sunday"`: if the left side is `True`, the right side is not evaluated).
 - **`xor`**: one or the other holds, but not both at once.
-- **`not`**: flips the boolean (`not (is_empty text)`).
+- **`not`**: flips the boolean (`not (is empty text)`).
 - **`<`, `>`, `<=`, `>=`**: compare both numbers (`Int`, `Float`) and **`String` values in lexicographical UTF-8 order** (`"alpha" < "beta"`).
 
 Look how clean the classic leap-year check becomes:
 
 ```ridgun
-is_leap_year Int => Bool
-is_leap_year y   =
+is leap year Int => Bool
+is leap year y   =
   | (y % 400) == 0                  = True
   | (y % 4) == 0 and (y % 100) != 0 = True
   | otherwise                       = False
@@ -84,8 +84,8 @@ Zero cryptic symbols. Someone who has never seen Ridgun can read it and understa
 Because every `=` in Ridgun follows the same universal rule, **you can also use `|` to assign a local variable** without having to extract a separate helper function:
 
 ```ridgun
-ticket_price Int  Bool            => Int
-ticket_price base is_large_family =
+ticket price Int  Bool            => Int
+ticket price base is_large_family =
   discount =
     | is_large_family = 20
     | base > 100      = 10
@@ -99,8 +99,8 @@ ticket_price base is_large_family =
 You can nest `|` inside `|` as many levels deep as you want. And when a nested `|` block finishes while more branches of a parent level (or more sequential statements in the block) continue below it, you place **`|.`** at the end of its last line (`| otherwise = value |.`) to indicate with zero ambiguity that the sub-tree is closed and you are stepping back to the parent level:
 
 ```ridgun
-route_request Int    Int  Bool   Bool     Int     Int     => Int
-route_request method role signed is_admin size_kb limited =
+route request Int    Int  Bool   Bool     Int     Int     => Int
+route request method role signed is_admin size_kb limited =
   | method == 0 =
     | size_kb == 0 = 204
     | otherwise    = 200 |.
@@ -131,8 +131,8 @@ Notice how clean that is:
 Just as you can open a multi-line indented block after the `=` of a normal function, **after the `=` of any `| cond =` or `| otherwise =` guard you can also add a newline and open a sequential block**:
 
 ```ridgun
-adjust_window Int Int   => Int
-adjust_window idx limit =
+adjust window Int Int   => Int
+adjust window idx limit =
   | idx >= limit =
       cap = limit - 1
       scaled = cap * 2
@@ -159,26 +159,26 @@ Look at these two functions that count down from `n` to `0` while summing the nu
 
 ```ridgun
 -- Version A: NORMAL recursion (leaves pending work for the return trip)
-sum_slow Int => Int
-sum_slow 0   =  0
-sum_slow n   =  n + (sum_slow (n - 1))
+sum slow Int => Int
+sum slow 0   =  0
+sum slow n   =  n + (sum slow (n - 1))
 
 -- Version B: TAIL recursion (keeps a running total in `acc`)
-sum_fast_loop Int Int => Int
-sum_fast_loop 0   acc =  acc
-sum_fast_loop n   acc =  sum_fast_loop (n - 1) (acc + n)
+sum fast loop Int Int => Int
+sum fast loop 0   acc =  acc
+sum fast loop n   acc =  sum fast loop (n - 1) (acc + n)
 ```
 
-- In **Version A**, before it can compute `n + ...`, the function has to wait for `sum_slow (n - 1)` to finish. That forces the CPU to push `n` onto the call stack at every step.
-- In **Version B**, the call to `sum_fast_loop` **is the very last thing that happens on the line**. Nothing is left waiting after it. You pass the updated running total right into `acc + n`.
+- In **Version A**, before it can compute `n + ...`, the function has to wait for `sum slow (n - 1)` to finish. That forces the CPU to push `n` onto the call stack at every step.
+- In **Version B**, the call to `sum fast loop` **is the very last thing that happens on the line**. Nothing is left waiting after it. You pass the updated running total right into `acc + n`.
 
 ### `ridgunc`'s Magic Trick (TCO: *Tail-Call Optimization*)
-When `ridgunc` compiles `sum_fast_loop`, it sees that the function calls itself in tail position and says:
+When `ridgunc` compiles `sum fast loop`, it sees that the function calls itself in tail position and says:
 
 > *"Why would I allocate a new stack frame when the current one is finished? I'll just overwrite `n` with `n - 1`, overwrite `acc` with `acc + n`, and jump back to the top with a native `loop { ... continue; }`."*
 
 The result:
-1. You can call `sum_fast_loop 100_000_000 0` (one hundred million iterations) and it will consume **exactly 0 extra bytes of stack**.
+1. You can call `sum fast loop 100_000_000 0` (one hundred million iterations) and it will consume **exactly 0 extra bytes of stack**.
 2. It runs at the exact same speed as a hand-written `while` loop in Rust or C, without you having to declare a single mutable variable in your Ridgun code.
 
 ---
@@ -188,17 +188,17 @@ The result:
 Whenever you would think in another language *"I'll write a `while` loop with an index `i` and an accumulator"*, in Ridgun you write a pair of functions like this (the clean public function and its tail-recursive `_loop` helper):
 
 ```ridgun
-find_char_loop String Int Int Int    => Int
-find_char_loop text   pos end target =
+find char loop String Int Int Int    => Int
+find char loop text   pos end target =
   | pos >= end                       = -1
-  | (str_char_at text pos) == target = pos
-  | otherwise                        = find_char_loop text (pos + 1) end target
+  | (str char at text pos) == target = pos
+  | otherwise                        = find char loop text (pos + 1) end target
 
-find_char String Int    => Int
-find_char text   target =  find_char_loop text 0 (str_len text) target
+find char String Int    => Int
+find char text   target =  find char loop text 0 (str len text) target
 ```
 
-Look at the three guards in `find_char_loop`:
+Look at the three guards in `find char loop`:
 1. Did I reach the end (`pos >= end`)? Return `-1` (end of loop).
 2. Did I find the character at `pos`? Return `pos` (end of loop).
 3. Not this one? Advance to the next index (`pos + 1`) with a tail call (which the compiler turns into `continue;`).

@@ -33,7 +33,7 @@ E o que acontece quando coloca estruturas dentro de outras estruturas (`xs = [a,
    - `xs = [a, b]` $\rightarrow$ a lista `xs` nasce com `1`, e como guarda referências a `a` e `b`, ambos sobem para `2`.
    - Se reatribuir uma variável mutável (`mut x = ...` e depois `x = novo`), a `RMM2` aplica primeiro **`+1`** ao valor novo antes de aplicar **`-1`** ao antigo.
 3. **Ao sair da função, as variáveis locais que NÃO são devolvidas recebem `-1`**: se o contador de uma estrutura chegar a `0`, liberta-se a sua memória na hora e **propaga `-1` em cascata, um por um, a cada um dos seus filhos diretos**.
-4. **O valor devolvido pela função fica isento em trânsito**: recebe o seu `-1` de variável local mas não é destruído ao cruzar o retorno, de modo que quando quem chamou faz `c = minha_funcao ()`, esse `+1` da atribuição deixa-o exatamente em `1`.
+4. **O valor devolvido pela função fica isento em trânsito**: recebe o seu `-1` de variável local mas não é destruído ao cruzar o retorno, de modo que quando quem chamou faz `c = minha funcao ()`, esse `+1` da atribuição deixa-o exatamente em `1`.
 
 ```ridgun
 escolher Bool [Int] [Int] => [Int]
@@ -41,8 +41,8 @@ escolher cond a     b     =
   | cond      = a
   | otherwise = b
 
-exemplo_rmm2 Bool => Int
-exemplo_rmm2 cond =
+exemplo rmm2 Bool => Int
+exemplo rmm2 cond =
   a = [10, 20, 30]         -- M1 (rc = 1)
   b = [40, 50, 60]         -- M2 (rc = 1)
   c = escolher cond a b    -- `c` recebe +1; o não escolhido morre aqui mesmo (rc -> 0)
@@ -56,11 +56,11 @@ exemplo_rmm2 cond =
 Além da `RMM1` e da `RMM2`, quando está a processar um pacote de rede externo, um ficheiro gigante ou um lote de dados não confiáveis e quer impor um **teto estrito de memória RAM**, envolve o cálculo num bloco **`with region`**:
 
 ```ridgun
-processar_trama String => Result
-processar_trama bruto  =
+processar trama String => Result
+processar trama bruto  =
   with region 64_KB do
-    limpas = map limpar_linha (dividir_linhas bruto)
-    contar_validos limpas
+    limpas = map limpar linha (dividir linhas bruto)
+    contar validos limpas
 ```
 
 1. **Quota garantida em hardware/runtime**: se dentro do bloco se tentar reservar nem que seja um único byte acima de `64_KB` (`65.536` bytes), o runtime aborta de forma limpa o bloco, liberta toda a arena temporária em tempo constante $O(1)$ e devolve `Err OutOfMemory` sem derrubar o processo.
@@ -80,8 +80,8 @@ Em Ridgun, os **`Tensor`** são cidadãos nativos de primeira classe e as suas d
 
 ```ridgun
 -- Se entra (N × K) e (K × M), obrigatoriamente sai (N × M)!
-multiplicar_matrizes Tensor[N, K] Tensor[K, M] => Tensor[N, M]
-multiplicar_matrizes a            b            =  a_ik @ b_kj
+multiplicar matrizes Tensor[N, K] Tensor[K, M] => Tensor[N, M]
+multiplicar matrizes a            b            =  a_ik @ b_kj
 ```
 
 Repare em dois detalhes espetaculares:
@@ -92,8 +92,8 @@ Repare em dois detalhes espetaculares:
 3. **Tensores tipados de alto desempenho (`Tensor[U64 * N]`) e mutação *in-place* com `t_(i, j)`**:
    Em sistemas criptográficos, simulações físicas ou álgebra linear pode declarar tensores planos sobre um bloco contíguo de inteiros sem sinal de 64 bits (`Tensor[U64 * 4]`, `Tensor[U64 * 8 * 16]`), operar em paralelo com `^` (XOR nativo de bloco) e ler ou escrever elementos em tempo $O(1)$ com a sintaxe de subscrito explícito `t_(i)` ou `t_(i, j)`:
    ```ridgun
-   criar_bloco_estado => Tensor[U64 * 2 * 2]
-   criar_bloco_estado =
+   criar bloco estado => Tensor[U64 * 2 * 2]
+   criar bloco estado =
      mut m = tensor fill [2, 2] (u64 0)
      m_(0, 1) = u64 0x6a09e667f3bcc908
      m
@@ -115,16 +115,16 @@ E para trabalhar com o sistema operativo:
 
 | Primitiva | Assinatura | O que faz |
 |---|---|---|
-| `cli_args` | `=> [String]` | Argumentos de linha de comandos (`argv`). |
-| `read_file` / `write_file` | `String => String` / `String String => ()` | Leitura e escrita integral de ficheiros em disco. |
-| `read_bytes` / `write_bytes` | `String => [Int]` / `String [Int] => ()` | Leitura e escrita binária exata byte a byte (`0..255`). |
-| `list_dir` / `file_lstat` | `String => [String]` / `String => ...` | Listagem de diretórios e inspeção de metadados POSIX (`lstat`). |
-| `sha256_file` / `sha256_str` / `sha256_raw` | `String => String` | Hash criptográfico SHA-256 nativo (em hexadecimal de 64 caracteres ou resumo binário bruto de 32 bytes com `sha256 raw` / `sha256 bytes`). |
-| `sys_exec` / `shell_exec` | `... => Int` | Execução de processos do sistema operativo. |
-| `sys_getcwd` / `sys_chdir` | `=> String` / `String => Int` | Consultar ou alterar o diretório de trabalho. |
-| `sys_getenv` / `sys_setenv` | `String => String` / `String String => Int` | Variáveis de ambiente do processo. |
-| `sys_getuid` / `sys_getgid` | `=> Int` | UID e GID reais do processo (`doas`, ferramentas de segurança). |
-| `sys_exit` | `Int => ()` | Terminar o processo com código de saída. |
+| `cli args` | `=> [String]` | Argumentos de linha de comandos (`argv`). |
+| `read file` / `write file` | `String => String` / `String String => ()` | Leitura e escrita integral de ficheiros em disco. |
+| `read bytes` / `write bytes` | `String => [Int]` / `String [Int] => ()` | Leitura e escrita binária exata byte a byte (`0..255`). |
+| `list dir` / `file lstat` | `String => [String]` / `String => ...` | Listagem de diretórios e inspeção de metadados POSIX (`lstat`). |
+| `sha256 file` / `sha256 str` / `sha256 raw` | `String => String` | Hash criptográfico SHA-256 nativo (em hexadecimal de 64 caracteres ou resumo binário bruto de 32 bytes com `sha256 raw` / `sha256 bytes`). |
+| `sys exec` / `shell exec` | `... => Int` | Execução de processos do sistema operativo. |
+| `sys getcwd` / `sys chdir` | `=> String` / `String => Int` | Consultar ou alterar o diretório de trabalho. |
+| `sys getenv` / `sys setenv` | `String => String` / `String String => Int` | Variáveis de ambiente do processo. |
+| `sys getuid` / `sys getgid` | `=> Int` | UID e GID reais do processo (`doas`, ferramentas de segurança). |
+| `sys exit` | `Int => ()` | Terminar o processo com código de saída. |
 
 ---
 
@@ -150,50 +150,50 @@ Vamos unir tudo o que aprendemos desde o Capítulo 01 até aqui num programa rea
 type Metricas = ficheiro: String, linhas: Int, bytes: Int
 
 -- 2. Contamos quebras de linha (código ASCII 10) com recursão de cauda TCO (Capítulo 04)
-fn :: contar_quebras String Int Int Int  => Int
-      contar_quebras texto  pos fim acum =
+fn :: contar quebras String Int Int Int  => Int
+      contar quebras texto  pos fim acum =
         | pos >= fim                    = acum
-        | (str_char_at texto pos) == 10 = contar_quebras texto (pos + 1) fim (acum + 1)
-        | otherwise                     = contar_quebras texto (pos + 1) fim acum
+        | (str char at texto pos) == 10 = contar quebras texto (pos + 1) fim (acum + 1)
+        | otherwise                     = contar quebras texto (pos + 1) fim acum
 
-fn :: numero_de_linhas String => Int
-      numero_de_linhas texto  =  contar_quebras texto 0 (str_len texto) 0
+fn :: numero de linhas String => Int
+      numero de linhas texto  =  contar quebras texto 0 (str len texto) 0
 
 -- 3. Analisamos um ficheiro e devolvemos a sua estrutura Metricas
-fn :: analisar_ficheiro String   => Metricas
-      analisar_ficheiro caminho  =
-        conteudo = read_file caminho
-        || numero_de_linhas conteudo -> n_linhas
-        || str_len conteudo          -> n_bytes ||.
+fn :: analisar ficheiro String   => Metricas
+      analisar ficheiro caminho  =
+        conteudo = read file caminho
+        || numero de linhas conteudo -> n_linhas
+        || str len conteudo          -> n_bytes ||.
         Metricas caminho n_linhas n_bytes
 
 -- 4. Formatamos cada linha e somamos totais com `fold` e `||` (Capítulo 07)
-fn :: formatar_metrica Metricas => String
-      formatar_metrica m        =  "{linhas m}\t{bytes m}\t{ficheiro m}"
+fn :: formatar metrica Metricas => String
+      formatar metrica m        =  "{linhas m}\t{bytes m}\t{ficheiro m}"
 
-fn :: somar_linhas Int Metricas => Int
-      somar_linhas acc m        =  acc + (linhas m)
+fn :: somar linhas Int Metricas => Int
+      somar linhas acc m        =  acc + (linhas m)
 
-fn :: somar_bytes Int Metricas => Int
-      somar_bytes acc m        =  acc + (bytes m)
+fn :: somar bytes Int Metricas => Int
+      somar bytes acc m        =  acc + (bytes m)
 
-fn :: gerar_relatorio [String] => String
-      gerar_relatorio caminhos =
-        metricas = ||map analisar_ficheiro caminhos
-        || map formatar_metrica metricas -> linhas_fmt
-        || fold somar_linhas 0 metricas  -> total_l
-        || fold somar_bytes 0 metricas   -> total_b ||.
+fn :: gerar relatorio [String] => String
+      gerar relatorio caminhos =
+        metricas = ||map analisar ficheiro caminhos
+        || map formatar metrica metricas -> linhas_fmt
+        || fold somar linhas 0 metricas  -> total_l
+        || fold somar bytes 0 metricas   -> total_b ||.
         "{linhas_fmt}\nTotal: {total_l} linhas, {total_b} bytes"
 
 fn :: main => ()
       main =
-        echo (gerar_relatorio ["README.md", "AGENTS.md"])
+        echo (gerar relatorio ["README.md", "AGENTS.md"])
 ```
 
 Pare um segundo para olhar para essas ~40 linhas de código:
 - Não há um único `null`, nem uma exceção descontrolada, nem um `Mutex`.
-- `contar_quebras` é compilada para um `loop` nativo com 0 bytes de pilha graças ao TCO automático.
-- `||map analisar_ficheiro caminhos` processa os ficheiros em paralelo em todos os núcleos do seu CPU, e o bloco `||` calcula simultaneamente as linhas formatadas, o total de linhas e o total de bytes.
+- `contar quebras` é compilada para um `loop` nativo com 0 bytes de pilha graças ao TCO automático.
+- `||map analisar ficheiro caminhos` processa os ficheiros em paralelo em todos os núcleos do seu CPU, e o bloco `||` calcula simultaneamente as linhas formatadas, o total de linhas e o total de bytes.
 - A memória temporária é libertada de forma determinística mediante **`RMM1`/`RMM2`**.
 - E quando executa `ridgunc build rg_wc.rg -o rg-wc`, obtém um binário nativo autónomo de ~350 KB pronto para copiar para `/usr/local/bin`.
 

@@ -22,24 +22,24 @@ Bara genom att skriva den enda raden ger Ridgun dig **fyra saker** helt automati
 
 ### 1. Konstruktorn `Server`
 ```ridgun
-min_nod => Server
-min_nod =  Server "api.exempel.se" 443 True
+min nod => Server
+min nod =  Server "api.exempel.se" 443 True
 ```
 
 ### 2. En ren *getter*-funktion för varje fält (`host`, `port`, `tls_aktiv`)
 Du behöver inte skriva `s.getHost()` eller något liknande; varje fältnamn är direkt en funktion som plockar ut det värdet:
 
 ```ridgun
-anslutnings_url Server => String
-anslutnings_url srv    =  "Anslut till " + (host srv) + " på port {port srv}"
+anslutnings url Server => String
+anslutnings url srv    =  "Anslut till " + (host srv) + " på port {port srv}"
 ```
 
 ### 3. Funktionell uppdatering av poster (`with falt: varde`)
 Föreställ dig en konfigurationspost med 12 eller 15 fält (som flaggorna till ett `ls`-kommando eller en webbserver) där du bara vill ändra ett eller två fält utan att röra resten. I stället för att bygga om posten genom att skicka in alla 15 fält för hand använder du **`with`** och kolon **`:`** (exakt som i `type`-definitionen):
 
 ```ridgun
-aktivera_dev_lage Server => Server
-aktivera_dev_lage srv    =  srv with port: 8080, tls_aktiv: False
+aktivera dev lage Server => Server
+aktivera dev lage srv    =  srv with port: 8080, tls_aktiv: False
 ```
 
 Det bästa av två världar:
@@ -48,9 +48,9 @@ Det bästa av två världar:
 
 ### 4. Fullständig mönstermatchning om du vill öppna posten direkt
 ```ridgun
-ar_saker_port Server              => Bool
-ar_saker_port (Server _ 443 True) =  True
-ar_saker_port _                   =  False
+ar saker port Server              => Bool
+ar saker port (Server _ 443 True) =  True
+ar saker port _                   =  False
 ```
 
 ---
@@ -70,10 +70,10 @@ type Betalningssatt = Kort String Int | Overforing String | Kontant
 Och titta vad som händer när du bearbetar ett `Betalningssatt` i en funktion:
 
 ```ridgun
-beskriv_betalning Betalningssatt    => String
-beskriv_betalning (Kort num _)      =  "Betalning med kort som slutar på {num}"
-beskriv_betalning (Overforing iban) =  "Överföring från konto {iban}"
-beskriv_betalning Kontant           =  "Kontant betalning i kassan"
+beskriv betalning Betalningssatt    => String
+beskriv betalning (Kort num _)      =  "Betalning med kort som slutar på {num}"
+beskriv betalning (Overforing iban) =  "Överföring från konto {iban}"
+beskriv betalning Kontant           =  "Kontant betalning i kassan"
 ```
 
 Varje variant (`Kort`, `Overforing`, `Kontant`) bär endast med sig de data som är meningsfulla för just den. Det är **omöjligt** att skapa en `Kontant`-betalning som av misstag har ett `iban` hängande på släp.
@@ -91,13 +91,13 @@ I Ridgun (precis som i Haskell eller Rust) skapar du på två sekunder en summat
 ```ridgun
 type Cellvarde = Heltal Int | Text String | Tom
 
-formatera_cell Cellvarde  => String
-formatera_cell (Heltal n) =  "Tal: {n}"
-formatera_cell (Text s)   =  "Text: {s}"
-formatera_cell Tom        =  "(tom)"
+formatera cell Cellvarde  => String
+formatera cell (Heltal n) =  "Tal: {n}"
+formatera cell (Text s)   =  "Text: {s}"
+formatera cell Tom        =  "(tom)"
 
-min_rad => [Cellvarde]
-min_rad =  [Heltal 1, Text "tva", Tom]
+min rad => [Cellvarde]
+min rad =  [Heltal 1, Text "tva", Tom]
 ```
 
 Ser du skillnaden?
@@ -114,13 +114,13 @@ Eftersom det varken finns `null` eller undantag som exploderar i luften (`throw 
 2. **`Result`**: antingen gick operationen bra (**`Ok varde`**), eller så misslyckades den av en konkret anledning (**`Err fel`**).
 
 ```ridgun
-saker_division Int Int => Result
-saker_division _   0   =  Err "Hallå där! Det går inte att dividera med noll"
-saker_division a   b   =  Ok (a / b)
+saker division Int Int => Result
+saker division _   0   =  Err "Hallå där! Det går inte att dividera med noll"
+saker division a   b   =  Ok (a / b)
 
-skriv_ut_res Result    => ()
-skriv_ut_res (Ok n)    =  echo "Resultatet är {n}"
-skriv_ut_res (Err msg) =  echo "Kontrollerat fel: {msg}"
+skriv ut res Result    => ()
+skriv ut res (Ok n)    =  echo "Resultatet är {n}"
+skriv ut res (Err msg) =  echo "Kontrollerat fel: {msg}"
 ```
 
 Ingen kan ignorera ett fel av slarv eftersom själva typen `Result` tvingar dig att titta efter om det ligger ett `Ok` eller ett `Err` inuti.
@@ -134,19 +134,19 @@ Anta att du skriver en funktion som vänder på ett par `(x, y)` eller hämtar d
 I Ridgun fungerar **vilken enskild versal som helst (`A` till `Z`)** i en typsignatur automatiskt som en **polymorf jokertyp (typvariabel)**:
 
 ```ridgun
-sakert_huvud [A]   A        => A
-sakert_huvud []    standard =  standard
-sakert_huvud (x:_) _        =  x
+sakert huvud [A]   A        => A
+sakert huvud []    standard =  standard
+sakert huvud (x:_) _        =  x
 
-vand_par (A, B) => (B, A)
-vand_par (x, y) =  (y, x)
+vand par (A, B) => (B, A)
+vand par (x, y) =  (y, x)
 ```
 
-Lägg märke till magin i `sakert_huvud [A] A => A`:
+Lägg märke till magin i `sakert huvud [A] A => A`:
 - Det är inte ett okontrollerat `Any`: det säger att **listans typ `[A]`, typen på värdet `standard` (`A`) och den returnerade typen (`A`) måste vara exakt samma**.
-- Om du anropar `sakert_huvud [10, 20] 0` knyter kompilatorn ihop säcken (`A = Int`) och ger dig en `Int`.
-- Om du anropar `sakert_huvud ["a", "b"] "ingen"` knyter den ihop säcken (`A = String`) och ger dig en `String`.
-- Men om du försöker fuska och anropar `sakert_huvud [10, 20] "ingen"` — pang! Kompilatorn tvärbromsar dig eftersom det första argumentet säger att `A` är `Int` medan det andra säger att `A` är `String`.
+- Om du anropar `sakert huvud [10, 20] 0` knyter kompilatorn ihop säcken (`A = Int`) och ger dig en `Int`.
+- Om du anropar `sakert huvud ["a", "b"] "ingen"` knyter den ihop säcken (`A = String`) och ger dig en `String`.
+- Men om du försöker fuska och anropar `sakert huvud [10, 20] "ingen"` — pang! Kompilatorn tvärbromsar dig eftersom det första argumentet säger att `A` är `Int` medan det andra säger att `A` är `String`.
 
 ---
 

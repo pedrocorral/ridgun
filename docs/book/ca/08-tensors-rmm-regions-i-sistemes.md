@@ -33,7 +33,7 @@ I què passa quan fiques estructures dins d'altres estructures (`xs = [a, b]`), 
    - `xs = [a, b]` $\rightarrow$ la llista `xs` neix amb `1`, i com que desa referències a `a` i `b`, tots dos pugen a `2`.
    - Si reassignes una variable mutable (`mut x = ...` i després `x = nou`), `RMM2` aplica primer **`+1`** al valor nou abans d'aplicar **`-1`** a l'antic.
 3. **En sortir de la funció, les variables locals que NO es retornen reben `-1`**: si el comptador d'una estructura arriba a `0`, s'allibera la seva memòria a l'instant i **propaga `-1` en cascada, un per un, a cadascun dels seus fills directes**.
-4. **El valor retornat per la funció s'eximeix en trànsit**: rep el seu `-1` de variable local però no es destrueix en creuar el `return`, de manera que quan qui ha cridat fa `c = la_meva_funcio ()`, aquell `+1` de l'assignació el deixa exactament en `1`.
+4. **El valor retornat per la funció s'eximeix en trànsit**: rep el seu `-1` de variable local però no es destrueix en creuar el `return`, de manera que quan qui ha cridat fa `c = la meva funcio ()`, aquell `+1` de l'assignació el deixa exactament en `1`.
 
 ```ridgun
 triar Bool [Int] [Int] => [Int]
@@ -41,8 +41,8 @@ triar cond a     b     =
   | cond      = a
   | otherwise = b
 
-exemple_rmm2 Bool => Int
-exemple_rmm2 cond =
+exemple rmm2 Bool => Int
+exemple rmm2 cond =
   a = [10, 20, 30]           -- M1 (rc = 1)
   b = [40, 50, 60]           -- M2 (rc = 1)
   c = triar cond a b         -- `c` rep +1; el no triat mor aquí mateix (rc -> 0)
@@ -56,11 +56,11 @@ exemple_rmm2 cond =
 A més d'`RMM1` i `RMM2`, quan estàs processant un paquet de xarxa extern, un fitxer gegant o un lot de dades no confiables i vols posar un **sostre estricte de memòria RAM**, envoltes el càlcul en un bloc **`with region`**:
 
 ```ridgun
-processar_trama String => Result
-processar_trama cru    =
+processar trama String => Result
+processar trama cru    =
   with region 64_KB do
-    netes = map netejar_linia (dividir_linies cru)
-    comptar_valids netes
+    netes = map netejar linia (dividir linies cru)
+    comptar valids netes
 ```
 
 1. **Quota garantida en maquinari/runtime**: si dins del bloc s'intenta reservar ni un sol byte per sobre de `64_KB` (`65.536` bytes), el runtime avorta netament el bloc, allibera tota l'arena temporal en temps constant $O(1)$ i retorna `Err OutOfMemory` sense tombar el procés.
@@ -80,8 +80,8 @@ En Ridgun, els **`Tensor`** són ciutadans natius de primera classe i les seves 
 
 ```ridgun
 -- Si entra (N × K) i (K × M), per nassos surt (N × M)!
-multiplicar_matrius Tensor[N, K] Tensor[K, M] => Tensor[N, M]
-multiplicar_matrius a            b            =  a_ik @ b_kj
+multiplicar matrius Tensor[N, K] Tensor[K, M] => Tensor[N, M]
+multiplicar matrius a            b            =  a_ik @ b_kj
 ```
 
 Fixa't en tres detalls espectaculars:
@@ -92,8 +92,8 @@ Fixa't en tres detalls espectaculars:
 3. **Tensors tipats d'alt rendiment (`Tensor[U64 * N]`) i mutació *in-place* amb `t_(i, j)`**:
    En sistemes criptogràfics, simulacions físiques o àlgebra lineal pots declarar tensors plans sobre un bloc contigu d'enters sense signe de 64 bits (`Tensor[U64 * 4]`, `Tensor[U64 * 8 * 16]`), operar en paral·lel amb `^` (XOR natiu de bloc) i llegir o escriure elements en temps $O(1)$ amb la sintaxi de subíndex explícit `t_(i)` o `t_(i, j)`:
    ```ridgun
-   crear_bloc_estat => Tensor[U64 * 2 * 2]
-   crear_bloc_estat =
+   crear bloc estat => Tensor[U64 * 2 * 2]
+   crear bloc estat =
      mut m = tensor fill [2, 2] (u64 0)
      m_(0, 1) = u64 0x6a09e667f3bcc908
      m
@@ -115,16 +115,16 @@ I per treballar amb el sistema operatiu:
 
 | Primitiva | Signatura | Què fa |
 |---|---|---|
-| `cli_args` | `=> [String]` | Arguments de línia d'ordres (`argv`). |
-| `read_file` / `write_file` | `String => String` / `String String => ()` | Lectura i escriptura íntegra de fitxers en disc. |
-| `read_bytes` / `write_bytes` | `String => [Int]` / `String [Int] => ()` | Lectura i escriptura binària exacta byte a byte (`0..255`). |
-| `list_dir` / `file_lstat` | `String => [String]` / `String => ...` | Llistat de directoris i inspecció de metadades POSIX (`lstat`). |
-| `sha256_file` / `sha256_str` / `sha256_raw` | `String => String` | Resum criptogràfic SHA-256 natiu (en hexadecimal de 64 caràcters o digest binari cru de 32 bytes amb `sha256 raw` / `sha256 bytes`). |
-| `sys_exec` / `shell_exec` | `... => Int` | Execució de processos del sistema operatiu. |
-| `sys_getcwd` / `sys_chdir` | `=> String` / `String => Int` | Consultar o canviar el directori de treball. |
-| `sys_getenv` / `sys_setenv` | `String => String` / `String String => Int` | Variables d'entorn del procés. |
-| `sys_getuid` / `sys_getgid` | `=> Int` | UID i GID reals del procés (`doas`, eines de seguretat). |
-| `sys_exit` | `Int => ()` | Acabar el procés amb codi de sortida. |
+| `cli args` | `=> [String]` | Arguments de línia d'ordres (`argv`). |
+| `read file` / `write file` | `String => String` / `String String => ()` | Lectura i escriptura íntegra de fitxers en disc. |
+| `read bytes` / `write bytes` | `String => [Int]` / `String [Int] => ()` | Lectura i escriptura binària exacta byte a byte (`0..255`). |
+| `list dir` / `file lstat` | `String => [String]` / `String => ...` | Llistat de directoris i inspecció de metadades POSIX (`lstat`). |
+| `sha256 file` / `sha256 str` / `sha256 raw` | `String => String` | Resum criptogràfic SHA-256 natiu (en hexadecimal de 64 caràcters o digest binari cru de 32 bytes amb `sha256 raw` / `sha256 bytes`). |
+| `sys exec` / `shell exec` | `... => Int` | Execució de processos del sistema operatiu. |
+| `sys getcwd` / `sys chdir` | `=> String` / `String => Int` | Consultar o canviar el directori de treball. |
+| `sys getenv` / `sys setenv` | `String => String` / `String String => Int` | Variables d'entorn del procés. |
+| `sys getuid` / `sys getgid` | `=> Int` | UID i GID reals del procés (`doas`, eines de seguretat). |
+| `sys exit` | `Int => ()` | Acabar el procés amb codi de sortida. |
 
 ---
 
@@ -150,50 +150,50 @@ Unirem tot el que hem après des del Capítol 01 fins aquí en un programa real 
 type Metriques = fitxer: String, linies: Int, bytes: Int
 
 -- 2. Comptem salts de línia (codi ASCII 10) amb recursió de cua TCO (Capítol 04)
-fn :: comptar_salts String Int Int Int  => Int
-      comptar_salts text   pos fi  acum =
+fn :: comptar salts String Int Int Int  => Int
+      comptar salts text   pos fi  acum =
         | pos >= fi                    = acum
-        | (str_char_at text pos) == 10 = comptar_salts text (pos + 1) fi (acum + 1)
-        | otherwise                    = comptar_salts text (pos + 1) fi acum
+        | (str char at text pos) == 10 = comptar salts text (pos + 1) fi (acum + 1)
+        | otherwise                    = comptar salts text (pos + 1) fi acum
 
-fn :: nombre_de_linies String => Int
-      nombre_de_linies text   =  comptar_salts text 0 (str_len text) 0
+fn :: nombre de linies String => Int
+      nombre de linies text   =  comptar salts text 0 (str len text) 0
 
 -- 3. Analitzem un fitxer i retornem la seva estructura Metriques
-fn :: analitzar_fitxer String => Metriques
-      analitzar_fitxer ruta   =
-        contingut = read_file ruta
-        || nombre_de_linies contingut -> n_linies
-        || str_len contingut          -> n_bytes ||.
+fn :: analitzar fitxer String => Metriques
+      analitzar fitxer ruta   =
+        contingut = read file ruta
+        || nombre de linies contingut -> n_linies
+        || str len contingut          -> n_bytes ||.
         Metriques ruta n_linies n_bytes
 
 -- 4. Formatem cada fila i sumem totals amb `fold` i `||` (Capítol 07)
-fn :: formatar_metrica Metriques => String
-      formatar_metrica m         =  "{linies m}\t{bytes m}\t{fitxer m}"
+fn :: formatar metrica Metriques => String
+      formatar metrica m         =  "{linies m}\t{bytes m}\t{fitxer m}"
 
-fn :: sumar_linies Int Metriques => Int
-      sumar_linies acc m         =  acc + (linies m)
+fn :: sumar linies Int Metriques => Int
+      sumar linies acc m         =  acc + (linies m)
 
-fn :: sumar_bytes Int Metriques => Int
-      sumar_bytes acc m         =  acc + (bytes m)
+fn :: sumar bytes Int Metriques => Int
+      sumar bytes acc m         =  acc + (bytes m)
 
-fn :: generar_informe [String] => String
-      generar_informe rutes    =
-        metriques = ||map analitzar_fitxer rutes
-        || map formatar_metrica metriques -> files
-        || fold sumar_linies 0 metriques  -> total_l
-        || fold sumar_bytes 0 metriques   -> total_b ||.
+fn :: generar informe [String] => String
+      generar informe rutes    =
+        metriques = ||map analitzar fitxer rutes
+        || map formatar metrica metriques -> files
+        || fold sumar linies 0 metriques  -> total_l
+        || fold sumar bytes 0 metriques   -> total_b ||.
         "{files}\nTotal: {total_l} línies, {total_b} bytes"
 
 fn :: main => ()
       main =
-        echo (generar_informe ["README.md", "AGENTS.md"])
+        echo (generar informe ["README.md", "AGENTS.md"])
 ```
 
 Atura't un segon a mirar aquestes ~40 línies de codi:
 - No hi ha ni un sol `null`, ni una excepció descontrolada, ni un `Mutex`.
-- `comptar_salts` es compila a un `loop` natiu amb 0 bytes de pila gràcies al TCO automàtic.
-- `||map analitzar_fitxer rutes` processa els fitxers en paral·lel en tots els nuclis de la teva CPU, i el bloc `||` calcula simultàniament les files formatades, el total de línies i el total de bytes.
+- `comptar salts` es compila a un `loop` natiu amb 0 bytes de pila gràcies al TCO automàtic.
+- `||map analitzar fitxer rutes` processa els fitxers en paral·lel en tots els nuclis de la teva CPU, i el bloc `||` calcula simultàniament les files formatades, el total de línies i el total de bytes.
 - La memòria temporal s'allibera determinísticament mitjançant **`RMM1`/`RMM2`**.
 - I quan executes `ridgunc build rg_wc.rg -o rg-wc`, obtens un binari natiu autònom de ~350 KB a punt per copiar a `/usr/local/bin`.
 

@@ -45,13 +45,13 @@ main =
 Passa-lhe uma função que devolva `Bool` (um *predicado*) e uma lista:
 
 ```ridgun
-e_positivo Int => Bool
-e_positivo n   =  n > 0
+e positivo Int => Bool
+e positivo n   =  n > 0
 
 main => ()
 main =
-  limpos = filter e_positivo [-5, 10, 0, -2, 42]
-  limpos_par = ||filter e_positivo [-5, 10, 0, -2, 42]
+  limpos = filter e positivo [-5, 10, 0, -2, 42]
+  limpos_par = ||filter e positivo [-5, 10, 0, -2, 42]
   echo limpos      -- Imprime [10, 42]
   echo limpos_par  -- Imprime [10, 42]
 ```
@@ -60,20 +60,20 @@ main =
 Passa-lhe uma função combinadora de dois argumentos `(Acumulado Elemento => Acumulado)`, o valor inicial e a lista:
 
 ```ridgun
-acumular_produto Int Int => Int
-acumular_produto acc x   =  acc * x
+acumular produto Int Int => Int
+acumular produto acc x   =  acc * x
 
 main => ()
 main =
-  echo (fold acumular_produto 1 [2, 3, 4, 5])  -- 1 * 2 * 3 * 4 * 5 = 120
+  echo (fold acumular produto 1 [2, 3, 4, 5])  -- 1 * 2 * 3 * 4 * 5 = 120
 ```
 
 ### Como escrevo eu a minha própria função que receba outra função?
 Muito fácil: na assinatura de tipos coloca a assinatura da função convidada entre parênteses `(Entrada => Saida)`:
 
 ```ridgun
-executar_duas_vezes (A => A) A => A
-executar_duas_vezes f        x =  f (f x)
+executar duas vezes (A => A) A => A
+executar duas vezes f        x =  f (f x)
 ```
 
 ### 4. Tubagens fluidas da esquerda para a direita (`->`) — O estilo 100% Ridgun!
@@ -144,8 +144,8 @@ fact Int => Int
 fact 0   =  1
 fact n   =  n * (fact (n - 1))
 
-super_calculo => Int
-super_calculo =  ramo_esquerdo + ramo_direito
+super calculo => Int
+super calculo =  ramo_esquerdo + ramo_direito
   || fib 10 -> ramo_esquerdo
   || fact 6 -> ramo_direito
 ```
@@ -161,8 +161,8 @@ Leia em voz alta:
 Pode inclusive montar um pipeline de vários andares dentro do mesmo bloco `||` — seja no rodapé da expressão ou logo depois do `=` — e o compilador deduzirá sozinho que andares podem avançar ao mesmo tempo e quais têm de esperar:
 
 ```ridgun
-balanco_trimestral Int  => Int
-balanco_trimestral base =
+balanco trimestral Int  => Int
+balanco trimestral base =
   || base * 100                   -> vendas_brutas
   || base * 40                    -> custos_fixos
   || vendas_brutas - custos_fixos -> lucro_bruto ||.
@@ -180,8 +180,8 @@ E se só quiser lançar dois ou três cálculos em paralelo e recolhê-los junto
 Usa `||` diretamente:
 
 ```ridgun
-par_paralelo Int => (Int, Int)
-par_paralelo n   =
+par paralelo Int => (Int, Int)
+par paralelo n   =
   || fib n
   || fact n
 ```

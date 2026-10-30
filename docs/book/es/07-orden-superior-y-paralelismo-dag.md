@@ -141,10 +141,10 @@ Y si la tubería es larga, puedes partirla en varias líneas sangradas que empie
 ```
 
 La regla universal de `->` es sencilla y consistente en todo el lenguaje:
-- **El valor que viene por la izquierda entra como PRIMER argumento** de la función u operador de la derecha (`x -> f a b` $\equiv$ `x f a b` $\equiv$ `f x a b`), salvo en `map`/`filter`/`fold` (donde entra como la colección sobre la que iterar) o si colocas un comodín explícito **`_`** (`payload -> write_file ruta_salida _`).
+- **El valor que viene por la izquierda entra como PRIMER argumento** de la función u operador de la derecha (`x -> f a b` $\equiv$ `x f a b` $\equiv$ `f x a b`), salvo en `map`/`filter`/`fold` (donde entra como la colección sobre la que iterar) o si colocas un comodín explícito **`_`** (`payload -> write file ruta_salida _`).
 - **Envío directo a agentes**: `[5, 10, 15] -> sumar lista -> send to ag` y `[1, 2, 3] -> sumar lista -> ask to ag -> total`.
 - **Máscaras de secuencia en tránsito (`-> (+ _ _ +) ->`)**: `parsear paquete "v0.9.9" -> (+ _ _ +) -> combinar codigo -> resumen`.
-- **Bloques secuenciales limpios sin `_ =` y descarte explícito `-> ()`**: las llamadas con efectos laterales (`echo`, `write_file`, `shell_exec`, `log`, etc.) se escriben directamente sin `_ =`. Si la última línea de una función `=> ()` llama a una función que devuelve un valor (como `Int`), basta con terminar esa línea con **`-> ()`** para descartar el resultado explícitamente y devolver `()`.
+- **Bloques secuenciales limpios sin `_ =` y descarte explícito `-> ()`**: las llamadas con efectos laterales (`echo`, `write file`, `shell exec`, `log`, etc.) se escriben directamente sin `_ =`. Si la última línea de una función `=> ()` llama a una función que devuelve un valor (como `Int`), basta con terminar esa línea con **`-> ()`** para descartar el resultado explícitamente y devolver `()`.
 
 ---
 

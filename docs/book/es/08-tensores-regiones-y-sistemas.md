@@ -33,7 +33,7 @@ Cuando el compilador conoce estáticamente el flujo de las variables locales den
    - `xs = [a, b]` $\rightarrow$ la lista `xs` nace con `1`, y como guarda referencias a `a` y `b`, ambos suben a `2`.
    - Si reasignas una variable mutable (`mut x = ...` y luego `x = nuevo`), `RMM2` aplica primero **`+1`** al valor nuevo antes de aplicar **`-1`** al antiguo.
 3. **Al salir de la función, las variables locales que NO se devuelven reciben `-1`**: si el contador de una estructura llega a `0`, se libera su memoria en el acto y **propaga `-1` en cascada, uno por uno, a cada uno de sus hijos directos**.
-4. **El valor devuelto por la función se exime en tránsito**: recibe su `-1` de variable local pero no se destruye al cruzar el `return`, de modo que cuando quien llamó hace `c = mi_funcion ()`, ese `+1` de la asignación lo deja exactamente en `1`.
+4. **El valor devuelto por la función se exime en tránsito**: recibe su `-1` de variable local pero no se destruye al cruzar el `return`, de modo que cuando quien llamó hace `c = mi funcion ()`, ese `+1` de la asignación lo deja exactamente en `1`.
 
 ```ridgun
 elegir Bool [Int] [Int] => [Int]
@@ -41,8 +41,8 @@ elegir cond a     b     =
   | cond      = a
   | otherwise = b
 
-ejemplo_rmm2 Bool => Int
-ejemplo_rmm2 cond =
+ejemplo rmm2 Bool => Int
+ejemplo rmm2 cond =
   a = [10, 20, 30]         -- M1 (rc = 1)
   b = [40, 50, 60]         -- M2 (rc = 1)
   c = elegir cond a b      -- `c` recibe +1; el no elegido muere aquí mismo (rc -> 0)
@@ -56,11 +56,11 @@ ejemplo_rmm2 cond =
 Además de `RMM1` y `RMM2`, cuando estás procesando un paquete de red externo, un archivo gigante o un lote de datos no confiables y quieres poner un **techo estricto de memoria RAM**, envuelves el cálculo en un bloque **`with region`**:
 
 ```ridgun
-procesar_trama String => Result
-procesar_trama crudo  =
+procesar trama String => Result
+procesar trama crudo  =
   with region 64_KB do
-    limpias = map limpiar_linea (dividir_lineas crudo)
-    contar_validos limpias
+    limpias = map limpiar linea (dividir lineas crudo)
+    contar validos limpias
 ```
 
 1. **Cuota garantizada en hardware/runtime**: si dentro del bloque se intenta reservar ni un solo byte por encima de `64_KB` (`65.536` bytes), el runtime aborta limpiamente el bloque, libera toda la arena temporal en tiempo constante $O(1)$ y devuelve `Err OutOfMemory` sin tumbar el proceso.
@@ -80,8 +80,8 @@ En Ridgun, los **`Tensor`** son ciudadanos nativos de primera clase y sus dimens
 
 ```ridgun
 -- Si entra (N × K) y (K × M), ¡por narices sale (N × M)!
-multiplicar_matrices Tensor[N, K] Tensor[K, M] => Tensor[N, M]
-multiplicar_matrices a            b            =  a_ik @ b_kj
+multiplicar matrices Tensor[N, K] Tensor[K, M] => Tensor[N, M]
+multiplicar matrices a            b            =  a_ik @ b_kj
 ```
 
 Fíjate en dos detalles espectaculares:

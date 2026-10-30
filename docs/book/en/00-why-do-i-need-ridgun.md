@@ -78,11 +78,11 @@ In Ridgun, **every function is pure and all data is immutable by default**. That
 Because of that, you don't have to manage threads to use your CPU in Ridgun. You simply declare **what depends on what** using parallel bars `||` and arrows `->`:
 
 ```ridgun
-monthly_report Data => Report
-monthly_report d    =  combine net_metrics disk_metrics cpu_metrics
-  || analyze_net d  -> net_metrics
-  || analyze_disk d -> disk_metrics
-  || analyze_cpu d  -> cpu_metrics
+monthly report Data => Report
+monthly report d    =  combine net_metrics disk_metrics cpu_metrics
+  || analyze net d  -> net_metrics
+  || analyze disk d -> disk_metrics
+  || analyze cpu d  -> cpu_metrics
 ```
 
 You only wrote three clean lines stating where each piece of data comes from. The compiler sees that the three branches are independent and knows it can launch them in parallel without even the slightest possibility of a *data race* or a *deadlock*.
@@ -111,10 +111,10 @@ Classic functional languages (Haskell, OCaml, Erlang, Clojure) are wonderful for
 Ridgun gives you **all the elegance of pure functional programming, backed by Ridgun Memory Management (`RMM`: static `RMM1` and cascading assignment-counted `RMM2`) plus lexical quota-bounded regions (`with region`)**:
 
 ```ridgun
-parse_packet String => Result
-parse_packet raw    =
+parse packet String => Result
+parse packet raw    =
   with region 16_KB do
-    decode_frame raw
+    decode frame raw
 ```
 
 Every temporary structure is freed deterministically by the compiler (`RMM1` / `RMM2`) the instant it is no longer used. And if an attacker sends you a malicious packet designed to blow up your memory, the moment it crosses byte 16,384 the region halts immediately, frees its entire arena in $O(1)$ time, and returns `Err OutOfMemory`. No process crashes, no GC pauses, and no memory leaks.

@@ -45,13 +45,13 @@ main =
 `Bool` itzultzen duen funtzio bat (*predikatu* bat) eta zerrenda bat pasatzen dizkiozu:
 
 ```ridgun
-positiboa_da Int => Bool
-positiboa_da n   =  n > 0
+positiboa da Int => Bool
+positiboa da n   =  n > 0
 
 main => ()
 main =
-  garbiak = filter positiboa_da [-5, 10, 0, -2, 42]
-  garbiak_par = ||filter positiboa_da [-5, 10, 0, -2, 42]
+  garbiak = filter positiboa da [-5, 10, 0, -2, 42]
+  garbiak_par = ||filter positiboa da [-5, 10, 0, -2, 42]
   echo garbiak      -- [10, 42] inprimatzen du
   echo garbiak_par  -- [10, 42] inprimatzen du
 ```
@@ -60,20 +60,20 @@ main =
 Bi argumentuko funtzio konbinatzaile bat `(Metatua Elementua => Metatua)`, hasierako balioa eta zerrenda pasatzen dizkiozu:
 
 ```ridgun
-metatu_biderkadura Int Int => Int
-metatu_biderkadura acc x   =  acc * x
+metatu biderkadura Int Int => Int
+metatu biderkadura acc x   =  acc * x
 
 main => ()
 main =
-  echo (fold metatu_biderkadura 1 [2, 3, 4, 5])  -- 1 * 2 * 3 * 4 * 5 = 120
+  echo (fold metatu biderkadura 1 [2, 3, 4, 5])  -- 1 * 2 * 3 * 4 * 5 = 120
 ```
 
 ### Nola idazten dut nik beste funtzio bat jasotzen duen nire funtzio propioa?
 Oso erraz: mota-sinaduran funtzio gonbidatuaren sinadura parentesi artean jartzen duzu `(Sarrera => Irteera)`:
 
 ```ridgun
-exekutatu_bi_aldiz (A => A) A => A
-exekutatu_bi_aldiz f        x =  f (f x)
+exekutatu bi aldiz (A => A) A => A
+exekutatu bi aldiz f        x =  f (f x)
 ```
 
 ### 4. Ezkerretik eskuinerako hodi arinak (`->`) — % 100 Ridgun estiloa!
@@ -144,8 +144,8 @@ fact Int => Int
 fact 0   =  1
 fact n   =  n * (fact (n - 1))
 
-super_kalkulua => Int
-super_kalkulua =  ezker_adarra + eskuin_adarra
+super kalkulua => Int
+super kalkulua =  ezker_adarra + eskuin_adarra
   || fib 10 -> ezker_adarra
   || fact 6 -> eskuin_adarra
 ```
@@ -161,8 +161,8 @@ Irakurri ozenki:
 Are gehiago, hainbat solairuko hodi bat munta dezakezu `||` bloke berean —adierazpenaren oinean zein `=` ondoren bertan— eta konpiladoreak bere kabuz ondorioztatuko du zein solairu joan daitezkeen batera eta zeintzuek itxaron behar duten:
 
 ```ridgun
-hiruhileko_balantzea Int => Int
-hiruhileko_balantzea oinarria =
+hiruhileko balantzea Int => Int
+hiruhileko balantzea oinarria =
   || oinarria * 100                   -> salmenta_gordinak
   || oinarria * 40                    -> kostu_finkoak
   || salmenta_gordinak - kostu_finkoak -> irabazi_gordina ||.
@@ -180,8 +180,8 @@ Eta bi edo hiru kalkulu paraleloan abiarazi eta tupla batean elkarrekin jaso nah
 `||` zuzenean erabiltzen duzu:
 
 ```ridgun
-bikote_paraleloa Int => (Int, Int)
-bikote_paraleloa n   =
+bikote paraleloa Int => (Int, Int)
+bikote paraleloa n   =
   || fib n
   || fact n
 ```

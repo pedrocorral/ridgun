@@ -124,10 +124,10 @@ Badira Ridgunen diseinatu eta integratu ditugun **zortzi gauza**, egungo beste i
 Beste lengoaia funtzional batzuetan, aldagai lokalen bloke batek gero hari bakar batean ebaluatzen diren adierazpenak ordenatu baino ez ditu egiten.
 Ridgunen, **`||` bloke bat `->` geziekin exekuzio paraleloko Grafo Azikliko Zuzendu (DAG) bat da**, `where` bezalako hitz gako gehigarririk idatzi beharrik ere izan gabe:
 ```ridgun
-urteko_txostena Int => Int
-urteko_txostena id  =  diru_sarrerak - gastuak
-  || kalkulatu_salmentak id -> diru_sarrerak
-  || kalkulatu_kostuak id   -> gastuak
+urteko txostena Int => Int
+urteko txostena id  =  diru_sarrerak - gastuak
+  || kalkulatu salmentak id -> diru_sarrerak
+  || kalkulatu kostuak id   -> gastuak
 ```
 Zuk fluxu-geziak (`->`) marrazten dituzu. Konpiladoreak aztertzen du zer dagoen zeren menpe, **estatikoki egiaztatzen du ez duzula begizta infinitorik sortu**, eta adar independenteak paraleloan abiarazten ditu zuk `async`, `await`, `Future` edo `Mutex` bakar bat ere idatzi gabe.
 
@@ -135,9 +135,9 @@ Zuk fluxu-geziak (`->`) marrazten dituzu. Konpiladoreak aztertzen du zer dagoen 
 Beste lengoaia batzuetan, aktore edo agenteekin programatzeak klase bereziak sortzera, *trait*-ak inplementatzera, *lock*-ak kudeatzera edo funtzioak `async`-ekin kutsatzera behartzen zaitu.
 Ridgunen, **edozein funtzio puru arrunt (`fn ::` edo `op ::`) zuzenean agente autonomo bihurtzen da —egoera isolatuarekin edo gabe— `agent` erabiliz**:
 ```ridgun
-erantzun_http (Saioa, String) => (Saioa, String)
+erantzun http (Saioa, String) => (Saioa, String)
 ...
-zerbitzaria = agent erantzun_http hasierako_saioa
+zerbitzaria = agent erantzun http hasierako_saioa
 send "GET /profila" to zerbitzaria
 erantzuna = receive from zerbitzaria
 stop zerbitzaria

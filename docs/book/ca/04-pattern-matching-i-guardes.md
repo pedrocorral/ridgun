@@ -18,18 +18,18 @@ Vegem-les en acció.
 Al capítol anterior ja en vam veure un avançament. En lloc de rebre una variable genèrica `x` i obrir dins de la funció cinc `if (x == ...)`, en Ridgun poses els casos directament a la porta d'entrada de la funció:
 
 ```ridgun
-codi_http Int => String
-codi_http 200 =  "OK: Tot ha anat sobre rodes"
-codi_http 301 =  "Mogut permanentment"
-codi_http 404 =  "No trobat (has mirat sota el sofà?)"
-codi_http 500 =  "Foc al servidor"
-codi_http n   =  "Codi desconegut: {n}"
+codi http Int => String
+codi http 200 =  "OK: Tot ha anat sobre rodes"
+codi http 301 =  "Mogut permanentment"
+codi http 404 =  "No trobat (has mirat sota el sofà?)"
+codi http 500 =  "Foc al servidor"
+codi http n   =  "Codi desconegut: {n}"
 ```
 
 Ridgun prova les files **de dalt a baix**:
 - Si entra `404`, salta directe a la tercera fila.
 - Si entra `418`, cap de les quatre primeres files coincideix, així que cau a l'última (`n`), que atrapa qualsevol enter i l'anomena `n` perquè puguis imprimir-lo.
-- I si en l'últim cas ni tan sols t'importa quin número era? Poses un guió baix `_` (*comodí*) i te n'oblides: `codi_http _ = "Un altre codi"`.
+- I si en l'últim cas ni tan sols t'importa quin número era? Poses un guió baix `_` (*comodí*) i te n'oblides: `codi http _ = "Un altre codi"`.
 
 ---
 
@@ -65,14 +65,14 @@ En Ridgun, com que `|` ja és el símbol sagrat de les guardes i dels tipus alge
 - **`and`**: es compleixen totes dues coses amb avaluació en curtcircuit (`edat >= 18 and te_carnet`).
 - **`or`**: se'n compleix almenys una amb avaluació en curtcircuit (`dia == "dissabte" or dia == "diumenge"`).
 - **`xor`**: es compleix l'una o l'altra, però no totes dues alhora.
-- **`not`**: inverteix el booleà (`not (es_buit text)`).
+- **`not`**: inverteix el booleà (`not (es buit text)`).
 - **`<`, `>`, `<=`, `>=`**: comparen tant nombres (`Int`, `Float`) com cadenes **`String` en ordre lexicogràfic UTF-8** (`"alfa" < "beta"`).
 
 Mira que net queda el clàssic problema dels anys de traspàs:
 
 ```ridgun
-es_de_traspas Int => Bool
-es_de_traspas a   =
+es de traspas Int => Bool
+es de traspas a   =
   | (a % 400) == 0                  = True
   | (a % 4) == 0 and (a % 100) != 0 = True
   | otherwise                       = False
@@ -84,8 +84,8 @@ Zero símbols críptics. Ho llegeix algú que no sap Ridgun i ho entén a la pri
 Com que en Ridgun tot `=` segueix la mateixa regla, **també pots fer servir `|` per assignar una variable local** sense haver de crear una funció auxiliar a part:
 
 ```ridgun
-preu_bitllet Int  Bool                => Int
-preu_bitllet base es_familia_nombrosa =
+preu bitllet Int  Bool                => Int
+preu bitllet base es_familia_nombrosa =
   descompte =
     | es_familia_nombrosa = 20
     | base > 100          = 10
@@ -99,8 +99,8 @@ preu_bitllet base es_familia_nombrosa =
 Pots imbricar `|` dins de `|` tants nivells com vulguis. I quan un bloc `|` imbricat acaba però a sota continuen més branques d'un nivell pare (o més sentències del bloc), col·loques **`|.`** al final de la seva última línia (`| otherwise = valor |.`) per indicar sense cap ambigüitat que aquell subarbre es tanca i tornes al nivell anterior:
 
 ```ridgun
-encaminar_peticio Int   Int Bool    Bool     Int     Int     => Int
-encaminar_peticio metode rol signada es_admin mida_kb limitat =
+encaminar peticio Int   Int Bool    Bool     Int     Int     => Int
+encaminar peticio metode rol signada es_admin mida_kb limitat =
   | metode == 0 =
     | mida_kb == 0 = 204
     | otherwise    = 200 |.
@@ -131,8 +131,8 @@ Fixa't en com n'és, de net:
 Igual que després de l'`=` d'una funció normal pots obrir un bloc sagnat de diverses línies, **després de l'`=` de qualsevol guarda `| cond =` o `| otherwise =` també pots fer un salt de línia i obrir un bloc seqüencial**:
 
 ```ridgun
-ajustar_finestra Int Int   => Int
-ajustar_finestra idx limit =
+ajustar finestra Int Int   => Int
+ajustar finestra idx limit =
   | idx >= limit =
       topall = limit - 1
       escalat = topall * 2
@@ -159,26 +159,26 @@ Fixa't en aquestes dues funcions que compten cap enrere des de `n` fins a `0` su
 
 ```ridgun
 -- Versió A: Recursió NORMAL (deixa feina pendent per a la tornada)
-sumar_lent Int => Int
-sumar_lent 0   =  0
-sumar_lent n   =  n + (sumar_lent (n - 1))
+sumar lent Int => Int
+sumar lent 0   =  0
+sumar lent n   =  n + (sumar lent (n - 1))
 
 -- Versió B: Recursió DE CUA (porta el compte al dia a `acumulat`)
-sumar_rapid_loop Int Int      => Int
-sumar_rapid_loop 0   acumulat =  acumulat
-sumar_rapid_loop n   acumulat =  sumar_rapid_loop (n - 1) (acumulat + n)
+sumar rapid loop Int Int      => Int
+sumar rapid loop 0   acumulat =  acumulat
+sumar rapid loop n   acumulat =  sumar rapid loop (n - 1) (acumulat + n)
 ```
 
-- A la **Versió A**, abans de poder sumar `n + ...`, la funció ha d'esperar que acabi `sumar_lent (n - 1)`. Això obliga l'ordinador a desar `n` a la pila en cada pas.
-- A la **Versió B**, la crida a `sumar_rapid_loop` **és l'última cosa que passa a la línia**. No queda res pendent darrere seu. Ja li passes la suma actualitzada a `acumulat + n`.
+- A la **Versió A**, abans de poder sumar `n + ...`, la funció ha d'esperar que acabi `sumar lent (n - 1)`. Això obliga l'ordinador a desar `n` a la pila en cada pas.
+- A la **Versió B**, la crida a `sumar rapid loop` **és l'última cosa que passa a la línia**. No queda res pendent darrere seu. Ja li passes la suma actualitzada a `acumulat + n`.
 
 ### El truc de màgia de `ridgunc` (TCO: *Tail-Call Optimization*)
-Quan `ridgunc` compila `sumar_rapid_loop`, veu que la funció es crida a si mateixa al final de la clàusula i diu:
+Quan `ridgunc` compila `sumar rapid loop`, veu que la funció es crida a si mateixa al final de la clàusula i diu:
 
 > *"Per a què crearé un marc de pila nou si l'actual ja no serveix per a res? Sobreescriuré `n` amb `n - 1`, sobreescriuré `acumulat` amb `acumulat + n` i saltaré al principi amb un `loop { ... continue; }` natiu."*
 
 Resultat:
-1. Pots cridar `sumar_rapid_loop 100_000_000 0` (cent milions de voltes) i **gastarà exactament 0 bytes extra de pila**.
+1. Pots cridar `sumar rapid loop 100_000_000 0` (cent milions de voltes) i **gastarà exactament 0 bytes extra de pila**.
 2. Va igual de ràpid que un bucle `while` escrit a mà en Rust o C, però sense haver hagut de declarar ni una sola variable mutable al teu codi Ridgun.
 
 ---
@@ -188,17 +188,17 @@ Resultat:
 Cada vegada que en un altre llenguatge pensaries *"faré un bucle `while` amb un índex `i` i un acumulador"*, en Ridgun escrius una parella de funcions com aquesta (la funció principal neta i el seu ajudant `_loop` de cua):
 
 ```ridgun
-cercar_caracter_loop String Int Int Int    => Int
-cercar_caracter_loop text   pos fi  cercat =
+cercar caracter loop String Int Int Int    => Int
+cercar caracter loop text   pos fi  cercat =
   | pos >= fi                        = -1
-  | (str_char_at text pos) == cercat = pos
-  | otherwise                        = cercar_caracter_loop text (pos + 1) fi cercat
+  | (str char at text pos) == cercat = pos
+  | otherwise                        = cercar caracter loop text (pos + 1) fi cercat
 
-cercar_caracter String Int    => Int
-cercar_caracter text   cercat =  cercar_caracter_loop text 0 (str_len text) cercat
+cercar caracter String Int    => Int
+cercar caracter text   cercat =  cercar caracter loop text 0 (str len text) cercat
 ```
 
-Mira les tres guardes de `cercar_caracter_loop`:
+Mira les tres guardes de `cercar caracter loop`:
 1. He arribat al final (`pos >= fi`)? Retorno `-1` (fi del bucle).
 2. He trobat el caràcter a `pos`? Retorno `pos` (fi del bucle).
 3. No és aquest? Passo al següent (`pos + 1`) amb una crida de cua (que el compilador converteix en `continue;`).

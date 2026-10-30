@@ -33,7 +33,7 @@ And what happens when you nest data structures inside other data structures (`xs
    - `xs = [a, b]` $\rightarrow$ list `xs` is born with `1`, and because it holds references to `a` and `b`, both climb to `2`.
    - If you reassign a mutable variable (`mut x = ...` and later `x = new_val`), `RMM2` applies **`+1`** to the new value first before applying **`-1`** to the old one.
 3. **Upon exiting the function, local variables that are NOT returned receive `-1`**: if a structure's counter reaches `0`, its memory is freed on the spot and **it cascades `-1`, one by one, to each of its direct children**.
-4. **The value returned by the function is exempt in transit**: it receives its local-variable `-1` without being destroyed as it crosses the return boundary, so when the caller writes `c = my_func ()`, the `+1` from that assignment leaves its counter at `1`.
+4. **The value returned by the function is exempt in transit**: it receives its local-variable `-1` without being destroyed as it crosses the return boundary, so when the caller writes `c = my func ()`, the `+1` from that assignment leaves its counter at `1`.
 
 ```ridgun
 choose Bool [Int] [Int] => [Int]
@@ -41,8 +41,8 @@ choose cond a     b     =
   | cond      = a
   | otherwise = b
 
-rmm2_example Bool => Int
-rmm2_example cond =
+rmm2 example Bool => Int
+rmm2 example cond =
   a = [10, 20, 30]         -- M1 (rc = 1)
   b = [40, 50, 60]         -- M2 (rc = 1)
   c = choose cond a b      -- `c` gets +1; the unchosen list dies right here (rc -> 0)
@@ -56,11 +56,11 @@ rmm2_example cond =
 Alongside `RMM1` and `RMM2`, whenever you are parsing an external network packet, a massive file, or a batch of untrusted data and want to enforce a **strict RAM ceiling**, you wrap the computation in a **`with region`** block:
 
 ```ridgun
-process_frame String => Result
-process_frame raw    =
+process frame String => Result
+process frame raw    =
   with region 64_KB do
-    clean = map clean_line (split_lines raw)
-    count_valid clean
+    clean = map clean line (split lines raw)
+    count valid clean
 ```
 
 1. **Hardware/runtime-guaranteed quota**: if code inside the block attempts to allocate even a single byte beyond `64_KB` (`65,536` bytes), the runtime cleanly aborts the block, frees the entire temporary arena in constant $O(1)$ time, and returns `Err OutOfMemory` without crashing the process.
@@ -80,8 +80,8 @@ In Ridgun, **`Tensor`** values are first-class native citizens and their dimensi
 
 ```ridgun
 -- If (N × K) and (K × M) go in, (N × M) MUST come out!
-multiply_matrices Tensor[N, K] Tensor[K, M] => Tensor[N, M]
-multiply_matrices a            b            =  a_ik @ b_kj
+multiply matrices Tensor[N, K] Tensor[K, M] => Tensor[N, M]
+multiply matrices a            b            =  a_ik @ b_kj
 ```
 
 Notice three standout details:
@@ -121,17 +121,17 @@ And for interacting with the operating system:
 
 | Primitive | Signature | What It Does |
 |---|---|---|
-| `cli_args` | `=> [String]` | Command-line arguments (`argv`). |
-| `read_file` / `write_file` | `String => String` / `String String => ()` | Full file reading and writing on disk. |
-| `read_bytes` / `write_bytes` | `String => [Int]` / `String [Int] => ()` | Exact byte-by-byte binary reading and writing (`0..255`). |
-| `list_dir` / `file_lstat` | `String => [String]` / `String => ...` | Directory listing and POSIX metadata inspection (`lstat`). |
-| `sha256_file` / `sha256_str` | `String => String` | Native 64-character hex SHA-256 cryptographic hash. |
+| `cli args` | `=> [String]` | Command-line arguments (`argv`). |
+| `read file` / `write file` | `String => String` / `String String => ()` | Full file reading and writing on disk. |
+| `read bytes` / `write bytes` | `String => [Int]` / `String [Int] => ()` | Exact byte-by-byte binary reading and writing (`0..255`). |
+| `list dir` / `file lstat` | `String => [String]` / `String => ...` | Directory listing and POSIX metadata inspection (`lstat`). |
+| `sha256 file` / `sha256 str` | `String => String` | Native 64-character hex SHA-256 cryptographic hash. |
 | `sha256 raw` / `sha256 bytes` | `String => String` | Raw 32-byte binary SHA-256 digest (supports embedded `0x00` bytes with zero hex conversion overhead). |
-| `sys_exec` / `shell_exec` | `... => Int` | Operating system process execution. |
-| `sys_getcwd` / `sys_chdir` | `=> String` / `String => Int` | Query or change the current working directory. |
-| `sys_getenv` / `sys_setenv` | `String => String` / `String String => Int` | Process environment variables. |
-| `sys_getuid` / `sys_getgid` | `=> Int` | Real process UID and GID (`doas`, security tools). |
-| `sys_exit` | `Int => ()` | Terminate the process with an exit code. |
+| `sys exec` / `shell exec` | `... => Int` | Operating system process execution. |
+| `sys getcwd` / `sys chdir` | `=> String` / `String => Int` | Query or change the current working directory. |
+| `sys getenv` / `sys setenv` | `String => String` / `String String => Int` | Process environment variables. |
+| `sys getuid` / `sys getgid` | `=> Int` | Real process UID and GID (`doas`, security tools). |
+| `sys exit` | `Int => ()` | Terminate the process with an exit code. |
 
 ---
 
@@ -144,50 +144,50 @@ Let's bring together everything we have learned from Chapter 01 to Chapter 08 in
 type Metrics = file: String, lines: Int, bytes: Int
 
 -- 2. Count newline characters (ASCII code 10) with TCO tail recursion (Chapter 04)
-fn :: count_newlines String Int Int Int => Int
-      count_newlines text   pos end acc =
+fn :: count newlines String Int Int Int => Int
+      count newlines text   pos end acc =
         | pos >= end                    = acc
-        | (str_char_at text pos) == 10  = count_newlines text (pos + 1) end (acc + 1)
-        | otherwise                     = count_newlines text (pos + 1) end acc
+        | (str char at text pos) == 10  = count newlines text (pos + 1) end (acc + 1)
+        | otherwise                     = count newlines text (pos + 1) end acc
 
-fn :: line_count String => Int
-      line_count text   =  count_newlines text 0 (str_len text) 0
+fn :: line count String => Int
+      line count text   =  count newlines text 0 (str len text) 0
 
 -- 3. Analyze a file and return its Metrics record
-fn :: analyze_file String => Metrics
-      analyze_file path   =
-        content = read_file path
-        || line_count content -> n_lines
-        || str_len content    -> n_bytes ||.
+fn :: analyze file String => Metrics
+      analyze file path   =
+        content = read file path
+        || line count content -> n_lines
+        || str len content    -> n_bytes ||.
         Metrics path n_lines n_bytes
 
 -- 4. Format each row and sum totals using `fold` and `||` (Chapter 07)
-fn :: format_metric Metrics => String
-      format_metric m       =  "{lines m}\t{bytes m}\t{file m}"
+fn :: format metric Metrics => String
+      format metric m       =  "{lines m}\t{bytes m}\t{file m}"
 
-fn :: sum_lines Int Metrics => Int
-      sum_lines acc m       =  acc + (lines m)
+fn :: sum lines Int Metrics => Int
+      sum lines acc m       =  acc + (lines m)
 
-fn :: sum_bytes Int Metrics => Int
-      sum_bytes acc m       =  acc + (bytes m)
+fn :: sum bytes Int Metrics => Int
+      sum bytes acc m       =  acc + (bytes m)
 
-fn :: generate_report [String] => String
-      generate_report paths    =
-        metrics = ||map analyze_file paths
-        || map format_metric metrics -> rows
-        || fold sum_lines 0 metrics  -> total_l
-        || fold sum_bytes 0 metrics  -> total_b ||.
+fn :: generate report [String] => String
+      generate report paths    =
+        metrics = ||map analyze file paths
+        || map format metric metrics -> rows
+        || fold sum lines 0 metrics  -> total_l
+        || fold sum bytes 0 metrics  -> total_b ||.
         "{rows}\nTotal: {total_l} lines, {total_b} bytes"
 
 fn :: main => ()
       main =
-        echo (generate_report ["README.md", "AGENTS.md"])
+        echo (generate report ["README.md", "AGENTS.md"])
 ```
 
 Pause for a second and look at those ~40 lines of code:
 - There is not a single `null`, unchecked exception, or `Mutex`.
-- `count_newlines` compiles down to a native `loop` using 0 bytes of stack thanks to automatic TCO.
-- `||map analyze_file paths` processes files in parallel across all cores of your CPU, and the `||` block computes the formatted rows, total lines, and total bytes simultaneously.
+- `count newlines` compiles down to a native `loop` using 0 bytes of stack thanks to automatic TCO.
+- `||map analyze file paths` processes files in parallel across all cores of your CPU, and the `||` block computes the formatted rows, total lines, and total bytes simultaneously.
 - Temporary memory is freed deterministically via **`RMM1`/`RMM2`**.
 - And when you run `ridgunc build rg_wc.rg -o rg-wc`, you get a self-contained ~350 KB native binary ready to copy into `/usr/local/bin`.
 

@@ -61,9 +61,9 @@ fn :: unwrap Result    => Int
       unwrap (Ok n)    = n
       unwrap (Err msg) = 0
 
-fn :: sum_tree Tree              => Int
-      sum_tree (Leaf n)          =  n
-      sum_tree (Node left right) =  sum_tree left + sum_tree right
+fn :: sum tree Tree              => Int
+      sum tree (Leaf n)          =  n
+      sum tree (Node left right) =  sum tree left + sum tree right
 
 -- Native list types
 -- Lists use [type] syntax and (x:xs) for cons-pattern matching
@@ -71,9 +71,9 @@ fn :: length [Int]  => Int
       length []     =  0
       length (_:xs) =  1 + length xs
 
-fn :: sum_list [Int]  => Int
-      sum_list []     =  0
-      sum_list (x:xs) =  x + sum_list xs
+fn :: sum list [Int]  => Int
+      sum list []     =  0
+      sum list (x:xs) =  x + sum list xs
 
 fn :: reverse [Int] =>  [Int]
       reverse []     =  []
@@ -115,16 +115,16 @@ result = g_ij * g_jk                     -- GPU-accelerated matmul
 -- Nesting (,) creates a seq of seqs
 -- Positional selector (<@_>) extracts elements by mask
 
-fn :: first_of_seq Int Int => Int
-      first_of_seq (s)     =  s(+ _)
+fn :: first of seq Int Int => Int
+      first of seq (s)     =  s(+ _)
 
-fn :: first_of Int Int => Int
-      first_of s   _   => s
+fn :: first of Int Int => Int
+      first of s   _   => s
 
-fn :: swap_seq Int Int => Int Int
-      swap_seq (s)     =  s(_ +) s(_ +)
+fn :: swap seq Int Int => Int Int
+      swap seq (s)     =  s(_ +) s(_ +)
 
-fn :: swap_pair Int Int => Int Int
+fn :: swap pair Int Int => Int Int
       swap pair a   b   =  b a
 
 fn :: endpoints Int Int Int Int => Int Int
@@ -132,8 +132,8 @@ fn :: endpoints Int Int Int Int => Int Int
 
 -- Additional way to extract elements from a seq
 -- using their direct positions in the sequence.
-fn :: extreme_points Int Int Int Int => Int Int
-      extreme_points (s)             =  s(0 3)
+fn :: extreme points Int Int Int Int => Int Int
+      extreme points (s)             =  s(0 3)
 
 op :: Int Int switch -> Int Int
       a   b   switch =  b   a

@@ -22,24 +22,24 @@ Con só escribir esa liña, Ridgun agasállache **catro cousas** automaticamente
 
 ### 1. O construtor `Servidor`
 ```ridgun
-meu_nodo => Servidor
-meu_nodo =  Servidor "api.exemplo.com" 443 True
+meu nodo => Servidor
+meu nodo =  Servidor "api.exemplo.com" 443 True
 ```
 
 ### 2. Unha función *getter* pura para cada campo (`host`, `porto`, `tls_activo`)
 Non tes que escribir `s.getHost()` nin nada parecido; cada nome de campo é directamente unha función que extrae ese dato:
 
 ```ridgun
-url_conexion Servidor => String
-url_conexion srv      =  "Conectar a " + (host srv) + " no porto {porto srv}"
+url conexion Servidor => String
+url conexion srv      =  "Conectar a " + (host srv) + " no porto {porto srv}"
 ```
 
 ### 3. Actualización funcional de rexistros (`with campo: valor`)
 Imaxina un rexistro de configuración con 12 ou 15 campos (como as opcións dun comando `ls` ou dun servidor web) e queres mudar só un ou dous campos sen tocar o resto. En vez de reconstruír o rexistro pasando os 15 campos á man, usas **`with`** e dous puntos **`:`** (exactamente igual ca na definición do `type`):
 
 ```ridgun
-activar_modo_dev Servidor => Servidor
-activar_modo_dev srv      =  srv with porto: 8080, tls_activo: False
+activar modo dev Servidor => Servidor
+activar modo dev srv      =  srv with porto: 8080, tls_activo: False
 ```
 
 O mellor dos dous mundos:
@@ -48,9 +48,9 @@ O mellor dos dous mundos:
 
 ### 4. *Pattern matching* completo por se queres abrir o rexistro en canle
 ```ridgun
-e_porto_seguro Servidor              => Bool
-e_porto_seguro (Servidor _ 443 True) =  True
-e_porto_seguro _                     =  False
+e porto seguro Servidor              => Bool
+e porto seguro (Servidor _ 443 True) =  True
+e porto seguro _                     =  False
 ```
 
 ---
@@ -70,10 +70,10 @@ type MetodoPagamento = Tarxeta String Int | Transferencia String | Efectivo
 E mira que pasa cando procesas un `MetodoPagamento` nunha función:
 
 ```ridgun
-describir_pagamento MetodoPagamento      => String
-describir_pagamento (Tarxeta num _)      =  "Pagamento con tarxeta rematada en {num}"
-describir_pagamento (Transferencia iban) =  "Transferencia desde a conta {iban}"
-describir_pagamento Efectivo             =  "Pagamento en metálico en portelo"
+describir pagamento MetodoPagamento      => String
+describir pagamento (Tarxeta num _)      =  "Pagamento con tarxeta rematada en {num}"
+describir pagamento (Transferencia iban) =  "Transferencia desde a conta {iban}"
+describir pagamento Efectivo             =  "Pagamento en metálico en portelo"
 ```
 
 Cada variante (`Tarxeta`, `Transferencia`, `Efectivo`) leva pegados unicamente os datos que teñen sentido para ela. É **imposible** construír un pagamento en `Efectivo` que teña un `iban` colgado por erro.
@@ -91,13 +91,13 @@ En Ridgun (igual ca en Haskell ou Rust), creas en dous segundos un tipo suma que
 ```ridgun
 type ValorCela = Enteiro Int | Texto String | Baleiro
 
-formatar_cela ValorCela    => String
-formatar_cela (Enteiro n)  =  "Número: {n}"
-formatar_cela (Texto s)    =  "Texto: {s}"
-formatar_cela Baleiro      =  "(baleiro)"
+formatar cela ValorCela    => String
+formatar cela (Enteiro n)  =  "Número: {n}"
+formatar cela (Texto s)    =  "Texto: {s}"
+formatar cela Baleiro      =  "(baleiro)"
 
-mina_fila => [ValorCela]
-mina_fila =  [Enteiro 1, Texto "dous", Baleiro]
+mina fila => [ValorCela]
+mina fila =  [Enteiro 1, Texto "dous", Baleiro]
 ```
 
 Ves a diferenza?
@@ -114,13 +114,13 @@ Como en Ridgun non existe `null` nin existen excepcións que salten polos aires 
 2. **`Result`**: ou a operación saíu ben (**`Ok valor`**), ou fallou por un motivo concreto (**`Err erro`**).
 
 ```ridgun
-buscar_division Int Int => Result
-buscar_division _   0   =  Err "Ei! Non se pode dividir por cero"
-buscar_division a   b   =  Ok (a / b)
+buscar division Int Int => Result
+buscar division _   0   =  Err "Ei! Non se pode dividir por cero"
+buscar division a   b   =  Ok (a / b)
 
-imprimir_res Result    => ()
-imprimir_res (Ok n)    =  echo "O resultado é {n}"
-imprimir_res (Err msg) =  echo "Fallo controlado: {msg}"
+imprimir res Result    => ()
+imprimir res (Ok n)    =  echo "O resultado é {n}"
+imprimir res (Err msg) =  echo "Fallo controlado: {msg}"
 ```
 
 Ninguén pode ignorar un erro por descoido porque o propio tipo `Result` obrígate a mirar se dentro hai un `Ok` ou un `Err`.
@@ -134,19 +134,19 @@ Supón que escribes unha función que inverte un par `(x, y)` ou que saca o prim
 En Ridgun, **calquera letra maiúscula individual (`A` a `Z`)** nunha sinatura de tipos funciona automaticamente como un **tipo comodín polimórfico (variable de tipo)**:
 
 ```ridgun
-cabeza_segura [A]   A           => A
-cabeza_segura []    por_defecto =  por_defecto
-cabeza_segura (x:_) _           =  x
+cabeza segura [A]   A           => A
+cabeza segura []    por_defecto =  por_defecto
+cabeza segura (x:_) _           =  x
 
-xirar_par (A, B) => (B, A)
-xirar_par (x, y) =  (y, x)
+xirar par (A, B) => (B, A)
+xirar par (x, y) =  (y, x)
 ```
 
-Fíxate na maxia de `cabeza_segura [A] A => A`:
+Fíxate na maxia de `cabeza segura [A] A => A`:
 - Non é un `Any` descontrolado: di que **o tipo da lista `[A]`, o tipo do valor `por_defecto` (`A`) e o tipo devolto (`A`) teñen que ser o mesmo**.
-- Se chamas a `cabeza_segura [10, 20] 0`, o compilador ata cabos (`A = Int`) e devólveche un `Int`.
-- Se chamas a `cabeza_segura ["a", "b"] "ningun"`, ata cabos (`A = String`) e devólveche un `String`.
-- Pero se intentas facer trampa e chamas a `cabeza_segura [10, 20] "ningun"`, zas! O compilador fréate en seco porque o primeiro argumento di que `A` é `Int` e o segundo di que `A` é `String`.
+- Se chamas a `cabeza segura [10, 20] 0`, o compilador ata cabos (`A = Int`) e devólveche un `Int`.
+- Se chamas a `cabeza segura ["a", "b"] "ningun"`, ata cabos (`A = String`) e devólveche un `String`.
+- Pero se intentas facer trampa e chamas a `cabeza segura [10, 20] "ningun"`, zas! O compilador fréate en seco porque o primeiro argumento di que `A` é `Int` e o segundo di que `A` é `String`.
 
 ---
 

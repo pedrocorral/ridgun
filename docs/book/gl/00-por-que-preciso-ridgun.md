@@ -78,11 +78,11 @@ En Ridgun, **toda función é pura e todo dato é inmutable por defecto**. Iso t
 Por iso, en Ridgun non tes que xestionar fíos para aproveitar a túa CPU. Só declaras **que depende de que** con barras paralelas `||` e frechas `->`:
 
 ```ridgun
-informe_mensual Datos => Informe
-informe_mensual d     =  combinar metricas_rede metricas_disco metricas_cpu
-  || analizar_rede d  -> metricas_rede
-  || analizar_disco d -> metricas_disco
-  || analizar_cpu d   -> metricas_cpu
+informe mensual Datos => Informe
+informe mensual d     =  combinar metricas_rede metricas_disco metricas_cpu
+  || analizar rede d  -> metricas_rede
+  || analizar disco d -> metricas_disco
+  || analizar cpu d   -> metricas_cpu
 ```
 
 Ti só escribiches tres liñas limpas indicando de onde sae cada dato. O compilador ve que as tres ramas son independentes e sabe que pode lanzalas en paralelo sen que exista nin a máis mínima posibilidade dun *data race* ou dun *deadlock*.
@@ -111,10 +111,10 @@ As linguaxes funcionais clásicas (Haskell, OCaml, Erlang, Clojure) son marabill
 Ridgun dáche **toda a elegancia do mundo funcional puro, pero con Xestión de Memoria de Ridgun (`RMM`: `RMM1` estática e `RMM2` por conta de asignacións en fervenza) máis rexións léxicas con cota exacta (`with region`)**:
 
 ```ridgun
-analizar_paquete String => Result
-analizar_paquete cru    =
+analizar paquete String => Result
+analizar paquete cru    =
   with region 16_KB do
-    decodificar_trama cru
+    decodificar trama cru
 ```
 
 Cada estrutura temporal é liberada de forma determinista polo compilador (`RMM1` / `RMM2`) no instante en que deixa de usarse, e se un atacante che envía un paquete malicioso deseñado para rebentar a memoria, ao superar o byte 16.384 a rexión córtase ao instante, libera a súa area en $O(1)$ e devólveche `Err OutOfMemory`. Sen caídas do proceso, sen pausas de GC e sen fugas de memoria.

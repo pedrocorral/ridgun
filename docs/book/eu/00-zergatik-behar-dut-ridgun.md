@@ -78,11 +78,11 @@ Ridgunen, **funtzio oro purua da eta datu oro aldaezina lehenespenez**. Horrek o
 Horregatik, Ridgunen ez duzu haririk kudeatu behar zure PUZa aprobetxatzeko. **Zer zeren menpe dagoen** baino ez duzu adierazten `||` barra paraleloekin eta `->` geziekin:
 
 ```ridgun
-hileko_txostena Datuak => Txostena
-hileko_txostena d      =  konbinatu sare_metrikak disko_metrikak puz_metrikak
-  || aztertu_sarea d  -> sare_metrikak
-  || aztertu_diskoa d -> disko_metrikak
-  || aztertu_puza d   -> puz_metrikak
+hileko txostena Datuak => Txostena
+hileko txostena d      =  konbinatu sare_metrikak disko_metrikak puz_metrikak
+  || aztertu sarea d  -> sare_metrikak
+  || aztertu diskoa d -> disko_metrikak
+  || aztertu puza d   -> puz_metrikak
 ```
 
 Zuk hiru lerro garbi baino ez dituzu idatzi, datu bakoitza nondik ateratzen den adieraziz. Konpiladoreak ikusten du hiru adarrak independenteak direla eta badaki paraleloan abiarazi ditzakeela *data race* edo *deadlock* bat gertatzeko aukerarik txikiena ere egon gabe.
@@ -111,10 +111,10 @@ Lengoaia funtzional klasikoak (Haskell, OCaml, Erlang, Clojure) zoragarriak dira
 Ridgunek **mundu funtzional puruaren dotorezia guztia ematen dizu, baina Ridgunen Memoria Kudeaketarekin (`RMM`: `RMM1` estatikoa eta `RMM2` esleipen-kontaketa kaskadakoarekin) gehi kuota zehatzeko eskualde lexikoekin (`with region`)**:
 
 ```ridgun
-analizatu_paketea String => Result
-analizatu_paketea gordina =
+analizatu paketea String => Result
+analizatu paketea gordina =
   with region 16_KB do
-    deskodetu_bilbea gordina
+    deskodetu bilbea gordina
 ```
 
 Aldi baterako egitura bakoitza modu deterministan askatzen du konpiladoreak (`RMM1` / `RMM2`) erabiltzeari uzten zaion une berean, eta erasotzaile batek memoria lehertzeko diseinatutako pakete gaizto bat bidaltzen badizu, 16.384. bytea gainditzean eskualdea berehala mozten da, bere arena $O(1)$-ean askatzen du eta `Err OutOfMemory` itzultzen dizu. Prozesua erori gabe, GC geldialdirik gabe eta memoria-ihesik gabe.

@@ -33,7 +33,7 @@ Eta zer gertatzen da egiturak beste egitura batzuen barruan sartzen dituzunean (
    - `xs = [a, b]` $\rightarrow$ `xs` zerrenda `1`-ekin jaiotzen da, eta `a` zein `b`-rako erreferentziak gordetzen dituenez, biak `2`-ra igotzen dira.
    - Aldagai aldakor bat berresleitzen baduzu (`mut x = ...` eta gero `x = berria`), `RMM2`-k lehenengo **`+1`** aplikatzen dio balio berriari zaharrari **`-1`** aplikatu aurretik.
 3. **Funtziotik irtetean, itzultzen EZ diren aldagai lokalek `-1` jasotzen dute**: egitura baten kontagailua `0`-ra iristen bada, bere memoria berehala askatzen da eta **`-1` kaskadan hedatzen dio, banan-banan, bere seme-alaba zuzen bakoitzari**.
-4. **Funtzioak itzulitako balioa iraganean salbuesten da**: aldagai lokaleko bere `-1` jasotzen du baina ez da suntsitzen `return`-a gurutzatzean; horrela, deitu duenak `c = nire_funtzioa ()` egiten duenean, esleipenaren `+1` horrek zehazki `1`-ean uzten du.
+4. **Funtzioak itzulitako balioa iraganean salbuesten da**: aldagai lokaleko bere `-1` jasotzen du baina ez da suntsitzen `return`-a gurutzatzean; horrela, deitu duenak `c = nire funtzioa ()` egiten duenean, esleipenaren `+1` horrek zehazki `1`-ean uzten du.
 
 ```ridgun
 aukeratu Bool [Int] [Int] => [Int]
@@ -41,8 +41,8 @@ aukeratu cond a     b     =
   | cond      = a
   | otherwise = b
 
-adibidea_rmm2 Bool => Int
-adibidea_rmm2 cond =
+adibidea rmm2 Bool => Int
+adibidea rmm2 cond =
   a = [10, 20, 30]           -- M1 (rc = 1)
   b = [40, 50, 60]           -- M2 (rc = 1)
   c = aukeratu cond a b      -- `c`-k +1 jasotzen du; aukeratu ez dena hemen bertan hiltzen da (rc -> 0)
@@ -56,11 +56,11 @@ adibidea_rmm2 cond =
 `RMM1` eta `RMM2`-z gain, kanpoko sare-pakete bat, fitxategi erraldoi bat edo fidagarriak ez diren datu-sorta bat prozesatzen ari zarenean eta **RAM memoriaren sabai zorrotz bat** jarri nahi duzunean, kalkulua **`with region`** bloke batean biltzen duzu:
 
 ```ridgun
-prozesatu_bilbea String => Result
-prozesatu_bilbea gordina =
+prozesatu bilbea String => Result
+prozesatu bilbea gordina =
   with region 64_KB do
-    garbiak = map garbitu_lerroa (banatu_lerroak gordina)
-    zenbatu_baliozkoak garbiak
+    garbiak = map garbitu lerroa (banatu lerroak gordina)
+    zenbatu baliozkoak garbiak
 ```
 
 1. **Hardwarean/runtimean bermatutako kuota**: blokearen barruan `64_KB`-tik (`65.536` byte) gora byte bakar bat ere erreserbatzen saiatzen bada, runtime-ak blokea garbi abortatzen du, aldi baterako arena osoa $O(1)$ denbora konstantean askatzen du eta `Err OutOfMemory` itzultzen du prozesua bota gabe.
@@ -80,8 +80,8 @@ Ridgunen, **`Tensor`**-ak lehen mailako herritar natiboak dira eta haien diments
 
 ```ridgun
 -- (N × K) eta (K × M) sartzen badira, nahitaez (N × M) ateratzen da!
-biderkatu_matrizeak Tensor[N, K] Tensor[K, M] => Tensor[N, M]
-biderkatu_matrizeak a            b            =  a_ik @ b_kj
+biderkatu matrizeak Tensor[N, K] Tensor[K, M] => Tensor[N, M]
+biderkatu matrizeak a            b            =  a_ik @ b_kj
 ```
 
 Erreparatu bi xehetasun ikusgarri hauei:
@@ -92,8 +92,8 @@ Erreparatu bi xehetasun ikusgarri hauei:
 3. **Errendimendu handiko tentsore tipatuak (`Tensor[U64 * N]`) eta *in-place* mutazioa `t_(i, j)`-rekin**:
    Sistema kriptografikoetan, simulazio fisikoetan edo aljebra linealean zeinurik gabeko 64 biteko osokoen bloke jarraitu baten gaineko tentsore lauak deklara ditzakezu (`Tensor[U64 * 4]`, `Tensor[U64 * 8 * 16]`), paraleloan eragin `^`-rekin (blokeko XOR natiboa) eta elementuak $O(1)$ denboran irakurri edo idatzi `t_(i)` edo `t_(i, j)` azpiindize esplizituaren sintaxiarekin:
    ```ridgun
-   sortu_egoera_blokea => Tensor[U64 * 2 * 2]
-   sortu_egoera_blokea =
+   sortu egoera blokea => Tensor[U64 * 2 * 2]
+   sortu egoera blokea =
      mut m = tensor fill [2, 2] (u64 0)
      m_(0, 1) = u64 0x6a09e667f3bcc908
      m
@@ -115,16 +115,16 @@ Eta sistema eragilearekin lan egiteko:
 
 | Primitiba | Sinadura | Zer egiten duen |
 |---|---|---|
-| `cli_args` | `=> [String]` | Komando-lerroko argumentuak (`argv`). |
-| `read_file` / `write_file` | `String => String` / `String String => ()` | Diskoko fitxategien irakurketa eta idazketa osoa. |
-| `read_bytes` / `write_bytes` | `String => [Int]` / `String [Int] => ()` | Bytez byteko (`0..255`) irakurketa eta idazketa bitar zehatza. |
-| `list_dir` / `file_lstat` | `String => [String]` / `String => ...` | Direktorioen zerrendatzea eta POSIX metadatuen ikuskapena (`lstat`). |
-| `sha256_file` / `sha256_str` / `sha256_raw` | `String => String` | SHA-256 hash kriptografiko natiboa (64 karaktereko hamaseitarrean edo 32 byteko laburpen bitar gordinean `sha256 raw` / `sha256 bytes`-ekin). |
-| `sys_exec` / `shell_exec` | `... => Int` | Sistema eragileko prozesuen exekuzioa. |
-| `sys_getcwd` / `sys_chdir` | `=> String` / `String => Int` | Laneko direktorioa kontsultatu edo aldatu. |
-| `sys_getenv` / `sys_setenv` | `String => String` / `String String => Int` | Prozesuaren ingurune-aldagaiak. |
-| `sys_getuid` / `sys_getgid` | `=> Int` | Prozesuaren benetako UID eta GIDa (`doas`, segurtasun-tresnak). |
-| `sys_exit` | `Int => ()` | Prozesua irteera-kodearekin amaitu. |
+| `cli args` | `=> [String]` | Komando-lerroko argumentuak (`argv`). |
+| `read file` / `write file` | `String => String` / `String String => ()` | Diskoko fitxategien irakurketa eta idazketa osoa. |
+| `read bytes` / `write bytes` | `String => [Int]` / `String [Int] => ()` | Bytez byteko (`0..255`) irakurketa eta idazketa bitar zehatza. |
+| `list dir` / `file lstat` | `String => [String]` / `String => ...` | Direktorioen zerrendatzea eta POSIX metadatuen ikuskapena (`lstat`). |
+| `sha256 file` / `sha256 str` / `sha256 raw` | `String => String` | SHA-256 hash kriptografiko natiboa (64 karaktereko hamaseitarrean edo 32 byteko laburpen bitar gordinean `sha256 raw` / `sha256 bytes`-ekin). |
+| `sys exec` / `shell exec` | `... => Int` | Sistema eragileko prozesuen exekuzioa. |
+| `sys getcwd` / `sys chdir` | `=> String` / `String => Int` | Laneko direktorioa kontsultatu edo aldatu. |
+| `sys getenv` / `sys setenv` | `String => String` / `String String => Int` | Prozesuaren ingurune-aldagaiak. |
+| `sys getuid` / `sys getgid` | `=> Int` | Prozesuaren benetako UID eta GIDa (`doas`, segurtasun-tresnak). |
+| `sys exit` | `Int => ()` | Prozesua irteera-kodearekin amaitu. |
 
 ---
 
@@ -150,50 +150,50 @@ Lotu dezagun 01. kapitulutik honaino ikasitako guztia sistemetako benetako progr
 type Metrikak = fitxategia: String, lerroak: Int, byteak: Int
 
 -- 2. Lerro-jauziak (ASCII 10 kodea) TCO isats-errekurtsioarekin zenbatzen ditugu (04. kapitulua)
-fn :: zenbatu_jauziak String Int Int Int => Int
-      zenbatu_jauziak testua pos ama met =
+fn :: zenbatu jauziak String Int Int Int => Int
+      zenbatu jauziak testua pos ama met =
         | pos >= ama                    = met
-        | (str_char_at testua pos) == 10 = zenbatu_jauziak testua (pos + 1) ama (met + 1)
-        | otherwise                     = zenbatu_jauziak testua (pos + 1) ama met
+        | (str char at testua pos) == 10 = zenbatu jauziak testua (pos + 1) ama (met + 1)
+        | otherwise                     = zenbatu jauziak testua (pos + 1) ama met
 
-fn :: lerro_kopurua String => Int
-      lerro_kopurua testua =  zenbatu_jauziak testua 0 (str_len testua) 0
+fn :: lerro kopurua String => Int
+      lerro kopurua testua =  zenbatu jauziak testua 0 (str len testua) 0
 
 -- 3. Fitxategi bat aztertzen dugu eta bere Metrikak egitura itzultzen dugu
-fn :: aztertu_fitxategia String => Metrikak
-      aztertu_fitxategia bidea  =
-        edukia = read_file bidea
-        || lerro_kopurua edukia -> n_lerro
-        || str_len edukia       -> n_byte ||.
+fn :: aztertu fitxategia String => Metrikak
+      aztertu fitxategia bidea  =
+        edukia = read file bidea
+        || lerro kopurua edukia -> n_lerro
+        || str len edukia       -> n_byte ||.
         Metrikak bidea n_lerro n_byte
 
 -- 4. Errenkada bakoitza formateatzen dugu eta guztizkoak `fold` eta `||`-rekin batzen ditugu (07. kapitulua)
-fn :: formateatu_metrika Metrikak => String
-      formateatu_metrika m        =  "{lerroak m}\t{byteak m}\t{fitxategia m}"
+fn :: formateatu metrika Metrikak => String
+      formateatu metrika m        =  "{lerroak m}\t{byteak m}\t{fitxategia m}"
 
-fn :: batu_lerroak Int Metrikak => Int
-      batu_lerroak acc m        =  acc + (lerroak m)
+fn :: batu lerroak Int Metrikak => Int
+      batu lerroak acc m        =  acc + (lerroak m)
 
-fn :: batu_byteak Int Metrikak => Int
-      batu_byteak acc m        =  acc + (byteak m)
+fn :: batu byteak Int Metrikak => Int
+      batu byteak acc m        =  acc + (byteak m)
 
-fn :: sortu_txostena [String] => String
-      sortu_txostena bideak   =
-        metrikak = ||map aztertu_fitxategia bideak
-        || map formateatu_metrika metrikak -> errenkadak
-        || fold batu_lerroak 0 metrikak    -> guztira_l
-        || fold batu_byteak 0 metrikak     -> guztira_b ||.
+fn :: sortu txostena [String] => String
+      sortu txostena bideak   =
+        metrikak = ||map aztertu fitxategia bideak
+        || map formateatu metrika metrikak -> errenkadak
+        || fold batu lerroak 0 metrikak    -> guztira_l
+        || fold batu byteak 0 metrikak     -> guztira_b ||.
         "{errenkadak}\nGuztira: {guztira_l} lerro, {guztira_b} byte"
 
 fn :: main => ()
       main =
-        echo (sortu_txostena ["README.md", "AGENTS.md"])
+        echo (sortu txostena ["README.md", "AGENTS.md"])
 ```
 
 Gelditu segundo batez ~40 kode-lerro horiei begiratzeko:
 - Ez dago `null` bakar bat ere, ez kontrolik gabeko salbuespenik, ez `Mutex`-ik.
-- `zenbatu_jauziak` 0 pila-byteko `loop` natibo batera konpilatzen da TCO automatikoari esker.
-- `||map aztertu_fitxategia bideak` deiak fitxategiak paraleloan prozesatzen ditu zure PUZaren nukleo guztietan, eta `||` blokeak aldi berean kalkulatzen ditu formateatutako errenkadak, lerroen guztizkoa eta byteen guztizkoa.
+- `zenbatu jauziak` 0 pila-byteko `loop` natibo batera konpilatzen da TCO automatikoari esker.
+- `||map aztertu fitxategia bideak` deiak fitxategiak paraleloan prozesatzen ditu zure PUZaren nukleo guztietan, eta `||` blokeak aldi berean kalkulatzen ditu formateatutako errenkadak, lerroen guztizkoa eta byteen guztizkoa.
 - Aldi baterako memoria modu deterministan askatzen da **`RMM1`/`RMM2`** bidez.
 - Eta `ridgunc build rg_wc.rg -o rg-wc` exekutatzen duzunean, `/usr/local/bin`-era kopiatzeko prest dagoen ~350 KB-ko bitar natibo autonomo bat lortzen duzu.
 

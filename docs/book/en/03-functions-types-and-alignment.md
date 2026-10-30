@@ -18,14 +18,14 @@ You can write the header in two ways:
 
 ### Option A: Straight to the point (no prefix)
 ```ridgun
-apply_discount Int   Int     => Int
-apply_discount price percent =  price - (price * percent / 100)
+apply discount Int   Int     => Int
+apply discount price percent =  price - (price * percent / 100)
 ```
 
 ### Option B: With an explicit label (`fn ::`)
 ```ridgun
-fn :: apply_discount Int   Int     => Int
-      apply_discount price percent =  price - (price * percent / 100)
+fn :: apply discount Int   Int     => Int
+      apply discount price percent =  price - (price * percent / 100)
 ```
 
 *"Hey, why do both exist?"*
@@ -42,11 +42,11 @@ Both the compiler and `stable format` understand both styles effortlessly.
 Look at this function that calculates shipping costs based on destination country and whether delivery is express:
 
 ```ridgun
-shipping_cost String Bool  Int    => Int
-shipping_cost "ES"   False _      =  5
-shipping_cost "ES"   True  _      =  12
-shipping_cost _      False weight =  10 + (weight * 2)
-shipping_cost _      True  weight =  25 + (weight * 4)
+shipping cost String Bool  Int    => Int
+shipping cost "ES"   False _      =  5
+shipping cost "ES"   True  _      =  12
+shipping cost _      False weight =  10 + (weight * 2)
+shipping cost _      True  weight =  25 + (weight * 4)
 ```
 
 Try this test: cover the right half of the screen and look only at the three input columns:
@@ -87,14 +87,14 @@ Ridgun's vocabulary is also deliberately minimal and orthogonal:
 In Ridgun, numeric literals directly accept the **`_KB`**, **`_MB`**, and **`_GB`** suffixes, as well as underscores `_` to separate digit groups:
 
 ```ridgun
-buffer_size => Int
-buffer_size =  64_KB      -- The compiler translates this to 65536
+buffer size => Int
+buffer size =  64_KB      -- The compiler translates this to 65536
 
-file_limit => Int
-file_limit =  16_MB       -- The compiler translates this to 16777216
+file limit => Int
+file limit =  16_MB       -- The compiler translates this to 16777216
 
-octet_mask => Int
-octet_mask =  0xFF_00     -- Clean, readable hexadecimal
+octet mask => Int
+octet mask =  0xFF_00     -- Clean, readable hexadecimal
 ```
 
 ---
@@ -107,8 +107,8 @@ In many languages, single quotes and double quotes do the exact same thing (a to
 They interpret escape sequences (`\n`, `\t`, `\"`, `\\`) and **evaluate any variable or expression you place inside curly braces `{...}`**:
 
 ```ridgun
-order_summary String Int Int   => String
-order_summary item   qty price =
+order summary String Int Int   => String
+order summary item   qty price =
   "You ordered {qty}x {item}. Total due: {qty * price} euros."
 ```
 
@@ -118,19 +118,19 @@ order_summary item   qty price =
 Whatever you write inside single quotes comes out **verbatim**, without touching a single backslash `\` or curly brace `{}`. Perfect when generating code in another language, writing shell commands, or working with backslash-heavy paths:
 
 ```ridgun
-sed_command => String
-sed_command =  's/\([0-9]+\)/[\1]/g'
+sed command => String
+sed command =  's/\([0-9]+\)/[\1]/g'
 ```
 
 ### Your String Toolbox (`String`)
 Joining strings is as simple as adding them with `+`: `"Hello, " + name`. And when you need fine-grained surgery on text, these native functions are ready to go without importing a thing:
 
-- `str_len s` $\rightarrow$ length of `s`.
-- `str_char_at s i` $\rightarrow$ numeric code (`Int`) of the character at index `i` (`-1` if out of bounds).
-- `str_slice s start end` $\rightarrow$ slices from `start` up to `end` (excluding `end`).
-- `char_from_code c` $\rightarrow$ converts a numeric code (`Int`, e.g. `10` for `\n` or `34` for `"`) into a 1-character `String`.
-- `str_contains s needle` and `str_starts_with s prefix` $\rightarrow$ return `True` or `False`.
-- `int_to_str n` and `str_to_int s` $\rightarrow$ convert numbers to strings and vice versa (`str_to_int` even understands `"0xFF"`!).
+- `str len s` $\rightarrow$ length of `s`.
+- `str char at s i` $\rightarrow$ numeric code (`Int`) of the character at index `i` (`-1` if out of bounds).
+- `str slice s start end` $\rightarrow$ slices from `start` up to `end` (excluding `end`).
+- `char from code c` $\rightarrow$ converts a numeric code (`Int`, e.g. `10` for `\n` or `34` for `"`) into a 1-character `String`.
+- `str contains s needle` and `str starts with s prefix` $\rightarrow$ return `True` or `False`.
+- `int to str n` and `str to int s` $\rightarrow$ convert numbers to strings and vice versa (`str to int` even understands `"0xFF"`!).
 
 ---
 
@@ -141,8 +141,8 @@ When a function doesn't fit on a single line, add a newline after `=` and indent
 Look at how a block reads step by step:
 
 ```ridgun
-compute_invoice Int  Int     => Int
-compute_invoice base tax_pct =
+compute invoice Int  Int     => Int
+compute invoice base tax_pct =
   taxes = base * tax_pct / 100
   handling_fee = 5
   echo "Breakdown -> Base:" base "Taxes:" taxes
@@ -153,8 +153,8 @@ Four golden rules make blocks in Ridgun clean and uniform:
 1. **Immutable by default without `let` or `const`**: write `taxes = ...` and you have an immutable local constant. If you accidentally try to overwrite `taxes = 99` further down in the same block, the compiler stops you cold.
 2. **Explicit mutable variables with `mut`**: when you genuinely want to update a local accumulator step by step inside a function, declare it with **`mut`** and then reassign it freely with `=`:
    ```ridgun
-   apply_surcharges Int   => Int
-   apply_surcharges price =
+   apply surcharges Int   => Int
+   apply surcharges price =
      mut total = price
      total = total + 10
      total = total * 2
@@ -165,6 +165,6 @@ Four golden rules make blocks in Ridgun clean and uniform:
    - **`(nothing)`**: indented sequential lines (like above).
    - **`|`**: a tree of conditional guards.
    - **`||`**: a parallel computation graph with `->`.
-4. **The last expression is always the return value**: `base + taxes + handling_fee` is what `compute_invoice` returns. No `return` keyword needed.
+4. **The last expression is always the return value**: `base + taxes + handling_fee` is what `compute invoice` returns. No `return` keyword needed.
 
 In **Chapter 04** we will see how to make complex decisions—including multi-level decision trees with `|.`—without ever writing an `if/else` or a `while` loop: welcome to the world of **boolean guards** and **zero-cost tail recursion**.

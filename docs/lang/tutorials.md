@@ -87,12 +87,12 @@ Deconstruct tuples with pattern matching:
 fn :: swap (Int, String) => (String, Int)
 swap (n, s) = (s, n)
 
-fn :: sum_pair (Int, Int) => Int
-sum_pair (a, b) = a + b
+fn :: sum pair (Int, Int) => Int
+sum pair (a, b) = a + b
 
 -- Triple tuples
-fn :: triple_add (Int, Int, Int) => Int
-triple_add (a, b, c) = a + b + c
+fn :: triple add (Int, Int, Int) => Int
+triple add (a, b, c) = a + b + c
 ```
 
 ### Constructor Patterns
@@ -102,15 +102,15 @@ Match on algebraic data type constructors:
 ```ridgun
 type Result = Ok Int | Err String
 
-fn :: unwrap_or_default Result => Int
-unwrap_or_default (Ok n) = n
-unwrap_or_default (Err _) = 0
+fn :: unwrap or default Result => Int
+unwrap or default (Ok n) = n
+unwrap or default (Err _) = 0
 
 type Tree = Leaf Int | Node Tree Tree
 
-fn :: tree_sum Tree => Int
-tree_sum (Leaf n) = n
-tree_sum (Node lhs rhs) = tree_sum lhs + tree_sum rhs
+fn :: tree sum Tree => Int
+tree sum (Leaf n) = n
+tree sum (Node lhs rhs) = tree sum lhs + tree sum rhs
 ```
 
 ### Negative Literals
@@ -254,15 +254,15 @@ fold f acc (x:xs) = fold f (f acc x) xs
 ### Parallel Sum
 
 ```ridgun
-fn :: sum_list [Int] => Int
-sum_list [] = 0
-sum_list [x] = x
-sum_list lst =
+fn :: sum list [Int] => Int
+sum list [] = 0
+sum list [x] = x
+sum list lst =
   let mid = length lst / 2
   let left = take mid lst
   let right = drop mid lst
-  let t1 = spawn "sum_list"
-  let t2 = spawn "sum_list"
+  let t1 = spawn "sum list"
+  let t2 = spawn "sum list"
   join t1 + join t2
 ```
 

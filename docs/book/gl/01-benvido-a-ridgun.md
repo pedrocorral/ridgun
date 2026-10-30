@@ -124,10 +124,10 @@ Hai **oito cousas** que deseñamos e integramos en Ridgun que non vas atopar xun
 Noutras linguaxes funcionais un bloque de variables locais só ordena expresións que logo se avalían nun único fío.
 En Ridgun, **un bloque `||` con frechas `->` é un Grafo Acíclico Dirixido (DAG) de execución paralela** sen sequera precisar escribir palabras chave extra como `where`:
 ```ridgun
-informe_anual Int => Int
-informe_anual id  =  ingresos - gastos
-  || calcular_vendas id -> ingresos
-  || calcular_custos id -> gastos
+informe anual Int => Int
+informe anual id  =  ingresos - gastos
+  || calcular vendas id -> ingresos
+  || calcular custos id -> gastos
 ```
 Ti debuxas as frechas de fluxo (`->`). O compilador analiza quen depende de quen, **verifica estaticamente que non crearas ningún ciclo infinito**, e lanza as ramas independentes en paralelo sen que escribas nin un só `async`, `await`, `Future` nin `Mutex`.
 
@@ -135,9 +135,9 @@ Ti debuxas as frechas de fluxo (`->`). O compilador analiza quen depende de quen
 Noutras linguaxes, programar con actores ou axentes obrígate a crear clases especiais, implementar *traits*, xestionar *locks* ou infectar as túas funcións con `async`.
 En Ridgun, **calquera función pura normal (`fn ::` ou `op ::`) convértese directamente nun axente autónomo —con ou sen estado illado— usando `agent`**:
 ```ridgun
-atender_http (Sesion, String) => (Sesion, String)
+atender http (Sesion, String) => (Sesion, String)
 ...
-servidor = agent atender_http sesion_inicial
+servidor = agent atender http sesion_inicial
 send "GET /perfil" to servidor
 resposta = receive from servidor
 stop servidor
@@ -158,13 +158,13 @@ Ninguén máis trata a sinatura e as ecuacións como unha única matriz visual v
 Na maioría das linguaxes, ou te aguantas con `+`, `-`, `*` ou como moito defines un operador binario críptico como `<|>` que ninguén sabe que significa.
 En Ridgun podes crear **operadores que son frases lexibles con tantos ocos tipados como queiras** (incluíndo palabras contextuais como `type` ou `with`):
 ```ridgun
-op :: Int limitado_entre Int e Int => Int
-      x   limitado_entre min e max =
+op :: Int limitado entre Int e Int => Int
+      x   limitado entre min e max =
         | x < min   = min
         | x > max   = max
         | otherwise = x
 ```
-E logo no teu código escribes `velocidade limitado_entre 0 e 120`. Lese coma galego (ou inglés), pero está 100% tipado e compilado a código nativo.
+E logo no teu código escribes `velocidade limitado entre 0 e 120`. Lese coma galego (ou inglés), pero está 100% tipado e compilado a código nativo.
 
 ### 5. Máscaras visuais sobre secuencias (`s(_ + _)` e `-> (+ _ _ +) ->`)
 Algunha vez tiveches que escribir unha ensalada de índices ou abrir unha tupla con variables mudas só para quedar con dúas posicións concretas?

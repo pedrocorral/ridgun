@@ -18,18 +18,18 @@ Låt oss se dem i aktion.
 I föregående kapitel fick vi redan en förhandstitt. I stället för att ta emot en generisk variabel `x` och öppna fem `if (x == ...)` inuti funktionen lägger du i Ridgun fallen direkt vid funktionens ingång:
 
 ```ridgun
-http_kod Int => String
-http_kod 200 =  "OK: Allt gick som på räls"
-http_kod 301 =  "Permanent flyttad"
-http_kod 404 =  "Hittades inte (har du tittat under soffan?)"
-http_kod 500 =  "Det brinner i servern"
-http_kod n   =  "Okänd kod: {n}"
+http kod Int => String
+http kod 200 =  "OK: Allt gick som på räls"
+http kod 301 =  "Permanent flyttad"
+http kod 404 =  "Hittades inte (har du tittat under soffan?)"
+http kod 500 =  "Det brinner i servern"
+http kod n   =  "Okänd kod: {n}"
 ```
 
 Ridgun provar raderna **uppifrån och ner**:
 - Om `404` kommer in hoppar den direkt till tredje raden.
 - Om `418` kommer in stämmer ingen av de fyra första raderna, så den faller ner till den sista (`n`), som fångar upp vilket heltal som helst och ger det namnet `n` så att du kan skriva ut det.
-- Och om du i det sista fallet inte ens bryr dig om vilket tal det var? Då sätter du ett understreck `_` (*jokertecken*) och glömmer det: `http_kod _ = "Annan kod"`.
+- Och om du i det sista fallet inte ens bryr dig om vilket tal det var? Då sätter du ett understreck `_` (*jokertecken*) och glömmer det: `http kod _ = "Annan kod"`.
 
 ---
 
@@ -65,14 +65,14 @@ I Ridgun, där `|` redan är den heliga symbolen för vakter och algebraiska dat
 - **`and`**: båda sakerna är uppfyllda med kortslutningsutvärdering (`alder >= 18 and har_korkort`).
 - **`or`**: minst en är uppfylld med kortslutningsutvärdering (`dag == "lordag" or dag == "sondag"`).
 - **`xor`**: antingen det ena eller det andra är uppfyllt, men inte båda samtidigt.
-- **`not`**: vänder på det booleska värdet (`not (ar_tom text)`).
+- **`not`**: vänder på det booleska värdet (`not (ar tom text)`).
 - **`<`, `>`, `<=`, `>=`**: jämför både tal (`Int`, `Float`) och **`String`-strängar i lexikografisk UTF-8-ordning** (`"alfa" < "beta"`).
 
 Titta så rent det klassiska problemet med skottår blir:
 
 ```ridgun
-ar_skottar Int => Bool
-ar_skottar a   =
+ar skottar Int => Bool
+ar skottar a   =
   | (a % 400) == 0                  = True
   | (a % 4) == 0 and (a % 100) != 0 = True
   | otherwise                       = False
@@ -99,8 +99,8 @@ biljettpris bas ar_storfamilj =
 Du kan nästla `|` inuti `|` hur många nivåer du vill. Och när ett nästlat `|`-block avslutas men fler grenar på en föräldranivå (eller fler satser i blocket) följer nedanför, sätter du **`|.`** i slutet av dess sista rad (`| otherwise = varde |.`) för att utan minsta tvetydighet markera att underträdet stängs och att du återvänder till föregående nivå:
 
 ```ridgun
-dirigera_anrop Int   Int  Bool     Bool     Int        Int        => Int
-dirigera_anrop metod roll signerad ar_admin storlek_kb begransad =
+dirigera anrop Int   Int  Bool     Bool     Int        Int        => Int
+dirigera anrop metod roll signerad ar_admin storlek_kb begransad =
   | metod == 0 =
     | storlek_kb == 0 = 204
     | otherwise       = 200 |.
@@ -131,8 +131,8 @@ Lägg märke till hur rent det är:
 Precis som du efter `=` i en vanlig funktion kan öppna ett indraget block på flera rader, **kan du efter `=` i vilken vakt som helst (`| villkor =` eller `| otherwise =`) också göra en radbrytning och öppna ett sekventiellt block**:
 
 ```ridgun
-justera_fonster Int Int   => Int
-justera_fonster idx grans =
+justera fonster Int Int   => Int
+justera fonster idx grans =
   | idx >= grans =
       tak = grans - 1
       skalad = tak * 2
@@ -159,26 +159,26 @@ Titta på dessa två funktioner som räknar baklänges från `n` till `0` och su
 
 ```ridgun
 -- Version A: VANLIG rekursion (lämnar kvar väntande arbete till tillbakavägen)
-summera_langsamt Int => Int
-summera_langsamt 0   =  0
-summera_langsamt n   =  n + (summera_langsamt (n - 1))
+summera langsamt Int => Int
+summera langsamt 0   =  0
+summera langsamt n   =  n + (summera langsamt (n - 1))
 
 -- Version B: SVANSREKURSION (håller räkningen uppdaterad i `ackumulerat`)
-summera_snabbt_loop Int Int         => Int
-summera_snabbt_loop 0   ackumulerat =  ackumulerat
-summera_snabbt_loop n   ackumulerat =  summera_snabbt_loop (n - 1) (ackumulerat + n)
+summera snabbt loop Int Int         => Int
+summera snabbt loop 0   ackumulerat =  ackumulerat
+summera snabbt loop n   ackumulerat =  summera snabbt loop (n - 1) (ackumulerat + n)
 ```
 
-- I **Version A** måste funktionen vänta på att `summera_langsamt (n - 1)` blir klar innan den kan beräkna `n + ...`. Det tvingar datorn att spara `n` på stacken i varje steg.
-- I **Version B** är anropet till `summera_snabbt_loop` **det absolut sista som händer på raden**. Inget väntande arbete finns kvar efter det. Du skickar redan med den uppdaterade summan i `ackumulerat + n`.
+- I **Version A** måste funktionen vänta på att `summera langsamt (n - 1)` blir klar innan den kan beräkna `n + ...`. Det tvingar datorn att spara `n` på stacken i varje steg.
+- I **Version B** är anropet till `summera snabbt loop` **det absolut sista som händer på raden**. Inget väntande arbete finns kvar efter det. Du skickar redan med den uppdaterade summan i `ackumulerat + n`.
 
 ### Trolltricket i `ridgunc` (TCO: *Tail-Call Optimization*)
-När `ridgunc` kompilerar `summera_snabbt_loop` ser den att funktionen anropar sig själv i slutet av klausulen och tänker:
+När `ridgunc` kompilerar `summera snabbt loop` ser den att funktionen anropar sig själv i slutet av klausulen och tänker:
 
 > *"Varför skulle jag skapa en ny stackram när den nuvarande inte längre behövs till någonting? Jag skriver över `n` med `n - 1`, skriver över `ackumulerat` med `ackumulerat + n` och hoppar tillbaka till början med en inbyggd `loop { ... continue; }`."*
 
 Resultat:
-1. Du kan anropa `summera_snabbt_loop 100_000_000 0` (hundra miljoner varv) och **det kommer att förbruka exakt 0 extra byte på stacken**.
+1. Du kan anropa `summera snabbt loop 100_000_000 0` (hundra miljoner varv) och **det kommer att förbruka exakt 0 extra byte på stacken**.
 2. Det går lika snabbt som en handskriven `while`-loop i Rust eller C, men utan att du har behövt deklarera en enda muterbar variabel i din Ridgun-kod.
 
 ---
@@ -188,17 +188,17 @@ Resultat:
 Varje gång du i ett annat språk skulle tänka *"jag gör en `while`-loop med ett index `i` och en ackumulator"*, skriver du i Ridgun ett funktionspar som detta (den rena huvudfunktionen och dess svansrekursiva `_loop`-hjälpare):
 
 ```ridgun
-sok_tecken_loop String Int Int  Int  => Int
-sok_tecken_loop text   pos slut sokt =
+sok tecken loop String Int Int  Int  => Int
+sok tecken loop text   pos slut sokt =
   | pos >= slut                    = -1
-  | (str_char_at text pos) == sokt = pos
-  | otherwise                      = sok_tecken_loop text (pos + 1) slut sokt
+  | (str char at text pos) == sokt = pos
+  | otherwise                      = sok tecken loop text (pos + 1) slut sokt
 
-sok_tecken String Int  => Int
-sok_tecken text   sokt =  sok_tecken_loop text 0 (str_len text) sokt
+sok tecken String Int  => Int
+sok tecken text   sokt =  sok tecken loop text 0 (str len text) sokt
 ```
 
-Titta på de tre vakterna i `sok_tecken_loop`:
+Titta på de tre vakterna i `sok tecken loop`:
 1. Har jag nått slutet (`pos >= slut`)? Returnera `-1` (slut på loopen).
 2. Hittade jag tecknet på `pos`? Returnera `pos` (slut på loopen).
 3. Är det inte det här tecknet? Gå vidare till nästa (`pos + 1`) med ett svansanrop (som kompilatorn omvandlar till `continue;`).
