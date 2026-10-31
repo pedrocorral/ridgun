@@ -1,4 +1,4 @@
-# Ridgun (`v0.9.29`)
+# Ridgun
 
 **A tabular, pure-by-default functional & systems programming language built for massive parallelism, native isolated agents, symbolic tensor algebra, and deterministic zero-GC memory management.**
 
@@ -55,6 +55,21 @@ Learn Ridgun from scratch—from your first tabular function to parallel DAGs, t
 ./target/ridgunc build --lib my_lib.rg -o my_lib.rglib
 ./target/ridgunc build --so my_lib.rg -o libmy_lib.so
 ./target/ridgunc build --target arm64-linux my_program.rg -o my_program_arm64
+```
+
+### Release Verification (`minisign`)
+
+Official Ridgun release downloads (`SHA256SUMS`) are signed with `minisign` using the following Ed25519 public key:
+
+```text
+RWQuKPmgklF+8SxAc6VK4RdRg/vw1/jBXvq5E0YcBN5QcFjezotHHWvq
+```
+
+Verify a downloaded release before unpacking:
+
+```bash
+minisign -Vm SHA256SUMS -P RWQuKPmgklF+8SxAc6VK4RdRg/vw1/jBXvq5E0YcBN5QcFjezotHHWvq
+sha256sum -c SHA256SUMS
 ```
 
 ---
