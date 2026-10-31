@@ -590,7 +590,8 @@ fn :: is channel send call String => Bool
 fn :: mark sent expr vars RExpr [String] [String] => [String]
       mark sent expr vars (EVar sent_var) mut_vars moved
         | str in list ("chan:" + sent_var) mut_vars = moved
-        | otherwise = add unique str sent_var moved
+        | str in list sent_var mut_vars = add unique str sent_var moved
+        | otherwise = moved
       mark sent expr vars (ETuple es) mut_vars moved = mark sent expr list vars es mut_vars moved
       mark sent expr vars _ _ moved = moved
 

@@ -5053,11 +5053,11 @@ fn :: build ctor single map [RScopedType] [RScopedType] [String] RStrMap => RStr
         build ctor single map ts all_ts collided_ctors acc1
 
 fn :: add word mod step String String String RStrMap => RStrMap
-      add word mod step w mk "" acc = str map set acc w mk
+      add word mod step w mk "" acc = str map set (str map set acc (mk + "." + w) "1") w mk
       add word mod step _ _ "__builtin__" acc = acc
       add word mod step _ mk prev acc
         | prev == mk = acc
-      add word mod step w _ _ acc = str map set acc w "__multi__"
+      add word mod step w mk _ acc = str map set (str map set acc (mk + "." + w) "1") w "__multi__"
 
 fn :: add word mod one String String RStrMap => RStrMap
       add word mod one "" _ acc = acc
@@ -5305,11 +5305,18 @@ fn :: fn map has vis word part RStrSet String [RModAlias] => Bool
         | (str contains k word) and (str set has vis_set (ident mod prefix k)) and (ident has word part (ident base name k) word) = True
         | otherwise = fn map has vis word part vis_set word rest
 
+fn :: mod list has word part [String] String RStrMap => Bool
+      mod list has word part [] _ _ = False
+      mod list has word part (m:ms) word wm_map
+        | (str map get wm_map (m + "." + word)) != "" = True
+        | otherwise = mod list has word part ms word wm_map
+
 fn :: scope has word part dispatch RModCtx String String [RModAlias] => Bool
       scope has word part dispatch _ _ "" _ = False
       scope has word part dispatch _ _ "__builtin__" _ = True
-      scope has word part dispatch ctx word "__multi__" fn_map =
-        fn map has vis word part (ctx vis set ctx) word fn_map
+      scope has word part dispatch ctx word "__multi__" _ =
+        wm_map = ctx word mod ctx
+        (mod list has word part (ctx own ctx) word wm_map) or (mod list has word part (ctx direct ctx) word wm_map) or (mod list has word part (ctx trans ctx) word wm_map)
       scope has word part dispatch ctx _ wm _ =
         str set has (ctx vis set ctx) wm
 
@@ -5622,8 +5629,8 @@ fn :: is scoped pipe var target String [RStmt] [String] RModCtx => Bool
       is scoped pipe var target v ss locals ctx
         | str in seen list v locals = True
         | (v == "echo") or (is upper ident v) or (str contains v ".") or (is std builtin v) = False
-        | stmt list mentions var ss v = True
-        | otherwise = (lookup scoped fn or field ctx v ctx) == ""
+        | (lookup scoped fn or field ctx v ctx) == "" = True
+        | otherwise = stmt list mentions var ss v
 
 fn :: rewrite stmt list [RStmt] String [String] RModCtx [RModAlias] [RModAlias] [RModAlias] [RModAlias] => [RStmt]
       rewrite stmt list [] _ _ _ _ _ _ _ = []
@@ -6035,10 +6042,8 @@ fn :: is encode pipe var target String [RStmt] [String] RStrSet RStrSet => Bool
         | (v == "echo") or (is upper ident v) or (str contains v ".") or (is compiler builtin ident v) = False
         | str in seen list v locals = True
         | (is subscript ident v) and ((is upper ident v) or (str in seen list (extract fst str (split subscript v)) locals)) = True
-        | stmt list mentions var ss v = True
-        | str set has field_names v = False
-        | str set has fn_names (encode literal underscores v) = False
-        | otherwise = False
+        | (not (str set has field_names v)) and (not (str set has fn_names (encode literal underscores v))) = True
+        | otherwise = stmt list mentions var ss v
 
 fn :: encode expr underscores RExpr [String] RStrSet RStrSet Bool => RExpr
       encode expr underscores (EVar v) locals field_names _ encode_builtins =

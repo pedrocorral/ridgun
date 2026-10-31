@@ -330,10 +330,15 @@ fn :: evaluate case run String CaseHeader (Int, String, Int, Int) => CaseResult
         p3 = check cpu problem cpu_ms wall_ms has_cpu cpu_v p2
         finish case problems rel prop p3
 
+fn :: case timeout seconds CaseHeader => Int
+      case timeout seconds (Header _ _ _ _ _ _ _ _ True ms_v _ _ _ _ _ _) =
+        max int 5 ((ms_v + 999) / 1000)
+      case timeout seconds _ = 30
+
 fn :: run built case String String CaseHeader => CaseResult
       run built case rel work hdr =
         exe = work + "/target/case"
-        evaluate case run rel hdr (run sh capture ("\"" + exe + "\"") work 300)
+        evaluate case run rel hdr (run sh capture ("\"" + exe + "\"") work (case timeout seconds hdr))
 
 fn :: finish case build String String String CaseHeader (Int, String, Int, Int) => CaseResult
       finish case build rel work exe (Header c_desc src has_out out_s has_berr berr_s has_ex ex_v has_ms ms_v has_rss rss_v has_cpu cpu_v libs prop) (b_code, b_out, _, _) =
