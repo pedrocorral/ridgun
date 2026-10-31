@@ -16,9 +16,8 @@ op :: add Int to Int => Int
 -- defined elsewhere by the programmer.
 op :: run Conf and Conf in parallel => Res   Res
       run a and b in parallel       =  res_a res_b
-        where
-          run my own process a      -> res_a
-          run my own process b      -> res_b
+        || run my own process a     -> res_a
+        || run my own process b     -> res_b
 
 -- Non-finished code
 op :: run my own process Conf => Result
@@ -27,8 +26,8 @@ op :: run my own process Conf => Result
 -- Another syntax to run processes in parallel
 op :: another way to run two processes Conf Conf in parallel => Res Res
       another way to run two processes a    b in parallel =
-        | run my own process a
-        | run my own process b
+        || run my own process a
+        || run my own process b
 
 -- Overloading operators
 -- Symbolic operators (+, *, etc.) have highest precedence - math first!
@@ -47,7 +46,7 @@ fn :: fib Int => Int
 
 -- Algebraic Data Types
 -- Product type (record)
-type Conf = host String, port Int
+type Conf = host: String, port: Int
 
 -- Sum type (variants)
 type Result = Ok Int | Err String

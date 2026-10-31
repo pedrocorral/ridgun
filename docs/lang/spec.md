@@ -84,19 +84,21 @@ No loose top-level expressions are allowed. Everything that runs must be called 
 ### CLI Usage
 
 ```
-ridgun [subcommand] <file.rg>
+ridgunc <command> [options] <file.rg>
 ```
 
-If no subcommand is given, `run` is assumed.
-
-| Subcommand | Status | Purpose |
+| Command | Status | Purpose |
 |---|---|---|
-| `run` | ✅ Active | Execute the program (default) |
-| `check` | 🔜 Planned | Type-check without running |
-| `compile` | 🔜 Planned | Emit bytecode `.rgc` file |
-| `fmt` | 🔜 Planned | Format source code |
-| `repl` | 🔜 Planned | Interactive REPL |
-| `test` | 🔜 Planned | Run tests with formatted output |
+| `run <file.rg>` | ✅ Active | Compile and execute a Ridgun source file |
+| `check <file.rg>` | ✅ Active | Type-check and analyze static strategies without running |
+| `compile <file.rg> [-o out.rgc]` | ✅ Active | Emit `.rgc` bytecode artifact |
+| `build <file.rg> [-o binary] [--target arch]` | ✅ Active | Build standalone native ELF64 executable |
+| `build --lib <file.rg> [-o out.rglib]` | ✅ Active | Build reusable Ridgun library (`.rglib` & `.so`) |
+| `build --so <file.rg> [-o out.so]` | ✅ Active | Build native ELF64 shared library (`ET_DYN` `.so`) |
+| `version` / `--version` | ✅ Active | Show compiler version and target architecture |
+| `help` / `--help` | ✅ Active | Show usage information |
+
+Common options include `--strict` / `-S` (enforce strict canonical Ridgun syntax rules) and `--target x86_64-linux` / `arm64-linux`. Project-level workflows (`build`, `test`, `check`, `format`, `deps`, interactive REPL) are provided by `stable`.
 
 ---
 
@@ -566,7 +568,7 @@ type Conf  = host: String, port: Int, tls: Bool
 type Point = x: Real, y: Real
 ```
 
-Fields are accessed by name as functions (`host c`, `port c`), and updated functionally using `with` and colons `:`:
+Fields are accessed by name as functions (`host c`, `port c`), and updated functionally using `with` and `=`:
 
 ```ridgun
 fn :: get host Conf => String
@@ -575,7 +577,7 @@ fn :: get host Conf => String
 -- Functional record update (creates a new Conf with updated fields;
 -- mutates in place via Arc::try_unwrap when the record is uniquely owned):
 fn :: enable tls Conf => Conf
-      enable tls c    =  c with tls: True, port: 443
+      enable tls c    =  c with tls = True, port = 443
 ```
 
 #### Sum Types (variants)
@@ -874,6 +876,23 @@ For streaming data and producer-consumer topologies across green threads, Ridgun
 | `receive from` | `Channel => T` | Receive the next value from a channel |
 | `try receive from` | `Channel => Option` | Non-blocking poll returning `Some v` or `None` |
 
+### Native Agent Model (`agent`, `agent sink`, `agent ::` — `FR-COMP-009`)
+
+Ridgun provides typed actor-style agents (`Agent In Out` and fire-and-forget `SinkAgent In State`) that process messages sequentially in isolated state while running concurrently on background worker threads:
+
+| Construct / Built-in | Signature / Syntax | Purpose |
+|---|---|---|
+| `agent <fn>` | `(In => Out) => Agent In Out` | Spawn a stateless FIFO agent |
+| `agent <fn> <init_state>` | `(S In => S Out) S => Agent In Out` | Spawn a stateful agent whose step returns `(new_state, reply)` |
+| `agent sink <fn> <init_state> [bounded N drop\|block] [drain D]` | `(S In => S) S => SinkAgent In S` | Spawn a fire-and-forget sink agent with no output queue |
+| `agent :: <name> = agent sink ...` | Top-level declaration | Declare a named global sink agent accessible across threads |
+| `send <msg> to <ag>` | `In (Agent In Out) => ()` | Enqueue a message asynchronously |
+| `ask <msg> to <ag>` | `In (Agent In Out) => Out` | Send a message and wait for this caller's reply |
+| `receive from <ag>` | `(Agent In Out) => Out` | Wait for and return the next reply for the calling thread |
+| `try receive from <ag>` | `(Agent In Out) => Option Out` | Non-blocking poll returning `Some v` or `None` |
+| `stop <ag>` / `agent alive <ag>` | `Agent => ()` / `Agent => Bool` | Gracefully stop an agent or check if it is still running |
+| `agent flush <ag>` / `agent state <ag>` / `agent dropped <ag>` | Inspection & testing | Drain pending messages, read current state, or read dropped count |
+
 ---
 
 ## I/O Primitives
@@ -1064,7 +1083,7 @@ Ridgun provides standard sequential collection combinators (`map`, `filter`, `fo
      - `sys write fd Int String => Int` (`fd`, `data` -> bytes written or `-errno`)
      - `sys poll Int Int Int => Int` (`fd`, Ridgun PAL normalized `events` (`1` = `POLLIN`/read, `4` = `POLLOUT`/write), `timeout_ms` -> `> 0` revents when ready, `0` on timeout, `< 0` on `-errno`; uses `sys remaining ms` when `timeout_ms < 0` inside `with timeout`)
      - `sys terminate Int Bool => Int` (`pid`, `force` -> portable graceful/forced process termination) and `sys kill Int Int => Int` (`pid`, normalized signal -> `0` or `-errno`)
-     - `sys call Int Int Int Int Int Int Int => Int` (`nr`, `a1..a6` -> low-level target-OS ABI syscall escape hatch)
+     - `sys call Int Int... => Int` (`nr` plus `0..6` arguments `a1..a6` -> low-level target-OS ABI syscall escape hatch)
      - `sys time ms => Int` and `sys sleep ms Int => ()` (monotonic millisecond clock and sleep)
      - `sys deadline ms => Int` and `sys remaining ms => Int` (active lexical timeout deadline and remaining milliseconds, or `-1` when unbounded)
    - **Layer 2 — Declarative `with timeout <duration> do` Execution Quota**:

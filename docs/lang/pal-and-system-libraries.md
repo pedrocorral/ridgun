@@ -1,6 +1,6 @@
-# Ridgun v0.9.5 — Platform Abstraction Layer (PAL) & System Libraries (`posix.rglib`, `io.rglib`) Specification
+# Ridgun — Platform Abstraction Layer (PAL) & System Libraries (`posix.rglib`, `io.rglib`) Specification
 
-This specification defines the contract between the **Ridgun Compiler (`ridgunc` v0.9.5)** and the **Ridgun System Libraries (`posix.rglib`, `io.rglib`, `unix-tools`)** across all supported and planned OS targets (`Linux`, `MacOS`, `Windows`) and CPU architectures (`X86_64`, `Arm64`).
+This specification defines the contract between the **Ridgun Compiler (`ridgunc`)** and the **Ridgun System Libraries (`posix.rglib`, `io.rglib`, `unix-tools`)** across all supported and planned OS targets (`Linux`, `MacOS`, `Windows`) and CPU architectures (`X86_64`, `Arm64`).
 
 ---
 
@@ -78,7 +78,7 @@ fn :: null device for SysOs   => String
 | `sys kill` | `Int Int => Int` | Sends normalized signal (`0` = existence probe, `2` = `SIGINT`, `9` = `SIGKILL`, `15` = `SIGTERM`) to `pid` (or process group when `pid < 0`). Returns `0` or `-errno`. |
 | `sys pipe` | `=> Int Int` | Creates an OS pipe (`__NR_pipe = 22`) and returns `(read_fd, write_fd)` (or `(-1, -1)` on error). |
 | `sys waitpid` | `Int Int => Int Int` | Waits for child process `pid` with `options` (`0` = blocking, `1` = `WNOHANG`) via `__NR_wait4 = 61` and returns `(ret_pid, exit_status)` decoded via `WIFEXITED`/`WEXITSTATUS` (`0..255`) and `WIFSIGNALED` (`128 + WTERMSIG`). |
-| `sys call` | `Int Int Int Int Int Int Int => Int` | Low-level target-ABI raw syscall (`nr`, `a1..a6`) for OS-specific drivers. Guard with `sys os` / `sys arch` when used. |
+| `sys call` | `Int Int... => Int` | Low-level target-ABI raw syscall (`nr` plus `0..6` arguments `a1..a6`) for OS-specific drivers. Guard with `sys os` / `sys arch` when used. |
 
 ---
 
@@ -107,14 +107,14 @@ fn :: io read poll step Int => IoResult
 fn :: io read after poll Int Int => IoResult
       io read after poll fd  ev
         | ev == 0 =
-          _ = sys close fd
+          sys close fd -> ()
           IoTimeout
         | ev < 0 =
-          _ = sys close fd
+          sys close fd -> ()
           IoError ev
         | otherwise =
           chunk = sys read fd fd 65536
-          _ = sys close fd
+          sys close fd -> ()
           io wrap chunk chunk
 
 fn :: io wrap chunk String => IoResult

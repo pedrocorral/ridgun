@@ -13,7 +13,7 @@ main = echo "Hello, World!"
 
 Run it:
 ```bash
-ridgun run hello.rg main
+ridgunc run hello.rg
 ```
 
 Output:
@@ -53,29 +53,29 @@ length (_:xs) = 1 + length xs
 
 -- Guard clauses
 fn :: abs Int => Int
-abs n
-  | n >= 0 = n
-  | otherwise = -n
+      abs n =
+        | n >= 0    = n
+        | otherwise = 0 - n
 ```
 
 ## Advanced Features
 
 ### Generics
 
-Type variables (lowercase names) enable generic programming:
+Type variables (single uppercase letters `A`..`Z`) enable generic programming:
 
 ```ridgun
--- Type variable 'a can be any type
-fn :: identity a => a
-identity x = x
+-- Type variable A can be any type
+fn :: identity A => A
+      identity x =  x
 
 -- Generic list operations
-fn :: head [a] => a
-head (x:_) = x
+fn :: head [A]    => A
+      head (x:_)  =  x
 
-fn :: null [a] => Bool
-null [] = True
-null (_:_) = False
+fn :: null [A]    => Bool
+      null []     =  True
+      null (_:_)  =  False
 ```
 
 ### Tuple Patterns
@@ -128,56 +128,49 @@ classify n
 
 ## Concurrency
 
-### Basic Concurrency
+### Parallel DAG Blocks (`||`)
 
-Spawn and synchronize parallel computations:
+Evaluate independent branches concurrently and combine their results:
 
 ```ridgun
 fn :: worker Int => Int
-worker n = n * 2
+      worker n   =  n * 2
 
-fn :: main => Int
-main =
-  let t1 = spawn "worker"
-  let t2 = spawn "worker"
-  join t1 + join t2
+fn :: compute both Int Int => Int
+      compute both a   b   =  r1 + r2
+        || worker a        -> r1
+        || worker b        -> r2
 ```
 
-### Message Passing
+### Native Agents (`agent`, `send ... to`, `receive from`, `ask ... to`)
 
-Communicate between threads via mailboxes:
+Communicate with concurrent stateful or stateless agents:
 
 ```ridgun
-fn :: producer Mailbox => ()
-producer mb =
-  send 1 mb
-  send 2 mb
-  send 3 mb
+fn :: counter step Int Int => Int Int
+      counter step st  inc =  (st + inc, st + inc)
 
-fn :: consumer Mailbox => Int
-consumer mb =
-  let x = recv mb
-  let y = recv mb
-  let z = recv mb
-  x + y + z
-
-fn :: main => Int
-main =
-  let mb = new_mailbox
-  let _t1 = spawn "producer"
-  let _t2 = spawn "consumer"
-  join _t2
+fn :: main => ()
+      main =
+        ag = agent counter step 0
+        send 10 to ag
+        send 20 to ag
+        r1 = receive from ag
+        r2 = receive from ag
+        r3 = ask 5 to ag
+        echo (int to str (r1 + r2 + r3))
 ```
 
 ## Type System
 
 ### Built-in Types
 
-- `Int` - Arbitrary precision integers
+- `Int` - 64-bit integers
+- `Real` / `Float` - Floating-point numbers
 - `String` - UTF-8 text
-- `Bool` - True/False values
+- `Bool` - `True` / `False` values
 - `()` - Unit type (no value)
-- `[T]` - List of type T
+- `[T]` - List of type `T`
 - `(T1, T2, ...)` - Tuple types
 
 ### Custom Types
@@ -186,16 +179,16 @@ Define algebraic data types:
 
 ```ridgun
 -- Product type (record)
-type Point = x Int, y Int
+type Point = x: Int, y: Int
 
 -- Sum type (variants)
 type Shape = Circle Int | Rectangle Int Int
 
 -- Recursive types
-type List a = Nil | Cons a (List a)
+type List A = Nil | Cons A (List A)
 
 -- Type parameters
-type Optional a = Some a | None
+type Optional A = Some A | None
 ```
 
 ### Type Inference
@@ -234,36 +227,35 @@ fib n = fib (n - 1) + fib (n - 2)
 
 ```ridgun
 -- Map over a list
-fn :: map f [a] => [b]
-map f [] = []
-map f (x:xs) = f x : map f xs
+fn :: map (A => B) [A]    => [B]
+      map _        []     =  []
+      map f        (x:xs) =  [f x] :: (map f xs)
 
 -- Filter a list
-fn :: filter pred [a] => [a]
-filter pred [] = []
-filter pred (x:xs)
-  | pred x = x : filter pred xs
-  | otherwise = filter pred xs
+fn :: filter (A => Bool) [A]    => [A]
+      filter _           []     =  []
+      filter pred        (x:xs) =
+        | pred x    = [x] :: (filter pred xs)
+        | otherwise = filter pred xs
 
 -- Fold/reduce
-fn :: fold f acc [a] => b
-fold f acc [] = acc
-fold f acc (x:xs) = fold f (f acc x) xs
+fn :: fold (B A => B) B   [A]    => B
+      fold _          acc []     =  acc
+      fold f          acc (x:xs) =  fold f (f acc x) xs
 ```
 
 ### Parallel Sum
 
 ```ridgun
-fn :: sum list [Int] => Int
-sum list [] = 0
-sum list [x] = x
-sum list lst =
-  let mid = length lst / 2
-  let left = take mid lst
-  let right = drop mid lst
-  let t1 = spawn "sum list"
-  let t2 = spawn "sum list"
-  join t1 + join t2
+fn :: sum list [Int]  => Int
+      sum list []     =  0
+      sum list (x:[]) =  x
+      sum list (x:xs) =  x + (sum list xs)
+
+fn :: parallel sum pairs [Int] [Int] => Int
+      parallel sum pairs a     b     =  sa + sb
+        || sum list a                -> sa
+        || sum list b                -> sb
 ```
 
 ## Next Steps
