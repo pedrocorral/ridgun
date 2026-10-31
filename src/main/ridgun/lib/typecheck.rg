@@ -1487,10 +1487,53 @@ fn :: pat count [RPattern] => Int
       pat count []         =  0
       pat count (_:xs)     =  1 + (pat count xs)
 
+fn :: has type bind [RTypeBind] String => Bool
+      has type bind [] _ = False
+      has type bind ((TypeBind k _):rest) target
+        | k == target = True
+        | otherwise = has type bind rest target
+
+fn :: strip unimported pat ctor String => String
+      strip unimported pat ctor s
+        | str starts with s "__unimported__." = str slice s 15 (str len s)
+        | otherwise = s
+
+fn :: is known pat ctor String [RTypeBind] [RTypeBind] => Bool
+      is known pat ctor ":tensor-pat:" _ _ = True
+      is known pat ctor "True" _ _ = True
+      is known pat ctor "False" _ _ = True
+      is known pat ctor c locals fns
+        | (is int type name c) or c == "Real" or c == "Float" or c == "String" or c == "Char" or c == "Bool" = True
+        | str starts with c "__unimported__." = False
+        | otherwise = (has type bind locals c) or (has type bind fns c)
+
+fn :: check pat ctors RPattern String [RTypeBind] [RTypeBind] => [RTypeError]
+      check pat ctors (PatCons h t) fn_name locals fns =
+        (check pat ctors h fn_name locals fns) :: (check pat ctors t fn_name locals fns)
+      check pat ctors (PatTuple ps) fn_name locals fns =
+        check pat list ctors ps fn_name locals fns
+      check pat ctors (PatCtor c args) fn_name locals fns
+        | is known pat ctor c locals fns = check pat list ctors args fn_name locals fns
+        | otherwise =
+          [TypeError fn_name ("unknown constructor '" + (strip unimported pat ctor c) + "' in pattern")] :: (check pat list ctors args fn_name locals fns)
+      check pat ctors _ _ _ _ = []
+
+fn :: check pat list ctors [RPattern] String [RTypeBind] [RTypeBind] => [RTypeError]
+      check pat list ctors [] _ _ _ = []
+      check pat list ctors (p:ps) fn_name locals fns =
+        (check pat ctors p fn_name locals fns) :: (check pat list ctors ps fn_name locals fns)
+
+fn :: check one case after pats [RTypeError] [RPattern] [RGuard] RExpr String [RType] RType [RTypeBind] [RTypeBind] => [RTypeError]
+      check one case after pats (e:es) _ _ _ _ _ _ _ _ = [e] :: es
+      check one case after pats [] pats guards body fn_name param_tys ret_ty locals fns =
+        check case guards or body guards body fn_name ret_ty (bind case patterns pats param_tys (has seq bind pat pats) 0 locals fns) fns
+
 fn :: check one case RFnCase String [RType] RType Int [RTypeBind] [RTypeBind] => [RTypeError]
       check one case (FnCase pats guards body) fn_name param_tys ret_ty case_idx locals fns
         | (pat count pats) != (rtype list len param_tys) and (not (has seq bind pat pats)) = [TypeError fn_name ("case #" + (int to str case_idx) + " has " + (int to str (pat count pats)) + " pattern(s), expected " + (int to str (rtype list len param_tys)))]
-        | otherwise = check case guards or body guards body fn_name ret_ty (bind case patterns pats param_tys (has seq bind pat pats) 0 locals fns) fns
+        | otherwise =
+          pat_errs = check pat list ctors pats fn_name locals fns
+          check one case after pats pat_errs pats guards body fn_name param_tys ret_ty locals fns
 
 fn :: check case guards or body [RGuard] RExpr String RType [RTypeBind] [RTypeBind] => [RTypeError]
       check case guards or body [] body fn_name ret_ty locals fns =

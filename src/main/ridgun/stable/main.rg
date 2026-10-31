@@ -1,6 +1,6 @@
 -- ============================================================
 -- src/main/ridgun/stable/main.rg
--- `stable` v0.9.31 — The Interactive Build Tool for Ridgun (100% Ridgun)
+-- `stable` v0.9.32 — The Interactive Build Tool for Ridgun (100% Ridgun)
 -- Written in Ridgun's natural-language mixfix operator style (`op :: ...`).
 -- Decoupled from `ridgunc` internals per ADR-0001: delegates `check`,
 -- `compile`, `build`, `build lib`, and test/plugin compilation to the
@@ -842,7 +842,16 @@ op :: fetch dependency source String into String => Int
         | (str starts with dep "http://") or (str starts with dep "https://") or (str starts with dep "git@") =
           shell exec ('if [ -d "' + dest + '/.git" ]; then git -C "' + dest + '" pull -q; else git clone -q "' + dep + '" "' + dest + '"; fi')
         | otherwise =
-          shell exec ('rm -rf "' + dest + '" && cp -r "' + dep + '" "' + dest + '"')
+          shell exec ('[ -d "' + dep + '" ] && rm -rf "' + dest + '" && mkdir -p "' + dest + '" && tar -C "' + dep + '" --exclude=".stable" --exclude="target" -cf - . | tar -C "' + dest + '" -xf -')
+
+op :: finish sync single dependency String String String Int => Int
+      finish sync single dependency dep bname dest 0 =
+        shell exec ('if ls "' + dep + '"/target/bundles/*.rglib >/dev/null 2>&1; then for f in "' + dep + '"/target/bundles/*.rglib; do bn=$(basename "$f" .rglib); if [ "$bn" = "' + bname + '" ] || [ ! -d ".stable/deps/$bn" ]; then cp -f "$f" .stable/deps/ 2>/dev/null || true; fi; done; elif ls "' + dep + '"/target/*.rglib >/dev/null 2>&1; then for f in "' + dep + '"/target/*.rglib; do bn=$(basename "$f" .rglib); if [ "$bn" = "' + bname + '" ] || [ ! -d ".stable/deps/$bn" ]; then cp -f "$f" .stable/deps/ 2>/dev/null || true; fi; done; elif ls "' + dest + '"/target/bundles/*.rglib >/dev/null 2>&1; then for f in "' + dest + '"/target/bundles/*.rglib; do bn=$(basename "$f" .rglib); if [ "$bn" = "' + bname + '" ] || [ ! -d ".stable/deps/$bn" ]; then cp -f "$f" .stable/deps/ 2>/dev/null || true; fi; done; elif ls "' + dest + '"/target/*.rglib >/dev/null 2>&1; then for f in "' + dest + '"/target/*.rglib; do bn=$(basename "$f" .rglib); if [ "$bn" = "' + bname + '" ] || [ ! -d ".stable/deps/$bn" ]; then cp -f "$f" .stable/deps/ 2>/dev/null || true; fi; done; elif ls "' + dest + '"/*.rglib >/dev/null 2>&1; then for f in "' + dest + '"/*.rglib; do bn=$(basename "$f" .rglib); if [ "$bn" = "' + bname + '" ] || [ ! -d ".stable/deps/$bn" ]; then cp -f "$f" .stable/deps/ 2>/dev/null || true; fi; done; else for f in "' + dest + '"/src/main/ridgun/lib/*.rg; do [ -f "$f" ] || continue; bn=$(basename "$f" .rg); if [ "$bn" = "' + bname + '" ] || ( [ ! -e "src/main/ridgun/lib/$(basename "$f")" ] && [ ! -d ".stable/deps/$bn" ] ); then cp -f "$f" src/main/ridgun/lib/ 2>/dev/null || true; fi; done; fi')
+        log step "dep" "{dep} -> {dest}"
+        0
+      finish sync single dependency dep _ _ st =
+        log error "Failed to synchronize dependency: {dep}"
+        st
 
 op :: sync single dependency String => Int
       sync single dependency dep    =
@@ -850,25 +859,35 @@ op :: sync single dependency String => Int
         dest = ".stable/deps/" + bname
         shell exec 'mkdir -p .stable/deps src/main/ridgun/lib'
         st = fetch dependency source dep into dest
-        shell exec ('rm -rf "' + dest + '"/.stable/deps 2>/dev/null || true; if ls "' + dest + '"/target/bundles/*.rglib >/dev/null 2>&1; then for f in "' + dest + '"/target/bundles/*.rglib; do bn=$(basename "$f" .rglib); if [ "$bn" = "' + bname + '" ] || ( [ ! -e ".stable/deps/$(basename "$f")" ] && [ ! -d ".stable/deps/$bn" ] ); then cp -f "$f" .stable/deps/ 2>/dev/null || true; fi; done; elif ls "' + dest + '"/target/*.rglib >/dev/null 2>&1; then for f in "' + dest + '"/target/*.rglib; do bn=$(basename "$f" .rglib); if [ "$bn" = "' + bname + '" ] || ( [ ! -e ".stable/deps/$(basename "$f")" ] && [ ! -d ".stable/deps/$bn" ] ); then cp -f "$f" .stable/deps/ 2>/dev/null || true; fi; done; elif ls "' + dest + '"/*.rglib >/dev/null 2>&1; then for f in "' + dest + '"/*.rglib; do bn=$(basename "$f" .rglib); if [ "$bn" = "' + bname + '" ] || ( [ ! -e ".stable/deps/$(basename "$f")" ] && [ ! -d ".stable/deps/$bn" ] ); then cp -f "$f" .stable/deps/ 2>/dev/null || true; fi; done; else for f in "' + dest + '"/src/main/ridgun/lib/*.rg "' + dest + '"/*.rg; do [ -f "$f" ] || continue; bn=$(basename "$f" .rg); if [ "$bn" = "' + bname + '" ] || ( [ ! -e "src/main/ridgun/lib/$(basename "$f")" ] && [ ! -d ".stable/deps/$bn" ] ); then cp -f "$f" src/main/ridgun/lib/ 2>/dev/null || true; fi; done; fi')
-        log step "dep" "{dep} -> {dest}"
-        st
+        finish sync single dependency dep bname dest st
+
+op :: sync dependency rest [String] Int => Int
+      sync dependency rest ds 0  = sync dependency list ds
+      sync dependency rest _  st = st
 
 op :: sync dependency list [String] => Int
       sync dependency list []       =
         log ok "No external dependencies declared in build.rg."
         0
-      sync dependency list (d:ds)   =
+      sync dependency list (d:[])   =
         sync single dependency d
-        sync dependency list ds
+      sync dependency list (d:ds)   =
+        st = sync single dependency d
+        sync dependency rest ds st
+
+op :: finish task deps Int => Int
+      finish task deps 0 =
+        log success "Dependencies synchronized."
+        0
+      finish task deps st =
+        st
 
 op :: run task deps => Int
       run task deps =
         deps = load dependencies from "build.rg"
         log info "Synchronizing dependencies from build.rg into .stable/deps/ ..."
-        sync dependency list deps
-        log success "Dependencies synchronized."
-        0
+        st = sync dependency list deps
+        finish task deps st
 
 op :: format dep items [String] => String
       format dep items []       =  ""
@@ -1180,7 +1199,7 @@ op :: dispatch command StableCommand on StableConfig => Bool StableConfig Int
       dispatch command CmdExit on cfg = (False, cfg, 0)
       dispatch command CmdHelp on cfg = (True, cfg, run task help)
       dispatch command CmdVersion on cfg =
-        echo "stable 0.9.31 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
+        echo "stable 0.9.32 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
         (True, cfg, 0)
       dispatch command CmdInfo on cfg = (True, cfg, run task info on cfg)
       dispatch command CmdReload on _ =
@@ -1262,12 +1281,12 @@ op :: report reload config StableConfig name String => Bool StableConfig Int
 
 op :: start interactive shell for StableConfig => ()
       start interactive shell for (ProjectConfig "" ver main_ep sdir tdir out_dir) =
-        log info "Welcome to stable 0.9.31 (Ridgun Build Tool — 100% Ridgun)"
+        log info "Welcome to stable 0.9.32 (Ridgun Build Tool — 100% Ridgun)"
         log info "No build.rg found in current directory. Run 'init' or 'new <name>' to create a project."
         log info "Commands: 'new', 'init', 'help', 'exit'"
         repl loop for (ProjectConfig "" ver main_ep sdir tdir out_dir)
       start interactive shell for (ProjectConfig name_str ver main_ep sdir tdir out_dir) =
-        log info "Welcome to stable 0.9.31 (Ridgun Build Tool — 100% Ridgun)"
+        log info "Welcome to stable 0.9.32 (Ridgun Build Tool — 100% Ridgun)"
         log info "Loading project definition from build.rg ..."
         log info "Set current project to '{name_str}' v{ver} (main: {main_ep})"
         log info "Commands: 'built' (or 'build'), 'run', 'test', 'check', 'compile', 'clean', 'info', 'exit'"

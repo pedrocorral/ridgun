@@ -536,8 +536,8 @@ fn :: build llvm x8664 executable RNativeProg String     => Int
         ll_path = tmp_base + ".ll"
         bc_path = tmp_base + ".bc"
         obj_path = tmp_base + ".o"
-        rt_path = "/tmp/__rg_llvm_cache_v0_9_31.rt"
-        lds_path = "/tmp/__rg_llvm_cache_v0_9_31.lds"
+        rt_path = "/tmp/__rg_llvm_cache_v0_9_32.rt"
+        lds_path = "/tmp/__rg_llvm_cache_v0_9_32.lds"
         ensure cached rt files rt_path lds_path
         nprog -> emit llvm ir -> write file ll_path _
         cmd = "/usr/bin/opt -O2 \"" + ll_path + "\" -o \"" + bc_path + "\" && /usr/bin/llc -O2 -filetype=obj \"" + bc_path + "\" -o \"" + obj_path + "\" && /usr/bin/ld -n --no-warn-rwx-segments -T \"" + lds_path + "\" -b binary \"" + rt_path + "\" -b elf64-x86-64 \"" + obj_path + "\" -o \"" + output_bin + "\""
@@ -550,8 +550,8 @@ fn :: build llvm x8664 so library RNativeProg String    => Int
         ll_path = tmp_base + ".ll"
         bc_path = tmp_base + ".bc"
         obj_path = tmp_base + ".o"
-        rt_path = "/tmp/__rg_llvm_cache_v0_9_31.rt"
-        lds_path = "/tmp/__rg_llvm_cache_v0_9_31.lds"
+        rt_path = "/tmp/__rg_llvm_cache_v0_9_32.rt"
+        lds_path = "/tmp/__rg_llvm_cache_v0_9_32.lds"
         ensure cached rt files rt_path lds_path
         nprog -> emit llvm ir -> write file ll_path _
         cmd = "/usr/bin/opt -O2 \"" + ll_path + "\" -o \"" + bc_path + "\" && /usr/bin/llc -O2 -relocation-model=pic -filetype=obj \"" + bc_path + "\" -o \"" + obj_path + "\" && /usr/bin/ld -shared -n --no-warn-rwx-segments -T \"" + lds_path + "\" -b binary \"" + rt_path + "\" -b elf64-x86-64 \"" + obj_path + "\" -o \"" + output_so + "\""

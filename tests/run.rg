@@ -443,9 +443,24 @@ fn :: build tc5 result (Int, String, Int, Int) => CaseResult
         ok5 = cs != 0 and (str contains os "syntax error at") and (str contains os "syntax_bad.rg:2:")
         Result "toolchain: a syntax error reports 'syntax error at <file>:<line>:<col>' instead of 'type error in function syntax' (CH-001)" ok5 False ("exit " + (int to str cs) + "; output: " + (trim ws os))
 
-fn :: run toolchain checks String String String => [CaseResult]
-      run toolchain checks ridgunc libs_dir work_root =
+fn :: build tc6 result (Int, String, Int, Int) => CaseResult
+      build tc6 result (c6, o6, _, _) =
+        ok6 = c6 == 0 and (str contains o6 "MATCH_OK") and (str contains o6 "NO_BUILD_RG_OK") and (str contains o6 "FAIL_ON_MISSING_OK")
+        Result "toolchain: stable deps copies a dependency containing the project itself without missing files, excludes root build.rg from lib/ (RG-107), and fails on missing dependency" ok6 False ("exit " + (int to str c6) + "; output: " + (trim ws o6))
+
+fn :: build tc7 result (Int, String, Int, Int) => CaseResult
+      build tc7 result (c7, o7, _, _) =
+        ok7 = c7 == 0 and (str contains o7 "REFRESH_OK")
+        Result "toolchain: stable deps refreshes updated .rglib bundles from a direct path dependency (RG-105)" ok7 False ("exit " + (int to str c7) + "; output: " + (trim ws o7))
+
+fn :: resolve stable path String => String
+      resolve stable path repo =
+        pick non empty (sys getenv "STABLE") (repo + "/bin/stable")
+
+fn :: run toolchain checks String String String String => [CaseResult]
+      run toolchain checks repo ridgunc libs_dir work_root =
         d = work_root + "/toolchain"
+        stable_bin = resolve stable path repo
         shell exec ("rm -rf \"" + d + "\" && mkdir -p \"" + d + "\"") -> ()
         write file (d + "/hello.rg") "fn :: main => ()\n      main =  echo \"hello\"\n"
         r1 = build tc1 result d (run sh capture ("\"" + ridgunc + "\" build --strict hello.rg -o no/such/folder/hello") d 600)
@@ -461,7 +476,11 @@ fn :: run toolchain checks String String String => [CaseResult]
         r4 = build tc4 result (run sh capture ("\"" + ridgunc + "\" build --strict lib_perf.rg -o lib_perf") d 600)
         write file (d + "/syntax_bad.rg") "fn :: broken Int => [Int]\n      broken x = [x, x + 1]]\n"
         r5 = build tc5 result (run sh capture ("\"" + ridgunc + "\" check syntax_bad.rg") d 600)
-        [r1, r2, r3, r4, r5]
+        tc6_sh = "set -e; O=\"" + d + "/outer\"; mkdir -p \"$O/src/main/ridgun/lib\" \"$O/alpha\" \"$O/zeta\" \"$O/inner/src/main/ridgun\"; cd \"$O\"; printf 'fn :: project name => String\\n      project name =  \"outer\"\\nfn :: project kind => String\\n      project kind =  \"lib\"\\nfn :: project version => String\\n      project version =  \"0.1.0\"\\n' > build.rg; printf 'fn :: hello => Int\\n      hello =  1\\n' > src/main/ridgun/lib/outer.rg; touch alpha/a zeta/z README.md; cd inner; printf 'fn :: project name => String\\n      project name =  \"inner\"\\nfn :: project version => String\\n      project version =  \"0.1.0\"\\nfn :: main entry => String\\n      main entry =  \"main.rg\"\\nfn :: dependencies => [String]\\n      dependencies =  [\"'\"$O\"'\"]\\n' > build.rg; printf 'fn :: main => ()\\n      main =  echo 1\\n' > src/main/ridgun/main.rg; \"" + stable_bin + "\" deps >/dev/null; S=$(ls -A \"$O\" | sort | tr '\\n' ' '); C=$(ls -A .stable/deps/outer | sort | tr '\\n' ' '); [ \"$S\" = \"$C\" ] && echo MATCH_OK; [ ! -e src/main/ridgun/lib/build.rg ] && echo NO_BUILD_RG_OK; printf 'fn :: project name => String\\n      project name =  \"bad\"\\nfn :: dependencies => [String]\\n      dependencies =  [\"/nonexistent/rg_dep_xyz\"]\\n' > build.rg; if \"" + stable_bin + "\" deps >/dev/null 2>&1; then exit 1; else echo FAIL_ON_MISSING_OK; fi"
+        r6 = build tc6 result (run sh capture ("bash -c '" + tc6_sh + "'") d 60)
+        tc7_sh = "set -e; B=\"" + d + "/rg105\"; mkdir -p \"$B/dep/src/main/ridgun/lib\" \"$B/dep/target/bundles\" \"$B/app\"; printf 'fn :: project name => String\\n      project name =  \"dep\"\\n' > \"$B/dep/build.rg\"; echo \"version 1\" > \"$B/dep/target/bundles/thing.rglib\"; printf 'fn :: project name => String\\n      project name =  \"app\"\\n\\nfn :: dependencies => [String]\\n      dependencies =  [\"'\"$B/dep\"'\"]\\n' > \"$B/app/build.rg\"; cd \"$B/app\"; \"" + stable_bin + "\" deps >/dev/null; V1=$(cat .stable/deps/thing.rglib); echo \"version 2\" > \"$B/dep/target/bundles/thing.rglib\"; \"" + stable_bin + "\" deps >/dev/null; V2=$(cat .stable/deps/thing.rglib); [ \"$V1\" = \"version 1\" ] && [ \"$V2\" = \"version 2\" ] && echo REFRESH_OK"
+        r7 = build tc7 result (run sh capture ("bash -c '" + tc7_sh + "'") d 60)
+        [r1, r2, r3, r4, r5, r6, r7]
 
 fn :: print case result CaseResult => ()
       print case result (Result name True _ _) =
@@ -524,12 +543,12 @@ fn :: print result list [CaseResult] => ()
         print case result r
         print result list rs
 
-fn :: maybe run toolchain Bool [String] String String String => [CaseResult]
-      maybe run toolchain False [] ridgunc libs_dir work_root =
-        tc = run toolchain checks ridgunc libs_dir work_root
+fn :: maybe run toolchain Bool [String] String String String String => [CaseResult]
+      maybe run toolchain False [] repo ridgunc libs_dir work_root =
+        tc = run toolchain checks repo ridgunc libs_dir work_root
         print result list tc
         tc
-      maybe run toolchain _ _ _ _ _ = []
+      maybe run toolchain _ _ _ _ _ _ = []
 
 fn :: collect failed names [CaseResult] => [String]
       collect failed names [] = []
@@ -599,5 +618,5 @@ fn :: main => ()
         all_cases = discover cases repo work_root
         selected = filter cases by args all_cases filters
         case_rows = run case list selected repo ridgunc libs_dir work_root []
-        tc_rows = maybe run toolchain no_tc filters ridgunc libs_dir work_root
+        tc_rows = maybe run toolchain no_tc filters repo ridgunc libs_dir work_root
         finish test run (case_rows :: tc_rows)
