@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Build the standalone interactive HTML books (docs/book/index.html and es/ca/gl/eu/en/pt/sv editions) from the Markdown chapters.
+# Build the standalone interactive HTML books (docs/book/index.html and es/ca/gl/eu/en/pt/sv/it editions) from the Markdown chapters.
 set -euo pipefail
 
 BOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ALL_LANGS=("es" "ca" "gl" "eu" "en" "pt" "sv")
+ALL_LANGS=("es" "ca" "gl" "eu" "en" "pt" "sv" "it")
 
 make_lang_bar_html() {
   local active_code="$1"
@@ -432,7 +432,7 @@ write_template_prefix() {
   <aside class="sidebar">
     <div class="brand">
       <div class="brand-top">
-        <span class="brand-badge">Ridgun v0.9.30</span>
+        <span class="brand-badge">Ridgun v0.9.32</span>
         <div class="lang-bar">${lang_bar_html}</div>
       </div>
       <h1>${brand_title}</h1>
@@ -846,6 +846,16 @@ build_edition "sv" "$BOOK_DIR/sv" "$BOOK_DIR/sv/index.html" "sv" \
   "☀️ / 🌙 Tema" "Kopiera" "Kopierad!" "&larr; Föregående kapitel" "Nästa kapitel &rarr;" \
   "Resultat för" "Inga träffar hittades för" \
   "^Kapitel[[:space:]]+[0-9]+[[:space:]]*[:—-][[:space:]]*" "false"
+
+build_edition "it" "$BOOK_DIR/it" "$BOOK_DIR/it/index.html" "it" \
+  "Il Libro di Ridgun — Guida Completa al Linguaggio" \
+  "Il Libro di Ridgun" \
+  "Da zero a esperto nella programmazione funzionale tabellare e di sistema" \
+  "Cerca nel libro (es. ||, Tensor, RMM2, TCO...)" \
+  "9 capitoli (00–08) · Italiano" \
+  "☀️ / 🌙 Tema" "Copia" "Copiato!" "&larr; Capitolo precedente" "Capitolo successivo &rarr;" \
+  "Risultati per" "Nessuna corrispondenza trovata per" \
+  "^Capitolo[[:space:]]+[0-9]+[[:space:]]*[:—-][[:space:]]*" "false"
 
 build_edition "root" "$BOOK_DIR/es" "$BOOK_DIR/index.html" "es" \
   "El Libro de Ridgun — Guía Completa del Lenguaje" \
