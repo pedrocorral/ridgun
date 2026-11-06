@@ -14,6 +14,7 @@
 -- @implements FR-COMP-011
 -- @implements FR-COMP-012
 -- @implements FR-COMP-013
+-- @implements FR-COMP-015
 -- @implements FR-VM-001
 -- @implements FR-VM-002
 -- ============================================================
@@ -26,6 +27,8 @@ import elf64
 import x86_64
 import arm64
 import llvm
+import macho64
+import pe64
 
 -- ── Local Variable Table Helpers ────────────────────────────
 
@@ -487,7 +490,6 @@ fn :: is non tuple expr RExpr              => Bool
       is non tuple expr (EStr _)           =  True
       is non tuple expr (EStrInterp _)     =  True
       is non tuple expr (EBool _)          =  True
-      is non tuple expr (EChar _)          =  True
       is non tuple expr (EList _)          =  True
       is non tuple expr (ETensor _)        =  True
       is non tuple expr EUnit              =  True
@@ -3672,37 +3674,71 @@ fn :: emit rglib after check RProgram String String [RTypeError] => Int
         echo (format type errors errs)
         1
 
-fn :: emit elf for target RNativeProg String => [Int]
-      emit elf for target nprog "arm64" = emit arm64 elf nprog
-      emit elf for target nprog "arm64-linux" = emit arm64 elf nprog
-      emit elf for target nprog "aarch64" = emit arm64 elf nprog
-      emit elf for target nprog _ = emit x8664 elf nprog
+fn :: emit elf for target RNativeProg String           => [Int]
+      emit elf for target nprog       "arm64"          =  emit arm64 elf nprog
+      emit elf for target nprog       "arm64-linux"    =  emit arm64 elf nprog
+      emit elf for target nprog       "aarch64"        =  emit arm64 elf nprog
+      emit elf for target nprog       "aarch64-linux"  =  emit arm64 elf nprog
+      emit elf for target nprog       "x86_64-macos"   =  emit x8664 macho64 nprog
+      emit elf for target nprog       "macos-x86_64"   =  emit x8664 macho64 nprog
+      emit elf for target nprog       "macos"          =  emit x8664 macho64 nprog
+      emit elf for target nprog       "darwin"         =  emit x8664 macho64 nprog
+      emit elf for target nprog       "arm64-macos"    =  emit arm64 macho64 nprog
+      emit elf for target nprog       "macos-arm64"    =  emit arm64 macho64 nprog
+      emit elf for target nprog       "aarch64-macos"  =  emit arm64 macho64 nprog
+      emit elf for target nprog       "apple-silicon"  =  emit arm64 macho64 nprog
+      emit elf for target nprog       "x86_64-windows" =  emit x8664 pe64 nprog
+      emit elf for target nprog       "windows-x86_64" =  emit x8664 pe64 nprog
+      emit elf for target nprog       "windows"        =  emit x8664 pe64 nprog
+      emit elf for target nprog       "win64"          =  emit x8664 pe64 nprog
+      emit elf for target nprog       "pe64"           =  emit x8664 pe64 nprog
+      emit elf for target nprog       "arm64-windows"  =  emit arm64 pe64 nprog
+      emit elf for target nprog       "windows-arm64"  =  emit arm64 pe64 nprog
+      emit elf for target nprog       "aarch64-windows" = emit arm64 pe64 nprog
+      emit elf for target nprog       _                =  emit x8664 elf nprog
 
-fn :: emit so elf for target RNativeProg String => [Int]
-      emit so elf for target nprog "arm64" = emit arm64 so elf nprog
-      emit so elf for target nprog "arm64-linux" = emit arm64 so elf nprog
-      emit so elf for target nprog "aarch64" = emit arm64 so elf nprog
-      emit so elf for target nprog _ = emit x8664 so elf nprog
+fn :: emit so elf for target RNativeProg String           => [Int]
+      emit so elf for target nprog       "arm64"          =  emit arm64 so elf nprog
+      emit so elf for target nprog       "arm64-linux"    =  emit arm64 so elf nprog
+      emit so elf for target nprog       "aarch64"        =  emit arm64 so elf nprog
+      emit so elf for target nprog       "aarch64-linux"  =  emit arm64 so elf nprog
+      emit so elf for target nprog       "x86_64-macos"   =  emit x8664 dylib macho64 nprog
+      emit so elf for target nprog       "macos-x86_64"   =  emit x8664 dylib macho64 nprog
+      emit so elf for target nprog       "macos"          =  emit x8664 dylib macho64 nprog
+      emit so elf for target nprog       "darwin"         =  emit x8664 dylib macho64 nprog
+      emit so elf for target nprog       "arm64-macos"    =  emit arm64 dylib macho64 nprog
+      emit so elf for target nprog       "macos-arm64"    =  emit arm64 dylib macho64 nprog
+      emit so elf for target nprog       "aarch64-macos"  =  emit arm64 dylib macho64 nprog
+      emit so elf for target nprog       "apple-silicon"  =  emit arm64 dylib macho64 nprog
+      emit so elf for target nprog       "x86_64-windows" =  emit x8664 dll pe64 nprog
+      emit so elf for target nprog       "windows-x86_64" =  emit x8664 dll pe64 nprog
+      emit so elf for target nprog       "windows"        =  emit x8664 dll pe64 nprog
+      emit so elf for target nprog       "win64"          =  emit x8664 dll pe64 nprog
+      emit so elf for target nprog       "pe64"           =  emit x8664 dll pe64 nprog
+      emit so elf for target nprog       "arm64-windows"  =  emit arm64 dll pe64 nprog
+      emit so elf for target nprog       "windows-arm64"  =  emit arm64 dll pe64 nprog
+      emit so elf for target nprog       "aarch64-windows" = emit arm64 dll pe64 nprog
+      emit so elf for target nprog       _                =  emit x8664 so elf nprog
 
 fn :: build native target for arch RNativeProg String String => Int
-      build native target for arch nprog output_bin "arm64" =
-        nprog -> emit arm64 elf -> write elf64 executable output_bin _
-      build native target for arch nprog output_bin "arm64-linux" =
-        nprog -> emit arm64 elf -> write elf64 executable output_bin _
-      build native target for arch nprog output_bin "aarch64" =
-        nprog -> emit arm64 elf -> write elf64 executable output_bin _
-      build native target for arch nprog output_bin _ =
+      build native target for arch nprog output_bin "x86_64" =
         build llvm x8664 executable nprog output_bin
+      build native target for arch nprog output_bin "x86_64-linux" =
+        build llvm x8664 executable nprog output_bin
+      build native target for arch nprog output_bin "linux" =
+        build llvm x8664 executable nprog output_bin
+      build native target for arch nprog output_bin target_arch =
+        emit elf for target nprog target_arch -> write elf64 executable output_bin _
 
 fn :: build native so for arch RNativeProg String String => Int
-      build native so for arch nprog output_so "arm64" =
-        nprog -> emit arm64 so elf -> write elf64 executable output_so _
-      build native so for arch nprog output_so "arm64-linux" =
-        nprog -> emit arm64 so elf -> write elf64 executable output_so _
-      build native so for arch nprog output_so "aarch64" =
-        nprog -> emit arm64 so elf -> write elf64 executable output_so _
-      build native so for arch nprog output_so _ =
+      build native so for arch nprog output_so "x86_64" =
         build llvm x8664 so library nprog output_so
+      build native so for arch nprog output_so "x86_64-linux" =
+        build llvm x8664 so library nprog output_so
+      build native so for arch nprog output_so "linux" =
+        build llvm x8664 so library nprog output_so
+      build native so for arch nprog output_so target_arch =
+        emit so elf for target nprog target_arch -> write elf64 executable output_so _
 
 fn :: build native target executable String String String => Int
       build native target executable input_path output_bin target_arch =

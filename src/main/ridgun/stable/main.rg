@@ -1,11 +1,12 @@
 -- ============================================================
 -- src/main/ridgun/stable/main.rg
--- `stable` v0.9.32 — The Interactive Build Tool for Ridgun (100% Ridgun)
+-- `stable` v0.9.33 — The Interactive Build Tool for Ridgun (100% Ridgun)
 -- Written in Ridgun's natural-language mixfix operator style (`op :: ...`).
 -- Decoupled from `ridgunc` internals per ADR-0001: delegates `check`,
 -- `compile`, `build`, `build lib`, and test/plugin compilation to the
 -- standalone `ridgunc` CLI binary instead of embedding the compiler.
 -- @implements FR-COMP-006
+-- @implements FR-COMP-015
 -- @implements FR-TOOL-001
 -- @implements FR-TOOL-002
 -- @implements FR-TOOL-003
@@ -253,6 +254,13 @@ op :: invoke ridgunc build String     into String  => Int
         sflag = load strict flag from "build.rg"
         shell exec ('rm -f "' + out_bin + '"')
         shell exec ('"' + rg_bin + '" build ' + sflag + '"' + entry_path + '" -o "' + out_bin + '"') -> verify artifact built at out_bin
+
+op :: invoke ridgunc build target String     into String  for String      => Int
+      invoke ridgunc build target entry_path into out_bin for target_arch =
+        rg_bin = resolve ridgunc binary
+        sflag = load strict flag from "build.rg"
+        shell exec ('rm -f "' + out_bin + '"')
+        shell exec ('"' + rg_bin + '" build --target ' + target_arch + ' ' + sflag + '"' + entry_path + '" -o "' + out_bin + '"') -> verify artifact built at out_bin
 
 op :: invoke ridgunc rglib String     into String    => Int
       invoke ridgunc rglib entry_path into out_rglib =
@@ -540,6 +548,59 @@ op :: build entry list [String] into String version String errors Int => Int
       build entry list entries into out_dir version ver errors err_acc =
         pair entries entries with dir out_dir version ver -> map (build single entry) -> sum ints acc err_acc
 
+op :: target binary ext for String           => String
+      target binary ext for "x86_64-windows" =  ".exe"
+      target binary ext for "windows-x86_64" =  ".exe"
+      target binary ext for "windows"        =  ".exe"
+      target binary ext for "win64"          =  ".exe"
+      target binary ext for "pe64"           =  ".exe"
+      target binary ext for "arm64-windows"  =  ".exe"
+      target binary ext for "windows-arm64"  =  ".exe"
+      target binary ext for "aarch64-windows" = ".exe"
+      target binary ext for _                =  ""
+
+op :: build target from String     into String  for String      version String => Int
+      build target from entry_path into out_bin for target_arch version ver
+        | not (file entry_path exists) =
+          log error "Entry point not found: {entry_path}"
+          1
+        | otherwise =
+          log info "Building native executable '{out_bin}' ({target_arch}) from {entry_path} (v{ver}) ..."
+          st_code = invoke ridgunc build target entry_path into out_bin for target_arch
+          report build of out_bin status st_code
+
+op :: pair entries [String] with dir String target String version String => [(String, String, String, String)]
+      pair entries [] with dir _ target _ version _ = []
+      pair entries (epath:rem_paths) with dir out_dir target target_arch version ver =
+        [(out_dir, target_arch, ver, epath)] :: (pair entries rem_paths with dir out_dir target target_arch version ver)
+
+fn :: build single target entry (String, String, String, String) => Int
+      build single target entry (out_dir, target_arch, ver, epath) =
+        tname = target name from entry epath
+        ext = target binary ext for target_arch
+        out_bin = out_dir + "/" + tname + ext
+        build target from epath into out_bin for target_arch version ver
+
+op :: build entry list [String] into String for String version String errors Int => Int
+      build entry list entries into out_dir for target_arch version ver errors err_acc =
+        pair entries entries with dir out_dir target target_arch version ver -> map (build single target entry) -> sum ints acc err_acc
+
+op :: build discovered entries [String] name String version String entry String into String for String => Int
+      build discovered entries [] name name_str version ver entry main_ep into out_dir for target_arch =
+        ext = target binary ext for target_arch
+        build target from main_ep into (out_dir + "/" + name_str + ext) for target_arch version ver
+      build discovered entries entries name _ version ver entry _ into out_dir for target_arch =
+        build entry list entries into out_dir for target_arch version ver errors 0
+
+op :: build for target list [String] on StableConfig errors Int => Int
+      build for target list [] on _ errors err_acc = err_acc
+      build for target list (t_arch:rem_archs) on (ProjectConfig name_str ver main_ep sdir tdir out_dir) errors err_acc =
+        sub_out = out_dir + "/dist/" + t_arch
+        shell exec ('mkdir -p "' + sub_out + '"')
+        entries = list exec entries in sdir
+        st = build discovered entries entries name name_str version ver entry main_ep into sub_out for t_arch
+        build for target list rem_archs on (ProjectConfig name_str ver main_ep sdir tdir out_dir) errors (err_acc + st)
+
 op :: run task build on StableConfig args [String]       => Int
       run task build on (ProjectConfig "" _ _ _ _ _) args _ =
         no project loaded error
@@ -547,6 +608,24 @@ op :: run task build on StableConfig args [String]       => Int
         run task build lib on cfg args rest
       run task build on cfg          args ("--lib":rest) =
         run task build lib on cfg args rest
+      run task build on cfg          args ("all-targets":_) =
+        build for target list ["x86_64-linux", "arm64-linux", "x86_64-macos", "arm64-macos", "x86_64-windows", "arm64-windows"] on cfg errors 0
+      run task build on (ProjectConfig name_str ver main_ep sdir _ out_dir) args ("--target":target_arch:[]) =
+        shell exec ('mkdir -p "' + out_dir + '"')
+        entries = list exec entries in sdir
+        build discovered entries entries name name_str version ver entry main_ep into out_dir for target_arch
+      run task build on (ProjectConfig _ ver _ sdir _ out_dir) args ("--target":target_arch:tname:_) =
+        shell exec ('mkdir -p "' + out_dir + '"')
+        cand_entry = sdir + "/" + tname + "/main.rg"
+        ext = target binary ext for target_arch
+        out_bin = out_dir + "/" + tname + ext
+        build target from cand_entry into out_bin for target_arch version ver
+      run task build on (ProjectConfig _ ver _ sdir _ out_dir) args (tname:"--target":target_arch:_) =
+        shell exec ('mkdir -p "' + out_dir + '"')
+        cand_entry = sdir + "/" + tname + "/main.rg"
+        ext = target binary ext for target_arch
+        out_bin = out_dir + "/" + tname + ext
+        build target from cand_entry into out_bin for target_arch version ver
       run task build on (ProjectConfig name_str ver main_ep sdir tdir out_dir) args []
         | (load project kind from "build.rg") == "lib" =
           run task build lib on (ProjectConfig name_str ver main_ep sdir tdir out_dir) args []
@@ -1199,7 +1278,7 @@ op :: dispatch command StableCommand on StableConfig => Bool StableConfig Int
       dispatch command CmdExit on cfg = (False, cfg, 0)
       dispatch command CmdHelp on cfg = (True, cfg, run task help)
       dispatch command CmdVersion on cfg =
-        echo "stable 0.9.32 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
+        echo "stable 0.9.33 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
         (True, cfg, 0)
       dispatch command CmdInfo on cfg = (True, cfg, run task info on cfg)
       dispatch command CmdReload on _ =
@@ -1281,12 +1360,12 @@ op :: report reload config StableConfig name String => Bool StableConfig Int
 
 op :: start interactive shell for StableConfig => ()
       start interactive shell for (ProjectConfig "" ver main_ep sdir tdir out_dir) =
-        log info "Welcome to stable 0.9.32 (Ridgun Build Tool — 100% Ridgun)"
+        log info "Welcome to stable 0.9.33 (Ridgun Build Tool — 100% Ridgun)"
         log info "No build.rg found in current directory. Run 'init' or 'new <name>' to create a project."
         log info "Commands: 'new', 'init', 'help', 'exit'"
         repl loop for (ProjectConfig "" ver main_ep sdir tdir out_dir)
       start interactive shell for (ProjectConfig name_str ver main_ep sdir tdir out_dir) =
-        log info "Welcome to stable 0.9.32 (Ridgun Build Tool — 100% Ridgun)"
+        log info "Welcome to stable 0.9.33 (Ridgun Build Tool — 100% Ridgun)"
         log info "Loading project definition from build.rg ..."
         log info "Set current project to '{name_str}' v{ver} (main: {main_ep})"
         log info "Commands: 'built' (or 'build'), 'run', 'test', 'check', 'compile', 'clean', 'info', 'exit'"

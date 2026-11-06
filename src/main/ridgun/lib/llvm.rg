@@ -8,6 +8,7 @@
 -- @implements FR-COMP-010
 -- @implements FR-COMP-011
 -- @implements FR-COMP-013
+-- @implements FR-COMP-015
 -- ============================================================
 
 import elf64
@@ -479,11 +480,22 @@ fn :: emit llvm fn list [RNativeFn] Int [String] => [String]
         fn_ir = emit llvm fn f rodata_len
         emit llvm fn list fs rodata_len ([fn_ir] :: acc)
 
-fn :: llvm target triple String => String
-      llvm target triple "arm64"       =  "aarch64-unknown-linux-gnu"
-      llvm target triple "arm64-linux" =  "aarch64-unknown-linux-gnu"
-      llvm target triple "aarch64"     =  "aarch64-unknown-linux-gnu"
-      llvm target triple _             =  "x86_64-unknown-linux-gnu"
+fn :: llvm target triple String           => String
+      llvm target triple "arm64"          =  "aarch64-unknown-linux-gnu"
+      llvm target triple "arm64-linux"    =  "aarch64-unknown-linux-gnu"
+      llvm target triple "aarch64"        =  "aarch64-unknown-linux-gnu"
+      llvm target triple "aarch64-linux"  =  "aarch64-unknown-linux-gnu"
+      llvm target triple "x86_64-macos"   =  "x86_64-apple-macosx11.0.0"
+      llvm target triple "macos-x86_64"   =  "x86_64-apple-macosx11.0.0"
+      llvm target triple "arm64-macos"    =  "arm64-apple-macosx11.0.0"
+      llvm target triple "macos-arm64"    =  "arm64-apple-macosx11.0.0"
+      llvm target triple "aarch64-macos"  =  "arm64-apple-macosx11.0.0"
+      llvm target triple "x86_64-windows" =  "x86_64-pc-windows-msvc"
+      llvm target triple "windows-x86_64" =  "x86_64-pc-windows-msvc"
+      llvm target triple "win64"          =  "x86_64-pc-windows-msvc"
+      llvm target triple "arm64-windows"  =  "aarch64-pc-windows-msvc"
+      llvm target triple "windows-arm64"  =  "aarch64-pc-windows-msvc"
+      llvm target triple _                =  "x86_64-unknown-linux-gnu"
 
 fn :: emit llvm ir for target RNativeProg String => String
       emit llvm ir for target (NativeProg main_fid spawn_fid call2_fid binop_fid fns rodata_str) target_arch =
@@ -529,30 +541,46 @@ fn :: ensure cached rt files String String => ()
         | (str len (read file lds_path)) > 0 = ()
         | otherwise = write cached rt files rt_path lds_path
 
+fn :: check host llc fd Int => Bool
+      check host llc fd fd
+        | fd >= 0 =
+          sys close fd -> ()
+          True
+        | otherwise = False
+
+fn :: has host llvm toolchain => Bool
+      has host llvm toolchain =  check host llc fd (sys open "/usr/bin/llc" 0 0)
+
 fn :: build llvm x8664 executable RNativeProg String     => Int
-      build llvm x8664 executable nprog       output_bin =
-        pid_s = int to str (sys getpid)
-        tmp_base = "/tmp/__rg_llvm_" + pid_s
-        ll_path = tmp_base + ".ll"
-        bc_path = tmp_base + ".bc"
-        obj_path = tmp_base + ".o"
-        rt_path = "/tmp/__rg_llvm_cache_v0_9_32.rt"
-        lds_path = "/tmp/__rg_llvm_cache_v0_9_32.lds"
-        ensure cached rt files rt_path lds_path
-        nprog -> emit llvm ir -> write file ll_path _
-        cmd = "/usr/bin/opt -O2 \"" + ll_path + "\" -o \"" + bc_path + "\" && /usr/bin/llc -O2 -filetype=obj \"" + bc_path + "\" -o \"" + obj_path + "\" && /usr/bin/ld -n --no-warn-rwx-segments -T \"" + lds_path + "\" -b binary \"" + rt_path + "\" -b elf64-x86-64 \"" + obj_path + "\" -o \"" + output_bin + "\""
-        shell exec cmd -> finish llvm link output_bin tmp_base
+      build llvm x8664 executable nprog       output_bin
+        | not (has host llvm toolchain) =
+          nprog -> emit x8664 elf -> write elf64 executable output_bin _
+        | otherwise =
+          pid_s = int to str (sys getpid)
+          tmp_base = "/tmp/__rg_llvm_" + pid_s
+          ll_path = tmp_base + ".ll"
+          bc_path = tmp_base + ".bc"
+          obj_path = tmp_base + ".o"
+          rt_path = "/tmp/__rg_llvm_cache_v0_9_33.rt"
+          lds_path = "/tmp/__rg_llvm_cache_v0_9_33.lds"
+          ensure cached rt files rt_path lds_path
+          nprog -> emit llvm ir -> write file ll_path _
+          cmd = "/usr/bin/opt -O2 \"" + ll_path + "\" -o \"" + bc_path + "\" && /usr/bin/llc -O2 -filetype=obj \"" + bc_path + "\" -o \"" + obj_path + "\" && /usr/bin/ld -n --no-warn-rwx-segments -T \"" + lds_path + "\" -b binary \"" + rt_path + "\" -b elf64-x86-64 \"" + obj_path + "\" -o \"" + output_bin + "\""
+          shell exec cmd -> finish llvm link output_bin tmp_base
 
 fn :: build llvm x8664 so library RNativeProg String    => Int
-      build llvm x8664 so library nprog       output_so =
-        pid_s = int to str (sys getpid)
-        tmp_base = "/tmp/__rg_llvm_so_" + pid_s
-        ll_path = tmp_base + ".ll"
-        bc_path = tmp_base + ".bc"
-        obj_path = tmp_base + ".o"
-        rt_path = "/tmp/__rg_llvm_cache_v0_9_32.rt"
-        lds_path = "/tmp/__rg_llvm_cache_v0_9_32.lds"
-        ensure cached rt files rt_path lds_path
-        nprog -> emit llvm ir -> write file ll_path _
-        cmd = "/usr/bin/opt -O2 \"" + ll_path + "\" -o \"" + bc_path + "\" && /usr/bin/llc -O2 -relocation-model=pic -filetype=obj \"" + bc_path + "\" -o \"" + obj_path + "\" && /usr/bin/ld -shared -n --no-warn-rwx-segments -T \"" + lds_path + "\" -b binary \"" + rt_path + "\" -b elf64-x86-64 \"" + obj_path + "\" -o \"" + output_so + "\""
-        shell exec cmd -> finish llvm link output_so tmp_base
+      build llvm x8664 so library nprog       output_so
+        | not (has host llvm toolchain) =
+          nprog -> emit x8664 so elf -> write elf64 executable output_so _
+        | otherwise =
+          pid_s = int to str (sys getpid)
+          tmp_base = "/tmp/__rg_llvm_so_" + pid_s
+          ll_path = tmp_base + ".ll"
+          bc_path = tmp_base + ".bc"
+          obj_path = tmp_base + ".o"
+          rt_path = "/tmp/__rg_llvm_cache_v0_9_33.rt"
+          lds_path = "/tmp/__rg_llvm_cache_v0_9_33.lds"
+          ensure cached rt files rt_path lds_path
+          nprog -> emit llvm ir -> write file ll_path _
+          cmd = "/usr/bin/opt -O2 \"" + ll_path + "\" -o \"" + bc_path + "\" && /usr/bin/llc -O2 -relocation-model=pic -filetype=obj \"" + bc_path + "\" -o \"" + obj_path + "\" && /usr/bin/ld -shared -n --no-warn-rwx-segments -T \"" + lds_path + "\" -b binary \"" + rt_path + "\" -b elf64-x86-64 \"" + obj_path + "\" -o \"" + output_so + "\""
+          shell exec cmd -> finish llvm link output_so tmp_base

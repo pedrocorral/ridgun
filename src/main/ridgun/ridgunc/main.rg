@@ -1,11 +1,12 @@
 -- ============================================================
 -- src/main/ridgun/ridgunc/main.rg
--- Self-Hosted Ridgun Compiler CLI Driver (ridgunc v0.9.32)
+-- Self-Hosted Ridgun Compiler CLI Driver (ridgunc v0.9.33)
 -- Shared Library (`src/main/ridgun/lib/`): ast.rg, lexer.rg,
 -- parser.rg, analyzer.rg, typecheck.rg, compiler.rg, vm.rg,
--- elf64.rg, x86_64.rg, arm64.rg, llvm.rg
+-- elf64.rg, x86_64.rg, arm64.rg, llvm.rg, macho64.rg, pe64.rg
 -- @implements FR-COMP-004
 -- @implements FR-COMP-006
+-- @implements FR-COMP-015
 -- ============================================================
 import ast
 import lexer
@@ -118,9 +119,32 @@ fn :: strip rg ext String => String
         | str ends with suffix path ".rg" = str slice path 0 ((str len path) - 3)
         | otherwise = path
 
+fn :: is shared lib suffix String => Bool
+      is shared lib suffix path   =
+        (str ends with suffix path ".so") or (str ends with suffix path ".dylib") or (str ends with suffix path ".dll")
+
+fn :: shared ext for target String           => String
+      shared ext for target "x86_64-macos"   =  ".dylib"
+      shared ext for target "macos-x86_64"   =  ".dylib"
+      shared ext for target "macos"          =  ".dylib"
+      shared ext for target "darwin"         =  ".dylib"
+      shared ext for target "arm64-macos"    =  ".dylib"
+      shared ext for target "macos-arm64"    =  ".dylib"
+      shared ext for target "aarch64-macos"  =  ".dylib"
+      shared ext for target "apple-silicon"  =  ".dylib"
+      shared ext for target "x86_64-windows" =  ".dll"
+      shared ext for target "windows-x86_64" =  ".dll"
+      shared ext for target "windows"        =  ".dll"
+      shared ext for target "win64"          =  ".dll"
+      shared ext for target "pe64"           =  ".dll"
+      shared ext for target "arm64-windows"  =  ".dll"
+      shared ext for target "windows-arm64"  =  ".dll"
+      shared ext for target "aarch64-windows" = ".dll"
+      shared ext for target _                =  ".so"
+
 fn :: run cli build lib Bool String String String => ()
       run cli build lib strict_mode input_path output_out target_arch
-        | str ends with suffix output_out ".so" =
+        | is shared lib suffix output_out =
           verify strict if enabled strict_mode input_path
           build native target so library input_path output_out target_arch -> report so status input_path output_out _
         | str ends with suffix output_out ".rglib" =
@@ -129,7 +153,7 @@ fn :: run cli build lib Bool String String String => ()
         | otherwise =
           verify strict if enabled strict_mode input_path
           rglib_out = output_out + ".rglib"
-          so_out = output_out + ".so"
+          so_out = output_out + (shared ext for target target_arch)
           emit rglib file input_path rglib_out -> report rglib status input_path rglib_out _
           build native target so library input_path so_out target_arch -> report so status input_path so_out _
 
@@ -210,7 +234,7 @@ fn :: run self hosted pipeline demo => ()
 
 fn :: run cli version => ()
       run cli version =
-        echo "ridgunc 0.9.32 (self-hosted Ridgun compiler, x86_64-unknown-linux-gnu)"
+        echo "ridgunc 0.9.33 (self-hosted Ridgun compiler, x86_64-unknown-linux-gnu)"
 
 fn :: run cli help => ()
       run cli help =
@@ -220,9 +244,9 @@ fn :: run cli help => ()
         echo "  run     <file.rg>                              Compile and execute a Ridgun source file"
         echo "  check   <file.rg>                              Typecheck and analyze static strategies"
         echo "  compile <file.rg> [-o out.rgc]                 Emit .rgc bytecode artifact"
-        echo "  build   <file.rg> [-o binary] [--target arch]  Build standalone native ELF64 executable"
-        echo "  build   --lib <file.rg> [-o out.rglib]         Build reusable Ridgun library (.rglib & .so)"
-        echo "  build   --so  <file.rg> [-o out.so]            Build native ELF64 shared library (ET_DYN .so)"
+        echo "  build   <file.rg> [-o binary] [--target arch]  Build standalone native executable (ELF64, Mach-O 64, PE32+)"
+        echo "  build   --lib <file.rg> [-o out.rglib]         Build reusable Ridgun library (.rglib & .so/.dylib/.dll)"
+        echo "  build   --so  <file.rg> [-o out.so]            Build native shared library (.so, .dylib, .dll)"
         echo "  version | -v | --version                       Show compiler version"
         echo "  help    | -h | --help                          Show this help message"
 

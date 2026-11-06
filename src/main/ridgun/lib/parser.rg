@@ -3905,6 +3905,8 @@ fn :: is core compiler mod String      => Bool
       is core compiler mod "x86_64"    =  True
       is core compiler mod "arm64"     =  True
       is core compiler mod "llvm"      =  True
+      is core compiler mod "macho64"   =  True
+      is core compiler mod "pe64"      =  True
       is core compiler mod "formatter" =  True
       is core compiler mod _           =  False
 
@@ -4031,10 +4033,17 @@ fn :: all deps base paths [String] String => [String]
         | otherwise =
           [base + "/" + spec + ".rglib", base + "/" + spec + ".rg"] :: (dep subdir paths base [spec root dir fallback spec] spec) :: (dep subdir paths base (list dir base) spec) :: (all deps base paths bs spec)
 
+fn :: pick parser home dir String => String
+      pick parser home dir ""     =  sys getenv "USERPROFILE"
+      pick parser home dir h      =  h
+
+fn :: resolve parser home dir => String
+      resolve parser home dir =  pick parser home dir (sys getenv "HOME")
+
 fn :: stdlib deps bases String => [String]
       stdlib deps bases pdir =
-        home_dir = sys getenv "HOME"
-        [".stable/deps", pdir + "/.stable/deps", pdir + "/../.stable/deps", pdir + "/../../.stable/deps", pdir + "/../../../.stable/deps", pdir + "/../../../../.stable/deps", home_dir + "/.local/lib/ridgun", home_dir + "/.stable/deps", "/home/boogie/ridgun/ridgun/.stable/deps"]
+        home_dir = resolve parser home dir
+        [".stable/deps", pdir + "/.stable/deps", pdir + "/../.stable/deps", pdir + "/../../.stable/deps", pdir + "/../../../.stable/deps", pdir + "/../../../../.stable/deps", home_dir + "/.omni/lib", home_dir + "/.local/lib/ridgun", home_dir + "/.stable/deps", "/home/boogie/ridgun/ridgun/.stable/deps"]
 
 fn :: resolve rglib bundle raw String String => String
       resolve rglib bundle raw pdir spec
@@ -6332,8 +6341,6 @@ fn :: tok to err str RToken => String
       tok to err str TokRParen = ")"
       tok to err str TokLBracket = "["
       tok to err str TokRBracket = "]"
-      tok to err str TokLBrace = "{"
-      tok to err str TokRBrace = "}"
       tok to err str TokComma = ","
       tok to err str TokEquals = "="
       tok to err str TokPipe = "|"
