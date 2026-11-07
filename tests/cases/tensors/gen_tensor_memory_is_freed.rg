@@ -15,9 +15,10 @@ fn :: churn Int => ()
         g = Tensor[String * 2 * 2]
         g_(1, 1) = "z" + (int to str n)
         l = tensor from list ["x", "y"]
+        a = Tensor[Int * 2 * 3 * 4] with n
         l_(1) = "w"
         back = tensor to list l
-        f = tensor fill (Visit "v" n) 3
+        f = Tensor[Visit * 3] with Visit "v" n
         f_(2) = Visit "w" n
         ()
 

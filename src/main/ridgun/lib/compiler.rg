@@ -1644,7 +1644,7 @@ fn :: prim type tag id String       => Int
       prim type tag id _            =  0
 
 fn :: is gt pseudo name String => Bool
-      is gt pseudo name n =  str in list n ["__rg_gt_is_gen", "__rg_gt_is_list", "__rg_gt_len", "__rg_gt_tlen", "__rg_gt_real_bits", "__rg_gt_numfill1", "__rg_gt_numfill2", "__rg_gt_list_copy", "__rg_gt_list_tensor", "__rg_gt_tensor_ints", "__rg_gt_tensor_reals", ":gt-new:", "tensor_fill", "tensor_from_list", "tensor_to_list"]
+      is gt pseudo name n =  str in list n ["__rg_gt_is_gen", "__rg_gt_is_list", "__rg_gt_len", "__rg_gt_tlen", "__rg_gt_real_bits", "__rg_gt_list_copy", "__rg_gt_list_tensor", "__rg_gt_tensor_ints", "__rg_gt_tensor_reals", ":gt-new:", ":tensor-with:", "tensor_from_list", "tensor_to_list"]
 
 fn :: is tensor helper name String             => Bool
       is tensor helper name ":tensor-zeros:"   =  True
@@ -1680,6 +1680,14 @@ fn :: lower make one dim tensor RNativeEnv RExpr RExpr [String] Int RNativeCode 
       lower make one dim tensor env lenE fillE boundLocals sp st =
         st1 = lower expr list to slots env [fillE, lenE] boundLocals sp 0 st
         nc emit st1 (NCallBuiltin 88 sp 2) (sp + 3)
+
+-- A numeric tensor of any rank from `[value, d1, ..., dn]`, every element
+-- equal to `value` (`NGtConv` mode 4): `Tensor[T * dims] with v`, and zero
+-- tensors with more than two dimensions.
+fn :: lower shape tensor RNativeEnv [RExpr] [String] Int RNativeCode => RNativeCode
+      lower shape tensor env args boundLocals sp st =
+        st1 = lower expr env (EList args) boundLocals sp st
+        nc emit list st1 [NStoreSlot sp, NGtConv sp 4, NStoreSlot (sp + 1), NCmmDropSlot sp, NMoveSlot (sp + 1)] (sp + 2)
 
 fn :: lower make two dim tensor RNativeEnv RExpr RExpr RExpr [String] Int RNativeCode => RNativeCode
       lower make two dim tensor env d1 d2 fillE boundLocals sp st =
@@ -1728,8 +1736,10 @@ fn :: lower tensor helper RNativeEnv String [RExpr] [String] Int RNativeCode => 
         lower expr env inner boundLocals sp st
       lower tensor helper env ":tensor-zeros:" (fillE:d1:[]) boundLocals sp st =
         lower make one dim tensor env d1 fillE boundLocals sp st
-      lower tensor helper env ":tensor-zeros:" (fillE:d1:d2:_) boundLocals sp st =
+      lower tensor helper env ":tensor-zeros:" (fillE:d1:d2:[]) boundLocals sp st =
         lower make two dim tensor env d1 d2 fillE boundLocals sp st
+      lower tensor helper env ":tensor-zeros:" args boundLocals sp st =
+        lower shape tensor env args boundLocals sp st
       lower tensor helper env ":tensor-clone:" (baseE:_) boundLocals sp st =
         lower tensor clone env baseE boundLocals sp st
       lower tensor helper env ":tensor-row-slice:" (baseE:rowE:_) boundLocals sp st =
@@ -2387,12 +2397,10 @@ fn :: lower expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
       lower expr env (ECall "__rg_gt_real_bits" (e:_)) bound_locals sp st =
         st1 = lower expr env e bound_locals sp st
         nc emit st1 NRealFromBits sp
-      lower expr env (ECall "__rg_gt_numfill1" args) bound_locals sp st =  lower tensor helper env ":tensor-zeros:" args bound_locals sp st
-      lower expr env (ECall "__rg_gt_numfill2" args) bound_locals sp st =  lower tensor helper env ":tensor-zeros:" args bound_locals sp st
+      lower expr env (ECall ":char-zero:" []) bound_locals sp st =  lower expr env (ECall "char_from_code" [EInt 0]) bound_locals sp st
+      lower expr env (ECall ":tensor-with:" args) bound_locals sp st =  lower shape tensor env args bound_locals sp st
       lower expr env (ECall ":gt-new:" (d:n:[])) bound_locals sp st =  lower expr env (ECall "__rg_gt_new1" [d, n]) bound_locals sp st
       lower expr env (ECall ":gt-new:" (d:r:c:_)) bound_locals sp st =  lower expr env (ECall "__rg_gt_new2" [d, r, c]) bound_locals sp st
-      lower expr env (ECall "tensor_fill" (v:n:[])) bound_locals sp st =  lower expr env (ECall "__rg_gt_fill1" [v, n]) bound_locals sp st
-      lower expr env (ECall "tensor_fill" (v:r:c:_)) bound_locals sp st =  lower expr env (ECall "__rg_gt_fill2" [v, r, c]) bound_locals sp st
       lower expr env (ECall "tensor_from_list" (x:_)) bound_locals sp st =  lower expr env (ECall "__rg_gt_from_list" [x]) bound_locals sp st
       lower expr env (ECall "tensor_to_list" ((EVar v):_)) bound_locals sp st
         | env is real tensor env v = lower expr env (ECall "__rg_gt_to_list_real" [EVar v]) bound_locals sp st
@@ -4245,14 +4253,14 @@ fn :: lower gen write RNativeEnv Int Int Int Int RNativeCode => RNativeCode
 -- `__rg_gt_is_list`, `__rg_gt_len`, `__rg_gt_tlen`, `__rg_gt_real_bits`,
 -- `__rg_gt_list_copy`, `__rg_gt_list_tensor`, `__rg_gt_tensor_ints`,
 -- `__rg_gt_tensor_reals`
--- and `__rg_gt_numfill*` stubs give the parser their arity; `lower expr`
+-- stubs give the parser their arity; `lower expr`
 -- replaces calls to them with native instructions.
 
 fn :: gt helper src stubs => String
-      gt helper src stubs =  "fn :: __rg_gt_is_gen A => Bool\n      __rg_gt_is_gen v =  False\nfn :: __rg_gt_is_list A => Bool\n      __rg_gt_is_list v =  False\nfn :: __rg_gt_len A => Int\n      __rg_gt_len v =  0\nfn :: __rg_gt_tlen A => Int\n      __rg_gt_tlen v =  0\nfn :: __rg_gt_real_bits A => Real\n      __rg_gt_real_bits v =  0.0\nfn :: __rg_gt_numfill1 A Int => A\n      __rg_gt_numfill1 v n =  v\nfn :: __rg_gt_numfill2 A Int Int => A\n      __rg_gt_numfill2 v r c =  v\nfn :: __rg_gt_list_copy A => A\n      __rg_gt_list_copy v =  v\nfn :: __rg_gt_list_tensor A => T\n      __rg_gt_list_tensor v =  v\nfn :: __rg_gt_tensor_ints T => [Int]\n      __rg_gt_tensor_ints v =  []\nfn :: __rg_gt_tensor_reals T => [Real]\n      __rg_gt_tensor_reals v =  []\n"
+      gt helper src stubs =  "fn :: __rg_gt_is_gen A => Bool\n      __rg_gt_is_gen v =  False\nfn :: __rg_gt_is_list A => Bool\n      __rg_gt_is_list v =  False\nfn :: __rg_gt_len A => Int\n      __rg_gt_len v =  0\nfn :: __rg_gt_tlen A => Int\n      __rg_gt_tlen v =  0\nfn :: __rg_gt_real_bits A => Real\n      __rg_gt_real_bits v =  0.0\nfn :: __rg_gt_list_copy A => A\n      __rg_gt_list_copy v =  v\nfn :: __rg_gt_list_tensor A => T\n      __rg_gt_list_tensor v =  v\nfn :: __rg_gt_tensor_ints T => [Int]\n      __rg_gt_tensor_ints v =  []\nfn :: __rg_gt_tensor_reals T => [Real]\n      __rg_gt_tensor_reals v =  []\n"
 
 fn :: gt helper src alloc => String
-      gt helper src alloc =  "fn :: __rg_gt_build A Int [A] => [A]\n      __rg_gt_build v n acc\n        | n <= 0 = acc\n        | otherwise = __rg_gt_build v (n - 1) (acc :: [v])\nfn :: __rg_gt_new1 A Int => [A]\n      __rg_gt_new1 v n =  __rg_gt_build v n []\nfn :: __rg_gt_rows A Int Int [[A]] => [[A]]\n      __rg_gt_rows v c r acc\n        | r <= 0 = acc\n        | otherwise = __rg_gt_rows v c (r - 1) (acc :: [(__rg_gt_new1 v c)])\nfn :: __rg_gt_new2 A Int Int => [[A]]\n      __rg_gt_new2 v r c =  __rg_gt_rows v c r []\nfn :: __rg_gt_set1 T A Int Int => T\n      __rg_gt_set1 t v i n =  __rg_gt_set1_step t v i n (i >= n)\nfn :: __rg_gt_set1_step T A Int Int Bool => T\n      __rg_gt_set1_step t _ _ _ True =  t\n      __rg_gt_set1_step t v i n False =\n        t_(i) = v\n        __rg_gt_set1 t v (i + 1) n\nfn :: __rg_gt_set2 T A Int Int Int Int => T\n      __rg_gt_set2 t v i j r c\n        | i >= r = t\n        | j >= c = __rg_gt_set2 t v (i + 1) 0 r c\n        | otherwise = __rg_gt_set2_step t v i j r c\nfn :: __rg_gt_set2_step T A Int Int Int Int => T\n      __rg_gt_set2_step t v i j r c =\n        t_(i, j) = v\n        __rg_gt_set2 t v i (j + 1) r c\nfn :: __rg_gt_fill1 A Int => [A]\n      __rg_gt_fill1 v n\n        | __rg_gt_is_gen v = __rg_gt_new1 v n\n        | otherwise = __rg_gt_set1 (__rg_gt_numfill1 0 n) v 0 n\nfn :: __rg_gt_fill2 A Int Int => [[A]]\n      __rg_gt_fill2 v r c\n        | __rg_gt_is_gen v = __rg_gt_new2 v r c\n        | otherwise = __rg_gt_set2 (__rg_gt_numfill2 0 r c) v 0 0 r c\nfn :: __rg_gt_shape [A] Int Int => Int\n      __rg_gt_shape xs k flag\n        | k == 1 = __rg_gt_len xs\n        | (__rg_gt_len xs) == 0 = __rg_gt_shape_pick k 1 0\n        | otherwise = __rg_gt_shape_pick k (__rg_gt_rank_of xs_(0) flag) (__rg_gt_row_len xs_(0))\nfn :: __rg_gt_row_len A => Int\n      __rg_gt_row_len h\n        | __rg_gt_is_list h = __rg_gt_len h\n        | otherwise = 0\nfn :: __rg_gt_rank_of A Int => Int\n      __rg_gt_rank_of h flag\n        | not (__rg_gt_is_list h) = 1\n        | flag == 0 = 2\n        | (__rg_gt_len h) == 0 = 1\n        | otherwise = __rg_gt_rank_inner h_(0)\nfn :: __rg_gt_rank_inner A => Int\n      __rg_gt_rank_inner e\n        | __rg_gt_is_list e = 2\n        | otherwise = 1\nfn :: __rg_gt_shape_pick Int Int Int => Int\n      __rg_gt_shape_pick 0 rank _ =  rank\n      __rg_gt_shape_pick _ 1 _ =  0\n      __rg_gt_shape_pick _ _ rowlen =  rowlen\n"
+      gt helper src alloc =  "fn :: __rg_gt_build A Int [A] => [A]\n      __rg_gt_build v n acc\n        | n <= 0 = acc\n        | otherwise = __rg_gt_build v (n - 1) (acc :: [v])\nfn :: __rg_gt_new1 A Int => [A]\n      __rg_gt_new1 v n =  __rg_gt_build v n []\nfn :: __rg_gt_rows A Int Int [[A]] => [[A]]\n      __rg_gt_rows v c r acc\n        | r <= 0 = acc\n        | otherwise = __rg_gt_rows v c (r - 1) (acc :: [(__rg_gt_new1 v c)])\nfn :: __rg_gt_new2 A Int Int => [[A]]\n      __rg_gt_new2 v r c =  __rg_gt_rows v c r []\nfn :: __rg_gt_shape [A] Int Int => Int\n      __rg_gt_shape xs k flag\n        | k == 1 = __rg_gt_len xs\n        | (__rg_gt_len xs) == 0 = __rg_gt_shape_pick k 1 0\n        | otherwise = __rg_gt_shape_pick k (__rg_gt_rank_of xs_(0) flag) (__rg_gt_row_len xs_(0))\nfn :: __rg_gt_row_len A => Int\n      __rg_gt_row_len h\n        | __rg_gt_is_list h = __rg_gt_len h\n        | otherwise = 0\nfn :: __rg_gt_rank_of A Int => Int\n      __rg_gt_rank_of h flag\n        | not (__rg_gt_is_list h) = 1\n        | flag == 0 = 2\n        | (__rg_gt_len h) == 0 = 1\n        | otherwise = __rg_gt_rank_inner h_(0)\nfn :: __rg_gt_rank_inner A => Int\n      __rg_gt_rank_inner e\n        | __rg_gt_is_list e = 2\n        | otherwise = 1\nfn :: __rg_gt_shape_pick Int Int Int => Int\n      __rg_gt_shape_pick 0 rank _ =  rank\n      __rg_gt_shape_pick _ 1 _ =  0\n      __rg_gt_shape_pick _ _ rowlen =  rowlen\n"
 
 fn :: gt helper src lists => String
       gt helper src lists =  "fn :: __rg_gt_copy [A] => [A]\n      __rg_gt_copy xs =  __rg_gt_list_copy xs\nfn :: __rg_gt_deep_copy [[A]] Int Int [[A]] => [[A]]\n      __rg_gt_deep_copy xs i n acc\n        | i >= n = acc\n        | otherwise = __rg_gt_deep_copy xs (i + 1) n (acc :: [(__rg_gt_copy xs_(i))])\nfn :: __rg_gt_copy_any [A] => [A]\n      __rg_gt_copy_any xs\n        | (__rg_gt_len xs) == 0 = []\n        | otherwise = __rg_gt_copy_first xs xs_(0)\nfn :: __rg_gt_copy_first [A] A => [A]\n      __rg_gt_copy_first xs h\n        | __rg_gt_is_list h = __rg_gt_deep_copy xs 0 (__rg_gt_len xs) []\n        | otherwise = __rg_gt_copy xs\nfn :: __rg_gt_from_list [A] => [A]\n      __rg_gt_from_list xs\n        | (__rg_gt_len xs) == 0 = []\n        | otherwise = __rg_gt_from_first xs xs_(0)\nfn :: __rg_gt_from_first [A] A => [A]\n      __rg_gt_from_first xs h\n        | __rg_gt_is_gen h = __rg_gt_copy xs\n        | otherwise = __rg_gt_list_tensor xs\nfn :: __rg_gt_to_list T => [A]\n      __rg_gt_to_list t\n        | __rg_gt_is_list t = __rg_gt_copy_any t\n        | otherwise = __rg_gt_tensor_ints t\nfn :: __rg_gt_to_list_real T => [Real]\n      __rg_gt_to_list_real t =  __rg_gt_tensor_reals t\n"
@@ -4271,7 +4279,7 @@ fn :: lib with gt helpers [RFnDef] => [RFnDef]
         | otherwise = fns
 
 fn :: gt trigger names => [String]
-      gt trigger names =  [":gt-new:", "tensor_fill", "tensor_from_list", "tensor_to_list"]
+      gt trigger names =  [":gt-new:", "tensor_from_list", "tensor_to_list"]
 
 fn :: fndefs call gt [RFnDef] => Bool
       fndefs call gt [] =  False
@@ -4286,6 +4294,6 @@ fn :: any str in list [String] [String] => Bool
 fn :: add gt refs RFnRefsMap => RFnRefsMap
       add gt refs mp =
         m1 = fn refs map insert mp ":gt-new:" ["__rg_gt_new1", "__rg_gt_new2", "__rg_gt_shape"]
-        m2 = fn refs map insert m1 "tensor_fill" ["__rg_gt_fill1", "__rg_gt_fill2", "__rg_gt_shape"]
+        m2 = m1
         m3 = fn refs map insert m2 "tensor_from_list" ["__rg_gt_from_list", "__rg_gt_shape"]
         fn refs map insert m3 "tensor_to_list" ["__rg_gt_to_list", "__rg_gt_to_list_real"]

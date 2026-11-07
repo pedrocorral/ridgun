@@ -1096,16 +1096,19 @@ fn :: check expr RExpr String [RTypeBind] [RTypeBind] => RType [RTypeError]
       check expr (ECall "__missing_import__" ((EStr mod_name):_)) _ _ _ =
         (TyInt, [TypeError "import" ("unresolved import '" + mod_name + "': module not found in project or .stable/deps")])
       check expr (ECall ":typed-tensor:" ((EStr elem_ty):(ECall ":gt-new:" ((ECall ":gt-no-default:" _):_)):_)) fn_name _ _ =
-        (TyTensor (parse type str elem_ty) [], [TypeError fn_name ("a tensor of " + elem_ty + " has no default element value; give one with 'tensor fill v n' or 'tensor fill v r c'")])
+        (TyTensor (parse type str elem_ty) [], [TypeError fn_name ("a tensor of " + elem_ty + " has no default element value; give one with 'Tensor[" + elem_ty + " * n] with v'")])
+      check expr (ECall ":typed-tensor:" ((EStr elem_ty):(ECall ":tensor-with:" (v:dims)):_)) fn_name locals fns =
+        typed tensor with check elem_ty v (ECall ":tensor-with:" (v:dims)) fn_name locals fns
+      check expr (ECall ":typed-tensor:" ((EStr elem_ty):(ECall ":gt-new:" (v:dims)):_)) fn_name locals fns =
+        typed tensor with check elem_ty v (ECall ":gt-new:" (v:dims)) fn_name locals fns
       check expr (ECall ":typed-tensor:" ((EStr elem_ty):inner:_)) fn_name locals fns =
         typed tensor result elem_ty (check expr inner fn_name locals fns)
       check expr (ECall ":gt-new:" args) fn_name locals fns
         | (tc expr count args) > 3 = (TyTensor (tensor elem any) [], [TypeError fn_name "a tensor of non-numeric elements has one or two dimensions"])
         | otherwise = discard tys return (TyTensor (tensor elem any) []) (check expr list args fn_name locals fns)
-      check expr (ECall "tensor_fill" (v:dims)) fn_name locals fns =
-        v_res = check expr v fn_name locals fns
-        d_res = check expr list dims fn_name locals fns
-        (TyTensor (fst ty v_res) [], (snd errs v_res) :: (snd list errs d_res) :: (tensor fill errs dims (fst list tys d_res) fn_name))
+      check expr (ECall ":char-zero:" []) _ _ _ =  (TyString, [])
+      check expr (ECall ":tensor-with:" args) fn_name locals fns =
+        discard tys return (TyTensor (tensor elem any) []) (check expr list args fn_name locals fns)
       check expr (ECall "tensor_from_list" (xs:[])) fn_name locals fns =
         tensor from list result (check expr xs fn_name locals fns) fn_name
       check expr (ECall "tensor_to_list" (t:[])) fn_name locals fns =
@@ -2159,16 +2162,18 @@ fn :: tensor infos of [RTypeError] [String] => [String]
       tensor infos of ((TypeError ":tensor-elem:" msg):es) acc =  tensor infos of es ([msg] :: acc)
       tensor infos of (_:es) acc =  tensor infos of es acc
 
--- `tensor fill v n` / `tensor fill v r c` (FR-COMP-020 §6).
-fn :: tensor fill errs [RExpr] [RType] String => [RTypeError]
-      tensor fill errs dims tys fn_name
-        | (tc expr count dims) < 1 or (tc expr count dims) > 2 = [TypeError fn_name "tensor fill takes a value and one or two dimensions: 'tensor fill v n' or 'tensor fill v r c'"]
-        | all int types tys = []
-        | otherwise = [TypeError fn_name "tensor fill dimensions must be Int"]
+-- Allocation with a value: `Tensor[T * dims] with v`, or the default value
+-- of `T` (FR-COMP-020 §6).
+fn :: typed tensor with check String RExpr RExpr String [RTypeBind] [RTypeBind] => RType [RTypeError]
+      typed tensor with check elem_ty v inner fn_name locals fns =
+        v_ty = fst ty (check expr v fn_name locals fns)
+        typed tensor result elem_ty (tensor with value errs elem_ty v_ty fn_name (check expr inner fn_name locals fns))
 
-fn :: all int types [RType] => Bool
-      all int types [] =  True
-      all int types (t:ts) =  (types compatible t TyInt) and (all int types ts)
+-- `Tensor[T * dims] with v`: `v` must have the element type `T`.
+fn :: tensor with value errs String RType String (RType, [RTypeError]) => RType [RTypeError]
+      tensor with value errs elem_ty v_ty fn_name (t, errs)
+        | types compatible (parse type str elem_ty) v_ty = (t, errs)
+        | otherwise = (t, errs :: [TypeError fn_name ("cannot fill a tensor of " + elem_ty + " with " + (rtype to str v_ty))])
 
 fn :: tensor from list result (RType, [RTypeError]) String => RType [RTypeError]
       tensor from list result ((TyList (TyVar "_empty")), errs) _ =  (TyTensor (tensor elem any) [], errs)

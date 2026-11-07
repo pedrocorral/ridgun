@@ -44,6 +44,29 @@ fn :: x86 lea slot rdx Int  => [Int]
 fn :: x86 call rel Int          Int        => [Int]
       x86 call rel target_vaddr next_vaddr =  [232] :: (i32 le (target_vaddr - next_vaddr))
 
+-- `NIndex b i -n`: the base in slot b is borrowed (as in LLVM's
+-- `@__rg_tensor_index_1d`). The runtime index call consumes its base slot,
+-- so clone the base into a 16-byte stack area and index that:
+-- clone (13 bytes), `sub rsp, 16` / `mov [rsp], rax` / `mov rdi, rsp` (11),
+-- index slots now at +16 (23), `add rsp, 16` (4). No frame slot is used.
+fn :: x86 borrowed index Int Int Int Int => [Int]
+      x86 borrowed index base_slot idx_start n cur_vaddr =
+        (x86 mov slot rdi base_slot) :: (x86 call rt 5 (cur_vaddr + 13)) :: [72, 131, 236, 16, 72, 137, 4, 36, 72, 137, 231] :: (x86 lea slot rsi (idx_start + 2)) :: (x86 mov imm64 rdx n) :: (x86 call rt 38 (cur_vaddr + 47)) :: [72, 131, 196, 16]
+
+-- `NCallBuiltin 88` (numeric tensor of one or two dimensions, slots
+-- [fill, d0, d1]): the runtime builtin dispatcher has no tensor fill, so
+-- run the `NGtConv` mode 4 routine with r12 = the slots and r13 = count.
+fn :: x86 tensor fill slots Int Int => [Int]
+      x86 tensor fill slots start_slot count =
+        (x86 lea slot rdi start_slot) :: (x86 mov imm64 rsi count) :: [83, 65, 84, 65, 85, 65, 86, 65, 87, 72, 131, 236, 48, 73, 137, 252, 73, 137, 245] :: x86 shape fill body
+
+-- Before the runtime index set (rt 39), which stores an `Int`: a `Real`
+-- in rax (header 0) becomes the `Int` with the same 64 bits, and the `Real`
+-- is dropped. Other values pass. 115 bytes; source `realbits.s` in
+-- docs/etc/gentensor.md.
+fn :: x86 real to int bits => [Int]
+      x86 real to int bits =  [72, 133, 192, 116, 110, 168, 7, 117, 106, 72, 131, 56, 0, 117, 100, 83, 65, 84, 72, 131, 236, 40, 72, 137, 195, 76, 139, 96, 8, 72, 137, 223, 72, 184, 48, 16, 64, 0, 0, 0, 0, 0, 255, 208, 75, 141, 4, 36, 72, 137, 193, 72, 209, 249, 76, 57, 225, 117, 6, 72, 131, 200, 1, 235, 43, 72, 184, 0, 0, 0, 0, 0, 0, 0, 128, 72, 137, 4, 36, 76, 137, 100, 36, 8, 72, 199, 68, 36, 16, 0, 0, 0, 0, 72, 137, 231, 72, 184, 183, 60, 64, 0, 0, 0, 0, 0, 255, 208, 72, 131, 196, 40, 65, 92, 91]
+
 fn :: x86 call rt Int   Int        => [Int]
       x86 call rt rt_id next_vaddr =  x86 call rel (4198400 + (rt_id * 8)) next_vaddr
 
@@ -105,8 +128,10 @@ fn :: x8664 instr size RNativeInstr       => Int
       x8664 instr size (NMakeAdt _ _ _ _) =  43
       x8664 instr size (NEcho _ _)        =  23
       x8664 instr size (NStrInterp _ _)   =  23
+      x8664 instr size (NIndex _ _ -1)    =  51
+      x8664 instr size (NIndex _ _ -2)    =  51
       x8664 instr size (NIndex _ _ _)     =  31
-      x8664 instr size (NIndexSet _ _ _)  =  34
+      x8664 instr size (NIndexSet _ _ _)  =  149
       x8664 instr size (NSeqSelect _ _)   =  28
       x8664 instr size (NEinsum _ _ _ _)  =  43
       x8664 instr size (NHadamard _ _ _ _) = 46
@@ -114,6 +139,7 @@ fn :: x8664 instr size RNativeInstr       => Int
       x8664 instr size (NExitRegion _)    =  18
       x8664 instr size (NCallFn _ _ _)    =  13
       x8664 instr size (NCallBuiltin 36 _ _) = 101
+      x8664 instr size (NCallBuiltin 88 _ _) = 303
       x8664 instr size (NCallBuiltin 86 _ _) = 63
       x8664 instr size (NCallBuiltin 87 _ _) = 113
       x8664 instr size (NCallBuiltin _ _ _) = 33
@@ -264,10 +290,14 @@ fn :: x8664 encode instr RNativeInstr Int Int Int Int [RLabelEntry] [RLabelEntry
         (x86 lea slot rdi start_slot) :: (x86 mov imm64 rsi count) :: (x86 call rt 36 (cur_vaddr + 23))
       x8664 encode instr (NStrInterp start_slot count) cur_vaddr _ _ _ _ _ =
         (x86 lea slot rdi start_slot) :: (x86 mov imm64 rsi count) :: (x86 call rt 18 (cur_vaddr + 23))
+      x8664 encode instr (NIndex base_slot idx_start -1) cur_vaddr _ _ _ _ _ =
+        x86 borrowed index base_slot idx_start 1 cur_vaddr
+      x8664 encode instr (NIndex base_slot idx_start -2) cur_vaddr _ _ _ _ _ =
+        x86 borrowed index base_slot idx_start 2 cur_vaddr
       x8664 encode instr (NIndex base_slot idx_start count) cur_vaddr _ _ _ _ _ =
         (x86 lea slot rdi base_slot) :: (x86 lea slot rsi idx_start) :: (x86 mov imm64 rdx count) :: (x86 call rt 38 (cur_vaddr + 31))
       x8664 encode instr (NIndexSet base_slot idx_start count) cur_vaddr _ _ _ _ _ =
-        (x86 lea slot rdi base_slot) :: (x86 lea slot rsi idx_start) :: (x86 mov imm64 rdx count) :: [72, 137, 193] :: (x86 call rt 39 (cur_vaddr + 34))
+        x86 real to int bits :: (x86 lea slot rdi base_slot) :: (x86 lea slot rsi idx_start) :: (x86 mov imm64 rdx count) :: [72, 137, 193] :: (x86 call rt 39 (cur_vaddr + 149))
       x8664 encode instr (NSeqSelect mask_off mask_len) cur_vaddr _ _ rodata_vaddr _ _ =
         [72, 137, 199] :: (x86 mov imm64 rsi (rodata_vaddr + mask_off)) :: (x86 mov imm64 rdx mask_len) :: (x86 call rt 40 (cur_vaddr + 28))
       x8664 encode instr (NEinsum start_slot count spec_off spec_len) cur_vaddr _ _ rodata_vaddr _ _ =
@@ -283,6 +313,8 @@ fn :: x8664 encode instr RNativeInstr Int Int Int Int [RLabelEntry] [RLabelEntry
         (x86 lea slot rdi start_slot) :: (x86 call rel target_fn (cur_vaddr + 13))
       x8664 encode instr (NCallBuiltin 36 start_slot count) cur_vaddr _ _ _ _ _ =
         (x86 mov imm64 rdi 21) :: (x86 lea slot rsi start_slot) :: (x86 mov imm64 rdx count) :: (x86 call rt 55 (cur_vaddr + 33)) :: [76, 139, 64, 8, 73, 139, 112, 8, 73, 199, 64, 16, 32, 0, 0, 0, 49, 201, 15, 182, 20, 78, 131, 234, 48, 131, 250, 10, 114, 3, 131, 234, 39, 193, 226, 4, 15, 182, 124, 78, 1, 131, 239, 48, 131, 255, 10, 114, 3, 131, 239, 39, 9, 250, 136, 20, 14, 255, 193, 131, 249, 32, 114, 210, 198, 70, 32, 0]
+      x8664 encode instr (NCallBuiltin 88 start_slot count) _ _ _ _ _ _ =
+        x86 tensor fill slots start_slot count
       x8664 encode instr (NCallBuiltin 86 _ _) cur_vaddr _ _ _ _ _ =
         [72, 131, 236, 16, 72, 199, 4, 36, 255, 255, 255, 255, 72, 137, 231, 106, 22, 88, 15, 5, 72, 99, 12, 36, 72, 99, 84, 36, 4, 72, 141, 76, 9, 1, 72, 141, 84, 18, 1, 72, 137, 12, 36, 72, 137, 84, 36, 8, 72, 137, 231, 106, 2, 94] :: (x86 call rt 16 (cur_vaddr + 59)) :: [72, 131, 196, 16]
       x8664 encode instr (NCallBuiltin 87 start_slot _) cur_vaddr _ _ _ _ _ =
@@ -908,19 +940,28 @@ fn :: emit x8664 so elf RNativeProg => [Int]
 -- `NGtConv slot mode` takes the value in `slot` and leaves the result in
 -- rax. Modes: 0 copies a list, 1 makes a one-dimensional numeric tensor
 -- from a list, 2 and 3 make a list of Ints or Reals from the data of a
--- numeric tensor. The code saves rbx and r12-r15, keeps rsp 16-byte
--- aligned and calls the runtime (alloc_buf 4205566, box_rc_vec 4208821,
--- box_rval 4209847, rt 5 clone_slot, rt 15 make_list) through rax.
+-- numeric tensor, 4 makes a numeric tensor of any rank from a list
+-- [value, d1, ..., dn] with every element equal to value. The code saves
+-- rbx and r12-r15 and moves rsp by 72 or 88 bytes (both 8 mod 16, so every
+-- mode calls the runtime with the same stack alignment). It calls the
+-- runtime through rax: alloc_buf 4205566, box_rc_vec 4208821, box_rval
+-- 4209847, rt 5 clone_slot, rt 15 make_list.
 -- Assembly source and how to rebuild the bytes: docs/etc/gentensor.md.
 
 fn :: x86 gt conv size Int => Int
       x86 gt conv size 0 =  195
       x86 gt conv size 1 =  242
       x86 gt conv size 2 =  253
-      x86 gt conv size _ =  223
+      x86 gt conv size 3 =  223
+      x86 gt conv size _ =  291
 
 fn :: x86 gt conv bytes Int => [Int]
       x86 gt conv bytes 0 =  [83, 65, 84, 65, 85, 65, 86, 65, 87, 72, 131, 236, 32, 69, 49, 237, 72, 133, 255, 116, 18, 64, 246, 199, 7, 117, 12, 72, 139, 71, 8, 76, 139, 96, 8, 76, 139, 104, 16, 77, 133, 237, 117, 19, 72, 137, 231, 49, 246, 72, 184, 120, 16, 64, 0, 0, 0, 0, 0, 255, 208, 235, 119, 74, 141, 60, 237, 0, 0, 0, 0, 72, 184, 254, 43, 64, 0, 0, 0, 0, 0, 255, 208, 73, 137, 198, 49, 219, 73, 139, 60, 220, 72, 184, 40, 16, 64, 0, 0, 0, 0, 0, 255, 208, 73, 137, 4, 222, 72, 255, 195, 76, 57, 235, 114, 228, 76, 137, 44, 36, 76, 137, 116, 36, 8, 76, 137, 108, 36, 16, 72, 137, 231, 72, 184, 181, 56, 64, 0, 0, 0, 0, 0, 255, 208, 72, 199, 4, 36, 2, 0, 0, 0, 72, 137, 68, 36, 8, 72, 199, 68, 36, 16, 0, 0, 0, 0, 72, 137, 231, 72, 184, 183, 60, 64, 0, 0, 0, 0, 0, 255, 208, 72, 131, 196, 32, 65, 95, 65, 94, 65, 93, 65, 92, 91]
       x86 gt conv bytes 1 =  [83, 65, 84, 65, 85, 65, 86, 65, 87, 72, 131, 236, 32, 69, 49, 237, 72, 133, 255, 116, 18, 64, 246, 199, 7, 117, 12, 72, 139, 71, 8, 76, 139, 96, 8, 76, 139, 104, 16, 191, 8, 0, 0, 0, 72, 184, 254, 43, 64, 0, 0, 0, 0, 0, 255, 208, 76, 137, 40, 72, 199, 4, 36, 1, 0, 0, 0, 72, 137, 68, 36, 8, 72, 199, 68, 36, 16, 1, 0, 0, 0, 72, 137, 231, 72, 184, 181, 56, 64, 0, 0, 0, 0, 0, 255, 208, 73, 137, 199, 74, 141, 60, 237, 8, 0, 0, 0, 72, 184, 254, 43, 64, 0, 0, 0, 0, 0, 255, 208, 73, 137, 198, 49, 219, 77, 133, 237, 116, 38, 73, 139, 4, 220, 168, 1, 116, 5, 72, 209, 248, 235, 13, 72, 133, 192, 116, 8, 168, 7, 117, 4, 72, 139, 64, 8, 73, 137, 4, 222, 72, 255, 195, 76, 57, 235, 114, 218, 76, 137, 44, 36, 76, 137, 116, 36, 8, 76, 137, 108, 36, 16, 72, 137, 231, 72, 184, 181, 56, 64, 0, 0, 0, 0, 0, 255, 208, 72, 199, 4, 36, 5, 0, 0, 0, 76, 137, 124, 36, 8, 72, 137, 68, 36, 16, 72, 137, 231, 72, 184, 183, 60, 64, 0, 0, 0, 0, 0, 255, 208, 72, 131, 196, 32, 65, 95, 65, 94, 65, 93, 65, 92, 91]
       x86 gt conv bytes 2 =  [83, 65, 84, 65, 85, 65, 86, 65, 87, 72, 131, 236, 32, 69, 49, 237, 72, 133, 255, 116, 18, 64, 246, 199, 7, 117, 12, 72, 139, 71, 16, 76, 139, 96, 8, 76, 139, 104, 16, 77, 133, 237, 117, 22, 72, 137, 231, 49, 246, 72, 184, 120, 16, 64, 0, 0, 0, 0, 0, 255, 208, 233, 174, 0, 0, 0, 74, 141, 60, 237, 0, 0, 0, 0, 72, 184, 254, 43, 64, 0, 0, 0, 0, 0, 255, 208, 73, 137, 198, 49, 219, 73, 139, 4, 220, 72, 141, 12, 0, 72, 137, 202, 72, 209, 250, 72, 57, 194, 117, 9, 72, 131, 201, 1, 72, 137, 200, 235, 43, 72, 185, 0, 0, 0, 0, 0, 0, 0, 128, 72, 137, 12, 36, 72, 137, 68, 36, 8, 72, 199, 68, 36, 16, 0, 0, 0, 0, 72, 137, 231, 72, 184, 183, 60, 64, 0, 0, 0, 0, 0, 255, 208, 73, 137, 4, 222, 72, 255, 195, 76, 57, 235, 114, 173, 76, 137, 44, 36, 76, 137, 116, 36, 8, 76, 137, 108, 36, 16, 72, 137, 231, 72, 184, 181, 56, 64, 0, 0, 0, 0, 0, 255, 208, 72, 199, 4, 36, 2, 0, 0, 0, 72, 137, 68, 36, 8, 72, 199, 68, 36, 16, 0, 0, 0, 0, 72, 137, 231, 72, 184, 183, 60, 64, 0, 0, 0, 0, 0, 255, 208, 72, 131, 196, 32, 65, 95, 65, 94, 65, 93, 65, 92, 91]
-      x86 gt conv bytes _ =  [83, 65, 84, 65, 85, 65, 86, 65, 87, 72, 131, 236, 32, 69, 49, 237, 72, 133, 255, 116, 18, 64, 246, 199, 7, 117, 12, 72, 139, 71, 16, 76, 139, 96, 8, 76, 139, 104, 16, 77, 133, 237, 117, 22, 72, 137, 231, 49, 246, 72, 184, 120, 16, 64, 0, 0, 0, 0, 0, 255, 208, 233, 144, 0, 0, 0, 74, 141, 60, 237, 0, 0, 0, 0, 72, 184, 254, 43, 64, 0, 0, 0, 0, 0, 255, 208, 73, 137, 198, 49, 219, 73, 139, 4, 220, 72, 199, 4, 36, 0, 0, 0, 0, 72, 137, 68, 36, 8, 72, 199, 68, 36, 16, 0, 0, 0, 0, 72, 137, 231, 72, 184, 183, 60, 64, 0, 0, 0, 0, 0, 255, 208, 73, 137, 4, 222, 72, 255, 195, 76, 57, 235, 114, 203, 76, 137, 44, 36, 76, 137, 116, 36, 8, 76, 137, 108, 36, 16, 72, 137, 231, 72, 184, 181, 56, 64, 0, 0, 0, 0, 0, 255, 208, 72, 199, 4, 36, 2, 0, 0, 0, 72, 137, 68, 36, 8, 72, 199, 68, 36, 16, 0, 0, 0, 0, 72, 137, 231, 72, 184, 183, 60, 64, 0, 0, 0, 0, 0, 255, 208, 72, 131, 196, 32, 65, 95, 65, 94, 65, 93, 65, 92, 91]
+      x86 gt conv bytes 3 =  [83, 65, 84, 65, 85, 65, 86, 65, 87, 72, 131, 236, 32, 69, 49, 237, 72, 133, 255, 116, 18, 64, 246, 199, 7, 117, 12, 72, 139, 71, 16, 76, 139, 96, 8, 76, 139, 104, 16, 77, 133, 237, 117, 22, 72, 137, 231, 49, 246, 72, 184, 120, 16, 64, 0, 0, 0, 0, 0, 255, 208, 233, 144, 0, 0, 0, 74, 141, 60, 237, 0, 0, 0, 0, 72, 184, 254, 43, 64, 0, 0, 0, 0, 0, 255, 208, 73, 137, 198, 49, 219, 73, 139, 4, 220, 72, 199, 4, 36, 0, 0, 0, 0, 72, 137, 68, 36, 8, 72, 199, 68, 36, 16, 0, 0, 0, 0, 72, 137, 231, 72, 184, 183, 60, 64, 0, 0, 0, 0, 0, 255, 208, 73, 137, 4, 222, 72, 255, 195, 76, 57, 235, 114, 203, 76, 137, 44, 36, 76, 137, 116, 36, 8, 76, 137, 108, 36, 16, 72, 137, 231, 72, 184, 181, 56, 64, 0, 0, 0, 0, 0, 255, 208, 72, 199, 4, 36, 2, 0, 0, 0, 72, 137, 68, 36, 8, 72, 199, 68, 36, 16, 0, 0, 0, 0, 72, 137, 231, 72, 184, 183, 60, 64, 0, 0, 0, 0, 0, 255, 208, 72, 131, 196, 32, 65, 95, 65, 94, 65, 93, 65, 92, 91]
+      x86 gt conv bytes _ =  [83, 65, 84, 65, 85, 65, 86, 65, 87, 72, 131, 236, 48, 72, 139, 71, 8, 76, 139, 96, 8, 76, 139, 104, 16] :: x86 shape fill body
+
+-- Mode 4 after its prologue: r12 points to [v, d1, ..., dn], r13 = n + 1.
+fn :: x86 shape fill body => [Int]
+      x86 shape fill body =  [73, 139, 4, 36, 168, 1, 116, 5, 72, 209, 248, 235, 13, 72, 133, 192, 116, 8, 168, 7, 117, 4, 72, 139, 64, 8, 72, 137, 68, 36, 24, 74, 141, 60, 237, 0, 0, 0, 0, 72, 184, 254, 43, 64, 0, 0, 0, 0, 0, 255, 208, 73, 137, 198, 72, 199, 68, 36, 32, 1, 0, 0, 0, 187, 1, 0, 0, 0, 76, 57, 235, 115, 28, 73, 139, 4, 220, 72, 209, 248, 73, 137, 68, 222, 248, 72, 15, 175, 68, 36, 32, 72, 137, 68, 36, 32, 72, 255, 195, 235, 223, 73, 141, 69, 255, 72, 137, 4, 36, 76, 137, 116, 36, 8, 72, 137, 68, 36, 16, 72, 137, 231, 72, 184, 181, 56, 64, 0, 0, 0, 0, 0, 255, 208, 73, 137, 199, 72, 139, 68, 36, 32, 72, 141, 60, 197, 8, 0, 0, 0, 72, 184, 254, 43, 64, 0, 0, 0, 0, 0, 255, 208, 73, 137, 198, 49, 219, 72, 139, 76, 36, 24, 72, 139, 84, 36, 32, 72, 57, 211, 115, 9, 73, 137, 12, 222, 72, 255, 195, 235, 242, 72, 137, 20, 36, 76, 137, 116, 36, 8, 72, 137, 84, 36, 16, 72, 137, 231, 72, 184, 181, 56, 64, 0, 0, 0, 0, 0, 255, 208, 72, 199, 4, 36, 5, 0, 0, 0, 76, 137, 124, 36, 8, 72, 137, 68, 36, 16, 72, 137, 231, 72, 184, 183, 60, 64, 0, 0, 0, 0, 0, 255, 208, 72, 131, 196, 48, 65, 95, 65, 94, 65, 93, 65, 92, 91]

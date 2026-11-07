@@ -18,7 +18,7 @@ A *GenTensor* is a `Tensor` whose elements are not numbers (`String`, `Bool`, `C
 
 ## Helper functions
 
-`compiler.rg` adds Ridgun helper functions (`__rg_gt_*`) to a program that uses `Tensor[T * n]` with a non-numeric `T`, `tensor fill`, `tensor from list` or `tensor to list`. Some of them are stubs: `lower expr` replaces calls to the stubs with native instructions.
+`compiler.rg` adds Ridgun helper functions (`__rg_gt_*`) to a program that uses `Tensor[T * n]` with a non-numeric `T`, `Tensor[T * dims] with v`, `tensor from list` or `tensor to list`. Some of them are stubs: `lower expr` replaces calls to the stubs with native instructions.
 
 | Native instruction | Stub | Result |
 |---|---|---|
@@ -29,6 +29,7 @@ A *GenTensor* is a `Tensor` whose elements are not numbers (`String`, `Bool`, `C
 | `NGtConv slot 1` | `__rg_gt_list_tensor xs` | a one-dimensional numeric tensor from a list of numbers |
 | `NGtConv slot 2` | `__rg_gt_tensor_ints t` | a list of `Int`s from the data of a numeric tensor |
 | `NGtConv slot 3` | `__rg_gt_tensor_reals t` | a list of `Real`s from the data of a numeric tensor |
+| `NGtConv slot 4` | (`:tensor-zeros:` with 3+ dimensions, `:tensor-with:`) | a numeric tensor of any rank from the list `[v, d1, ..., dn]`, every element equal to `v` |
 
 The LLVM backend implements them in IR (`llvm gen tensor helpers`, `llvm gt conv helpers` in `llvm.rg`). The ARM64 encoder emits placeholders: its runtime has no `Real` or GenTensor support yet.
 
@@ -328,3 +329,138 @@ Every file starts with:
   pop rbx
 ```
 
+### Mode 4: numeric tensor of any rank (`shapefill.s`)
+
+The input is the list `[v, d1, ..., dn]`. `v` becomes a raw word: a tagged `Int` is shifted right, a boxed number gives the word at `+8`. The routine builds the shape vector `[d1, ..., dn]` and a data vector of `d1 * ... * dn` copies of the word, then boxes `[5, shape, data]`. It reserves 48 bytes of stack, so `rsp` moves by 88 bytes in all (8 mod 16, as in modes 0-3).
+
+```asm
+  push rbx
+  push r12
+  push r13
+  push r14
+  push r15
+  sub rsp, 48
+  mov rax, [rdi+8]
+  mov r12, [rax+8]
+  mov r13, [rax+16]
+  mov rax, [r12]
+  test al, 1
+  jz 1f
+  sar rax, 1
+  jmp 3f
+1:
+  test rax, rax
+  jz 3f
+  test al, 7
+  jnz 3f
+  mov rax, [rax+8]
+3:
+  mov [rsp+24], rax
+  lea rdi, [r13*8]
+  movabs rax, ALLOC_BUF
+  call rax
+  mov r14, rax
+  mov qword ptr [rsp+32], 1
+  mov ebx, 1
+4:
+  cmp rbx, r13
+  jae 5f
+  mov rax, [r12+rbx*8]
+  sar rax, 1
+  mov [r14+rbx*8-8], rax
+  imul rax, [rsp+32]
+  mov [rsp+32], rax
+  inc rbx
+  jmp 4b
+5:
+  lea rax, [r13-1]
+  mov [rsp], rax
+  mov [rsp+8], r14
+  mov [rsp+16], rax
+  mov rdi, rsp
+  movabs rax, BOX_RC_VEC
+  call rax
+  mov r15, rax
+  mov rax, [rsp+32]
+  lea rdi, [rax*8+8]
+  movabs rax, ALLOC_BUF
+  call rax
+  mov r14, rax
+  xor ebx, ebx
+  mov rcx, [rsp+24]
+  mov rdx, [rsp+32]
+6:
+  cmp rbx, rdx
+  jae 7f
+  mov [r14+rbx*8], rcx
+  inc rbx
+  jmp 6b
+7:
+  mov [rsp], rdx
+  mov [rsp+8], r14
+  mov [rsp+16], rdx
+  mov rdi, rsp
+  movabs rax, BOX_RC_VEC
+  call rax
+  mov qword ptr [rsp], 5
+  mov [rsp+8], r15
+  mov [rsp+16], rax
+  mov rdi, rsp
+  movabs rax, BOX_RVAL
+  call rax
+  add rsp, 48
+  pop r15
+  pop r14
+  pop r13
+  pop r12
+  pop rbx
+```
+
+## Other x86-64 encodings for numeric tensors
+
+The pure x86-64 encoder needs three more routines so that numeric tensor elements behave as on LLVM (0.9.39):
+
+- **Borrowed reads** (`NIndex b i -1` and `-2`, `x86 borrowed index`). The lowering reads a tensor variable without giving up its reference. The runtime index call (rt 38) consumes its base slot, so the encoder clones the base into a 16-byte stack area and indexes that copy, as LLVM's `@__rg_tensor_index_1d` does.
+- **One- and two-dimensional allocation** (`NCallBuiltin 88`, `x86 tensor fill slots`). The runtime builtin dispatcher has no tensor fill. The encoder runs the body of mode 4 with `r12` pointing to the slots `[fill, d0, d1]` and `r13` = their count.
+- **`Real` writes** (`NIndexSet`, `x86 real to int bits`). The runtime index set (rt 39) stores an `Int`, so a `Real` lost its bits. Before the call, a `Real` (64-bit header `0`) becomes the `Int` with the same bits and the `Real` is dropped. LLVM does the same in `@__rg_real_to_int_bits` before `@__rg_rt_index_set`, which it calls for tensors with three or more dimensions.
+
+The `Real` conversion (`realbits.s`) runs on the value in `rax`. `DROP_VAL` is rt 6 (`4198400 + 6*8`):
+
+```asm
+.set DROP_VAL, 4198448
+.set DROP_VAL, 4198448
+  test rax, rax
+  jz 9f
+  test al, 7
+  jnz 9f
+  cmp qword ptr [rax], 0
+  jne 9f
+  push rbx
+  push r12
+  sub rsp, 40
+  mov rbx, rax
+  mov r12, [rax+8]
+  mov rdi, rbx
+  movabs rax, DROP_VAL
+  call rax
+  lea rax, [r12+r12]
+  mov rcx, rax
+  sar rcx, 1
+  cmp rcx, r12
+  jne 1f
+  or rax, 1
+  jmp 2f
+1:
+  movabs rax, -9223372036854775808
+  mov [rsp], rax
+  mov [rsp+8], r12
+  mov qword ptr [rsp+16], 0
+  mov rdi, rsp
+  movabs rax, BOX_RVAL
+  call rax
+2:
+  add rsp, 40
+  pop r12
+  pop rbx
+9:
+```

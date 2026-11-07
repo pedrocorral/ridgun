@@ -447,11 +447,12 @@ Tensors are Ridgun's native **mutable** N-dimensional indexed type. They general
 names = Tensor[String * 3]          -- ["", "", ""]
 names_(0) = "ana"
 grid = Tensor[Bool * 2 * 3]         -- every element False
-visits = tensor fill (Visit "ana" 1) 10
-board = tensor fill '.' 8 8
+visits = Tensor[Visit * 10] with Visit "ana" 1
+board = Tensor[Char * 8 * 8] with '.'
+cube = Tensor[Int * 2 * 3 * 4] with 7
 ```
 
-- **Initial values.** An allocation without an initial value gives every element the default of its type: `0` for numbers, `""` for `String`, `False` for `Bool`, `[]` for lists. Other element types have no default, so `Tensor[Char * n]` is a compile error. `tensor fill v n` and `tensor fill v r c` make a tensor of one or two dimensions with every element equal to `v`, for any element type.
+- **Initial values.** An allocation without an initial value gives every element the default of its type: `0` for numbers, the character of code 0 for `Char`, `""` for `String`, `False` for `Bool`, `[]` for lists. Tuples, records and ADTs have no default, so `Tensor[Visit * n]` without `with` is a compile error. `Tensor[T * dims] with v` makes a tensor with every element equal to `v`, for any element type; `v` must have type `T`. A numeric tensor can have any number of dimensions; a tensor of non-numeric elements has one or two.
 - **Reads and writes.** `t_(i)` and `t_(i, j)` read and write an element in place in constant time. A tensor is passed to and returned from functions by reference. On a tensor of non-numeric elements, an index outside the shape stops the program with `runtime error: tensor index out of range` on stderr and exit status 1.
 - **Lists.** `tensor from list xs` copies a list into a one-dimensional tensor: a list of numbers gives a numeric tensor, any other list gives a tensor of its elements. `tensor to list t` copies a tensor into a list: a two-dimensional tensor of non-numeric elements gives a list of rows, a numeric tensor gives the list of all its elements in row order. Both run natively, without a Ridgun loop per element. A tensor literal (`Tensor [...]`) holds numbers only.
 - **Showing and comparing.** `echo` shows a tensor of non-numeric elements as a list of its elements, and `==` compares the elements.

@@ -30,7 +30,8 @@ verified_by: [TS-COMP-020]
 5. **Memory (RMM).** Writing an element SHALL add one reference to the new value and drop one from the old value. Freeing a tensor SHALL drop one reference from every element. Cloning a tensor SHALL add one reference to every element.
 6. **Initial values.**
    - An allocation SHALL be able to give an initial value for every element type (for example a `Visit` value repeated `n` times).
-   - An allocation without an initial value SHALL be allowed only for element types with a default value: `0` for numbers, `""` for `String`, `False` for `Bool`, `[]` for lists. For other types it SHALL be a compile error.
+   - The syntax is `Tensor[T * dims] with v`, for example `Tensor[Visit * 10] with Visit "ana" 1` or `Tensor[Char * 8 * 8] with '.'`. `v` SHALL have type `T`.
+   - An allocation without an initial value SHALL be allowed only for element types with a default value: `0` for numbers, the character of code 0 for `Char`, `""` for `String`, `False` for `Bool`, `[]` for lists. For tuples, records and ADTs it SHALL be a compile error.
 7. **Numeric-only operations.** `@` (einsum), element-wise arithmetic and matrix products SHALL be a compile error when an operand has non-numeric elements. `Tensor_GPU` SHALL keep numeric elements only (the FR-COMP-018 error stays for it).
 8. **Index out of range.** On a tensor of non-numeric elements, a read or write outside the shape SHALL stop the program with a runtime error (stderr, exit status 1), as FR-COMP-017 does for a call that matches no clause. It SHALL NOT return a zero value.
 9. **Lists.** `tensor from list xs` (one dimension, any element type) and `tensor to list t` SHALL be native operations, without a per-element cost in Ridgun code.
@@ -44,15 +45,15 @@ verified_by: [TS-COMP-020]
 3. Native list conversion (§9).
 4. Compile errors for numeric-only operations, `Tensor_GPU` and parallel writes (§7, §11).
 
-## Implementation status (0.9.38)
+## Implementation status (0.9.39)
 - Done on LLVM and the pure x86-64 encoder: the Statement (including shape patterns) and §1-§11 (phases 1-4).
+- Every `tests/cases/tensors` case gives the same output and exit status on LLVM and on the pure x86-64 encoder (`--target x86_64-elf`).
 - §12: the ARM64 encoder emits placeholders for the GenTensor instructions. Its runtime has no `Real` or GenTensor support yet.
 - Representation: a GenTensor is not a separate heap tag. A one-dimensional GenTensor is an RC vector of boxed elements (the list representation, tag `2`); a two-dimensional one is a vector of row vectors. The type checker keeps numeric-only code away from it (§7). Details: `docs/etc/gentensor.md`.
 - A GenTensor has one or two dimensions; a third dimension is a compile error.
-- Initial value (§6): implemented as `tensor fill v n` and `tensor fill v r c`. The name is provisional until the open question below is closed.
+- Initial value (§6): `Tensor[T * dims] with v`, on numeric tensors of any rank and on GenTensors of one or two dimensions.
 
 ## Open questions
-- The syntax for an allocation with an initial value (§6). Provisional: `tensor fill v n`, `tensor fill v r c`.
 - Whether bounds checks (§8) also apply to numeric tensors, and at what cost.
 - What happens when a tensor of non-numeric elements is sent to another agent: copy it, or a compile error.
 
