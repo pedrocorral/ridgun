@@ -441,6 +441,8 @@ fn :: append [Int] [Int] => [Int]
 
 Tensors are Ridgun's native **mutable** N-dimensional numeric type. They generalize vectors, matrices, and higher-dimensional arrays into a single type. Elements are `Real` by default.
 
+**Element types (`FR-COMP-018`):** a tensor stores one 64-bit number per element. The element type in `Tensor[T * n]`, `Tensor[T]` or `Tensor(T, n)` must be `Int`, `Byte`, `U8`, `U16`, `U32`, `U64`, `I8`, `I16`, `I32`, `I64`, `Usize`, `Real` or `Float`. Any other element type, such as `String` or `Bool`, is a compile error.
+
 **Literal syntax:** `Tensor` followed by nested brackets. The nesting depth determines the dimensionality.
 
 ```ridgun

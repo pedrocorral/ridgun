@@ -16,6 +16,7 @@
 -- @implements FR-COMP-014
 -- @implements FR-COMP-016
 -- @implements FR-COMP-017
+-- @implements FR-COMP-018
 -- ============================================================
 import ast
 import lexer
@@ -6813,7 +6814,60 @@ fn :: int lit errors [RToken] RToken String [RFnDef] => [RFnDef]
         int lit errors rest (TokIntMin s) cur acc
       int lit errors ((TokIntMin s):rest) _ cur acc =
         int lit errors rest (TokIntMin s) cur (acc :: [int lit error fndef cur s])
+      int lit errors ((TokIdent s):open:(TokIdent el):sep:rest) _ cur acc
+        | is bad tensor elem s open el sep =
+          int lit errors rest sep cur (acc :: [tensor elem error fndef cur el])
       int lit errors (t:rest) _ cur acc =  int lit errors rest t cur acc
+
+-- A tensor stores one 64-bit number per element, so its element type
+-- (`Tensor[T * n]`, `Tensor[T]`, `Tensor(T, n)`) must be numeric. Any
+-- other type used to compile and silently store nothing (FR-COMP-018).
+
+fn :: tensor word String => Bool
+      tensor word "Tensor"     =  True
+      tensor word "Tensor_GPU" =  True
+      tensor word _            =  False
+
+fn :: tensor open tok RToken => Bool
+      tensor open tok TokLBracket    =  True
+      tensor open tok TokIdxLBracket =  True
+      tensor open tok TokLParen      =  True
+      tensor open tok _              =  False
+
+fn :: tensor elem sep tok RToken => Bool
+      tensor elem sep tok TokStar     =  True
+      tensor elem sep tok TokComma    =  True
+      tensor elem sep tok TokRBracket =  True
+      tensor elem sep tok _           =  False
+
+fn :: tensor elem type ok String => Bool
+      tensor elem type ok "Real"  =  True
+      tensor elem type ok "Float" =  True
+      tensor elem type ok "Int"   =  True
+      tensor elem type ok "Byte"  =  True
+      tensor elem type ok "Usize" =  True
+      tensor elem type ok "U8"    =  True
+      tensor elem type ok "U16"   =  True
+      tensor elem type ok "U32"   =  True
+      tensor elem type ok "U64"   =  True
+      tensor elem type ok "I8"    =  True
+      tensor elem type ok "I16"   =  True
+      tensor elem type ok "I32"   =  True
+      tensor elem type ok "I64"   =  True
+      tensor elem type ok _       =  False
+
+fn :: is bad tensor elem String RToken String RToken => Bool
+      is bad tensor elem s open el sep =
+        (tensor word s) and (tensor open tok open) and (is upper ident el) and (tensor elem sep tok sep) and (not (tensor elem type ok el))
+
+fn :: tensor elem msg String => String
+      tensor elem msg el =  "tensor element type '" + el + "' is not supported: a tensor holds numbers only (Int, Byte, U8, U16, U32, U64, I8, I16, I32, I64, Usize, Real, Float)"
+
+fn :: tensor elem error fndef String String => RFnDef
+      tensor elem error fndef "" el =
+        FnDef "__syntax_error__" [] "Int" [FnCase [] [] (ECall "__syntax_error__" [EStr (tensor elem msg el)])]
+      tensor elem error fndef fn_name el =
+        FnDef "__syntax_error__" [] "Int" [FnCase [] [] (ECall "__syntax_error__" [EStr ((tensor elem msg el) + " in function '" + fn_name + "'")])]
 
 fn :: add int lit errors RProgram [RFnDef] => RProgram
       add int lit errors prog [] =  prog

@@ -2,7 +2,7 @@
 
 | Seat | State | Who | Task | Next action | Heartbeat |
 |---|---|---|---|---|---|
-| agent-001 | live | agent gemini@solarfall | none |  | 1445 min ago |
-| agent-002 | live | claude claude@solarfall | none | Implement `macho64.rg`, `pe64.rg`, and cross-OS target suppo | 0 min ago |
+| agent-001 | live | agent gemini@solarfall | none |  | 1665 min ago |
+| agent-002 | live | claude claude@solarfall | none | None for this seat. | 0 min ago |
 
 Claim a seat: `aix agent claim`. A task is started with `aix task start ID` and signed by your seat; a task another live seat holds is refused.
