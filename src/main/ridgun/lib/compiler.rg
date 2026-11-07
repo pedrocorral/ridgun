@@ -1643,6 +1643,9 @@ fn :: prim type tag id String       => Int
       prim type tag id "Tensor_GPU" =  5
       prim type tag id _            =  0
 
+fn :: is gt pseudo name String => Bool
+      is gt pseudo name n =  str in list n ["__rg_gt_is_gen", "__rg_gt_is_list", "__rg_gt_len", "__rg_gt_tlen", "__rg_gt_real_bits", "__rg_gt_numfill1", "__rg_gt_numfill2", "__rg_gt_list_copy", "__rg_gt_list_tensor", "__rg_gt_tensor_ints", "__rg_gt_tensor_reals", ":gt-new:", "tensor_fill", "tensor_from_list", "tensor_to_list"]
+
 fn :: is tensor helper name String             => Bool
       is tensor helper name ":tensor-zeros:"   =  True
       is tensor helper name ":typed-tensor:"   =  True
@@ -2373,6 +2376,27 @@ fn :: lower expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
         st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
         st3 = lower expr env r bound_locals (sp + 1) st2
         nc emit st3 (NBinOp (binop id bop) sp) (sp + 1)
+      lower expr env (ECall "__rg_gt_is_gen" ((EVar v):_)) _ sp st =  nc emit st (NIsGen (env var slot env v)) sp
+      lower expr env (ECall "__rg_gt_is_list" ((EVar v):_)) _ sp st =  nc emit st (NIsList (env var slot env v)) sp
+      lower expr env (ECall "__rg_gt_list_copy" ((EVar v):_)) _ sp st =  nc emit st (NGtConv (env var slot env v) 0) sp
+      lower expr env (ECall "__rg_gt_list_tensor" ((EVar v):_)) _ sp st =  nc emit st (NGtConv (env var slot env v) 1) sp
+      lower expr env (ECall "__rg_gt_tensor_ints" ((EVar v):_)) _ sp st =  nc emit st (NGtConv (env var slot env v) 2) sp
+      lower expr env (ECall "__rg_gt_tensor_reals" ((EVar v):_)) _ sp st =  nc emit st (NGtConv (env var slot env v) 3) sp
+      lower expr env (ECall "__rg_gt_len" ((EVar v):_)) _ sp st =  nc emit st (NAdtField (env var slot env v) (0 - 1)) sp
+      lower expr env (ECall "__rg_gt_tlen" ((EVar v):_)) _ sp st =  nc emit st (NAdtField (env var slot env v) (0 - 2)) sp
+      lower expr env (ECall "__rg_gt_real_bits" (e:_)) bound_locals sp st =
+        st1 = lower expr env e bound_locals sp st
+        nc emit st1 NRealFromBits sp
+      lower expr env (ECall "__rg_gt_numfill1" args) bound_locals sp st =  lower tensor helper env ":tensor-zeros:" args bound_locals sp st
+      lower expr env (ECall "__rg_gt_numfill2" args) bound_locals sp st =  lower tensor helper env ":tensor-zeros:" args bound_locals sp st
+      lower expr env (ECall ":gt-new:" (d:n:[])) bound_locals sp st =  lower expr env (ECall "__rg_gt_new1" [d, n]) bound_locals sp st
+      lower expr env (ECall ":gt-new:" (d:r:c:_)) bound_locals sp st =  lower expr env (ECall "__rg_gt_new2" [d, r, c]) bound_locals sp st
+      lower expr env (ECall "tensor_fill" (v:n:[])) bound_locals sp st =  lower expr env (ECall "__rg_gt_fill1" [v, n]) bound_locals sp st
+      lower expr env (ECall "tensor_fill" (v:r:c:_)) bound_locals sp st =  lower expr env (ECall "__rg_gt_fill2" [v, r, c]) bound_locals sp st
+      lower expr env (ECall "tensor_from_list" (x:_)) bound_locals sp st =  lower expr env (ECall "__rg_gt_from_list" [x]) bound_locals sp st
+      lower expr env (ECall "tensor_to_list" ((EVar v):_)) bound_locals sp st
+        | env is real tensor env v = lower expr env (ECall "__rg_gt_to_list_real" [EVar v]) bound_locals sp st
+      lower expr env (ECall "tensor_to_list" (x:_)) bound_locals sp st =  lower expr env (ECall "__rg_gt_to_list" [x]) bound_locals sp st
       lower expr env (ECall "__record_update__" (base_e:rest_args)) bound_locals sp st =
         st1 = lower expr env base_e bound_locals sp st
         lower record updates env rest_args bound_locals sp st1
@@ -2425,18 +2449,16 @@ fn :: lower expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
       lower expr env (EIndex (EVar v) ((EInt idx):[])) _ sp st
         | (str starts with v ":tup-") or (str starts with v ":idx-tup-") =
           nc emit st (NTupleGet (env var slot env v) idx) sp
-      lower expr env (EIndex (EVar v) idxs) bound_locals sp st
-        | env is real tensor env v =
-          st1 = lower tensor read env (EVar v) idxs bound_locals sp st
-          nc emit st1 NRealFromBits sp
+      lower expr env (EIndex (EVar v) idxs) bound_locals sp st =
+        lower var index read env v idxs bound_locals sp st
       lower expr env (EIndex base idxs) bound_locals sp st =
-        lower tensor read env base idxs bound_locals sp st
+        lower base index read env base idxs bound_locals sp st
       lower expr env (EIndexAssign target idxs val_e) bound_locals sp st =
         count = rexpr list len idxs
         tslot = env var slot env target
         st1 = lower expr list to slots env idxs bound_locals sp 0 st
         st2 = lower expr env val_e bound_locals (sp + count) st1
-        nc emit list st2 [NIndexSet tslot sp count, NStoreSlot tslot, NCloneSlot tslot] (sp + count + 1)
+        nc emit (emit tensor store env target tslot sp count st2) (NCloneSlot tslot) (sp + count + 1)
       lower expr env (ESeqSelect base mask) bound_locals sp st =
         off = env str off env mask
         st1 = lower expr env base bound_locals sp st
@@ -2518,7 +2540,7 @@ fn :: lower stmts cmm RNativeEnv [RStmt] [String] [String] Int RNativeCode => RN
         tslot = env var slot env t
         st1 = lower expr list to slots env idxs bound_locals sp 0 st
         st2 = lower expr env e bound_locals (sp + count) st1
-        st3 = nc emit list st2 [NIndexSet tslot sp count, NStoreSlot tslot] (sp + count + 1)
+        st3 = emit tensor store env t tslot sp count st2
         st4 = lower cmm drops env (cmm remove str t scope_vars) (sp + count + 1) st3
         nc emit st4 (NCloneSlot tslot) (sp + count + 1)
       lower stmts cmm env ((StmtLet v e):[]) bound_locals scope_vars sp st
@@ -2557,7 +2579,7 @@ fn :: lower stmts cmm RNativeEnv [RStmt] [String] [String] Int RNativeCode => RN
         tslot = env var slot env t
         st1 = lower expr list to slots env idxs bound_locals sp 0 st
         st2 = lower expr env e bound_locals (sp + count) st1
-        st3 = nc emit list st2 [NIndexSet tslot sp count, NStoreSlot tslot] (sp + count + 1)
+        st3 = emit tensor store env t tslot sp count st2
         st4 = lower cmm drops env dead_now (sp + count + 1) st3
         lower stmts cmm env rest bound_locals scope_vars sp st4
       lower stmts cmm env ((StmtExpr e):rest) bound_locals scope_vars sp st =
@@ -2662,7 +2684,7 @@ fn :: lower where cmm RNativeEnv [RWhereBind] RExpr [String] [String] Int RNativ
         tslot = env var slot env v
         st1 = lower int list to slots idxs sp 0 st
         st2 = lower expr env e bound_locals (sp + count) st1
-        st3 = nc emit list st2 [NIndexSet tslot sp count, NStoreSlot tslot] (sp + count + 1)
+        st3 = emit tensor store env v tslot sp count st2
         lower where cmm env wbs body bound_locals scope_vars sp st3
 
 -- ── Tail-Call Optimization (TCO) & Tail Return Lowering ─────
@@ -2703,7 +2725,7 @@ fn :: lower tco arg expr RNativeEnv RExpr [RExpr] [String] [String] Int RNativeC
         st1 = lower tco arg list to slots env elems es bound_locals scope_vars sp 0 st
         nc emit st1 (NMakeTuple sp count) (sp + count + 1)
       lower tco arg expr env (ECall fname args) es bound_locals scope_vars sp st
-        | (lookup local bound_locals fname) < 0 and (not (is upper ident fname)) and (builtin call id fname) < 0 and (not (is agent call name fname)) and (not (is tensor helper name fname)) and fname != "sys_os" and fname != "sys_arch" and fname != "__record_update__" and fname != "__unpack2__" and fname != "__chain__" and (rexpr list len args) == (env fn arity env fname) and (not ((env has field env fname) and (env fn arity env fname) == 1 and (rexpr list len args) > 1)) =
+        | (lookup local bound_locals fname) < 0 and (not (is upper ident fname)) and (builtin call id fname) < 0 and (not (is agent call name fname)) and (not (is tensor helper name fname)) and (not (is gt pseudo name fname)) and fname != "sys_os" and fname != "sys_arch" and fname != "__record_update__" and fname != "__unpack2__" and fname != "__chain__" and (rexpr list len args) == (env fn arity env fname) and (not ((env has field env fname) and (env fn arity env fname) == 1 and (rexpr list len args) > 1)) =
           count = rexpr list len args
           st1 = lower tco arg list to slots env args es bound_locals scope_vars sp 0 st
           nc emit st1 (NCallFn (env fn id env fname) sp count) (sp + count + 1)
@@ -2801,7 +2823,7 @@ fn :: lower tail stmts cmm RNativeEnv [RStmt] [String] [String] Int RNativeCode 
         tslot = env var slot env t
         st1 = lower expr list to slots env idxs bound_locals sp 0 st
         st2 = lower expr env e bound_locals (sp + count) st1
-        st3 = nc emit list st2 [NIndexSet tslot sp count, NStoreSlot tslot] (sp + count + 1)
+        st3 = emit tensor store env t tslot sp count st2
         st4 = lower cmm drops env (cmm remove str t scope_vars) (sp + count + 1) st3
         nc emit list st4 [NMoveSlot tslot, NReturn] (sp + count + 1)
       lower tail stmts cmm env ((StmtIndexAssign t idxs e):rest) bound_locals scope_vars sp st =
@@ -2812,7 +2834,7 @@ fn :: lower tail stmts cmm RNativeEnv [RStmt] [String] [String] Int RNativeCode 
         tslot = env var slot env t
         st1 = lower expr list to slots env idxs bound_locals sp 0 st
         st2 = lower expr env e bound_locals (sp + count) st1
-        st3 = nc emit list st2 [NIndexSet tslot sp count, NStoreSlot tslot] (sp + count + 1)
+        st3 = emit tensor store env t tslot sp count st2
         st4 = lower cmm drops env dead_now (sp + count + 1) st3
         lower tail stmts cmm env rest bound_locals scope_vars sp st4
       lower tail stmts cmm env ((StmtExpr e):rest) bound_locals scope_vars sp st =
@@ -2848,7 +2870,7 @@ fn :: lower tail where cmm RNativeEnv [RWhereBind] RExpr [String] [String] Int R
         tslot = env var slot env v
         st1 = lower int list to slots idxs sp 0 st
         st2 = lower expr env e bound_locals (sp + count) st1
-        st3 = nc emit list st2 [NIndexSet tslot sp count, NStoreSlot tslot] (sp + count + 1)
+        st3 = emit tensor store env v tslot sp count st2
         lower tail where cmm env wbs body bound_locals scope_vars sp st3
 
 -- ── Pattern Matching & Binding Lowering ──────────────────────
@@ -3139,14 +3161,14 @@ fn :: maybe wrap unit cases String String [RFnCase] => [RFnCase]
         | otherwise = cases
 
 fn :: lower fndef RFnDef RStrIntMap RStrIntMap RStrIntMap RStrSet RStrIntMap [String] => RNativeFn
-      lower fndef (FnDef name params ret raw_cases) str_map fn_id_map fn_arity_map heavy_set field_map real_fns =
+      lower fndef (FnDef name params ret raw_cases) str_map fn_id_map fn_arity_map heavy_set field_map infos =
         cases = maybe wrap unit cases name ret raw_cases
         fid = lookup fn id map fn_id_map name
         arity = infer fndef arity params cases
         all_locals = collect cases all locals cases []
         base_sp = arity + (list str len all_locals)
-        real_vars = real tensor vars params cases real_fns
-        env = NativeEnv name arity all_locals str_map fn_id_map fn_arity_map heavy_set field_map real_vars
+        elem_vars = fn tensor elems infos (name + "|") []
+        env = NativeEnv name arity all_locals str_map fn_id_map fn_arity_map heavy_set field_map elem_vars
         init_st = NativeCode [] 1 (max int (base_sp + 1) 2)
         st1 = lower cases list env cases base_sp init_st
         st2 = lower no match tail env name cases base_sp st1
@@ -3685,12 +3707,12 @@ fn :: lib with s2i helper [RFnDef] => [RFnDef]
         | fndefs call s2i fns = with s2i helper fns
         | otherwise = fns
 
-fn :: lower program to native RProgram => RNativeProg
-      lower program to native (Program user_fns tys) =
-        raw_fns = with s2i helper user_fns
+fn :: lower program to native RProgram [String] => RNativeProg
+      lower program to native (Program user_fns tys) infos =
+        raw_fns = with gt helpers (with s2i helper user_fns)
         entry_name = find entry fn name raw_fns "main"
         gagent_roots = collect gagent names raw_fns
-        refs_map0 = add s2i ref (build fn refs map raw_fns FnRefsEmpty)
+        refs_map0 = add gt refs (add s2i ref (build fn refs map raw_fns FnRefsEmpty))
         reach_set0 = expand reachable worklist ([entry_name] :: gagent_roots) refs_map0 StrSetEmpty
         reach_raw = filter reachable fndefs raw_fns reach_set0 []
         field_tbl = collect typedef fields tys []
@@ -3700,14 +3722,14 @@ fn :: lower program to native RProgram => RNativeProg
         b_wrappers = build builtin wrapper fndefs b_val_names raw_fn_set
         sigs = (build cg sigs reach_raw) :: (build field cg sigs field_tbl raw_fn_set)
         all_fns = (opt fndef list (prep fndef list reach_raw sigs)) :: b_wrappers
-        refs_map = add s2i ref (build fn refs map all_fns FnRefsEmpty)
+        refs_map = add gt refs (add s2i ref (build fn refs map all_fns FnRefsEmpty))
         reachable_set = expand reachable worklist ([entry_name] :: gagent_roots) refs_map StrSetEmpty
         fns = filter reachable fndefs all_fns reachable_set []
         gagent_names = collect gagent names fns
         fn_names = collect fn names fns
         fn_name_set = str list to set fn_names StrSetEmpty
         field_names = collect field names field_tbl
-        str_pool = build str pool fns (field_names :: (no match msgs fns))
+        str_pool = build str pool fns (field_names :: (no match msgs fns) :: [gen tensor oob msg])
         rodata_str = pool rodata str_pool
         str_map = pool str map str_pool
         fn_tbl1 = build fn table fndefs fns 5 []
@@ -3724,7 +3746,7 @@ fn :: lower program to native RProgram => RNativeProg
         call2_slots = max int 7 (4 + (highest entry arity fn_tbl))
         call2_disp = NativeFn 3 "__rg_dispatch_call2" 3 call2_slots (build call2 dispatch instrs fn_tbl str_map disp_set 1 [])
         binop_disp = NativeFn 4 "__rg_dispatch_binop" 3 6 (build binop dispatch instrs fn_tbl str_map 1 [])
-        user_native_fns = lower fndef list acc fns str_map fn_id_map fn_arity_map heavy_set field_map (real tensor fns fns []) []
+        user_native_fns = lower fndef list acc fns str_map fn_id_map fn_arity_map heavy_set field_map infos []
         field_native_fns = lower field getter fns field_tbl fn_name_set fn_id_map []
         all_native_fns = [main_wrapper, spawn_disp, call2_disp, binop_disp] :: user_native_fns :: field_native_fns
         NativeProg 1 2 3 4 all_native_fns rodata_str
@@ -3733,9 +3755,9 @@ fn :: build lib entry wrapper Int       => RNativeFn
       build lib entry wrapper 0         =  NativeFn 1 "__rg_entry_main" 0 2 [NLoadImmRaw 0, NReturn]
       build lib entry wrapper entry_fid =  NativeFn 1 "__rg_entry_main" 0 2 [NCallFn entry_fid 0 (0 - 1), NReturn]
 
-fn :: lower library to native RProgram => RNativeProg
-      lower library to native (Program user_fns tys) =
-        raw_fns = lib with s2i helper user_fns
+fn :: lower library to native RProgram [String] => RNativeProg
+      lower library to native (Program user_fns tys) infos =
+        raw_fns = lib with gt helpers (lib with s2i helper user_fns)
         field_tbl = collect typedef fields tys []
         raw_fn_names = collect fn names raw_fns
         raw_fn_set = str list to set raw_fn_names StrSetEmpty
@@ -3747,7 +3769,7 @@ fn :: lower library to native RProgram => RNativeProg
         fn_names = collect fn names fns
         fn_name_set = str list to set fn_names StrSetEmpty
         field_names = collect field names field_tbl
-        str_pool = build str pool fns (field_names :: (no match msgs fns))
+        str_pool = build str pool fns (field_names :: (no match msgs fns) :: [gen tensor oob msg])
         rodata_str = pool rodata str_pool
         str_map = pool str map str_pool
         fn_tbl1 = build fn table fndefs fns 5 []
@@ -3763,7 +3785,7 @@ fn :: lower library to native RProgram => RNativeProg
         call2_slots = max int 7 (4 + (highest entry arity fn_tbl))
         call2_disp = NativeFn 3 "__rg_dispatch_call2" 3 call2_slots (build call2 dispatch instrs fn_tbl str_map disp_set 1 [])
         binop_disp = NativeFn 4 "__rg_dispatch_binop" 3 6 (build binop dispatch instrs fn_tbl str_map 1 [])
-        user_native_fns = lower fndef list acc fns str_map fn_id_map fn_arity_map heavy_set field_map (real tensor fns fns []) []
+        user_native_fns = lower fndef list acc fns str_map fn_id_map fn_arity_map heavy_set field_map infos []
         field_native_fns = lower field getter fns field_tbl fn_name_set fn_id_map []
         all_native_fns = [main_wrapper, spawn_disp, call2_disp, binop_disp] :: user_native_fns :: field_native_fns
         NativeProg 1 2 3 4 all_native_fns rodata_str
@@ -3916,17 +3938,17 @@ fn :: build native target loaded String String String String => Int
         1
       build native target loaded _ output_bin target_arch raw_src =
         raw_src -> tokenize src -> parse tokens -> prog
-        prog -> typecheck program -> errs
-        build native target after check prog output_bin target_arch errs
+        all_errs = typecheck program all prog
+        build native target after check prog output_bin target_arch (drop tensor infos all_errs []) (tensor infos of all_errs [])
 
-fn :: build native target after check RProgram String String [RTypeError] => Int
-      build native target after check prog output_bin target_arch []
+fn :: build native target after check RProgram String String [RTypeError] [String] => Int
+      build native target after check prog output_bin target_arch [] infos
         | (count fn defs prog) == 0 =
           echo "[ridgunc build] Error: no functions found in source"
           1
         | otherwise =
-          prog -> lower program to native -> build native target for arch output_bin target_arch
-      build native target after check _ _ _ errs =
+          build native target for arch (lower program to native prog infos) output_bin target_arch
+      build native target after check _ _ _ errs _ =
         echo (format type errors errs)
         1
 
@@ -3940,17 +3962,17 @@ fn :: build native so loaded String String String String => Int
         1
       build native so loaded _ output_so target_arch raw_src =
         raw_src -> tokenize src -> parse tokens -> prog
-        prog -> typecheck program -> errs
-        build native so after check prog output_so target_arch errs
+        all_errs = typecheck program all prog
+        build native so after check prog output_so target_arch (drop tensor infos all_errs []) (tensor infos of all_errs [])
 
-fn :: build native so after check RProgram String String [RTypeError] => Int
-      build native so after check prog output_so target_arch []
+fn :: build native so after check RProgram String String [RTypeError] [String] => Int
+      build native so after check prog output_so target_arch [] infos
         | ((count fn defs prog) == 0) and ((count type defs prog) == 0) =
           echo "[ridgunc build --so] Error: no functions or types found in source"
           1
         | otherwise =
-          prog -> lower library to native -> build native so for arch output_so target_arch
-      build native so after check _ _ _ errs =
+          build native so for arch (lower library to native prog infos) output_so target_arch
+      build native so after check _ _ _ errs _ =
         echo (format type errors errs)
         1
 
@@ -3984,78 +4006,178 @@ fn :: lower tensor read RNativeEnv RExpr [RExpr] [String] Int RNativeCode => RNa
         st3 = lower expr list to slots env idxs bound_locals (sp + 1) 0 st2
         nc emit st3 (NIndex sp (sp + 1) count) (sp + count + 2)
 
--- ── Real tensor variables (FR-COMP-020 §2) ───────────────────
--- Lowering is untyped, so it collects, per function, the variables
--- that hold a `Real` (or `Float`) tensor: parameters typed
--- `Tensor[Real ...]`, bindings of a `Real` tensor allocation, aliases,
--- clones and slices of those, and calls to functions that return one.
--- All cases of a function share one set.
 
-fn :: is real tensor type str String => Bool
-      is real tensor type str s = (str starts with s "Tensor:Real") or (str starts with s "Tensor:Float")
+-- ── Tensor element access by element kind (FR-COMP-020) ──────
+-- The type checker reports the element kind of each tensor variable
+-- (`tensor infos of` in typecheck.rg): "N" (Int), "R" (Real), "G" (any
+-- other type) or "U" (unknown). A tensor of "G" elements is a GenTensor,
+-- stored as a List RVal (nested for two dimensions), so `echo`, `==` and
+-- RMM (child cascade on drop) come from the runtime. "U" tensors are
+-- checked at run time (`NIsList`). GenTensor accesses check bounds.
 
-fn :: real tensor fns [RFnDef] [String] => [String]
-      real tensor fns [] acc = acc
-      real tensor fns ((FnDef name _ ret _):rest) acc
-        | is real tensor type str ret = real tensor fns rest ([name] :: acc)
-        | otherwise = real tensor fns rest acc
+fn :: fn tensor elems [String] String [String] => [String]
+      fn tensor elems [] _ acc =  acc
+      fn tensor elems (i:is) key acc
+        | str starts with i key = fn tensor elems is key ([str slice i (str len key) (str len i)] :: acc)
+        | otherwise = fn tensor elems is key acc
 
-fn :: real tensor vars [String] [RFnCase] [String] => [String]
-      real tensor vars params cases real_fns =  real vars cases params cases real_fns []
+fn :: env tensor kind RNativeEnv String => String
+      env tensor kind (NativeEnv _ _ _ _ _ _ _ _ elems) v =  tensor kind lookup elems (v + "|") ""
 
-fn :: real vars cases [String] [RFnCase] [String] [String] => [String]
-      real vars cases _ [] _ acc = acc
-      real vars cases params ((FnCase pats guards body):rest) real_fns acc =
-        acc1 = real vars params pats params acc
-        acc2 = real vars guards guards real_fns acc1
-        acc3 = real vars expr body real_fns acc2
-        real vars cases params rest real_fns acc3
+fn :: tensor kind lookup [String] String String => String
+      tensor kind lookup [] _ "" =  "U"
+      tensor kind lookup [] _ found =  found
+      tensor kind lookup (e:es) key found
+        | str starts with e key = tensor kind lookup es key (merge tensor kind found (str slice e (str len key) (str len e)))
+        | otherwise = tensor kind lookup es key found
 
-fn :: real vars params [RPattern] [String] [String] => [String]
-      real vars params (p:ps) (t:ts) acc
-        | is real tensor type str t = real vars params ps ts (real pat name p acc)
-        | otherwise = real vars params ps ts acc
-      real vars params _ _ acc =  acc
-
-fn :: real pat name RPattern [String] => [String]
-      real pat name (PatVar v) acc =  [v] :: acc
-      real pat name (PatCtor ":tensor-pat:" ((PatVar v):_)) acc =  [v] :: acc
-      real pat name _ acc =  acc
-
-fn :: real vars guards [RGuard] [String] [String] => [String]
-      real vars guards [] _ acc = acc
-      real vars guards ((GuardBranch c b):rest) fns acc =
-        acc1 = real vars expr c fns acc
-        real vars guards rest fns (real vars expr b fns acc1)
-
-fn :: real vars expr RExpr [String] [String] => [String]
-      real vars expr (EBlock stmts) fns acc =  real vars stmts stmts fns acc
-      real vars expr (EGuard gs) fns acc =  real vars guards gs fns acc
-      real vars expr (EWhere e _) fns acc =  real vars expr e fns acc
-      real vars expr (EWithRegion _ e) fns acc =  real vars expr e fns acc
-      real vars expr (EWithCtx _ a b) fns acc =  real vars expr b fns (real vars expr a fns acc)
-      real vars expr _ _ acc =  acc
-
-fn :: real vars stmts [RStmt] [String] [String] => [String]
-      real vars stmts [] _ acc = acc
-      real vars stmts ((StmtLet v e):rest) fns acc =  real vars stmts rest fns (real bind v e fns acc)
-      real vars stmts ((StmtMut v e):rest) fns acc =  real vars stmts rest fns (real bind v e fns acc)
-      real vars stmts ((StmtExpr e):rest) fns acc =  real vars stmts rest fns (real vars expr e fns acc)
-      real vars stmts (_:rest) fns acc =  real vars stmts rest fns acc
-
-fn :: real bind String RExpr [String] [String] => [String]
-      real bind v e fns acc
-        | is real tensor expr e fns acc = [v] :: acc
-        | otherwise = real vars expr e fns acc
-
-fn :: is real tensor expr RExpr [String] [String] => Bool
-      is real tensor expr (ECall ":typed-tensor:" ((EStr ty):_)) _ _ =  (ty == "Real") or (ty == "Float")
-      is real tensor expr (ECall ":tensor-clone:" (a:_)) fns known =  is real tensor expr a fns known
-      is real tensor expr (ECall ":tensor-row-slice:" (a:_)) fns known =  is real tensor expr a fns known
-      is real tensor expr (ECall ":tensor-col-slice:" (a:_)) fns known =  is real tensor expr a fns known
-      is real tensor expr (ECall f _) fns _ =  str in list f fns
-      is real tensor expr (EVar x) _ known =  str in list x known
-      is real tensor expr _ _ _ =  False
+fn :: merge tensor kind String String => String
+      merge tensor kind "" k =  k
+      merge tensor kind a b
+        | a == b = a
+        | otherwise = "U"
 
 fn :: env is real tensor RNativeEnv String => Bool
-      env is real tensor (NativeEnv _ _ _ _ _ _ _ _ real_vars) v =  str in list v real_vars
+      env is real tensor env v =  (env tensor kind env v) == "R"
+
+fn :: gen tensor oob msg => String
+      gen tensor oob msg =  "runtime error: tensor index out of range\n"
+
+-- `v_(i ...)`, `v` a variable.
+fn :: lower var index read RNativeEnv String [RExpr] [String] Int RNativeCode => RNativeCode
+      lower var index read env v idxs bound_locals sp st
+        | (env tensor kind env v) == "R" =
+          st1 = lower tensor read env (EVar v) idxs bound_locals sp st
+          nc emit st1 NRealFromBits sp
+        | (env tensor kind env v) == "N" = lower tensor read env (EVar v) idxs bound_locals sp st
+        | (lookup local bound_locals v) >= 0 and ((rexpr list len idxs) == 1 or (rexpr list len idxs) == 2) =
+          count = rexpr list len idxs
+          st1 = lower expr list to slots env idxs bound_locals sp 0 st
+          lower slot index read env (env tensor kind env v) (env var slot env v) sp count st1
+        | otherwise = lower base index read env (EVar v) idxs bound_locals sp st
+
+-- `base_(i ...)`, `base` any expression: it is evaluated into slot sp.
+fn :: lower base index read RNativeEnv RExpr [RExpr] [String] Int RNativeCode => RNativeCode
+      lower base index read env base idxs bound_locals sp st
+        | (rexpr list len idxs) == 1 or (rexpr list len idxs) == 2 =
+          count = rexpr list len idxs
+          st1 = lower expr env base bound_locals sp st
+          st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
+          st3 = lower expr list to slots env idxs bound_locals (sp + 1) 0 st2
+          st4 = lower slot index read env "U" sp (sp + 1) count st3
+          nc emit list st4 [NStoreSlot (sp + count + 1), NCmmDropSlot sp, NMoveSlot (sp + count + 1)] (sp + count + 2)
+        | otherwise = lower tensor read env base idxs bound_locals sp st
+
+-- The base is in slot b (borrowed), the indices in slots i0 and i0 + 1.
+fn :: lower slot index read RNativeEnv String Int Int Int RNativeCode => RNativeCode
+      lower slot index read env "G" b i0 count st =  lower gen read env b i0 count st
+      lower slot index read env _ b i0 count st =
+        num_lbl = nc lbl st
+        end_lbl = num_lbl + 1
+        st0 = nc set lbl st (num_lbl + 2)
+        st1 = nc emit list st0 [NIsList b, NAsBool, NJumpIfZero num_lbl] (i0 + count)
+        st2 = lower gen read env b i0 count st1
+        nc emit list st2 [NJump end_lbl, NLabel num_lbl, NIndex b i0 (0 - count), NLabel end_lbl] (i0 + count + 1)
+
+fn :: lower gen read RNativeEnv Int Int Int RNativeCode => RNativeCode
+      lower gen read env b i0 1 st =
+        st1 = lower gen bounds env b i0 (i0 + 1) st
+        nc emit st1 (NIndex b i0 (0 - 1)) (i0 + 2)
+      lower gen read env b i0 _ st =
+        row = i0 + 2
+        st1 = lower gen bounds env b i0 (i0 + 3) st
+        st2 = nc emit list st1 [NIndex b i0 (0 - 1), NStoreSlot row] (i0 + 3)
+        st3 = lower gen bounds env row (i0 + 1) (i0 + 3) st2
+        nc emit list st3 [NIndex row (i0 + 1) (0 - 1), NStoreSlot (i0 + 3), NCmmDropSlot row, NMoveSlot (i0 + 3)] (i0 + 4)
+
+-- Stop with a runtime error unless 0 <= slot is < length of the List in
+-- slot b (FR-COMP-020 §8). Slot t is a scratch slot.
+fn :: lower gen bounds RNativeEnv Int Int Int RNativeCode => RNativeCode
+      lower gen bounds env b is t st =
+        oob_lbl = nc lbl st
+        ok_lbl = oob_lbl + 1
+        st0 = nc set lbl st (oob_lbl + 2)
+        st1 = nc emit list st0 [NCloneSlot is, NStoreSlot t, NAdtField b (0 - 1), NBinOp (binop id OpLt) t, NAsBool, NJumpIfZero oob_lbl, NCloneSlot is, NStoreSlot t, NLoadImmInt 0, NBinOp (binop id OpGtEq) t, NAsBool, NJumpIfZero oob_lbl, NJump ok_lbl, NLabel oob_lbl] (t + 1)
+        st2 = lower expr env (ECall "sys_write_fd" [EInt 2, EStr (gen tensor oob msg)]) [] (t + 1) st1
+        st3 = nc emit st2 NDropVal (t + 2)
+        st4 = lower expr env (ECall "sys_exit" [EInt 1]) [] (t + 1) st3
+        nc emit st4 (NLabel ok_lbl) (t + 1)
+
+-- `t_(i ...) = v`: the value is in acc, the indices in slots sp ...
+fn :: emit tensor store RNativeEnv String Int Int Int RNativeCode => RNativeCode
+      emit tensor store env t tslot sp count st
+        | (env tensor kind env t) == "N" or (env tensor kind env t) == "R" or count > 2 =
+          nc emit list st [NIndexSet tslot sp count, NStoreSlot tslot] (sp + count + 1)
+        | (env tensor kind env t) == "G" =
+          st1 = nc emit st (NStoreSlot (sp + count)) (sp + count + 1)
+          lower gen write env tslot sp count (sp + count) st1
+        | otherwise =
+          vs = sp + count
+          num_lbl = nc lbl st
+          end_lbl = num_lbl + 1
+          st0 = nc set lbl st (num_lbl + 2)
+          st1 = nc emit list st0 [NStoreSlot vs, NIsList tslot, NAsBool, NJumpIfZero num_lbl] (vs + 1)
+          st2 = lower gen write env tslot sp count vs st1
+          nc emit list st2 [NJump end_lbl, NLabel num_lbl, NMoveSlot vs, NIndexSet tslot sp count, NStoreSlot tslot, NLabel end_lbl] (vs + 1)
+
+-- The value is in slot vs, the List in tslot (borrowed).
+fn :: lower gen write RNativeEnv Int Int Int Int RNativeCode => RNativeCode
+      lower gen write env tslot sp 1 vs st =
+        st1 = lower gen bounds env tslot sp (vs + 1) st
+        nc emit list st1 [NMoveSlot vs, NListSet tslot sp] (vs + 2)
+      lower gen write env tslot sp _ vs st =
+        row = vs + 1
+        st1 = lower gen bounds env tslot sp (vs + 2) st
+        st2 = nc emit list st1 [NIndex tslot sp (0 - 1), NStoreSlot row] (vs + 2)
+        st3 = lower gen bounds env row (sp + 1) (vs + 2) st2
+        nc emit list st3 [NMoveSlot vs, NListSet row (sp + 1), NCmmDropSlot row] (vs + 3)
+
+-- ── GenTensor helper functions (FR-COMP-020) ──────────────────
+-- Added to every program like the `str_to_int` helper. The `__rg_gt_is_gen`,
+-- `__rg_gt_is_list`, `__rg_gt_len`, `__rg_gt_tlen`, `__rg_gt_real_bits`,
+-- `__rg_gt_list_copy`, `__rg_gt_list_tensor`, `__rg_gt_tensor_ints`,
+-- `__rg_gt_tensor_reals`
+-- and `__rg_gt_numfill*` stubs give the parser their arity; `lower expr`
+-- replaces calls to them with native instructions.
+
+fn :: gt helper src stubs => String
+      gt helper src stubs =  "fn :: __rg_gt_is_gen A => Bool\n      __rg_gt_is_gen v =  False\nfn :: __rg_gt_is_list A => Bool\n      __rg_gt_is_list v =  False\nfn :: __rg_gt_len A => Int\n      __rg_gt_len v =  0\nfn :: __rg_gt_tlen A => Int\n      __rg_gt_tlen v =  0\nfn :: __rg_gt_real_bits A => Real\n      __rg_gt_real_bits v =  0.0\nfn :: __rg_gt_numfill1 A Int => A\n      __rg_gt_numfill1 v n =  v\nfn :: __rg_gt_numfill2 A Int Int => A\n      __rg_gt_numfill2 v r c =  v\nfn :: __rg_gt_list_copy A => A\n      __rg_gt_list_copy v =  v\nfn :: __rg_gt_list_tensor A => T\n      __rg_gt_list_tensor v =  v\nfn :: __rg_gt_tensor_ints T => [Int]\n      __rg_gt_tensor_ints v =  []\nfn :: __rg_gt_tensor_reals T => [Real]\n      __rg_gt_tensor_reals v =  []\n"
+
+fn :: gt helper src alloc => String
+      gt helper src alloc =  "fn :: __rg_gt_build A Int [A] => [A]\n      __rg_gt_build v n acc\n        | n <= 0 = acc\n        | otherwise = __rg_gt_build v (n - 1) (acc :: [v])\nfn :: __rg_gt_new1 A Int => [A]\n      __rg_gt_new1 v n =  __rg_gt_build v n []\nfn :: __rg_gt_rows A Int Int [[A]] => [[A]]\n      __rg_gt_rows v c r acc\n        | r <= 0 = acc\n        | otherwise = __rg_gt_rows v c (r - 1) (acc :: [(__rg_gt_new1 v c)])\nfn :: __rg_gt_new2 A Int Int => [[A]]\n      __rg_gt_new2 v r c =  __rg_gt_rows v c r []\nfn :: __rg_gt_set1 T A Int Int => T\n      __rg_gt_set1 t v i n =  __rg_gt_set1_step t v i n (i >= n)\nfn :: __rg_gt_set1_step T A Int Int Bool => T\n      __rg_gt_set1_step t _ _ _ True =  t\n      __rg_gt_set1_step t v i n False =\n        t_(i) = v\n        __rg_gt_set1 t v (i + 1) n\nfn :: __rg_gt_set2 T A Int Int Int Int => T\n      __rg_gt_set2 t v i j r c\n        | i >= r = t\n        | j >= c = __rg_gt_set2 t v (i + 1) 0 r c\n        | otherwise = __rg_gt_set2_step t v i j r c\nfn :: __rg_gt_set2_step T A Int Int Int Int => T\n      __rg_gt_set2_step t v i j r c =\n        t_(i, j) = v\n        __rg_gt_set2 t v i (j + 1) r c\nfn :: __rg_gt_fill1 A Int => [A]\n      __rg_gt_fill1 v n\n        | __rg_gt_is_gen v = __rg_gt_new1 v n\n        | otherwise = __rg_gt_set1 (__rg_gt_numfill1 0 n) v 0 n\nfn :: __rg_gt_fill2 A Int Int => [[A]]\n      __rg_gt_fill2 v r c\n        | __rg_gt_is_gen v = __rg_gt_new2 v r c\n        | otherwise = __rg_gt_set2 (__rg_gt_numfill2 0 r c) v 0 0 r c\n"
+
+fn :: gt helper src lists => String
+      gt helper src lists =  "fn :: __rg_gt_copy [A] => [A]\n      __rg_gt_copy xs =  __rg_gt_list_copy xs\nfn :: __rg_gt_deep_copy [[A]] Int Int [[A]] => [[A]]\n      __rg_gt_deep_copy xs i n acc\n        | i >= n = acc\n        | otherwise = __rg_gt_deep_copy xs (i + 1) n (acc :: [(__rg_gt_copy xs_(i))])\nfn :: __rg_gt_copy_any [A] => [A]\n      __rg_gt_copy_any xs\n        | (__rg_gt_len xs) == 0 = []\n        | otherwise = __rg_gt_copy_first xs xs_(0)\nfn :: __rg_gt_copy_first [A] A => [A]\n      __rg_gt_copy_first xs h\n        | __rg_gt_is_list h = __rg_gt_deep_copy xs 0 (__rg_gt_len xs) []\n        | otherwise = __rg_gt_copy xs\nfn :: __rg_gt_from_list [A] => [A]\n      __rg_gt_from_list xs\n        | (__rg_gt_len xs) == 0 = []\n        | otherwise = __rg_gt_from_first xs xs_(0)\nfn :: __rg_gt_from_first [A] A => [A]\n      __rg_gt_from_first xs h\n        | __rg_gt_is_gen h = __rg_gt_copy xs\n        | otherwise = __rg_gt_list_tensor xs\nfn :: __rg_gt_to_list T => [A]\n      __rg_gt_to_list t\n        | __rg_gt_is_list t = __rg_gt_copy_any t\n        | otherwise = __rg_gt_tensor_ints t\nfn :: __rg_gt_to_list_real T => [Real]\n      __rg_gt_to_list_real t =  __rg_gt_tensor_reals t\n"
+
+fn :: gt helper fndefs => [RFnDef]
+      gt helper fndefs =  fndefs of program (parse tokens (tokenize src ((gt helper src stubs) + (gt helper src alloc) + (gt helper src lists))))
+
+fn :: with gt helpers [RFnDef] => [RFnDef]
+      with gt helpers fns
+        | has fndef named fns "__rg_gt_new1" = fns
+        | otherwise = fns :: (gt helper fndefs)
+
+fn :: lib with gt helpers [RFnDef] => [RFnDef]
+      lib with gt helpers fns
+        | fndefs call gt fns = with gt helpers fns
+        | otherwise = fns
+
+fn :: gt trigger names => [String]
+      gt trigger names =  [":gt-new:", "tensor_fill", "tensor_from_list", "tensor_to_list"]
+
+fn :: fndefs call gt [RFnDef] => Bool
+      fndefs call gt [] =  False
+      fndefs call gt ((FnDef _ _ _ cases):fs)
+        | any str in list (gt trigger names) (collect refs cases cases []) = True
+        | otherwise = fndefs call gt fs
+
+fn :: any str in list [String] [String] => Bool
+      any str in list [] _ =  False
+      any str in list (x:xs) ys =  (str in list x ys) or (any str in list xs ys)
+
+fn :: add gt refs RFnRefsMap => RFnRefsMap
+      add gt refs mp =
+        m1 = fn refs map insert mp ":gt-new:" ["__rg_gt_new1", "__rg_gt_new2"]
+        m2 = fn refs map insert m1 "tensor_fill" ["__rg_gt_fill1", "__rg_gt_fill2"]
+        m3 = fn refs map insert m2 "tensor_from_list" ["__rg_gt_from_list"]
+        fn refs map insert m3 "tensor_to_list" ["__rg_gt_to_list", "__rg_gt_to_list_real"]

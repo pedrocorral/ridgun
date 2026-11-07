@@ -439,9 +439,25 @@ fn :: append [Int] [Int] => [Int]
 
 #### Tensors
 
-Tensors are Ridgun's native **mutable** N-dimensional numeric type. They generalize vectors, matrices, and higher-dimensional arrays into a single type. Elements are `Real` by default.
+Tensors are Ridgun's native **mutable** N-dimensional indexed type. They generalize vectors, matrices, and higher-dimensional arrays into a single type. Elements are `Real` by default.
 
-**Element types (`FR-COMP-018`):** a tensor stores one 64-bit number per element. The element type in `Tensor[T * n]`, `Tensor[T]` or `Tensor(T, n)` must be `Int`, `Byte`, `U8`, `U16`, `U32`, `U64`, `I8`, `I16`, `I32`, `I64`, `Usize`, `Real` or `Float`. Any other element type, such as `String` or `Bool`, is a compile error.
+**Element types (`FR-COMP-020`):** a tensor holds elements of any type. A tensor of numbers (`Int`, `Byte`, `U8`, `U16`, `U32`, `U64`, `I8`, `I16`, `I32`, `I64`, `Usize`, `Real`, `Float`) stores one 64-bit number per element. A tensor of other elements (`String`, `Bool`, `Char`, lists, tuples, records, ADTs) stores one value per element and has one or two dimensions. `Tensor_GPU` holds numbers only: another element type is a compile error (`FR-COMP-018`).
+
+```ridgun
+names = Tensor[String * 3]          -- ["", "", ""]
+names_(0) = "ana"
+grid = Tensor[Bool * 2 * 3]         -- every element False
+visits = tensor fill (Visit "ana" 1) 10
+board = tensor fill '.' 8 8
+```
+
+- **Initial values.** An allocation without an initial value gives every element the default of its type: `0` for numbers, `""` for `String`, `False` for `Bool`, `[]` for lists. Other element types have no default, so `Tensor[Char * n]` is a compile error. `tensor fill v n` and `tensor fill v r c` make a tensor of one or two dimensions with every element equal to `v`, for any element type.
+- **Reads and writes.** `t_(i)` and `t_(i, j)` read and write an element in place in constant time. A tensor is passed to and returned from functions by reference. On a tensor of non-numeric elements, an index outside the shape stops the program with `runtime error: tensor index out of range` on stderr and exit status 1.
+- **Lists.** `tensor from list xs` copies a list into a one-dimensional tensor: a list of numbers gives a numeric tensor, any other list gives a tensor of its elements. `tensor to list t` copies a tensor into a list: a two-dimensional tensor of non-numeric elements gives a list of rows, a numeric tensor gives the list of all its elements in row order. Both run natively, without a Ridgun loop per element. A tensor literal (`Tensor [...]`) holds numbers only.
+- **Showing and comparing.** `echo` shows a tensor of non-numeric elements as a list of its elements, and `==` compares the elements.
+- **Numbers only.** Einsum (`@`), arithmetic, matrix products, element-wise and bitwise operators, row and column helpers, and parallel writes (`|| expr -> out[i]`) need tensors of numbers. On a tensor of non-numeric elements they are compile errors, for example `einsum (@) needs a tensor of numbers, got a tensor of String`.
+- **Not yet supported for non-numeric elements:** shape patterns, and the ARM64 backend (its runtime has no `Real` or GenTensor support yet).
+
 
 **Element typing (`FR-COMP-020` §2):** reading `t_(i ...)` gives the element type of `t`. An element of a `Tensor[Real * n]` is a `Real`: `echo t_(0)` prints the number and `t_(0) + 1.0` type-checks. Writing a value of another type, such as `t_(0) = 1` on a `Real` tensor, is a compile error. A tensor whose element type is not known (for example a parameter typed `Tensor`) has `Int` elements.
 

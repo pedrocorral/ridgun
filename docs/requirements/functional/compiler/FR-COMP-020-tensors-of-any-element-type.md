@@ -10,7 +10,7 @@ updated: 2026-11-07
 depends_on:
   - FR-COMP-018
 related: [FR-COMP-019]
-verified_by: []
+verified_by: [TS-COMP-020]
 ---
 # FR-COMP-020 — Tensors of Any Element Type
 
@@ -44,8 +44,15 @@ verified_by: []
 3. Native list conversion (§9).
 4. Compile errors for numeric-only operations, `Tensor_GPU` and parallel writes (§7, §11).
 
+## Implementation status (0.9.37)
+- Done on LLVM and the pure x86-64 encoder: §1-§11 (phases 1-4), except shape patterns on tensors of non-numeric elements.
+- §12: the ARM64 encoder emits placeholders for the GenTensor instructions. Its runtime has no `Real` or GenTensor support yet.
+- Representation: a GenTensor is not a separate heap tag. A one-dimensional GenTensor is an RC vector of boxed elements (the list representation, tag `2`); a two-dimensional one is a vector of row vectors. The type checker keeps numeric-only code away from it (§7). Details: `docs/etc/gentensor.md`.
+- A GenTensor has one or two dimensions; a third dimension is a compile error.
+- Initial value (§6): implemented as `tensor fill v n` and `tensor fill v r c`. The name is provisional until the open question below is closed.
+
 ## Open questions
-- The syntax for an allocation with an initial value (§6).
+- The syntax for an allocation with an initial value (§6). Provisional: `tensor fill v n`, `tensor fill v r c`.
 - Whether bounds checks (§8) also apply to numeric tensors, and at what cost.
 - What happens when a tensor of non-numeric elements is sent to another agent: copy it, or a compile error.
 

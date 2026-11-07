@@ -251,16 +251,71 @@ fn :: finish tensor type (String, [RToken]) => String [RToken]
 -- `Tensor[E]` as `Tensor:E` (FR-COMP-020 §2). A bare `Tensor` has no
 -- element type.
 
-fn :: tensor bracket elem [RToken] => String
-      tensor bracket elem ((TokIdent e):_)
-        | is upper ident e = e
-        | otherwise = ""
-      tensor bracket elem _ =  ""
+-- The element type may be any type (FR-COMP-020 §1): `Tensor[String * n]`,
+-- `Tensor[[Int] * n]`, `Tensor[(Int, String) * n]`. `tensor elem prefix`
+-- reads it and returns the tokens from the following `*`, `,`, `]` or `)`;
+-- it returns "" and the tokens unchanged when there is no element type.
+
+fn :: tensor elem prefix [RToken] => String [RToken]
+      tensor elem prefix ((TokIdent e):rest)
+        | is upper ident e = (e, rest)
+        | otherwise = ("", [TokIdent e] :: rest)
+      tensor elem prefix (TokLBracket:rest) =  tensor elem check (parse type tok ([TokLBracket] :: rest)) ([TokLBracket] :: rest)
+      tensor elem prefix (TokIdxLBracket:rest) =  tensor elem check (parse type tok ([TokLBracket] :: rest)) ([TokIdxLBracket] :: rest)
+      tensor elem prefix (TokLParen:rest) =  tensor elem check (parse type tok ([TokLParen] :: rest)) ([TokLParen] :: rest)
+      tensor elem prefix ts =  ("", ts)
+
+fn :: tensor elem check (String, [RToken]) [RToken] => String [RToken]
+      tensor elem check (e, (TokStar:rest)) orig =  tensor elem accept e ([TokStar] :: rest) orig
+      tensor elem check (e, (TokRBracket:rest)) orig =  tensor elem accept e ([TokRBracket] :: rest) orig
+      tensor elem check (e, (TokComma:rest)) orig =  tensor elem accept e ([TokComma] :: rest) orig
+      tensor elem check (e, (TokRParen:rest)) orig =  tensor elem accept e ([TokRParen] :: rest) orig
+      tensor elem check _ orig =  ("", orig)
+
+fn :: tensor elem accept String [RToken] [RToken] => String [RToken]
+      tensor elem accept e rest orig
+        | type words upper e 0 (str len e) True = (e, rest)
+        | otherwise = ("", orig)
+
+-- Every word of a type string starts with an upper-case letter, so
+-- `[x]` or `(a)` in a tensor literal is not taken for an element type.
+fn :: type words upper String Int Int Bool => Bool
+      type words upper s pos len at_start
+        | pos >= len = True
+        | is ascii letter (str char at s pos) = (not at_start or is ascii upper (str char at s pos)) and (type words upper s (pos + 1) len False)
+        | is ascii digit or us (str char at s pos) = type words upper s (pos + 1) len False
+        | otherwise = type words upper s (pos + 1) len True
+
+fn :: is ascii letter Int => Bool
+      is ascii letter c =  (c >= 65 and c <= 90) or (c >= 97 and c <= 122)
+
+fn :: is ascii upper Int => Bool
+      is ascii upper c =  c >= 65 and c <= 90
+
+fn :: is ascii digit or us Int => Bool
+      is ascii digit or us c =  (c >= 48 and c <= 57) or c == 95
+
+-- `Tensor[E * d1 * d2]` keeps its element type as `Tensor:E@d1,d2`, and
+-- `Tensor[E]` as `Tensor:E` (FR-COMP-020 §2). A bare `Tensor` has no
+-- element type.
+fn :: typed tensor type tok [RToken] => String [RToken]
+      typed tensor type tok ts =  finish typed tensor elem (tensor elem prefix ts)
+
+fn :: finish typed tensor elem (String, [RToken]) => String [RToken]
+      finish typed tensor elem ("", ts) =  finish tensor type (parse tensor bracket dims ts)
+      finish typed tensor elem (e, ts) =  finish typed tensor type e (parse tensor bracket tail ts)
+
+fn :: typed paren tensor type tok [RToken] => String [RToken]
+      typed paren tensor type tok ts =  finish typed paren tensor elem (tensor elem prefix ts)
+
+fn :: finish typed paren tensor elem (String, [RToken]) => String [RToken]
+      finish typed paren tensor elem ("", ts) =  finish tensor type (parse tensor dims ts)
+      finish typed paren tensor elem (e, ts) =  finish typed tensor type e (parse tensor dims ts)
 
 fn :: finish typed tensor type String (String, [RToken]) => String [RToken]
       finish typed tensor type "" res          =  finish tensor type res
       finish typed tensor type e ("", rest)    =  ("Tensor:" + e, rest)
-      finish typed tensor type e (dims, rest)  =  ("Tensor:" + e + "(" + dims + ")", rest)
+      finish typed tensor type e (dims, rest)  =  ("Tensor:" + e + "@" + dims, rest)
 
 fn :: parse type tok [RToken]           => String [RToken]
       parse type tok (TokLBracket:rest) =
@@ -269,12 +324,12 @@ fn :: parse type tok [RToken]           => String [RToken]
       parse type tok (TokLParen:rest)   =
         check variadic suffix (parse type paren rest)
       parse type tok ((TokIdent s):TokLParen:rest)
-        | s == "Tensor" or s == "Tensor_GPU" = check variadic suffix (finish tensor type (parse tensor dims rest))
+        | s == "Tensor" or s == "Tensor_GPU" = check variadic suffix (typed paren tensor type tok rest)
         | otherwise = check variadic suffix (s, [TokLParen] :: rest)
       parse type tok ((TokIdent s):TokIdxLBracket:rest)
-        | s == "Tensor" or s == "Tensor_GPU" = check variadic suffix (finish typed tensor type (tensor bracket elem rest) (parse tensor bracket dims rest))
+        | s == "Tensor" or s == "Tensor_GPU" = check variadic suffix (typed tensor type tok rest)
       parse type tok ((TokIdent s):TokLBracket:rest)
-        | s == "Tensor" or s == "Tensor_GPU" = check variadic suffix (finish typed tensor type (tensor bracket elem rest) (parse tensor bracket dims rest))
+        | s == "Tensor" or s == "Tensor_GPU" = check variadic suffix (typed tensor type tok rest)
       parse type tok ((TokIdent s):rest) =
         check variadic suffix (s, rest)
       parse type tok (_:rest)           =  ("Int", rest)
@@ -1119,10 +1174,10 @@ fn :: parse atom base [RToken]           => RExpr [RToken]
       parse atom base (TokType:rest)     =  (EVar "type", rest)
       parse atom base (TokWith:rest)     =  (EVar "with", rest)
       parse atom base (TokNot:rest)      =  (EVar "not", rest)
-      parse atom base ((TokIdent s):TokLBracket:(TokIdent elem_ty):TokStar:after_star)
-        | (s == "Tensor" or s == "Tensor_GPU") and (is upper ident elem_ty) = finish tensor alloc elem_ty (parse tensor alloc dims ([TokStar] :: after_star))
-      parse atom base ((TokIdent s):TokIdxLBracket:(TokIdent elem_ty):TokStar:after_star)
-        | (s == "Tensor" or s == "Tensor_GPU") and (is upper ident elem_ty) = finish tensor alloc elem_ty (parse tensor alloc dims ([TokStar] :: after_star))
+      parse atom base ((TokIdent s):TokLBracket:rest)
+        | (s == "Tensor" or s == "Tensor_GPU") and (is tensor alloc rest) = tensor alloc of (tensor elem prefix rest)
+      parse atom base ((TokIdent s):TokIdxLBracket:rest)
+        | (s == "Tensor" or s == "Tensor_GPU") and (is tensor alloc rest) = tensor alloc of (tensor elem prefix rest)
       parse atom base ((TokIdent s):TokLBracket:rest)
         | s == "Tensor" or s == "Tensor_GPU" = finish tensor lit (parse comma exprs rest)
       parse atom base ((TokIdent s):TokIdxLBracket:rest)
@@ -1252,9 +1307,31 @@ fn :: parse tensor alloc dims cont (RExpr, [RToken]) => [RExpr] [RToken]
         more = parse tensor alloc dims rest
         prepend expr d_e more
 
+fn :: is tensor alloc [RToken] => Bool
+      is tensor alloc ts =  tensor alloc starts (tensor elem prefix ts)
+
+fn :: tensor alloc starts (String, [RToken]) => Bool
+      tensor alloc starts ("", _) =  False
+      tensor alloc starts (_, (TokStar:_)) =  True
+      tensor alloc starts _ =  False
+
+fn :: tensor alloc of (String, [RToken]) => RExpr [RToken]
+      tensor alloc of (e, rest) =  finish tensor alloc e (parse tensor alloc dims rest)
+
+-- A numeric tensor is filled with zeros. A tensor of any other element
+-- type is a GenTensor (FR-COMP-020 §6): it starts with the default value
+-- of its element type, and a type without one is a type error.
 fn :: finish tensor alloc String  ([RExpr], [RToken]) => RExpr [RToken]
-      finish tensor alloc elem_ty (dims, rest)        =
-        (ECall ":typed-tensor:" [EStr elem_ty, ECall ":tensor-zeros:" ([tensor zero fill elem_ty] :: dims)], rest)
+      finish tensor alloc elem_ty (dims, rest)
+        | tensor elem type ok elem_ty = (ECall ":typed-tensor:" [EStr elem_ty, ECall ":tensor-zeros:" ([tensor zero fill elem_ty] :: dims)], rest)
+        | otherwise = (ECall ":typed-tensor:" [EStr elem_ty, ECall ":gt-new:" ([gen tensor default elem_ty] :: dims)], rest)
+
+fn :: gen tensor default String => RExpr
+      gen tensor default "String" =  EStr ""
+      gen tensor default "Bool" =  EBool False
+      gen tensor default e
+        | str starts with e "[" = EList []
+        | otherwise = ECall ":gt-no-default:" [EStr e]
 
 fn :: finish tensor lit ([RExpr], [RToken]) => RExpr [RToken]
       finish tensor lit (elems, rest)       =  (ETensor elems, rest)
@@ -2422,7 +2499,7 @@ fn :: arity matches Int Int    => Bool
 
 fn :: builtin arity entries => [RArityEntry]
       builtin arity entries =
-        [ArityEntry "assert_equals" 2, ArityEntry "assert_true" 1, ArityEntry "send_to" 2, ArityEntry "ask_to" 2, ArityEntry "send_through" 2, ArityEntry "receive_from" 1, ArityEntry "try_receive_from" 1, ArityEntry "receive_from_timeout" 2, ArityEntry "stop" 1, ArityEntry "agent_alive" 1, ArityEntry "agent_dropped" 1, ArityEntry "agent_flush" 1, ArityEntry "agent_state" 1, ArityEntry "new_mailbox" 0, ArityEntry "new_channel" 0, ArityEntry "new_bounded_channel" 1, ArityEntry "chan_send" 2, ArityEntry "chan_recv" 1, ArityEntry "chan_try_recv" 1, ArityEntry "str_len" 1, ArityEntry "str_char_at" 2, ArityEntry "str_slice" 3, ArityEntry "str_contains" 2, ArityEntry "str_starts_with" 2, ArityEntry "str_concat" 2, ArityEntry "int_to_str" 1, ArityEntry "str_to_int" 1, ArityEntry "char_from_code" 1, ArityEntry "trim_str" 1, ArityEntry "read_file" 1, ArityEntry "load_rg_source" 1, ArityEntry "read_bytes" 1, ArityEntry "write_bytes" 2, ArityEntry "write_file" 2, ArityEntry "shell_exec" 1, ArityEntry "list_str_len" 1, ArityEntry "list_dir" 1, ArityEntry "file_lstat" 1, ArityEntry "sha256_file" 1, ArityEntry "sha256_str" 1, ArityEntry "sha256_raw" 1, ArityEntry "sha256_bytes" 1, ArityEntry "sys_os" 0, ArityEntry "sys_arch" 0, ArityEntry "sys_mkdir" 2, ArityEntry "sys_chmod" 2, ArityEntry "sys_exec" 3, ArityEntry "sys_chdir" 1, ArityEntry "sys_getcwd" 0, ArityEntry "sys_getenv" 1, ArityEntry "sys_setenv" 2, ArityEntry "sys_exit" 1, ArityEntry "sys_getuid" 0, ArityEntry "sys_getgid" 0, ArityEntry "sys_getpid" 0, ArityEntry "sys_time_ms" 0, ArityEntry "sys_deadline_ms" 0, ArityEntry "sys_remaining_ms" 0, ArityEntry "sys_sleep_ms" 1, ArityEntry "sys_open_mode" 2, ArityEntry "sys_open" 3, ArityEntry "sys_close" 1, ArityEntry "sys_read_fd" 2, ArityEntry "sys_write_fd" 2, ArityEntry "sys_poll" 3, ArityEntry "sys_terminate" 2, ArityEntry "sys_kill" 2, ArityEntry "sys_call" 7, ArityEntry "sys_pipe" 0, ArityEntry "sys_waitpid" 2, ArityEntry "sys_username" 1, ArityEntry "sys_user_groups" 1, ArityEntry "sys_lookup_uid_gid" 1, ArityEntry "sys_setresgid" 1, ArityEntry "sys_setgroups" 1, ArityEntry "sys_setresuid" 1, ArityEntry "sys_execve" 3, ArityEntry "sys_read_pass" 1, ArityEntry "cli_args" 0, ArityEntry "cmm_live_blocks" 0, ArityEntry "cmm_cond_spared" 0, ArityEntry "cmm_cond_freed" 0, ArityEntry "cmm_same_ptr" 2, ArityEntry "seq_map" 2, ArityEntry "par_map" 2, ArityEntry "seq_filter" 2, ArityEntry "par_filter" 2]
+        [ArityEntry "tensor_fill" 999, ArityEntry "tensor_from_list" 1, ArityEntry "tensor_to_list" 1, ArityEntry "assert_equals" 2, ArityEntry "assert_true" 1, ArityEntry "send_to" 2, ArityEntry "ask_to" 2, ArityEntry "send_through" 2, ArityEntry "receive_from" 1, ArityEntry "try_receive_from" 1, ArityEntry "receive_from_timeout" 2, ArityEntry "stop" 1, ArityEntry "agent_alive" 1, ArityEntry "agent_dropped" 1, ArityEntry "agent_flush" 1, ArityEntry "agent_state" 1, ArityEntry "new_mailbox" 0, ArityEntry "new_channel" 0, ArityEntry "new_bounded_channel" 1, ArityEntry "chan_send" 2, ArityEntry "chan_recv" 1, ArityEntry "chan_try_recv" 1, ArityEntry "str_len" 1, ArityEntry "str_char_at" 2, ArityEntry "str_slice" 3, ArityEntry "str_contains" 2, ArityEntry "str_starts_with" 2, ArityEntry "str_concat" 2, ArityEntry "int_to_str" 1, ArityEntry "str_to_int" 1, ArityEntry "char_from_code" 1, ArityEntry "trim_str" 1, ArityEntry "read_file" 1, ArityEntry "load_rg_source" 1, ArityEntry "read_bytes" 1, ArityEntry "write_bytes" 2, ArityEntry "write_file" 2, ArityEntry "shell_exec" 1, ArityEntry "list_str_len" 1, ArityEntry "list_dir" 1, ArityEntry "file_lstat" 1, ArityEntry "sha256_file" 1, ArityEntry "sha256_str" 1, ArityEntry "sha256_raw" 1, ArityEntry "sha256_bytes" 1, ArityEntry "sys_os" 0, ArityEntry "sys_arch" 0, ArityEntry "sys_mkdir" 2, ArityEntry "sys_chmod" 2, ArityEntry "sys_exec" 3, ArityEntry "sys_chdir" 1, ArityEntry "sys_getcwd" 0, ArityEntry "sys_getenv" 1, ArityEntry "sys_setenv" 2, ArityEntry "sys_exit" 1, ArityEntry "sys_getuid" 0, ArityEntry "sys_getgid" 0, ArityEntry "sys_getpid" 0, ArityEntry "sys_time_ms" 0, ArityEntry "sys_deadline_ms" 0, ArityEntry "sys_remaining_ms" 0, ArityEntry "sys_sleep_ms" 1, ArityEntry "sys_open_mode" 2, ArityEntry "sys_open" 3, ArityEntry "sys_close" 1, ArityEntry "sys_read_fd" 2, ArityEntry "sys_write_fd" 2, ArityEntry "sys_poll" 3, ArityEntry "sys_terminate" 2, ArityEntry "sys_kill" 2, ArityEntry "sys_call" 7, ArityEntry "sys_pipe" 0, ArityEntry "sys_waitpid" 2, ArityEntry "sys_username" 1, ArityEntry "sys_user_groups" 1, ArityEntry "sys_lookup_uid_gid" 1, ArityEntry "sys_setresgid" 1, ArityEntry "sys_setgroups" 1, ArityEntry "sys_setresuid" 1, ArityEntry "sys_execve" 3, ArityEntry "sys_read_pass" 1, ArityEntry "cli_args" 0, ArityEntry "cmm_live_blocks" 0, ArityEntry "cmm_cond_spared" 0, ArityEntry "cmm_cond_freed" 0, ArityEntry "cmm_same_ptr" 2, ArityEntry "seq_map" 2, ArityEntry "par_map" 2, ArityEntry "seq_filter" 2, ArityEntry "par_filter" 2]
 
 fn :: collect fn arities [RFnDef] => [RArityEntry]
       collect fn arities [] = builtin arity entries
@@ -2596,6 +2673,11 @@ fn :: is std builtin String             => Bool
       is std builtin "__record_update__" = True
       is std builtin ":tensor-zeros:"   =  True
       is std builtin ":typed-tensor:"   =  True
+      is std builtin ":gt-new:"   =  True
+      is std builtin ":gt-no-default:"   =  True
+      is std builtin "tensor_fill"   =  True
+      is std builtin "tensor_from_list"   =  True
+      is std builtin "tensor_to_list"   =  True
       is std builtin ":tensor-clone:"   =  True
       is std builtin ":tensor-row-slice:" = True
       is std builtin ":tensor-col-slice:" = True
@@ -6874,10 +6956,10 @@ fn :: tensor elem type ok String => Bool
 
 fn :: is bad tensor elem String RToken String RToken => Bool
       is bad tensor elem s open el sep =
-        (tensor word s) and (tensor open tok open) and (is upper ident el) and (tensor elem sep tok sep) and (not (tensor elem type ok el))
+        s == "Tensor_GPU" and (tensor open tok open) and (is upper ident el) and (tensor elem sep tok sep) and (not (tensor elem type ok el))
 
 fn :: tensor elem msg String => String
-      tensor elem msg el =  "tensor element type '" + el + "' is not supported: a tensor holds numbers only (Int, Byte, U8, U16, U32, U64, I8, I16, I32, I64, Usize, Real, Float)"
+      tensor elem msg el =  "Tensor_GPU element type '" + el + "' is not supported: a Tensor_GPU holds numbers only (Int, Byte, U8, U16, U32, U64, I8, I16, I32, I64, Usize, Real, Float)"
 
 fn :: tensor elem error fndef String String => RFnDef
       tensor elem error fndef "" el =
