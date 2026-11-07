@@ -841,6 +841,8 @@ fn :: opt fndef list [RFnDef] => [RFnDef]
 -- ── Pure-Ridgun Native IR Lowering (RProgram => RNativeProg) ──
 -- @implements FR-COMP-002
 -- @implements FR-COMP-004
+-- @implements FR-COMP-016
+-- @implements FR-COMP-017
 
 type RStrEntry = StrEntry String Int Int
 
@@ -1557,11 +1559,38 @@ fn :: lower expr list to slots RNativeEnv [RExpr] [String] Int Int RNativeCode =
         st2 = nc emit st1 (NStoreSlot cur_slot) (cur_slot + 1)
         lower expr list to slots env es bound_locals sp (idx + 1) st2
 
+-- ── 64-bit Int literals (RG-113) ────────────────────────────
+-- An immediate Int is tagged as (n * 2) + 1, so NLoadImmInt and NMatchInt only
+-- hold -2^62 .. 2^62 - 1. A wider literal is built at run time as
+-- (n / 2) * 2 + (n - (n / 2) * 2) with NBinOp, whose result every backend
+-- heap-boxes when it needs bit 62 or bit 63. Scratch slot: sp.
+
+fn :: tagged int max => Int
+      tagged int max =  4611686018427387903
+
+fn :: tagged int min => Int
+      tagged int min =  (0 - (tagged int max)) - 1
+
+fn :: fits tagged int Int => Bool
+      fits tagged int n =  n >= (tagged int min) and n <= (tagged int max)
+
+fn :: lower int lit Int Int RNativeCode => RNativeCode
+      lower int lit n sp st
+        | fits tagged int n = nc emit st (NLoadImmInt n) sp
+        | otherwise = lower wide int lit (n / 2) (n - ((n / 2) * 2)) sp st
+
+fn :: lower wide int lit Int Int Int RNativeCode => RNativeCode
+      lower wide int lit half 0 sp st =
+        nc emit list st [NLoadImmInt half, NStoreSlot sp, NLoadImmInt 2, NBinOp (binop id OpMul) sp] (sp + 1)
+      lower wide int lit half rem sp st =
+        st1 = lower wide int lit half 0 sp st
+        nc emit list st1 [NStoreSlot sp, NLoadImmInt rem, NBinOp (binop id OpAdd) sp] (sp + 1)
+
 fn :: lower int list to slots [Int] Int Int RNativeCode => RNativeCode
       lower int list to slots [] _ _ st = st
       lower int list to slots (n:ns) sp idx st =
         cur_slot = sp + idx
-        st1 = nc emit list st [NLoadImmInt n, NStoreSlot cur_slot] (cur_slot + 1)
+        st1 = nc emit (lower int lit n cur_slot st) (NStoreSlot cur_slot) (cur_slot + 1)
         lower int list to slots ns sp (idx + 1) st1
 
 fn :: lower record updates RNativeEnv [RExpr] [String] Int RNativeCode => RNativeCode
@@ -2257,6 +2286,9 @@ fn :: lower call expr RNativeEnv String [RExpr] [String] Int RNativeCode => RNat
           s_slot = env var slot env s_var
           st1 = lower expr env idx_e bound_locals sp st
           nc emit st1 (NCallBuiltin 91 s_slot 0) sp
+      lower call expr env "str_to_int" (a1:[]) bound_locals sp st
+        | (env fn name env) != (s2i helper name) and (env fn arity env (s2i helper name)) == 1 =
+          lower call expr env (s2i helper name) [a1] bound_locals sp st
       lower call expr env fname args bound_locals sp st
         | fname == "sys_call" =
           pargs = pad syscall args args
@@ -2292,7 +2324,7 @@ fn :: lower adt ctor call RNativeEnv [RExpr] [String] Int Int Int Int RNativeCod
 
 fn :: lower expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
       lower expr _ (EInt n) _ sp st =
-        nc emit st (NLoadImmInt n) sp
+        lower int lit n sp st
       lower expr env (EReal r) _ sp st =
         off = env str off env r
         nc emit st (NLoadRealLit off (str len r)) sp
@@ -2848,8 +2880,13 @@ fn :: lower pat cond RNativeEnv RPattern Int Int Int RNativeCode => RNativeCode
       lower pat cond _ PatWild _ _ _ st = st
       lower pat cond _ (PatVar _) _ _ _ st = st
       lower pat cond _ (PatSeqBind _) _ _ _ st = st
-      lower pat cond _ (PatInt n) slot fail_lbl sp st =
-        nc emit list st [NMatchInt slot n, NJumpIfZero fail_lbl] sp
+      lower pat cond _ (PatInt n) slot fail_lbl sp st
+        | fits tagged int n =
+          nc emit list st [NMatchInt slot n, NJumpIfZero fail_lbl] sp
+        | otherwise =
+          st1 = nc emit list st [NCloneSlot slot, NStoreSlot sp] (sp + 1)
+          st2 = lower int lit n (sp + 1) st1
+          nc emit list st2 [NBinOp (binop id OpEq) sp, NAsBool, NJumpIfZero fail_lbl] (sp + 2)
       lower pat cond env (PatReal r) slot fail_lbl sp st =
         off = env str off env r
         nc emit list st [NMatchReal slot off (str len r), NJumpIfZero fail_lbl] sp
@@ -3114,8 +3151,49 @@ fn :: lower fndef RFnDef RStrIntMap RStrIntMap RStrIntMap RStrSet RStrIntMap => 
         env = NativeEnv name arity all_locals str_map fn_id_map fn_arity_map heavy_set field_map
         init_st = NativeCode [] 1 (max int (base_sp + 1) 2)
         st1 = lower cases list env cases base_sp init_st
-        st2 = nc emit list st1 [NLoadImmRaw 0, NReturn] (base_sp + 1)
+        st2 = lower no match tail env name cases base_sp st1
         NativeFn fid name arity (nc max sp st2) (nc instrs st2)
+
+-- ── No matching clause (RG-114) ─────────────────────────────
+-- When the last clause can fail (a refutable pattern, or guards without
+-- `otherwise`), a call that matches no clause prints a runtime error to
+-- stderr and exits with status 1 instead of returning the zero value.
+-- The message string is added to the string pool by `no match msgs`.
+
+fn :: no match msg String => String
+      no match msg fname =  "runtime error: no clause of function '" + (decode literal underscores fname) + "' matches its arguments\n"
+
+fn :: pat refutable RPattern => Bool
+      pat refutable (PatTuple ps) =  pat list refutable ps
+      pat refutable p =  pat needs check p
+
+fn :: pat list refutable [RPattern] => Bool
+      pat list refutable [] =  False
+      pat list refutable (p:ps) =  (pat refutable p) or (pat list refutable ps)
+
+fn :: case can fail RFnCase => Bool
+      case can fail (FnCase pats [] _) =  pat list refutable pats
+      case can fail (FnCase pats guards _) =  (pat list refutable pats) or (not (guards have otherwise guards))
+
+fn :: last case can fail [RFnCase] => Bool
+      last case can fail [] =  False
+      last case can fail (c:[]) =  case can fail c
+      last case can fail (_:cs) =  last case can fail cs
+
+fn :: no match msgs [RFnDef] => [String]
+      no match msgs [] =  []
+      no match msgs ((FnDef fname _ _ cases):fs)
+        | last case can fail cases = [no match msg fname] :: (no match msgs fs)
+        | otherwise = no match msgs fs
+
+fn :: lower no match tail RNativeEnv String [RFnCase] Int RNativeCode => RNativeCode
+      lower no match tail env fname cases sp st
+        | last case can fail cases =
+          st1 = lower expr env (ECall "sys_write_fd" [EInt 2, EStr (no match msg fname)]) [] sp st
+          st2 = nc emit st1 NDropVal (sp + 1)
+          st3 = lower expr env (ECall "sys_exit" [EInt 1]) [] sp st2
+          nc emit list st3 [NLoadImmRaw 0, NReturn] (sp + 1)
+        | otherwise = nc emit list st [NLoadImmRaw 0, NReturn] (sp + 1)
 
 fn :: rev native fns [RNativeFn] [RNativeFn] => [RNativeFn]
       rev native fns [] acc = acc
@@ -3521,11 +3599,100 @@ fn :: build main wrapper fndef Int [String] RStrIntMap => RNativeFn
         main_ins = chan_ins :: call_ins :: [NCallFn entry_fid 0 (0 - 1), NStoreSlot 0] :: drain_ins :: [NMoveSlot 0, NReturn]
         NativeFn 1 "__rg_entry_main" 0 20 main_ins
 
+-- ── 64-bit `str_to_int` (RG-113) ────────────────────────────
+-- The runtime builtin (id 13) parses correctly but tags its result without
+-- heap-boxing, so values with |n| >= 2^62 lose bit 62. Calls to `str_to_int`
+-- are lowered to the Ridgun helper below, which keeps the builtin for strings
+-- of at most 17 characters (always |n| < 2^62) and otherwise parses with
+-- 64-bit arithmetic. Semantics match the builtin: trim ASCII whitespace
+-- (9..13, 32), ignore '_', optional sign, "0x"/"0X" hex prefix before the
+-- sign, and 0 for invalid or out-of-range input.
+
+fn :: s2i helper name => String
+      s2i helper name =  "__rg_s2i_wide"
+
+fn :: s2i src wide => String
+      s2i src wide =  "fn :: __rg_s2i_wide String => Int\n      __rg_s2i_wide s\n        | (str_len s) <= 17 = str_to_int s\n        | otherwise = __rg_s2i_parse s\n"
+
+fn :: s2i src min => String
+      s2i src min =  "fn :: __rg_s2i_min => Int\n      __rg_s2i_min =  (0 - (4611686018427387903 * 2)) - 2\n"
+
+fn :: s2i src space => String
+      s2i src space =  "fn :: __rg_s2i_space Int => Bool\n      __rg_s2i_space c =  c == 32 or (c >= 9 and c <= 13)\n"
+
+fn :: s2i src lo => String
+      s2i src lo =  "fn :: __rg_s2i_lo String Int Int => Int\n      __rg_s2i_lo s i n\n        | i < n and (__rg_s2i_space (str_char_at s i)) = __rg_s2i_lo s (i + 1) n\n        | otherwise = i\n"
+
+fn :: s2i src hi => String
+      s2i src hi =  "fn :: __rg_s2i_hi String Int Int => Int\n      __rg_s2i_hi s lo j\n        | j > lo and (__rg_s2i_space (str_char_at s (j - 1))) = __rg_s2i_hi s lo (j - 1)\n        | otherwise = j\n"
+
+fn :: s2i src skip => String
+      s2i src skip =  "fn :: __rg_s2i_skip String Int Int => Int\n      __rg_s2i_skip s i hi\n        | i < hi and (str_char_at s i) == 95 = __rg_s2i_skip s (i + 1) hi\n        | otherwise = i\n"
+
+fn :: s2i src digit => String
+      s2i src digit =  "fn :: __rg_s2i_digit Int Int => Int\n      __rg_s2i_digit c base\n        | c >= 48 and c <= 57 = c - 48\n        | base == 16 and c >= 65 and c <= 70 = c - 55\n        | base == 16 and c >= 97 and c <= 102 = c - 87\n        | otherwise = 0 - 1\n"
+
+fn :: s2i src acc => String
+      s2i src acc =  "fn :: __rg_s2i_acc String Int Int Int Int => Int\n      __rg_s2i_acc s i hi base acc\n        | i >= hi = acc\n        | (str_char_at s i) == 95 = __rg_s2i_acc s (i + 1) hi base acc\n        | otherwise = __rg_s2i_step s i hi base acc (__rg_s2i_digit (str_char_at s i) base)\n"
+
+fn :: s2i src step => String
+      s2i src step =  "fn :: __rg_s2i_step String Int Int Int Int Int => Int\n      __rg_s2i_step s i hi base acc d\n        | d < 0 = 1\n        | acc < ((__rg_s2i_min + d) / base) = 1\n        | otherwise = __rg_s2i_acc s (i + 1) hi base ((acc * base) - d)\n"
+
+fn :: s2i src finish => String
+      s2i src finish =  "fn :: __rg_s2i_finish Bool Int => Int\n      __rg_s2i_finish _ 1 = 0\n      __rg_s2i_finish True acc = acc\n      __rg_s2i_finish False acc\n        | acc == __rg_s2i_min = 0\n        | otherwise = 0 - acc\n"
+
+fn :: s2i src signed => String
+      s2i src signed =  "fn :: __rg_s2i_signed String Int Int Int => Int\n      __rg_s2i_signed s i hi base\n        | i < hi and (str_char_at s i) == 45 = __rg_s2i_finish True (__rg_s2i_acc s (__rg_s2i_skip s (i + 1) hi) hi base 0)\n        | i < hi and (str_char_at s i) == 43 = __rg_s2i_finish False (__rg_s2i_acc s (__rg_s2i_skip s (i + 1) hi) hi base 0)\n        | otherwise = __rg_s2i_finish False (__rg_s2i_acc s i hi base 0)\n"
+
+fn :: s2i src is x => String
+      s2i src is x =  "fn :: __rg_s2i_is_x Int => Bool\n      __rg_s2i_is_x c =  c == 120 or c == 88\n"
+
+fn :: s2i src body => String
+      s2i src body =  "fn :: __rg_s2i_body String Int Int => Int\n      __rg_s2i_body s p hi\n        | p < hi and (str_char_at s p) == 48 and (__rg_s2i_skip s (p + 1) hi) < hi and (__rg_s2i_is_x (str_char_at s (__rg_s2i_skip s (p + 1) hi))) =\n          __rg_s2i_signed s (__rg_s2i_skip s ((__rg_s2i_skip s (p + 1) hi) + 1) hi) hi 16\n        | otherwise = __rg_s2i_signed s p hi 10\n"
+
+fn :: s2i src parse => String
+      s2i src parse =  "fn :: __rg_s2i_parse String => Int\n      __rg_s2i_parse s =\n        lo = __rg_s2i_lo s 0 (str_len s)\n        hi = __rg_s2i_hi s lo (str_len s)\n        __rg_s2i_body s (__rg_s2i_skip s lo hi) hi\n"
+
+fn :: s2i helper src => String
+      s2i helper src =  join str tree [(s2i src wide), (s2i src min), (s2i src space), (s2i src lo), (s2i src hi), (s2i src skip), (s2i src digit), (s2i src acc), (s2i src step), (s2i src finish), (s2i src signed), (s2i src is x), (s2i src body), (s2i src parse)]
+
+fn :: s2i helper fndefs => [RFnDef]
+      s2i helper fndefs =  fndefs of program (parse tokens (tokenize src (s2i helper src)))
+
+fn :: fndefs of program RProgram => [RFnDef]
+      fndefs of program (Program fns _) =  fns
+
+fn :: has fndef named [RFnDef] String => Bool
+      has fndef named [] _ =  False
+      has fndef named ((FnDef fname _ _ _):fs) target
+        | fname == target = True
+        | otherwise = has fndef named fs target
+
+fn :: with s2i helper [RFnDef] => [RFnDef]
+      with s2i helper fns
+        | has fndef named fns (s2i helper name) = fns
+        | otherwise = fns :: (s2i helper fndefs)
+
+fn :: add s2i ref RFnRefsMap => RFnRefsMap
+      add s2i ref mp =  fn refs map insert mp "str_to_int" [(s2i helper name)]
+
+fn :: fndefs call s2i [RFnDef] => Bool
+      fndefs call s2i [] =  False
+      fndefs call s2i ((FnDef _ _ _ cases):fs)
+        | str in list "str_to_int" (collect refs cases cases []) = True
+        | otherwise = fndefs call s2i fs
+
+fn :: lib with s2i helper [RFnDef] => [RFnDef]
+      lib with s2i helper fns
+        | fndefs call s2i fns = with s2i helper fns
+        | otherwise = fns
+
 fn :: lower program to native RProgram => RNativeProg
-      lower program to native (Program raw_fns tys) =
+      lower program to native (Program user_fns tys) =
+        raw_fns = with s2i helper user_fns
         entry_name = find entry fn name raw_fns "main"
         gagent_roots = collect gagent names raw_fns
-        refs_map0 = build fn refs map raw_fns FnRefsEmpty
+        refs_map0 = add s2i ref (build fn refs map raw_fns FnRefsEmpty)
         reach_set0 = expand reachable worklist ([entry_name] :: gagent_roots) refs_map0 StrSetEmpty
         reach_raw = filter reachable fndefs raw_fns reach_set0 []
         field_tbl = collect typedef fields tys []
@@ -3535,14 +3702,14 @@ fn :: lower program to native RProgram => RNativeProg
         b_wrappers = build builtin wrapper fndefs b_val_names raw_fn_set
         sigs = (build cg sigs reach_raw) :: (build field cg sigs field_tbl raw_fn_set)
         all_fns = (opt fndef list (prep fndef list reach_raw sigs)) :: b_wrappers
-        refs_map = build fn refs map all_fns FnRefsEmpty
+        refs_map = add s2i ref (build fn refs map all_fns FnRefsEmpty)
         reachable_set = expand reachable worklist ([entry_name] :: gagent_roots) refs_map StrSetEmpty
         fns = filter reachable fndefs all_fns reachable_set []
         gagent_names = collect gagent names fns
         fn_names = collect fn names fns
         fn_name_set = str list to set fn_names StrSetEmpty
         field_names = collect field names field_tbl
-        str_pool = build str pool fns field_names
+        str_pool = build str pool fns (field_names :: (no match msgs fns))
         rodata_str = pool rodata str_pool
         str_map = pool str map str_pool
         fn_tbl1 = build fn table fndefs fns 5 []
@@ -3569,7 +3736,8 @@ fn :: build lib entry wrapper Int       => RNativeFn
       build lib entry wrapper entry_fid =  NativeFn 1 "__rg_entry_main" 0 2 [NCallFn entry_fid 0 (0 - 1), NReturn]
 
 fn :: lower library to native RProgram => RNativeProg
-      lower library to native (Program raw_fns tys) =
+      lower library to native (Program user_fns tys) =
+        raw_fns = lib with s2i helper user_fns
         field_tbl = collect typedef fields tys []
         raw_fn_names = collect fn names raw_fns
         raw_fn_set = str list to set raw_fn_names StrSetEmpty
@@ -3581,7 +3749,7 @@ fn :: lower library to native RProgram => RNativeProg
         fn_names = collect fn names fns
         fn_name_set = str list to set fn_names StrSetEmpty
         field_names = collect field names field_tbl
-        str_pool = build str pool fns field_names
+        str_pool = build str pool fns (field_names :: (no match msgs fns))
         rodata_str = pool rodata str_pool
         str_map = pool str map str_pool
         fn_tbl1 = build fn table fndefs fns 5 []

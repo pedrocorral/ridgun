@@ -341,7 +341,7 @@ op :: <words and types mixed> => <return_type1> <return_type2> ...
 
 | Type | Description |
 |---|---|
-| `Int` | Integer |
+| `Int` | 64-bit signed integer (`-9223372036854775808 .. 9223372036854775807`) |
 | `Real` | Real number |
 | `Bool` | Boolean |
 | `Char` | Single Unicode character (UTF-8) |
@@ -352,6 +352,13 @@ op :: <words and types mixed> => <return_type1> <return_type2> ...
 
 > [!NOTE]
 > All text in Ridgun is UTF-8 encoded by default. `Char` represents a single Unicode codepoint, `String` is a sequence of `Char`.
+
+### Int Literals (`FR-COMP-016`)
+
+- A decimal literal (`42`, `1_000_000`, `64_KB`) must lie in `0 .. 9223372036854775807` after its unit suffix is applied. A larger literal is a compile error: `integer literal '<text>' is out of range for Int (-9223372036854775808 .. 9223372036854775807)`.
+- `9223372036854775808` is valid only after a unary minus: `-9223372036854775808` is the `Int` minimum. `0 - 9223372036854775808` is the same compile error.
+- A hexadecimal literal (`0xFF00`, `0x7FFF_FFFF_FFFF_FFFF`) is the 64-bit two's-complement bit pattern of its digits: `0x8000000000000000` is the `Int` minimum and `0xFFFFFFFFFFFFFFFF` is `-1`. More than 16 significant hex digits is a compile error.
+- `str_to_int` returns the exact 64-bit value. It ignores leading and trailing ASCII whitespace and every `_`, accepts one `+` or `-` sign (after the prefix for `0x`), and returns `0` for text that is not a number or does not fit in `Int`.
 
 ### Bool Literals
 
@@ -832,6 +839,19 @@ fn :: sum tree Tree              => Int
       sum tree (Leaf n)          =  n
       sum tree (Node left right) =  sum tree left + sum tree right
 ```
+
+Constructors, with or without arguments, also match inside tuple and cons patterns (`FR-COMP-017`). Each tuple element is a constructor applied to the sub-patterns up to the next `,`, `:` or `)`:
+
+```ridgun
+type Step = Ask Int | End Bool | Stop
+
+fn :: picked (Step, Int) => Int
+      picked (End _, _)  =  1
+      picked (Ask n, _)  =  n
+      picked (Stop, k)   =  k
+```
+
+When a call matches no clause (every pattern fails, or no guard of the last clause holds and there is no `otherwise`), the program writes `runtime error: no clause of function '<name>' matches its arguments` to standard error and exits with status 1. It never returns a zero value.
 
 ---
 

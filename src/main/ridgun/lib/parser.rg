@@ -14,6 +14,8 @@
 -- @implements FR-COMP-012
 -- @implements FR-COMP-013
 -- @implements FR-COMP-014
+-- @implements FR-COMP-016
+-- @implements FR-COMP-017
 -- ============================================================
 import ast
 import lexer
@@ -452,6 +454,9 @@ fn :: parse tensor pat [RToken] Bool      => RPattern [RToken]
 fn :: parse pattern [RToken]           => RPattern [RToken]
       parse pattern ((TokInt n):rest)  =  (PatInt n, rest)
       parse pattern (TokMinus:(TokInt n):rest) = (PatInt (0 - n), rest)
+      parse pattern (TokMinus:(TokIntMin _):rest) = (PatInt (int lit min), rest)
+      parse pattern ((TokIntMin _):rest) = (PatInt 0, rest)
+      parse pattern ((TokBadInt _):rest) = (PatInt 0, rest)
       parse pattern ((TokReal r):rest) =  (PatReal r, rest)
       parse pattern (TokMinus:(TokReal r):rest) = (PatReal ("-" + r), rest)
       parse pattern ((TokStr s):rest)  =  (PatStr s, rest)
@@ -491,12 +496,18 @@ fn :: parse paren pattern (RPattern, [RToken]) => RPattern [RToken]
       parse paren pattern ((PatVar v), (TokRParen:rest)) = (PatSeqBind v, rest)
       parse paren pattern (first_p, (TokRParen:rest)) = (first_p, rest)
       parse paren pattern ((PatCtor ctor []), rest) =
-        p_args = parse ctor subpats rest
-        finish ctor pat ctor p_args
+        after ctor pattern (finish ctor pat ctor (parse ctor subpats rest))
       parse paren pattern ((PatVar ctor), rest) =
-        p_args = parse ctor subpats rest
-        finish ctor pat ctor p_args
+        after ctor pattern (finish ctor pat ctor (parse ctor subpats rest))
       parse paren pattern (first_p, rest)      =  (first_p, rest)
+
+-- A constructor with arguments may open a tuple or a cons pattern:
+-- `(End _, n)`, `(Ask n : rest)` (RG-114).
+fn :: after ctor pattern (RPattern, [RToken]) => RPattern [RToken]
+      after ctor pattern (p, (TokComma:rest)) =  finish tuple pat p (parse tuple pats rest)
+      after ctor pattern (p, (TokColon:rest)) =  finish cons pat p (parse cons tail rest)
+      after ctor pattern (p, (TokRParen:rest)) = (p, rest)
+      after ctor pattern (p, rest)            =  (p, rest)
 
 fn :: parse cons tail [RToken] => RPattern [RToken]
       parse cons tail ts       =
@@ -515,8 +526,16 @@ fn :: finish cons pat RPattern (RPattern, [RToken]) => RPattern [RToken]
 
 fn :: parse tuple pats [RToken] => [RPattern] [RToken]
       parse tuple pats ts       =
-        p1 = parse pattern ts
+        p1 = parse tuple elem ts
         parse tuple pats cont p1
+
+-- A tuple element may be a constructor applied to sub-patterns: `(x, Ask n)`.
+fn :: parse tuple elem [RToken] => RPattern [RToken]
+      parse tuple elem ts       =  tuple elem args (parse pattern ts)
+
+fn :: tuple elem args (RPattern, [RToken]) => RPattern [RToken]
+      tuple elem args ((PatCtor ctor []), rest) =  finish ctor pat ctor (parse ctor subpats rest)
+      tuple elem args res       =  res
 
 fn :: parse tuple pats cont (RPattern, [RToken]) => [RPattern] [RToken]
       parse tuple pats cont (p, (TokComma:rest)) =
@@ -529,7 +548,9 @@ fn :: finish tuple pat RPattern ([RPattern], [RToken]) => RPattern [RToken]
       finish tuple pat p1       (ps, rest)             =  (PatTuple ([p1] :: ps), rest)
 
 fn :: parse ctor subpats [RToken]          => [RPattern] [RToken]
-      parse ctor subpats (TokRParen:rest)  =  ([], rest)
+      parse ctor subpats (TokRParen:rest)  =  ([], [TokRParen] :: rest)
+      parse ctor subpats (TokComma:rest)   =  ([], [TokComma] :: rest)
+      parse ctor subpats (TokColon:rest)   =  ([], [TokColon] :: rest)
       parse ctor subpats (TokNewline:rest) =  ([], rest)
       parse ctor subpats (TokEof:rest)     =  ([], rest)
       parse ctor subpats []                =  ([], [])
@@ -621,6 +642,8 @@ fn :: build str expr String => RExpr
 
 fn :: is atom tok RToken        => Bool
       is atom tok (TokInt _)    =  True
+      is atom tok (TokBadInt _) =  True
+      is atom tok (TokIntMin _) =  True
       is atom tok (TokReal _)   =  True
       is atom tok (TokStr _)    =  True
       is atom tok (TokRawStr _) =  True
@@ -1090,6 +1113,9 @@ fn :: parse atom base [RToken]           => RExpr [RToken]
         | s == "Tensor" or s == "Tensor_GPU" = finish tensor lit (parse comma exprs rest)
       parse atom base ((TokIdent s):rest) = (EVar s, rest)
       parse atom base (TokMinus:(TokInt n):rest) = (EInt (0 - n), rest)
+      parse atom base (TokMinus:(TokIntMin _):rest) = (EInt (int lit min), rest)
+      parse atom base ((TokIntMin s):rest) = (ECall "__syntax_error__" [EStr (int lit range msg s)], rest)
+      parse atom base ((TokBadInt _):rest) = (EInt 0, rest)
       parse atom base (TokMinus:(TokReal r):rest) = (EReal ("-" + r), rest)
       parse atom base (TokLParen:TokRParen:rest) = (EUnit, rest)
       parse atom base (TokLParen:TokLParen:TokRParen:TokFatArrow:rest) =
@@ -6336,6 +6362,8 @@ fn :: parse chunk agent ([RToken], [RToken]) [RScopedFn] [RScopedType] [RModAlia
 fn :: tok to err str RToken => String
       tok to err str (TokIdent s) = s
       tok to err str (TokInt n) = int to str n
+      tok to err str (TokBadInt s) = s
+      tok to err str (TokIntMin s) = s
       tok to err str (TokStr s) = "\"" + s + "\""
       tok to err str TokLParen = "("
       tok to err str TokRParen = ")"
@@ -6749,7 +6777,47 @@ fn :: merge type def [RTypeDef] RTypeDef => [RTypeDef]
         | otherwise = tys :: [TypeDef name vs fs]
 
 fn :: parse tokens [RToken] => RProgram
-      parse tokens toks     =  normalize program (parse items toks [] [])
+      parse tokens toks     =  add int lit errors (normalize program (parse items toks [] [])) (int lit errors toks TokNewline "" [])
+
+-- ── Out-of-range integer literals (RG-113) ──────────────────
+-- The lexer marks a decimal literal above the Int maximum as TokBadInt and the
+-- literal 9223372036854775808 as TokIntMin. Each one becomes a syntax error,
+-- except TokIntMin directly after a minus: a unary minus makes it the Int
+-- minimum, and `parse atom base` reports the binary-minus case itself.
+
+fn :: int lit range msg String => String
+      int lit range msg text =  "integer literal '" + text + "' is out of range for Int (-9223372036854775808 .. 9223372036854775807)"
+
+fn :: int lit fn range msg String String => String
+      int lit fn range msg "" text =  int lit range msg text
+      int lit fn range msg fn_name text =  (int lit range msg text) + " in function '" + fn_name + "'"
+
+fn :: int lit error fndef String String => RFnDef
+      int lit error fndef fn_name text =
+        FnDef "__syntax_error__" [] "Int" [FnCase [] [] (ECall "__syntax_error__" [EStr (int lit fn range msg fn_name text)])]
+
+fn :: sig fn name [RToken] String => String
+      sig fn name ((TokIdent w):rest) acc
+        | (is lower ident w) and acc == "" = sig fn name rest w
+        | is lower ident w = sig fn name rest (acc + " " + w)
+        | otherwise = acc
+      sig fn name _ acc =  acc
+
+fn :: int lit errors [RToken] RToken String [RFnDef] => [RFnDef]
+      int lit errors [] _ _ acc =  acc
+      int lit errors (TokFn:TokColonColon:rest) _ _ acc =
+        int lit errors rest TokColonColon (sig fn name rest "") acc
+      int lit errors ((TokBadInt s):rest) _ cur acc =
+        int lit errors rest (TokBadInt s) cur (acc :: [int lit error fndef cur s])
+      int lit errors ((TokIntMin s):rest) TokMinus cur acc =
+        int lit errors rest (TokIntMin s) cur acc
+      int lit errors ((TokIntMin s):rest) _ cur acc =
+        int lit errors rest (TokIntMin s) cur (acc :: [int lit error fndef cur s])
+      int lit errors (t:rest) _ cur acc =  int lit errors rest t cur acc
+
+fn :: add int lit errors RProgram [RFnDef] => RProgram
+      add int lit errors prog [] =  prog
+      add int lit errors (Program fns tys) errs =  Program (errs :: fns) tys
 
 fn :: count fndef list [RFnDef] => Int
       count fndef list []       =  0

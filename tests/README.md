@@ -44,14 +44,14 @@ fn :: main => ()
 | Folder | Cases | Sources |
 |---|---|---|
 | `lists/` | map / filter / fold values; `\|\|map` / `\|\|filter` equal to them in order on 2 000 elements; `::` joins; `[]`, `(x:[])`, `(a:b:rest)` and literal multi-cons patterns | FR-COMP-001 AC1–3 and §3; spec.md:351, 363-368; book 05:51-69 |
-| `functions/` | function values and `(A => B)` parameters; 100 000 000 self tail calls in constant memory | FR-COMP-001 §1; book 07:72-76; book 04:174-181 |
-| `guards/` | the four FR-COMP-003 examples: mixfix clamp, guarded binding, the four-level decision tree with `\|.`, and `\|\| … \|\|.` followed by a guarded binding | FR-COMP-003 §1–§3 |
+| `functions/` | function values and `(A => B)` parameters; 100 000 000 self tail calls in constant memory; a call that matches no clause exits with status 1 | FR-COMP-001 §1; book 07:72-76; book 04:174-181; FR-COMP-017 §2 (RG-114) |
+| `guards/` | the four FR-COMP-003 examples: mixfix clamp, guarded binding, the four-level decision tree with `\|.`, and `\|\| … \|\|.` followed by a guarded binding; no guard holding and no `otherwise` exits with status 1 | FR-COMP-003 §1–§3; FR-COMP-017 §2 (RG-114) |
 | `variables/` | `mut` reassignment; reassigning a non-`mut` variable must not compile | FR-COMP-003 §4, AC3 |
 | `parallel/` | named `\|\|` DAG and anonymous `\|\|` tuple; a DAG cycle must not compile | FR-COMP-003 §4; spec.md:723-746; book 07:110 |
-| `adts/` | shared constructors; `expand type` on sums and records; clause merging ahead of catch-alls; type-name variants | FR-COMP-005 §1–§4, AC-1–AC-4 |
+| `adts/` | shared constructors; `expand type` on sums and records; clause merging ahead of catch-alls; type-name variants; constructors inside tuple and cons patterns | FR-COMP-005 §1–§4, AC-1–AC-4; FR-COMP-017 §1 (RG-114) |
 | `records/` | `r with f = v, g = w` copies, also as the last line of a block | current syntax (see below); Solstice register RG-068 |
-| `strings/` | interpolation and brace escapes; raw `'…'` strings; `str_char_at` out of range is -1; cutting at any index and joining gives the text back | spec.md:28-56; book 03:129-130 |
-| `literals/`, `logic/` | `-100`, hex, digit separators, `_KB` / `_MB` / `_GB`; truth tables of `and` / `or` / `xor` / `not` | book 03:67, 87-98; spec.md:313-329 |
+| `strings/` | interpolation and brace escapes; raw `'…'` strings; `str_char_at` out of range is -1; cutting at any index and joining gives the text back; `str_to_int` over the whole 64-bit range | spec.md:28-56; book 03:129-130; FR-COMP-016 §4 (RG-113) |
+| `literals/`, `logic/` | `-100`, hex, digit separators, `_KB` / `_MB` / `_GB`; the whole 64-bit `Int` range, with out-of-range literals as compile errors; truth tables of `and` / `or` / `xor` / `not` | book 03:67, 87-98; spec.md:313-329; FR-COMP-016 §1-§3 (RG-113) |
 | `agents/` | stateless FIFO with one and two arguments; stateful `S M => S` and `S M => S R`; `ask` in both styles; `try receive`, `stop`, `agent alive`; `try receive` of a record; polling while the agent sleeps costs almost no CPU; 50 000 messages without memory growth | FR-COMP-009 AC-1–AC-3, §3, §6; FR-COMP-002 ("leak-free"); Solstice register RG-063, RG-069, RG-072 |
 | `names/` | a parameter or local binding named like a top-level 0-argument function means the parameter or binding | lexical scoping (spec.md:105-123, 674-695); the compiler team's TASK-0024 (RG-073) |
 | `files/` | `read_file` gives back exactly what `write_file` wrote, for every byte value | consistency; Solstice register RG-089 |

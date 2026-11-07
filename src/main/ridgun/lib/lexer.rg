@@ -8,6 +8,7 @@
 -- @implements FR-COMP-010
 -- @implements FR-COMP-012
 -- @implements FR-COMP-013
+-- @implements FR-COMP-016
 -- ============================================================
 import ast
 
@@ -127,31 +128,81 @@ fn :: tok squote String Int Int => RToken Int
         lit = str slice src (pos + 1) end_q
         (TokRawStr lit, end_q + 1)
 
-fn :: check byte unit suffix String Int Int Int => RToken Int
-      check byte unit suffix src end_n len val
-        | (end_n + 3) <= len and (str slice src end_n (end_n + 3)) == "_KB" = (TokInt (val * 1024), end_n + 3)
-        | (end_n + 3) <= len and (str slice src end_n (end_n + 3)) == "_MB" = (TokInt (val * 1048576), end_n + 3)
-        | (end_n + 3) <= len and (str slice src end_n (end_n + 3)) == "_GB" = (TokInt (val * 1073741824), end_n + 3)
-        | (end_n + 4) <= len and (str slice src end_n (end_n + 4)) == "_min" = (TokInt (val * 60000), end_n + 4)
-        | (end_n + 3) <= len and (str slice src end_n (end_n + 3)) == "_ms" = (TokInt val, end_n + 3)
-        | (end_n + 2) <= len and (str slice src end_n (end_n + 2)) == "_s" and ((end_n + 2) == len or not (is alnum (str char at src (end_n + 2)))) = (TokInt (val * 1000), end_n + 2)
-        | otherwise = (TokInt val, end_n)
+-- ── Integer literals (RG-113) ───────────────────────────────
+-- Digits are accumulated with 64-bit arithmetic, never with the runtime
+-- `str to int`, so every literal keeps all 64 bits. A decimal value above
+-- 9223372036854775807 becomes TokBadInt (reported as a compile error);
+-- exactly 9223372036854775808 becomes TokIntMin, which the parser accepts
+-- only after a unary minus. Hexadecimal literals are 64-bit two's-complement
+-- bit patterns (up to 16 significant hex digits).
 
-fn :: strip num underscores String Int Int String => String
-      strip num underscores s pos len acc
-        | pos >= len = acc
-        | (str char at s pos) == 95 = strip num underscores s (pos + 1) len acc
-        | otherwise = strip num underscores s (pos + 1) len (acc + (str slice s pos (pos + 1)))
+fn :: int lit max => Int
+      int lit max =  (4611686018427387903 * 2) + 1
 
-fn :: clean num slice String => String
-      clean num slice s
-        | str contains s "_" = strip num underscores s 0 (str len s) ""
-        | otherwise = s
+fn :: int lit min => Int
+      int lit min =  (0 - (int lit max)) - 1
+
+fn :: unit suffix String Int Int => Int Int
+      unit suffix src end_n len
+        | (end_n + 3) <= len and (str slice src end_n (end_n + 3)) == "_KB" = (1024, 3)
+        | (end_n + 3) <= len and (str slice src end_n (end_n + 3)) == "_MB" = (1048576, 3)
+        | (end_n + 3) <= len and (str slice src end_n (end_n + 3)) == "_GB" = (1073741824, 3)
+        | (end_n + 4) <= len and (str slice src end_n (end_n + 4)) == "_min" = (60000, 4)
+        | (end_n + 3) <= len and (str slice src end_n (end_n + 3)) == "_ms" = (1, 3)
+        | (end_n + 2) <= len and (str slice src end_n (end_n + 2)) == "_s" and ((end_n + 2) == len or not (is alnum (str char at src (end_n + 2)))) = (1000, 2)
+        | otherwise = (1, 0)
+
+-- Accumulates the decimal magnitude as a negative number so that the
+-- magnitude of the Int minimum (2^63) is representable. Returns 1 on overflow.
+fn :: dec lit sum String Int Int Int => Int
+      dec lit sum src pos end_n acc
+        | pos >= end_n = acc
+        | (str char at src pos) == 95 = dec lit sum src (pos + 1) end_n acc
+        | otherwise = dec lit step src pos end_n acc ((str char at src pos) - 48)
+
+fn :: dec lit step String Int Int Int Int => Int
+      dec lit step src pos end_n acc d
+        | acc < (((int lit min) + d) / 10) = 1
+        | otherwise = dec lit sum src (pos + 1) end_n ((acc * 10) - d)
+
+fn :: bad int tok String Int Int => RToken Int
+      bad int tok src pos end_lit =  (TokBadInt (str slice src pos end_lit), end_lit)
+
+fn :: dec lit token String Int Int Int (Int, Int) => RToken Int
+      dec lit token src pos end_n acc (mult, slen)
+        | acc == 1 = bad int tok src pos (end_n + slen)
+        | slen == 0 and acc == (int lit min) = (TokIntMin (str slice src pos end_n), end_n)
+        | acc == (int lit min) = bad int tok src pos (end_n + slen)
+        | (0 - acc) > ((int lit max) / mult) = bad int tok src pos (end_n + slen)
+        | otherwise = (TokInt ((0 - acc) * mult), end_n + slen)
+
+fn :: tok dec int String Int Int Int => RToken Int
+      tok dec int src pos end_n len =
+        dec lit token src pos end_n (dec lit sum src pos end_n 0) (unit suffix src end_n len)
+
+fn :: hex digit val Int => Int
+      hex digit val c
+        | c >= 48 and c <= 57 = c - 48
+        | c >= 65 and c <= 70 = c - 55
+        | otherwise = c - 87
+
+fn :: hex lit digits String Int Int Int => Int
+      hex lit digits src pos end_h sig
+        | pos >= end_h = sig
+        | (str char at src pos) == 95 = hex lit digits src (pos + 1) end_h sig
+        | sig == 0 and (str char at src pos) == 48 = hex lit digits src (pos + 1) end_h 0
+        | otherwise = hex lit digits src (pos + 1) end_h (sig + 1)
+
+fn :: hex lit value String Int Int Int => Int
+      hex lit value src pos end_h acc
+        | pos >= end_h = acc
+        | (str char at src pos) == 95 = hex lit value src (pos + 1) end_h acc
+        | otherwise = hex lit value src (pos + 1) end_h ((acc shl 4) or (hex digit val (str char at src pos)))
 
 fn :: tok dec or real String Int Int Int => RToken Int
       tok dec or real src pos end_n len
         | end_n < len and (str char at src end_n) == 46 and is digit (str char at src (end_n + 1)) = tok real frac src pos (scan dec end src (end_n + 1) len)
-        | otherwise = check byte unit suffix src end_n len (str to int (clean num slice (str slice src pos end_n)))
+        | otherwise = tok dec int src pos end_n len
 
 fn :: tok real frac String Int Int => RToken Int
       tok real frac src pos end_frac =
@@ -163,9 +214,9 @@ fn :: tok number String Int Int => RToken Int
         | otherwise = tok dec or real src pos (scan dec end src pos len) len
 
 fn :: tok hex number String Int Int => RToken Int
-      tok hex number src pos end_h =
-        raw_h = clean num slice (str slice src pos end_h)
-        (TokInt (str to int raw_h), end_h)
+      tok hex number src pos end_h
+        | (hex lit digits src (pos + 2) end_h 0) > 16 = bad int tok src pos end_h
+        | otherwise = (TokInt (hex lit value src (pos + 2) end_h 0), end_h)
 
 fn :: tok ident String Int Int => RToken Int
       tok ident src    pos len =

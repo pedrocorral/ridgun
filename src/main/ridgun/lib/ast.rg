@@ -5,7 +5,10 @@
 -- ============================================================
 
 -- 1. Lexical Tokens produced by lexer.rg
-type RToken = TokFn | TokOp | TokType | TokImport | TokWith | TokDo | TokHardware | TokOtherwise | TokMut | TokTrue | TokFalse | TokAnd | TokOr | TokXor | TokNot | TokIdent String | TokInt Int | TokReal String | TokStr String | TokRawStr String | TokColonColon | TokColon | TokFatArrow | TokArrow | TokEquals | TokEqEq | TokNeq | TokGt | TokLt | TokGtEq | TokLtEq | TokPlus | TokMinus | TokStar | TokSlash | TokPercent | TokAt | TokPipe | TokPipeDot | TokDoublePipe | TokDoublePipeDot | TokLParen | TokRParen | TokLBracket | TokIdxLBracket | TokRBracket | TokComma | TokEllipsis | TokNewline | TokEof
+-- TokBadInt holds the source text of an integer literal outside the Int range.
+-- TokIntMin holds the text of the decimal literal 9223372036854775808, which is
+-- valid only after a unary minus (-9223372036854775808 is the Int minimum).
+type RToken = TokFn | TokOp | TokType | TokImport | TokWith | TokDo | TokHardware | TokOtherwise | TokMut | TokTrue | TokFalse | TokAnd | TokOr | TokXor | TokNot | TokIdent String | TokInt Int | TokReal String | TokStr String | TokRawStr String | TokColonColon | TokColon | TokFatArrow | TokArrow | TokEquals | TokEqEq | TokNeq | TokGt | TokLt | TokGtEq | TokLtEq | TokPlus | TokMinus | TokStar | TokSlash | TokPercent | TokAt | TokPipe | TokPipeDot | TokDoublePipe | TokDoublePipeDot | TokLParen | TokRParen | TokLBracket | TokIdxLBracket | TokRBracket | TokComma | TokEllipsis | TokNewline | TokEof | TokBadInt String | TokIntMin String
 
 -- 2. Patterns in Function & Operator Cases
 type RPattern = PatInt Int | PatReal String | PatStr String | PatBool Bool | PatVar String | PatWild | PatEmpty | PatCons RPattern RPattern | PatTuple [RPattern] | PatCtor String [RPattern] | PatSeqBind String
