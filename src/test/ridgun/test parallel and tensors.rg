@@ -205,12 +205,19 @@ fn :: blamka p16 Tensor[U64 * 16] => ()
         v_(2), v_(7), v_(8),  v_(13) = blamka g v_(2) v_(7) v_(8)  v_(13)
         v_(3), v_(4), v_(9),  v_(14) = blamka g v_(3) v_(4) v_(9)  v_(14)
 
+fn :: blamka p8 Tensor[U64 * 8] => ()
+      blamka p8 v               =
+        v_(0), v_(2), v_(4), v_(6) = blamka g v_(0) v_(2) v_(4) v_(6)
+        v_(1), v_(3), v_(5), v_(7) = blamka g v_(1) v_(3) v_(5) v_(7)
+        v_(0), v_(3), v_(4), v_(7) = blamka g v_(0) v_(3) v_(4) v_(7)
+        v_(1), v_(2), v_(5), v_(6) = blamka g v_(1) v_(2) v_(5) v_(6)
+
 fn :: compress block Tensor[U64 * 8 * 16] Tensor[U64 * 8 * 16] => Tensor[U64 * 8 * 16]
       compress block x y =
         r_ij = x_ij xor y_ij
         z_ij = r_ij
         ||map blamka p16 in z_(i,)
-        ||map blamka p16 in z_(,j)
+        ||map blamka p8 in z_(,j)
         z_ij xor r_ij
 
 type FnBox3 = cb3: (String String String => String)

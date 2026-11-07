@@ -96,12 +96,16 @@ Fíjate en dos detalles espectaculares:
          blamka p16 v                =
            v_(0), v_(4), v_(8), v_(12) = blamka g v_(0) v_(4) v_(8) v_(12)
 
+   fn :: blamka p8 Tensor[U64 * 8] => ()
+         blamka p8 v               =
+           v_(0), v_(2), v_(4), v_(6) = blamka g v_(0) v_(2) v_(4) v_(6)
+
    fn :: comprimir bloque Tensor[U64 * 8 * 16] Tensor[U64 * 8 * 16] => Tensor[U64 * 8 * 16]
          comprimir bloque x                    y                    =
            r_ij = x_ij xor y_ij
            z_ij = r_ij
            ||map blamka p16 in z_(i,)
-           ||map blamka p16 in z_(,j)
+           ||map blamka p8 in z_(,j)
            z_ij xor r_ij
    ```
 

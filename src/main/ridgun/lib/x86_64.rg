@@ -51,7 +51,7 @@ fn :: x86 call rel Int          Int        => [Int]
 -- index slots now at +16 (23), `add rsp, 16` (4). No frame slot is used.
 fn :: x86 borrowed index Int Int Int Int => [Int]
       x86 borrowed index base_slot idx_start n cur_vaddr =
-        (x86 mov slot rdi base_slot) :: (x86 call rt 5 (cur_vaddr + 13)) :: [72, 131, 236, 16, 72, 137, 4, 36, 72, 137, 231] :: (x86 lea slot rsi (idx_start + 2)) :: (x86 mov imm64 rdx n) :: (x86 call rt 38 (cur_vaddr + 47)) :: [72, 131, 196, 16]
+        (x86 mov slot rdi base_slot) :: (x86 call rt 5 (cur_vaddr + 13)) :: [72, 131, 236, 16, 72, 137, 4, 36, 72, 137, 231] :: (x86 lea slot rsi (idx_start + 2)) :: (x86 mov imm64 rdx n) :: x86 tensor bounds :: (x86 call rt 38 (cur_vaddr + 225)) :: [72, 131, 196, 16]
 
 -- `NCallBuiltin 88` (numeric tensor of one or two dimensions, slots
 -- [fill, d0, d1]): the runtime builtin dispatcher has no tensor fill, so
@@ -91,6 +91,12 @@ fn :: x86 sha256 concat Int Int => [Int]
 
 -- `NIndexSet` through the runtime index set (rt 39), which stores an
 -- `Int` and copies a shared tensor first: 149 bytes.
+-- Every `NIndexSet` starts with the bounds check (204 bytes: rdi, rsi,
+-- rdx = count, then `x86 tensor bounds`); rax (the value) is kept.
+fn :: x86 index set bounds Int Int Int => [Int]
+      x86 index set bounds base_slot idx_start count =
+        (x86 lea slot rdi base_slot) :: (x86 lea slot rsi idx_start) :: (x86 mov imm64 rdx count) :: x86 tensor bounds
+
 fn :: x86 index set call Int Int Int Int => [Int]
       x86 index set call base_slot idx_start count cur_vaddr =
         x86 real to int bits :: (x86 lea slot rdi base_slot) :: (x86 lea slot rsi idx_start) :: (x86 mov imm64 rdx count) :: [72, 137, 193] :: (x86 call rt 39 (cur_vaddr + 149))
@@ -122,6 +128,15 @@ fn :: x86 chan lock Int => Int
 fn :: x86 locked builtin Int Int Int Int => [Int]
       x86 locked builtin b_id start_slot count rodata_vaddr =
         (x86 mov imm64 rdi b_id) :: (x86 lea slot rsi start_slot) :: (x86 mov imm64 rdx count) :: (x86 mov imm64 rcx (x86 chan lock rodata_vaddr)) :: (x86 builtin bytes 50)
+
+-- Before the runtime index calls (rt 38, rt 39), with rdi = the base slot,
+-- rsi = the index slots and rdx = their count: stop with `runtime error:
+-- tensor index out of range` (stderr, exit status 1 through builtin 24)
+-- when an Int index of a numeric tensor (heap tag 5) is outside its
+-- dimension. Uses r8-r11 only. 178 bytes; source `bounds.s` in
+-- docs/etc/gentensor.md.
+fn :: x86 tensor bounds => [Int]
+      x86 tensor bounds =  [76, 139, 7, 77, 133, 192, 15, 132, 166, 0, 0, 0, 65, 246, 192, 7, 15, 133, 156, 0, 0, 0, 65, 131, 56, 5, 15, 133, 146, 0, 0, 0, 77, 139, 64, 8, 73, 59, 80, 16, 15, 143, 132, 0, 0, 0, 77, 139, 64, 8, 69, 49, 219, 73, 57, 211, 125, 120, 78, 139, 12, 222, 65, 246, 193, 1, 116, 11, 73, 209, 249, 120, 11, 79, 59, 12, 216, 125, 5, 73, 255, 195, 235, 225, 184, 1, 0, 0, 0, 191, 2, 0, 0, 0, 72, 141, 53, 36, 0, 0, 0, 186, 41, 0, 0, 0, 15, 5, 106, 3, 72, 137, 230, 191, 24, 0, 0, 0, 186, 1, 0, 0, 0, 72, 184, 184, 17, 64, 0, 0, 0, 0, 0, 255, 208, 15, 11, 114, 117, 110, 116, 105, 109, 101, 32, 101, 114, 114, 111, 114, 58, 32, 116, 101, 110, 115, 111, 114, 32, 105, 110, 100, 101, 120, 32, 111, 117, 116, 32, 111, 102, 32, 114, 97, 110, 103, 101, 10]
 
 fn :: x86 call rt Int   Int        => [Int]
       x86 call rt rt_id next_vaddr =  x86 call rel (4198400 + (rt_id * 8)) next_vaddr
@@ -184,12 +199,12 @@ fn :: x8664 instr size RNativeInstr       => Int
       x8664 instr size (NMakeAdt _ _ _ _) =  43
       x8664 instr size (NEcho _ _)        =  23
       x8664 instr size (NStrInterp _ _)   =  23
-      x8664 instr size (NIndex _ _ -1)    =  51
-      x8664 instr size (NIndex _ _ -2)    =  51
-      x8664 instr size (NIndex _ _ _)     =  31
-      x8664 instr size (NIndexSet _ _ 1)  =  318
-      x8664 instr size (NIndexSet _ _ 2)  =  384
-      x8664 instr size (NIndexSet _ _ _)  =  149
+      x8664 instr size (NIndex _ _ -1)    =  229
+      x8664 instr size (NIndex _ _ -2)    =  229
+      x8664 instr size (NIndex _ _ _)     =  209
+      x8664 instr size (NIndexSet _ _ 1)  =  506
+      x8664 instr size (NIndexSet _ _ 2)  =  572
+      x8664 instr size (NIndexSet _ _ _)  =  353
       x8664 instr size (NSeqSelect _ _)   =  28
       x8664 instr size (NEinsum _ _ _ _)  =  43
       x8664 instr size (NHadamard _ _ _ _) = 46
@@ -372,13 +387,13 @@ fn :: x8664 encode instr RNativeInstr Int Int Int Int [RLabelEntry] [RLabelEntry
       x8664 encode instr (NIndex base_slot idx_start -2) cur_vaddr _ _ _ _ _ =
         x86 borrowed index base_slot idx_start 2 cur_vaddr
       x8664 encode instr (NIndex base_slot idx_start count) cur_vaddr _ _ _ _ _ =
-        (x86 lea slot rdi base_slot) :: (x86 lea slot rsi idx_start) :: (x86 mov imm64 rdx count) :: (x86 call rt 38 (cur_vaddr + 31))
+        (x86 lea slot rdi base_slot) :: (x86 lea slot rsi idx_start) :: (x86 mov imm64 rdx count) :: x86 tensor bounds :: (x86 call rt 38 (cur_vaddr + 209))
       x8664 encode instr (NIndexSet base_slot idx_start 1) cur_vaddr _ _ _ _ _ =
-        (x86 lea slot rdi base_slot) :: (x86 lea slot rsi idx_start) :: (x86 index set fast 1) :: (x86 index set call base_slot idx_start 1 (cur_vaddr + 169))
+        (x86 index set bounds base_slot idx_start 1) :: (x86 index set fast 1) :: (x86 index set call base_slot idx_start 1 (cur_vaddr + 357))
       x8664 encode instr (NIndexSet base_slot idx_start 2) cur_vaddr _ _ _ _ _ =
-        (x86 lea slot rdi base_slot) :: (x86 lea slot rsi idx_start) :: (x86 index set fast 2) :: (x86 index set call base_slot idx_start 2 (cur_vaddr + 235))
+        (x86 index set bounds base_slot idx_start 2) :: (x86 index set fast 2) :: (x86 index set call base_slot idx_start 2 (cur_vaddr + 423))
       x8664 encode instr (NIndexSet base_slot idx_start count) cur_vaddr _ _ _ _ _ =
-        x86 index set call base_slot idx_start count cur_vaddr
+        (x86 index set bounds base_slot idx_start count) :: (x86 index set call base_slot idx_start count (cur_vaddr + 204))
       x8664 encode instr (NSeqSelect mask_off mask_len) cur_vaddr _ _ rodata_vaddr _ _ =
         [72, 137, 199] :: (x86 mov imm64 rsi (rodata_vaddr + mask_off)) :: (x86 mov imm64 rdx mask_len) :: (x86 call rt 40 (cur_vaddr + 28))
       x8664 encode instr (NEinsum start_slot count spec_off spec_len) cur_vaddr _ _ rodata_vaddr _ _ =

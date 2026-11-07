@@ -1117,7 +1117,7 @@ fn :: check expr RExpr String [RTypeBind] [RTypeBind] => RType [RTypeError]
         (TyVar "_any", [TypeError "syntax" msg])
       check expr (ECall callee args) fn_name locals fns =
         args_res = check expr list args fn_name locals fns
-        finish call check callee args_res fn_name locals fns
+        with msg copy facts callee args args_res fn_name fns (finish call check callee args_res fn_name locals fns)
       check expr (EEcho args) fn_name locals fns =
         args_res = check expr list args fn_name locals fns
         discard tys return TyUnit args_res
@@ -2139,6 +2139,83 @@ fn :: par write errs String (Bool, RType) String => [RTypeError]
         | gen tensor ty t = [TypeError fn_name ("parallel writes into tensor '" + target + "' of " + (gen tensor elem str t) + " are not supported: its elements are not numbers")]
       par write errs _ _ _ =  []
 
+-- ── Tensors in messages (FR-COMP-020) ─────────────────────────
+-- A tensor sent to an agent or a channel (and the initial state of an
+-- agent) is copied: the receiver never gets the original. Lowering copies
+-- a message that is a tensor variable, a call that returns a tensor, or a
+-- tuple of those; it learns them from `:tensor-elem:` facts (`fn|v|K` for
+-- a variable, `fn|()f|K` for a call to `f`). Any other message that holds a
+-- tensor is a compile error.
+
+fn :: msg arg pos String Int => Int
+      msg arg pos "send_to" 2 =  0
+      msg arg pos "ask_to" 2 =  0
+      msg arg pos "send_through" 2 =  0
+      msg arg pos "chan_send" 2 =  0
+      msg arg pos "agent" 2 =  1
+      msg arg pos "agent_sink" 4 =  1
+      msg arg pos _ _ =  0 - 1
+
+fn :: nth rexpr [RExpr] Int => RExpr
+      nth rexpr (e:_) 0 =  e
+      nth rexpr (_:es) i =  nth rexpr es (i - 1)
+      nth rexpr [] _ =  EInt 0
+
+fn :: nth rtype [RType] Int => RType
+      nth rtype (t:_) 0 =  t
+      nth rtype (_:ts) i =  nth rtype ts (i - 1)
+      nth rtype [] _ =  TyUnit
+
+fn :: with msg copy facts String [RExpr] ([RType], [RTypeError]) String [RTypeBind] (RType, [RTypeError]) => RType [RTypeError]
+      with msg copy facts callee args (tys, _) fn_name fns (t, errs)
+        | (msg arg pos callee (tc expr count args)) < 0 = (t, errs)
+        | otherwise =
+          pos = msg arg pos callee (tc expr count args)
+          (t, errs :: (msg copy errs fn_name (nth rexpr args pos) (nth rtype tys pos) fns))
+
+fn :: msg copy errs String RExpr RType [RTypeBind] => [RTypeError]
+      msg copy errs fn_name e t fns
+        | ty has tensor t fns [] = msg tensor copy errs fn_name e t fns
+        | otherwise = []
+
+fn :: msg tensor copy errs String RExpr RType [RTypeBind] => [RTypeError]
+      msg tensor copy errs fn_name (EVar v) (TyTensor e d) _ =  tensor elem info fn_name v (TyTensor e d)
+      msg tensor copy errs fn_name (ETuple es) (TyTuple ts) fns =  msg copy errs list fn_name es ts fns
+      msg tensor copy errs _ (ETensor _) _ _ =  []
+      msg tensor copy errs fn_name (ECall f _) (TyTensor e d) _
+        | (str starts with f ":") or f == "tensor_from_list" = []
+        | otherwise = tensor elem info fn_name ("()" + f) (TyTensor e d)
+      msg tensor copy errs fn_name _ t _ =
+        [TypeError fn_name ("a message of type " + (rtype to str t) + " holds a tensor that the receiver would share; send a tensor variable, a function result or a tuple of them, so that the tensor is copied")]
+
+fn :: msg copy errs list String [RExpr] [RType] [RTypeBind] => [RTypeError]
+      msg copy errs list fn_name (e:es) (t:ts) fns =  (msg copy errs fn_name e t fns) :: (msg copy errs list fn_name es ts fns)
+      msg copy errs list _ _ _ _ =  []
+
+-- True when a value of type t can hold a tensor: directly, in a list or a
+-- tuple, or in a field of an ADT or record (found through its constructors).
+fn :: ty has tensor RType [RTypeBind] [String] => Bool
+      ty has tensor (TyTensor _ _) _ _ =  True
+      ty has tensor (TyList t) fns seen =  ty has tensor t fns seen
+      ty has tensor (TyTuple ts) fns seen =  tys have tensor ts fns seen
+      ty has tensor (TyVar n) fns seen
+        | str in seen list n seen = False
+        | otherwise = adt has tensor fns n fns ([n] :: seen)
+      ty has tensor _ _ _ =  False
+
+fn :: tys have tensor [RType] [RTypeBind] [String] => Bool
+      tys have tensor [] _ _ =  False
+      tys have tensor (t:ts) fns seen
+        | ty has tensor t fns seen = True
+        | otherwise = tys have tensor ts fns seen
+
+fn :: adt has tensor [RTypeBind] String [RTypeBind] [String] => Bool
+      adt has tensor [] _ _ _ =  False
+      adt has tensor ((TypeBind k (TyFun arg_tys (TyVar m))):rest) n fns seen
+        | m == n and (is upper ident (ident base name k)) and (tys have tensor arg_tys fns seen) = True
+        | otherwise = adt has tensor rest n fns seen
+      adt has tensor (_:rest) n fns seen =  adt has tensor rest n fns seen
+
 fn :: tensor elem info String String RType => [RTypeError]
       tensor elem info fn_name v (TyTensor e _) =  [TypeError ":tensor-elem:" (fn_name + "|" + v + "|" + (tensor elem kind e))]
       tensor elem info _ _ _ =  []
@@ -2150,6 +2227,7 @@ fn :: param tensor infos [RPattern] [RType] String => [RTypeError]
 fn :: pat tensor info RPattern RType String => [RTypeError]
       pat tensor info (PatVar v) t fn_name =  tensor elem info fn_name v t
       pat tensor info (PatCtor ":tensor-pat:" ((PatVar v):_)) t fn_name =  tensor elem info fn_name v t
+      pat tensor info (PatTuple ps) (TyTuple ts) fn_name =  param tensor infos ps ts fn_name
       pat tensor info _ _ _ =  []
 
 fn :: drop tensor infos [RTypeError] [RTypeError] => [RTypeError]

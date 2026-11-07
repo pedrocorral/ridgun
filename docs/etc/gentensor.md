@@ -1664,3 +1664,63 @@ Builtin 59: rdi = slots [job]. An inline job (a tuple) gives its second element;
   pop r12
   pop rbx
 ```
+
+## Bounds checks on numeric tensors (0.9.41)
+
+FR-COMP-020 §8 applies to numeric tensors too. The fast paths already check the index; every out-of-range index reaches a slow path, and the checks sit there:
+
+- **LLVM.** `@__rg_tensor_bounds(base, idx, count)` runs in the four `@__rg_tensor_index*_slow` helpers and before the general `@__rg_rt_index` / `@__rg_rt_index_set` calls. On a numeric tensor (heap tag `5`) with at least `count` dimensions, an Int index outside `0 <= i < d` calls `@__rg_tensor_oob`, which writes the message to stderr and exits through builtin 24 (`sys exit 1`).
+- **x86-64.** `x86 tensor bounds` (`bounds.s`, 178 bytes) runs before rt 38 in every `NIndex`, and at the start of every `NIndexSet` (`x86 index set bounds`), before the fast path. It reads rdi (base slot), rsi (index slots) and rdx (count) and uses r8-r11 only.
+- **Slices.** `m_(r,)`, `m_(,c)` and their writes check the row or column in the lowering (`lower dim bounds`, with `NAdtField b (-10 - k)` = dimension k).
+
+Builtin 24 is called through the runtime builtin entry rt 55 (`4198400 + 55*8`):
+
+```asm
+.set RT_BUILTIN, 4198840
+.set RT_BUILTIN, 4198840
+  mov r8, [rdi]
+  test r8, r8
+  jz 9f
+  test r8b, 7
+  jnz 9f
+  cmp dword ptr [r8], 5
+  jne 9f
+  mov r8, [r8+8]
+  cmp rdx, [r8+16]
+  jg 9f
+  mov r8, [r8+8]
+  xor r11d, r11d
+1:
+  cmp r11, rdx
+  jge 9f
+  mov r9, [rsi+r11*8]
+  test r9b, 1
+  jz 2f
+  sar r9, 1
+  js 3f
+  cmp r9, [r8+r11*8]
+  jge 3f
+2:
+  inc r11
+  jmp 1b
+3:
+  mov eax, 1
+  mov edi, 2
+  lea rsi, [rip+4f]
+  mov edx, 41
+  syscall
+  push 3
+  mov rsi, rsp
+  mov edi, 24
+  mov edx, 1
+  movabs rax, RT_BUILTIN
+  call rax
+  ud2
+4:
+  .ascii "runtime error: tensor index out of range\n"
+9:
+```
+
+## Copies on send (0.9.41)
+
+FR-COMP-020 §13. The type checker reports, for each send (`send_to`, `ask_to`, `send_through`, `chan_send`, an agent's initial state), the tensor variables and the calls returning a tensor in the message (`:tensor-elem:` facts, `fn|()f|K` for a call to `f`). Lowering wraps each in `:msg-copy:` (`msg copy expr`, also inside a tuple). At run time a list (a GenTensor) is copied by `__rg_gt_copy_any` (rows too) and a numeric tensor by the same copy as `t_` (builtin 90, op 12); any other value passes.

@@ -1644,7 +1644,7 @@ fn :: prim type tag id String       => Int
       prim type tag id _            =  0
 
 fn :: is gt pseudo name String => Bool
-      is gt pseudo name n =  str in list n ["__rg_gt_is_gen", "__rg_gt_is_list", "__rg_gt_len", "__rg_gt_tlen", "__rg_gt_real_bits", "__rg_gt_list_copy", "__rg_gt_list_tensor", "__rg_gt_tensor_ints", "__rg_gt_tensor_reals", ":gt-new:", ":tensor-with:", "tensor_from_list", "tensor_to_list"]
+      is gt pseudo name n =  str in list n ["__rg_gt_is_gen", "__rg_gt_is_list", "__rg_gt_len", "__rg_gt_tlen", "__rg_gt_real_bits", "__rg_gt_list_copy", "__rg_gt_list_tensor", "__rg_gt_tensor_ints", "__rg_gt_tensor_reals", ":gt-new:", ":tensor-with:", ":msg-copy:", "tensor_from_list", "tensor_to_list"]
 
 fn :: is tensor helper name String             => Bool
       is tensor helper name ":tensor-zeros:"   =  True
@@ -1746,20 +1746,20 @@ fn :: lower tensor helper RNativeEnv String [RExpr] [String] Int RNativeCode => 
         st1 = lower expr env baseE boundLocals sp st
         st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
         st3 = lower expr env rowE boundLocals (sp + 1) st2
-        st4 = nc emit st3 (NStoreSlot (sp + 1)) (sp + 2)
+        st4 = lower dim bounds env sp (0 - 10) (sp + 1) (sp + 2) (nc emit st3 (NStoreSlot (sp + 1)) (sp + 2))
         nc emit st4 (NCallBuiltin 92 sp 2) (sp + 3)
       lower tensor helper env ":tensor-col-slice:" (baseE:colE:_) boundLocals sp st =
         st1 = lower expr env baseE boundLocals sp st
         st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
         st3 = lower expr env colE boundLocals (sp + 1) st2
-        st4 = nc emit st3 (NStoreSlot (sp + 1)) (sp + 2)
+        st4 = lower dim bounds env sp (0 - 11) (sp + 1) (sp + 2) (nc emit st3 (NStoreSlot (sp + 1)) (sp + 2))
         st5 = lower tensor get col slots env sp (sp + 1) (sp + 2) st4
         nc emit list st5 [NStoreSlot (sp + 2), NClearLocals sp (sp + 2), NMoveSlot (sp + 2)] (sp + 3)
       lower tensor helper env ":tensor-set-row:" (baseE:rowE:vecE:_) boundLocals sp st =
         st1 = lower expr env baseE boundLocals sp st
         st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
         st3 = lower expr env rowE boundLocals (sp + 1) st2
-        st4 = nc emit st3 (NStoreSlot (sp + 1)) (sp + 2)
+        st4 = lower dim bounds env sp (0 - 10) (sp + 1) (sp + 2) (nc emit st3 (NStoreSlot (sp + 1)) (sp + 2))
         st5 = lower expr env vecE boundLocals (sp + 2) st4
         st6 = nc emit st5 (NStoreSlot (sp + 2)) (sp + 3)
         st7 = lower tensor set row slots sp (sp + 1) (sp + 2) (sp + 3) st6
@@ -1769,7 +1769,7 @@ fn :: lower tensor helper RNativeEnv String [RExpr] [String] Int RNativeCode => 
         st1 = lower expr env baseE boundLocals sp st
         st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
         st3 = lower expr env colE boundLocals (sp + 1) st2
-        st4 = nc emit st3 (NStoreSlot (sp + 1)) (sp + 2)
+        st4 = lower dim bounds env sp (0 - 11) (sp + 1) (sp + 2) (nc emit st3 (NStoreSlot (sp + 1)) (sp + 2))
         st5 = lower expr env vecE boundLocals (sp + 2) st4
         st6 = nc emit st5 (NStoreSlot (sp + 2)) (sp + 3)
         st7 = lower tensor set col slots sp (sp + 1) (sp + 2) (sp + 3) st6
@@ -1934,7 +1934,7 @@ fn :: lower agent call RNativeEnv String [RExpr] [String] Int RNativeCode => RNa
         st_flag = stateful agent mode env fn_e bound_locals
         st1 = lower expr env fn_e bound_locals sp st
         st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
-        st3 = lower expr env init_e bound_locals (sp + 4) st2
+        st3 = lower expr env (msg copy expr env init_e) bound_locals (sp + 4) st2
         ins = [NStoreSlot (sp + 4), NLoadImmInt st_flag, NStoreSlot (sp + 5), NMakeTuple (sp + 4) 2, NStoreSlot (sp + 4), NCallBuiltin 1 (sp + 1) 0, NStoreSlot (sp + 1), NCallBuiltin 1 (sp + 2) 0, NStoreSlot (sp + 2), NLoadImmInt 2, NStoreSlot (sp + 3), NMakeTuple (sp + 3) 2, NStoreSlot (sp + 3), NCloneSlot (sp + 1), NStoreSlot (sp + 4), NCallBuiltin 50 (sp + 3) 2, NDropVal, NMakeTuple sp 3]
         nc emit list st3 ins (sp + 6)
       lower agent call env "agent_sink" (fn_e:cap_e:drain_e:[]) bound_locals sp st =
@@ -1942,7 +1942,7 @@ fn :: lower agent call RNativeEnv String [RExpr] [String] Int RNativeCode => RNa
         ins = [NLoadImmRaw 0, NStoreSlot (sp + 5), NMakeList (sp + 6) 0, NStoreSlot (sp + 6), NMoveSlot (sp + 1), NStoreSlot (sp + 7), NLoadImmInt 0, NStoreSlot (sp + 8), NMakeTuple (sp + 5) 4, NStoreSlot (sp + 4), NLoadImmInt 5, NStoreSlot (sp + 3), NMakeTuple (sp + 3) 2, NStoreSlot (sp + 3), NCallBuiltin 1 (sp + 1) 0, NStoreSlot (sp + 1), NCloneSlot (sp + 1), NStoreSlot (sp + 4), NCallBuiltin 50 (sp + 3) 2, NDropVal, NClearLocals (sp + 3) (sp + 9), NMakeTuple sp 3]
         nc emit list st1 ins (sp + 9)
       lower agent call env "agent_sink" (fn_e:init_e:cap_e:drain_e:[]) bound_locals sp st =
-        st1 = lower expr list to slots env [fn_e, init_e, cap_e, drain_e] bound_locals sp 0 st
+        st1 = lower expr list to slots env [fn_e, msg copy expr env init_e, cap_e, drain_e] bound_locals sp 0 st
         ins = [NMoveSlot (sp + 1), NStoreSlot (sp + 5), NMakeList (sp + 6) 0, NStoreSlot (sp + 6), NMoveSlot (sp + 2), NStoreSlot (sp + 7), NLoadImmInt 0, NStoreSlot (sp + 8), NMakeTuple (sp + 5) 4, NStoreSlot (sp + 4), NMoveSlot (sp + 3), NStoreSlot (sp + 2), NLoadImmInt 6, NStoreSlot (sp + 3), NMakeTuple (sp + 3) 2, NStoreSlot (sp + 3), NCallBuiltin 1 (sp + 1) 0, NStoreSlot (sp + 1), NCloneSlot (sp + 1), NStoreSlot (sp + 4), NCallBuiltin 50 (sp + 3) 2, NDropVal, NClearLocals (sp + 3) (sp + 9), NMakeTuple sp 3]
         nc emit list st1 ins (sp + 9)
       lower agent call env "__gagent_get__" (_:sink_e:[]) bound_locals sp st =
@@ -1967,7 +1967,7 @@ fn :: lower agent call RNativeEnv String [RExpr] [String] Int RNativeCode => RNa
         ins_exit = [NStoreSlot (sp + 2), NLoadImmInt k, NStoreSlot (sp + 3), NCallBuiltin 32 (sp + 3) 1, NStoreSlot (sp + 3)] :: (emit sink flush or state False (sp + 3) flush_lbl) :: [NDropVal, NMoveSlot sp, NStoreSlot (sp + 3), NLoadImmInt k, NStoreSlot (sp + 4), NCallBuiltin 50 (sp + 3) 2, NDropVal, NClearLocals sp (sp + 2), NClearLocals (sp + 3) (sp + 21), NMoveSlot (sp + 2)]
         nc emit list st5 ins_exit (sp + 21)
       lower agent call env "send_to" (msg_e:ag_e:[]) bound_locals sp st =
-        st1 = lower expr env msg_e bound_locals sp st
+        st1 = lower expr env (msg copy expr env msg_e) bound_locals sp st
         st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
         st3 = lower expr env ag_e bound_locals (sp + 1) st2
         st4 = nc emit st3 (NStoreSlot (sp + 1)) (sp + 2)
@@ -2305,6 +2305,10 @@ fn :: lower call expr RNativeEnv String [RExpr] [String] Int RNativeCode => RNat
       lower call expr env "str_to_int" (a1:[]) bound_locals sp st
         | (env fn name env) != (s2i helper name) and (env fn arity env (s2i helper name)) == 1 =
           lower call expr env (s2i helper name) [a1] bound_locals sp st
+      lower call expr env "send_through" (msg_e:ch_e:[]) bound_locals sp st
+        | msg needs copy env msg_e = lower call expr env "send_through" [msg copy expr env msg_e, ch_e] bound_locals sp st
+      lower call expr env "chan_send" (msg_e:ch_e:[]) bound_locals sp st
+        | msg needs copy env msg_e = lower call expr env "chan_send" [msg copy expr env msg_e, ch_e] bound_locals sp st
       lower call expr env fname args bound_locals sp st
         | fname == "sys_call" =
           pargs = pad syscall args args
@@ -2397,6 +2401,7 @@ fn :: lower expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
       lower expr env (ECall "__rg_gt_real_bits" (e:_)) bound_locals sp st =
         st1 = lower expr env e bound_locals sp st
         nc emit st1 NRealFromBits sp
+      lower expr env (ECall ":msg-copy:" (e:_)) bound_locals sp st =  lower msg copy env e bound_locals sp st
       lower expr env (ECall ":char-zero:" []) bound_locals sp st =  lower expr env (ECall "char_from_code" [EInt 0]) bound_locals sp st
       lower expr env (ECall ":tensor-with:" args) bound_locals sp st =  lower shape tensor env args bound_locals sp st
       lower expr env (ECall ":gt-new:" (d:n:[])) bound_locals sp st =  lower expr env (ECall "__rg_gt_new1" [d, n]) bound_locals sp st
@@ -4155,6 +4160,58 @@ fn :: merge tensor kind String String => String
 fn :: env is real tensor RNativeEnv String => Bool
       env is real tensor env v =  (env tensor kind env v) == "R"
 
+-- ── Tensors in messages (FR-COMP-020) ─────────────────────────
+-- A tensor sent to an agent or a channel, or given as an agent's initial
+-- state, is copied. The type checker marks the tensor variables and the
+-- calls returning a tensor in each message (`:tensor-elem:` facts); this
+-- wraps them in `:msg-copy:`, also inside a tuple.
+
+fn :: tensor fact found [String] String => Bool
+      tensor fact found [] _ =  False
+      tensor fact found (e:es) key
+        | str starts with e key = True
+        | otherwise = tensor fact found es key
+
+fn :: env has tensor fact RNativeEnv String => Bool
+      env has tensor fact (NativeEnv _ _ _ _ _ _ _ _ elems) v =  tensor fact found elems (v + "|")
+
+fn :: msg copy expr RNativeEnv RExpr => RExpr
+      msg copy expr env (EVar v)
+        | env has tensor fact env v = ECall ":msg-copy:" [EVar v]
+      msg copy expr env (ETuple es) =  ETuple (msg copy expr list env es)
+      msg copy expr env (ECall f args)
+        | (not (str starts with f ":")) and (env has tensor fact env ("()" + f)) = ECall ":msg-copy:" [ECall f args]
+      msg copy expr _ e =  e
+
+fn :: msg copy expr list RNativeEnv [RExpr] => [RExpr]
+      msg copy expr list _ [] =  []
+      msg copy expr list env (e:es) =  [msg copy expr env e] :: (msg copy expr list env es)
+
+fn :: msg needs copy RNativeEnv RExpr => Bool
+      msg needs copy env (EVar v) =  env has tensor fact env v
+      msg needs copy env (ETuple es) =  msg list needs copy env es
+      msg needs copy env (ECall f _) =  (not (str starts with f ":")) and (env has tensor fact env ("()" + f))
+      msg needs copy _ _ =  False
+
+fn :: msg list needs copy RNativeEnv [RExpr] => Bool
+      msg list needs copy _ [] =  False
+      msg list needs copy env (e:es)
+        | msg needs copy env e = True
+        | otherwise = msg list needs copy env es
+
+-- The value goes to slot sp. A list (a GenTensor) is copied by
+-- `__rg_gt_copy_any` (rows too); a numeric tensor (heap tag 5) by the
+-- same element-wise copy as `t_`; any other value passes unchanged.
+fn :: lower msg copy RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
+      lower msg copy env e bound_locals sp st =
+        num_lbl = nc lbl st
+        pass_lbl = num_lbl + 1
+        end_lbl = num_lbl + 2
+        st0 = nc set lbl st (num_lbl + 3)
+        st1 = lower expr env e bound_locals sp st0
+        ins = [NStoreSlot sp, NIsList sp, NAsBool, NJumpIfZero num_lbl, NCallFn (env fn id env "__rg_gt_copy_any") sp 1, NJump end_lbl, NLabel num_lbl, NMatchAdt sp 0 0 (0 - 5), NJumpIfZero pass_lbl, NCloneSlot sp, NStoreSlot (sp + 1), NLoadImmInt 12, NStoreSlot (sp + 2), NCallBuiltin 90 sp 3, NJump end_lbl, NLabel pass_lbl, NMoveSlot sp, NLabel end_lbl]
+        nc emit list st1 ins (sp + 3)
+
 fn :: gen tensor oob msg => String
       gen tensor oob msg =  "runtime error: tensor index out of range\n"
 
@@ -4209,11 +4266,16 @@ fn :: lower gen read RNativeEnv Int Int Int RNativeCode => RNativeCode
 -- Stop with a runtime error unless 0 <= slot is < length of the List in
 -- slot b (FR-COMP-020 §8). Slot t is a scratch slot.
 fn :: lower gen bounds RNativeEnv Int Int Int RNativeCode => RNativeCode
-      lower gen bounds env b is t st =
+      lower gen bounds env b is t st =  lower dim bounds env b (0 - 1) is t st
+
+-- The same check against `NAdtField b field`: `-1` is the length of a List,
+-- `-10 - k` dimension k of a numeric tensor (row and column slices).
+fn :: lower dim bounds RNativeEnv Int Int Int Int RNativeCode => RNativeCode
+      lower dim bounds env b field is t st =
         oob_lbl = nc lbl st
         ok_lbl = oob_lbl + 1
         st0 = nc set lbl st (oob_lbl + 2)
-        st1 = nc emit list st0 [NCloneSlot is, NStoreSlot t, NAdtField b (0 - 1), NBinOp (binop id OpLt) t, NAsBool, NJumpIfZero oob_lbl, NCloneSlot is, NStoreSlot t, NLoadImmInt 0, NBinOp (binop id OpGtEq) t, NAsBool, NJumpIfZero oob_lbl, NJump ok_lbl, NLabel oob_lbl] (t + 1)
+        st1 = nc emit list st0 [NCloneSlot is, NStoreSlot t, NAdtField b field, NBinOp (binop id OpLt) t, NAsBool, NJumpIfZero oob_lbl, NCloneSlot is, NStoreSlot t, NLoadImmInt 0, NBinOp (binop id OpGtEq) t, NAsBool, NJumpIfZero oob_lbl, NJump ok_lbl, NLabel oob_lbl] (t + 1)
         st2 = lower expr env (ECall "sys_write_fd" [EInt 2, EStr (gen tensor oob msg)]) [] (t + 1) st1
         st3 = nc emit st2 NDropVal (t + 2)
         st4 = lower expr env (ECall "sys_exit" [EInt 1]) [] (t + 1) st3
@@ -4279,7 +4341,7 @@ fn :: lib with gt helpers [RFnDef] => [RFnDef]
         | otherwise = fns
 
 fn :: gt trigger names => [String]
-      gt trigger names =  [":gt-new:", "tensor_from_list", "tensor_to_list"]
+      gt trigger names =  [":gt-new:", "tensor_from_list", "tensor_to_list"] :: msg send names
 
 fn :: fndefs call gt [RFnDef] => Bool
       fndefs call gt [] =  False
@@ -4296,4 +4358,13 @@ fn :: add gt refs RFnRefsMap => RFnRefsMap
         m1 = fn refs map insert mp ":gt-new:" ["__rg_gt_new1", "__rg_gt_new2", "__rg_gt_shape"]
         m2 = m1
         m3 = fn refs map insert m2 "tensor_from_list" ["__rg_gt_from_list", "__rg_gt_shape"]
-        fn refs map insert m3 "tensor_to_list" ["__rg_gt_to_list", "__rg_gt_to_list_real"]
+        m4 = add msg copy refs m3 msg send names
+        fn refs map insert m4 "tensor_to_list" ["__rg_gt_to_list", "__rg_gt_to_list_real"]
+
+-- Sends copy GenTensors with `__rg_gt_copy_any` (`lower msg copy`).
+fn :: msg send names => [String]
+      msg send names =  ["send_to", "ask_to", "send_through", "chan_send", "agent", "agent_sink"]
+
+fn :: add msg copy refs RFnRefsMap [String] => RFnRefsMap
+      add msg copy refs mp [] =  mp
+      add msg copy refs mp (n:ns) =  add msg copy refs (fn refs map insert mp n ["__rg_gt_copy_any"]) ns
