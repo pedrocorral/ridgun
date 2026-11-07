@@ -456,7 +456,8 @@ board = tensor fill '.' 8 8
 - **Lists.** `tensor from list xs` copies a list into a one-dimensional tensor: a list of numbers gives a numeric tensor, any other list gives a tensor of its elements. `tensor to list t` copies a tensor into a list: a two-dimensional tensor of non-numeric elements gives a list of rows, a numeric tensor gives the list of all its elements in row order. Both run natively, without a Ridgun loop per element. A tensor literal (`Tensor [...]`) holds numbers only.
 - **Showing and comparing.** `echo` shows a tensor of non-numeric elements as a list of its elements, and `==` compares the elements.
 - **Numbers only.** Einsum (`@`), arithmetic, matrix products, element-wise and bitwise operators, row and column helpers, and parallel writes (`|| expr -> out[i]`) need tensors of numbers. On a tensor of non-numeric elements they are compile errors, for example `einsum (@) needs a tensor of numbers, got a tensor of String`.
-- **Not yet supported for non-numeric elements:** shape patterns, and the ARM64 backend (its runtime has no `Real` or GenTensor support yet).
+- **Shape patterns.** `(Tensor[String * r * c] g)` and `(Tensor[String * n] v)` match by rank and bind the dimensions, as for numeric tensors.
+- **Not yet supported:** the ARM64 backend (its runtime has no `Real` or GenTensor support yet).
 
 
 **Element typing (`FR-COMP-020` §2):** reading `t_(i ...)` gives the element type of `t`. An element of a `Tensor[Real * n]` is a `Real`: `echo t_(0)` prints the number and `t_(0) + 1.0` type-checks. Writing a value of another type, such as `t_(0) = 1` on a `Real` tensor, is a compile error. A tensor whose element type is not known (for example a parameter typed `Tensor`) has `Int` elements.

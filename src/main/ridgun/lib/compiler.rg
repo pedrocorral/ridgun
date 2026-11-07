@@ -2927,10 +2927,7 @@ fn :: lower pat cond RNativeEnv RPattern Int Int Int RNativeCode => RNativeCode
         st1 = nc emit list st [NMatchTuple slot arity, NJumpIfZero fail_lbl] sp
         lower tuple pat conds env ps slot 0 fail_lbl sp st1
       lower pat cond env (PatCtor ":tensor-pat:" (t_pat:rank_pat:dim_pats)) slot fail_lbl sp st =
-        st1 = nc emit list st [NMatchAdt slot 0 0 (0 - 5), NJumpIfZero fail_lbl] sp
-        st2 = lower pat cond env t_pat slot fail_lbl sp st1
-        st3 = lower tensor dim cond env rank_pat slot (0 - 1) fail_lbl sp st2
-        lower tensor dims cond list env dim_pats slot 0 fail_lbl sp st3
+        lower tensor pat cond env (tensor pat mode env t_pat) t_pat rank_pat dim_pats slot fail_lbl sp st
       lower pat cond env (PatCtor c (sub_p:[])) slot fail_lbl sp st
         | (prim type tag id c) > 0 =
           st1 = nc emit list st [NMatchAdt slot 0 0 (0 - (prim type tag id c)), NJumpIfZero fail_lbl] sp
@@ -2941,6 +2938,118 @@ fn :: lower pat cond RNativeEnv RPattern Int Int Int RNativeCode => RNativeCode
         off = env str off env c_tag
         st1 = nc emit list st [NMatchAdt slot off (str len c_tag) arity, NJumpIfZero fail_lbl] sp
         lower adt pat conds env args slot 0 fail_lbl sp st1
+
+-- ── Tensor shape patterns on GenTensors (FR-COMP-020) ─────────
+-- A pattern such as `(Tensor[String * r * c] t)` checks the heap tag and
+-- the shape of a numeric tensor with `NMatchAdt` and `NAdtField`. A
+-- GenTensor is a list, so its rank and dimensions come from the
+-- `__rg_gt_shape` helper. The mode says which code to emit: "N" numeric
+-- only, "G" or "L" GenTensor only (the element kind of the pattern
+-- variable), "D" both, chosen at run time with `NIsList`.
+
+fn :: env has gt shape RNativeEnv => Bool
+      env has gt shape env =  (env fn arity env "__rg_gt_shape") == 3
+
+fn :: tensor pat kind RNativeEnv RPattern => String
+      tensor pat kind env (PatVar v) =  env tensor kind env v
+      tensor pat kind _ _ =  "U"
+
+fn :: tensor pat mode RNativeEnv RPattern => String
+      tensor pat mode env p =  tensor pat mode of (env has gt shape env) (tensor pat kind env p)
+
+fn :: tensor pat mode of Bool String => String
+      tensor pat mode of False _ =  "N"
+      tensor pat mode of True "N" =  "N"
+      tensor pat mode of True "R" =  "N"
+      tensor pat mode of True "G" =  "G"
+      tensor pat mode of True "L" =  "L"
+      tensor pat mode of True _ =  "D"
+
+fn :: gen tensor pat flag String => Int
+      gen tensor pat flag "L" =  1
+      gen tensor pat flag _ =  0
+
+fn :: lower tensor pat cond RNativeEnv String RPattern RPattern [RPattern] Int Int Int RNativeCode => RNativeCode
+      lower tensor pat cond env "N" t_pat rank_pat dim_pats slot fail_lbl sp st =
+        st1 = nc emit list st [NMatchAdt slot 0 0 (0 - 5), NJumpIfZero fail_lbl] sp
+        st2 = lower pat cond env t_pat slot fail_lbl sp st1
+        st3 = lower tensor dim cond env rank_pat slot (0 - 1) fail_lbl sp st2
+        lower tensor dims cond list env dim_pats slot 0 fail_lbl sp st3
+      lower tensor pat cond env "D" t_pat rank_pat dim_pats slot fail_lbl sp st =
+        num_lbl = nc lbl st
+        end_lbl = num_lbl + 1
+        st0 = nc set lbl st (num_lbl + 2)
+        st1 = nc emit list st0 [NIsList slot, NAsBool, NJumpIfZero num_lbl] sp
+        st2 = lower gen tensor pat cond env 0 t_pat rank_pat dim_pats slot fail_lbl sp st1
+        st3 = nc emit list st2 [NJump end_lbl, NLabel num_lbl] sp
+        st4 = lower tensor pat cond env "N" t_pat rank_pat dim_pats slot fail_lbl sp st3
+        nc emit st4 (NLabel end_lbl) sp
+      lower tensor pat cond env kind t_pat rank_pat dim_pats slot fail_lbl sp st =
+        st1 = nc emit list st [NIsList slot, NAsBool, NJumpIfZero fail_lbl] sp
+        lower gen tensor pat cond env (gen tensor pat flag kind) t_pat rank_pat dim_pats slot fail_lbl sp st1
+
+fn :: lower gen tensor pat cond RNativeEnv Int RPattern RPattern [RPattern] Int Int Int RNativeCode => RNativeCode
+      lower gen tensor pat cond env flag t_pat rank_pat dim_pats slot fail_lbl sp st =
+        st1 = lower pat cond env t_pat slot fail_lbl sp st
+        st2 = lower gen shape cond env flag rank_pat slot 0 fail_lbl sp st1
+        lower gen shape conds env flag dim_pats slot 1 fail_lbl sp st2
+
+fn :: lower gen shape conds RNativeEnv Int [RPattern] Int Int Int Int RNativeCode => RNativeCode
+      lower gen shape conds _ _ [] _ _ _ _ st =  st
+      lower gen shape conds env flag (p:ps) slot k fail_lbl sp st =
+        st1 = lower gen shape cond env flag p slot k fail_lbl sp st
+        lower gen shape conds env flag ps slot (k + 1) fail_lbl sp st1
+
+fn :: lower gen shape cond RNativeEnv Int RPattern Int Int Int Int RNativeCode => RNativeCode
+      lower gen shape cond env flag p slot k fail_lbl sp st
+        | not (pat needs check p) = st
+        | otherwise =
+          st1 = lower gen shape value env flag slot k sp st
+          st2 = lower pat cond env p sp fail_lbl (sp + 1) st1
+          nc emit st2 (NClearLocals sp (sp + 1)) (sp + 1)
+
+-- Calls `__rg_gt_shape t k flag` (k: 0 rank, 1 rows, 2 columns) and leaves
+-- the result in slot sp.
+fn :: lower gen shape value RNativeEnv Int Int Int Int RNativeCode => RNativeCode
+      lower gen shape value env flag slot k sp st =
+        nc emit list st [NCloneSlot slot, NStoreSlot sp, NLoadImmInt k, NStoreSlot (sp + 1), NLoadImmInt flag, NStoreSlot (sp + 2), NCallFn (env fn id env "__rg_gt_shape") sp 3, NStoreSlot sp] (sp + 4)
+
+fn :: lower tensor pat binds RNativeEnv String RPattern RPattern [RPattern] Int Bool Int RNativeCode => RNativeCode
+      lower tensor pat binds env "N" t_pat rank_pat dim_pats slot move_ok sp st =
+        st1 = lower tensor dim bind env rank_pat slot (0 - 1) sp st
+        st2 = lower tensor dims bind list env dim_pats slot 0 sp st1
+        lower pat binds env t_pat slot move_ok sp st2
+      lower tensor pat binds env "D" t_pat rank_pat dim_pats slot move_ok sp st =
+        num_lbl = nc lbl st
+        end_lbl = num_lbl + 1
+        st0 = nc set lbl st (num_lbl + 2)
+        st1 = nc emit list st0 [NIsList slot, NAsBool, NJumpIfZero num_lbl] sp
+        st2 = lower gen tensor pat binds env 0 t_pat rank_pat dim_pats slot move_ok sp st1
+        st3 = nc emit list st2 [NJump end_lbl, NLabel num_lbl] sp
+        st4 = lower tensor pat binds env "N" t_pat rank_pat dim_pats slot move_ok sp st3
+        nc emit st4 (NLabel end_lbl) sp
+      lower tensor pat binds env kind t_pat rank_pat dim_pats slot move_ok sp st =
+        lower gen tensor pat binds env (gen tensor pat flag kind) t_pat rank_pat dim_pats slot move_ok sp st
+
+fn :: lower gen tensor pat binds RNativeEnv Int RPattern RPattern [RPattern] Int Bool Int RNativeCode => RNativeCode
+      lower gen tensor pat binds env flag t_pat rank_pat dim_pats slot move_ok sp st =
+        st1 = lower gen shape bind env flag rank_pat slot 0 sp st
+        st2 = lower gen shape binds env flag dim_pats slot 1 sp st1
+        lower pat binds env t_pat slot move_ok sp st2
+
+fn :: lower gen shape binds RNativeEnv Int [RPattern] Int Int Int RNativeCode => RNativeCode
+      lower gen shape binds _ _ [] _ _ _ st =  st
+      lower gen shape binds env flag (p:ps) slot k sp st =
+        st1 = lower gen shape bind env flag p slot k sp st
+        lower gen shape binds env flag ps slot (k + 1) sp st1
+
+fn :: lower gen shape bind RNativeEnv Int RPattern Int Int Int RNativeCode => RNativeCode
+      lower gen shape bind env flag p slot k sp st
+        | not (pat has vars p) = st
+        | otherwise =
+          st1 = lower gen shape value env flag slot k sp st
+          st2 = lower pat binds env p sp True (sp + 1) st1
+          nc emit st2 (NClearLocals sp (sp + 1)) (sp + 1)
 
 fn :: lower tensor dim cond RNativeEnv RPattern Int Int Int Int RNativeCode => RNativeCode
       lower tensor dim cond env p slot field_code fail_lbl sp st
@@ -3009,9 +3118,7 @@ fn :: lower pat binds RNativeEnv RPattern Int Bool Int RNativeCode => RNativeCod
       lower pat binds env (PatTuple ps) slot _ sp st =
         lower tuple pat binds env ps slot 0 sp st
       lower pat binds env (PatCtor ":tensor-pat:" (t_pat:rank_pat:dim_pats)) slot move_ok sp st =
-        st1 = lower tensor dim bind env rank_pat slot (0 - 1) sp st
-        st2 = lower tensor dims bind list env dim_pats slot 0 sp st1
-        lower pat binds env t_pat slot move_ok sp st2
+        lower tensor pat binds env (tensor pat mode env t_pat) t_pat rank_pat dim_pats slot move_ok sp st
       lower pat binds env (PatCtor c (sub_p:[])) slot move_ok sp st
         | (prim type tag id c) > 0 =
           lower pat binds env sub_p slot move_ok sp st
@@ -4009,8 +4116,8 @@ fn :: lower tensor read RNativeEnv RExpr [RExpr] [String] Int RNativeCode => RNa
 
 -- ── Tensor element access by element kind (FR-COMP-020) ──────
 -- The type checker reports the element kind of each tensor variable
--- (`tensor infos of` in typecheck.rg): "N" (Int), "R" (Real), "G" (any
--- other type) or "U" (unknown). A tensor of "G" elements is a GenTensor,
+-- (`tensor infos of` in typecheck.rg): "N" (Int), "R" (Real), "L" (lists),
+-- "G" (any other type) or "U" (unknown). A tensor of "G" or "L" elements is a GenTensor,
 -- stored as a List RVal (nested for two dimensions), so `echo`, `==` and
 -- RMM (child cascade on drop) come from the runtime. "U" tensors are
 -- checked at run time (`NIsList`). GenTensor accesses check bounds.
@@ -4071,6 +4178,7 @@ fn :: lower base index read RNativeEnv RExpr [RExpr] [String] Int RNativeCode =>
 -- The base is in slot b (borrowed), the indices in slots i0 and i0 + 1.
 fn :: lower slot index read RNativeEnv String Int Int Int RNativeCode => RNativeCode
       lower slot index read env "G" b i0 count st =  lower gen read env b i0 count st
+      lower slot index read env "L" b i0 count st =  lower gen read env b i0 count st
       lower slot index read env _ b i0 count st =
         num_lbl = nc lbl st
         end_lbl = num_lbl + 1
@@ -4108,7 +4216,7 @@ fn :: emit tensor store RNativeEnv String Int Int Int RNativeCode => RNativeCode
       emit tensor store env t tslot sp count st
         | (env tensor kind env t) == "N" or (env tensor kind env t) == "R" or count > 2 =
           nc emit list st [NIndexSet tslot sp count, NStoreSlot tslot] (sp + count + 1)
-        | (env tensor kind env t) == "G" =
+        | (env tensor kind env t) == "G" or (env tensor kind env t) == "L" =
           st1 = nc emit st (NStoreSlot (sp + count)) (sp + count + 1)
           lower gen write env tslot sp count (sp + count) st1
         | otherwise =
@@ -4144,7 +4252,7 @@ fn :: gt helper src stubs => String
       gt helper src stubs =  "fn :: __rg_gt_is_gen A => Bool\n      __rg_gt_is_gen v =  False\nfn :: __rg_gt_is_list A => Bool\n      __rg_gt_is_list v =  False\nfn :: __rg_gt_len A => Int\n      __rg_gt_len v =  0\nfn :: __rg_gt_tlen A => Int\n      __rg_gt_tlen v =  0\nfn :: __rg_gt_real_bits A => Real\n      __rg_gt_real_bits v =  0.0\nfn :: __rg_gt_numfill1 A Int => A\n      __rg_gt_numfill1 v n =  v\nfn :: __rg_gt_numfill2 A Int Int => A\n      __rg_gt_numfill2 v r c =  v\nfn :: __rg_gt_list_copy A => A\n      __rg_gt_list_copy v =  v\nfn :: __rg_gt_list_tensor A => T\n      __rg_gt_list_tensor v =  v\nfn :: __rg_gt_tensor_ints T => [Int]\n      __rg_gt_tensor_ints v =  []\nfn :: __rg_gt_tensor_reals T => [Real]\n      __rg_gt_tensor_reals v =  []\n"
 
 fn :: gt helper src alloc => String
-      gt helper src alloc =  "fn :: __rg_gt_build A Int [A] => [A]\n      __rg_gt_build v n acc\n        | n <= 0 = acc\n        | otherwise = __rg_gt_build v (n - 1) (acc :: [v])\nfn :: __rg_gt_new1 A Int => [A]\n      __rg_gt_new1 v n =  __rg_gt_build v n []\nfn :: __rg_gt_rows A Int Int [[A]] => [[A]]\n      __rg_gt_rows v c r acc\n        | r <= 0 = acc\n        | otherwise = __rg_gt_rows v c (r - 1) (acc :: [(__rg_gt_new1 v c)])\nfn :: __rg_gt_new2 A Int Int => [[A]]\n      __rg_gt_new2 v r c =  __rg_gt_rows v c r []\nfn :: __rg_gt_set1 T A Int Int => T\n      __rg_gt_set1 t v i n =  __rg_gt_set1_step t v i n (i >= n)\nfn :: __rg_gt_set1_step T A Int Int Bool => T\n      __rg_gt_set1_step t _ _ _ True =  t\n      __rg_gt_set1_step t v i n False =\n        t_(i) = v\n        __rg_gt_set1 t v (i + 1) n\nfn :: __rg_gt_set2 T A Int Int Int Int => T\n      __rg_gt_set2 t v i j r c\n        | i >= r = t\n        | j >= c = __rg_gt_set2 t v (i + 1) 0 r c\n        | otherwise = __rg_gt_set2_step t v i j r c\nfn :: __rg_gt_set2_step T A Int Int Int Int => T\n      __rg_gt_set2_step t v i j r c =\n        t_(i, j) = v\n        __rg_gt_set2 t v i (j + 1) r c\nfn :: __rg_gt_fill1 A Int => [A]\n      __rg_gt_fill1 v n\n        | __rg_gt_is_gen v = __rg_gt_new1 v n\n        | otherwise = __rg_gt_set1 (__rg_gt_numfill1 0 n) v 0 n\nfn :: __rg_gt_fill2 A Int Int => [[A]]\n      __rg_gt_fill2 v r c\n        | __rg_gt_is_gen v = __rg_gt_new2 v r c\n        | otherwise = __rg_gt_set2 (__rg_gt_numfill2 0 r c) v 0 0 r c\n"
+      gt helper src alloc =  "fn :: __rg_gt_build A Int [A] => [A]\n      __rg_gt_build v n acc\n        | n <= 0 = acc\n        | otherwise = __rg_gt_build v (n - 1) (acc :: [v])\nfn :: __rg_gt_new1 A Int => [A]\n      __rg_gt_new1 v n =  __rg_gt_build v n []\nfn :: __rg_gt_rows A Int Int [[A]] => [[A]]\n      __rg_gt_rows v c r acc\n        | r <= 0 = acc\n        | otherwise = __rg_gt_rows v c (r - 1) (acc :: [(__rg_gt_new1 v c)])\nfn :: __rg_gt_new2 A Int Int => [[A]]\n      __rg_gt_new2 v r c =  __rg_gt_rows v c r []\nfn :: __rg_gt_set1 T A Int Int => T\n      __rg_gt_set1 t v i n =  __rg_gt_set1_step t v i n (i >= n)\nfn :: __rg_gt_set1_step T A Int Int Bool => T\n      __rg_gt_set1_step t _ _ _ True =  t\n      __rg_gt_set1_step t v i n False =\n        t_(i) = v\n        __rg_gt_set1 t v (i + 1) n\nfn :: __rg_gt_set2 T A Int Int Int Int => T\n      __rg_gt_set2 t v i j r c\n        | i >= r = t\n        | j >= c = __rg_gt_set2 t v (i + 1) 0 r c\n        | otherwise = __rg_gt_set2_step t v i j r c\nfn :: __rg_gt_set2_step T A Int Int Int Int => T\n      __rg_gt_set2_step t v i j r c =\n        t_(i, j) = v\n        __rg_gt_set2 t v i (j + 1) r c\nfn :: __rg_gt_fill1 A Int => [A]\n      __rg_gt_fill1 v n\n        | __rg_gt_is_gen v = __rg_gt_new1 v n\n        | otherwise = __rg_gt_set1 (__rg_gt_numfill1 0 n) v 0 n\nfn :: __rg_gt_fill2 A Int Int => [[A]]\n      __rg_gt_fill2 v r c\n        | __rg_gt_is_gen v = __rg_gt_new2 v r c\n        | otherwise = __rg_gt_set2 (__rg_gt_numfill2 0 r c) v 0 0 r c\nfn :: __rg_gt_shape [A] Int Int => Int\n      __rg_gt_shape xs k flag\n        | k == 1 = __rg_gt_len xs\n        | (__rg_gt_len xs) == 0 = __rg_gt_shape_pick k 1 0\n        | otherwise = __rg_gt_shape_pick k (__rg_gt_rank_of xs_(0) flag) (__rg_gt_row_len xs_(0))\nfn :: __rg_gt_row_len A => Int\n      __rg_gt_row_len h\n        | __rg_gt_is_list h = __rg_gt_len h\n        | otherwise = 0\nfn :: __rg_gt_rank_of A Int => Int\n      __rg_gt_rank_of h flag\n        | not (__rg_gt_is_list h) = 1\n        | flag == 0 = 2\n        | (__rg_gt_len h) == 0 = 1\n        | otherwise = __rg_gt_rank_inner h_(0)\nfn :: __rg_gt_rank_inner A => Int\n      __rg_gt_rank_inner e\n        | __rg_gt_is_list e = 2\n        | otherwise = 1\nfn :: __rg_gt_shape_pick Int Int Int => Int\n      __rg_gt_shape_pick 0 rank _ =  rank\n      __rg_gt_shape_pick _ 1 _ =  0\n      __rg_gt_shape_pick _ _ rowlen =  rowlen\n"
 
 fn :: gt helper src lists => String
       gt helper src lists =  "fn :: __rg_gt_copy [A] => [A]\n      __rg_gt_copy xs =  __rg_gt_list_copy xs\nfn :: __rg_gt_deep_copy [[A]] Int Int [[A]] => [[A]]\n      __rg_gt_deep_copy xs i n acc\n        | i >= n = acc\n        | otherwise = __rg_gt_deep_copy xs (i + 1) n (acc :: [(__rg_gt_copy xs_(i))])\nfn :: __rg_gt_copy_any [A] => [A]\n      __rg_gt_copy_any xs\n        | (__rg_gt_len xs) == 0 = []\n        | otherwise = __rg_gt_copy_first xs xs_(0)\nfn :: __rg_gt_copy_first [A] A => [A]\n      __rg_gt_copy_first xs h\n        | __rg_gt_is_list h = __rg_gt_deep_copy xs 0 (__rg_gt_len xs) []\n        | otherwise = __rg_gt_copy xs\nfn :: __rg_gt_from_list [A] => [A]\n      __rg_gt_from_list xs\n        | (__rg_gt_len xs) == 0 = []\n        | otherwise = __rg_gt_from_first xs xs_(0)\nfn :: __rg_gt_from_first [A] A => [A]\n      __rg_gt_from_first xs h\n        | __rg_gt_is_gen h = __rg_gt_copy xs\n        | otherwise = __rg_gt_list_tensor xs\nfn :: __rg_gt_to_list T => [A]\n      __rg_gt_to_list t\n        | __rg_gt_is_list t = __rg_gt_copy_any t\n        | otherwise = __rg_gt_tensor_ints t\nfn :: __rg_gt_to_list_real T => [Real]\n      __rg_gt_to_list_real t =  __rg_gt_tensor_reals t\n"
@@ -4177,7 +4285,7 @@ fn :: any str in list [String] [String] => Bool
 
 fn :: add gt refs RFnRefsMap => RFnRefsMap
       add gt refs mp =
-        m1 = fn refs map insert mp ":gt-new:" ["__rg_gt_new1", "__rg_gt_new2"]
-        m2 = fn refs map insert m1 "tensor_fill" ["__rg_gt_fill1", "__rg_gt_fill2"]
-        m3 = fn refs map insert m2 "tensor_from_list" ["__rg_gt_from_list"]
+        m1 = fn refs map insert mp ":gt-new:" ["__rg_gt_new1", "__rg_gt_new2", "__rg_gt_shape"]
+        m2 = fn refs map insert m1 "tensor_fill" ["__rg_gt_fill1", "__rg_gt_fill2", "__rg_gt_shape"]
+        m3 = fn refs map insert m2 "tensor_from_list" ["__rg_gt_from_list", "__rg_gt_shape"]
         fn refs map insert m3 "tensor_to_list" ["__rg_gt_to_list", "__rg_gt_to_list_real"]

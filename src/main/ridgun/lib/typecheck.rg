@@ -2082,7 +2082,7 @@ fn :: tensor elem kind RType => String
       tensor elem kind TyBool        =  "G"
       tensor elem kind TyChar        =  "G"
       tensor elem kind TyUnit        =  "G"
-      tensor elem kind (TyList _)    =  "G"
+      tensor elem kind (TyList _)    =  "L"
       tensor elem kind (TyTuple _)   =  "G"
       tensor elem kind (TyTensor _ _) =  "G"
       tensor elem kind (TyFun _ _)   =  "G"
@@ -2095,7 +2095,7 @@ fn :: tensor elem kind RType => String
 
 fn :: tensor elem gen RType => Bool
       tensor elem gen (TyVar s) =  not (is poly type var s)
-      tensor elem gen e         =  (tensor elem kind e) == "G"
+      tensor elem gen e         =  ((tensor elem kind e) == "G") or ((tensor elem kind e) == "L")
 
 fn :: gen tensor ty RType => Bool
       gen tensor ty (TyTensor e _) =  tensor elem gen e

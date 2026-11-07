@@ -44,8 +44,8 @@ verified_by: [TS-COMP-020]
 3. Native list conversion (§9).
 4. Compile errors for numeric-only operations, `Tensor_GPU` and parallel writes (§7, §11).
 
-## Implementation status (0.9.37)
-- Done on LLVM and the pure x86-64 encoder: §1-§11 (phases 1-4), except shape patterns on tensors of non-numeric elements.
+## Implementation status (0.9.38)
+- Done on LLVM and the pure x86-64 encoder: the Statement (including shape patterns) and §1-§11 (phases 1-4).
 - §12: the ARM64 encoder emits placeholders for the GenTensor instructions. Its runtime has no `Real` or GenTensor support yet.
 - Representation: a GenTensor is not a separate heap tag. A one-dimensional GenTensor is an RC vector of boxed elements (the list representation, tag `2`); a two-dimensional one is a vector of row vectors. The type checker keeps numeric-only code away from it (§7). Details: `docs/etc/gentensor.md`.
 - A GenTensor has one or two dimensions; a third dimension is a compile error.

@@ -11,9 +11,10 @@ A *GenTensor* is a `Tensor` whose elements are not numbers (`String`, `Bool`, `C
 
 ## Typing and lowering
 
-- The type checker gives every tensor variable a kind and passes it to the lowering as an info entry `":tensor-elem:"` with the value `function|variable|kind`. Kinds: `N` (integers), `R` (`Real`), `G` (GenTensor) and `U` (unknown, for example a type variable).
+- The type checker gives every tensor variable a kind and passes it to the lowering as an info entry `":tensor-elem:"` with the value `function|variable|kind`. Kinds: `N` (integers), `R` (`Real`), `L` (GenTensor of lists), `G` (other GenTensors) and `U` (unknown, for example a type variable or an ADT).
 - Reads and writes of `G` variables use the GenTensor path: a bounds check, then `NIndex` or `NListSet`. `N` and `R` variables use the numeric path. `U` variables test the value at run time with `NIsList`.
 - An index outside the shape writes `runtime error: tensor index out of range` to stderr and exits with status 1.
+- Shape patterns (`(Tensor[T * r * c] g)`) on a GenTensor get the rank and dimensions from the helper `__rg_gt_shape t k flag` (k: 0 rank, 1 rows, 2 columns; flag 1 for `L` tensors, whose elements are lists themselves). For `U` pattern variables the code tests `NIsList` and runs the numeric or the GenTensor checks.
 
 ## Helper functions
 
