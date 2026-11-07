@@ -135,6 +135,10 @@ fn :: x86 locked builtin Int Int Int Int => [Int]
 -- when an Int index of a numeric tensor (heap tag 5) is outside its
 -- dimension. Uses r8-r11 only. 178 bytes; source `bounds.s` in
 -- docs/etc/gentensor.md.
+-- `NListGet` body: rdi = the List, rsi = the index (tagged Int). 169 bytes.
+fn :: x86 list get => [Int]
+      x86 list get =  [64, 246, 198, 1, 116, 69, 72, 209, 254, 120, 64, 72, 133, 255, 116, 59, 64, 246, 199, 7, 117, 53, 72, 139, 71, 8, 72, 139, 79, 16, 72, 139, 80, 16, 72, 41, 202, 72, 57, 214, 125, 33, 72, 139, 64, 8, 72, 1, 206, 72, 139, 60, 240, 72, 131, 236, 8, 72, 184, 40, 16, 64, 0, 0, 0, 0, 0, 255, 208, 72, 131, 196, 8, 235, 94, 184, 1, 0, 0, 0, 191, 2, 0, 0, 0, 72, 141, 53, 36, 0, 0, 0, 186, 41, 0, 0, 0, 15, 5, 106, 3, 72, 137, 230, 191, 24, 0, 0, 0, 186, 1, 0, 0, 0, 72, 184, 184, 17, 64, 0, 0, 0, 0, 0, 255, 208, 15, 11, 114, 117, 110, 116, 105, 109, 101, 32, 101, 114, 114, 111, 114, 58, 32, 116, 101, 110, 115, 111, 114, 32, 105, 110, 100, 101, 120, 32, 111, 117, 116, 32, 111, 102, 32, 114, 97, 110, 103, 101, 10]
+
 fn :: x86 tensor bounds => [Int]
       x86 tensor bounds =  [76, 139, 7, 77, 133, 192, 15, 132, 166, 0, 0, 0, 65, 246, 192, 7, 15, 133, 156, 0, 0, 0, 65, 131, 56, 5, 15, 133, 146, 0, 0, 0, 77, 139, 64, 8, 73, 59, 80, 16, 15, 143, 132, 0, 0, 0, 77, 139, 64, 8, 69, 49, 219, 73, 57, 211, 125, 120, 78, 139, 12, 222, 65, 246, 193, 1, 116, 11, 73, 209, 249, 120, 11, 79, 59, 12, 216, 125, 5, 73, 255, 195, 235, 225, 184, 1, 0, 0, 0, 191, 2, 0, 0, 0, 72, 141, 53, 36, 0, 0, 0, 186, 41, 0, 0, 0, 15, 5, 106, 3, 72, 137, 230, 191, 24, 0, 0, 0, 186, 1, 0, 0, 0, 72, 184, 184, 17, 64, 0, 0, 0, 0, 0, 255, 208, 15, 11, 114, 117, 110, 116, 105, 109, 101, 32, 101, 114, 114, 111, 114, 58, 32, 116, 101, 110, 115, 111, 114, 32, 105, 110, 100, 101, 120, 32, 111, 117, 116, 32, 111, 102, 32, 114, 97, 110, 103, 101, 10]
 
@@ -188,6 +192,7 @@ fn :: x8664 instr size RNativeInstr       => Int
       x8664 instr size (NIsList _)        =  34
       x8664 instr size (NIsGen _)         =  38
       x8664 instr size (NListSet _ _)     =  55
+      x8664 instr size (NListGet _ _)     =  185
       x8664 instr size (NGtConv _ mode)   =  8 + (x86 gt conv size mode)
       x8664 instr size NAsBool            =  8
       x8664 instr size NNot               =  18
@@ -361,6 +366,11 @@ fn :: x8664 encode instr RNativeInstr Int Int Int Int [RLabelEntry] [RLabelEntry
       -- Store acc into element [idx_slot] of the List in base_slot, in place; drop the old element.
       x8664 encode instr (NGtConv slot mode) _ _ _ _ _ _ =
         (x86 mov slot rdi slot) :: (x86 gt conv bytes mode)
+      -- FR-COMP-020: read element idx of the List in base_slot (a GenTensor),
+      -- cloned, into acc; out of range stops the program. `listget.s` in
+      -- docs/etc/gentensor.md.
+      x8664 encode instr (NListGet base_slot idx_slot) _ _ _ _ _ _ =
+        (x86 mov slot rdi base_slot) :: [72, 139, 180, 36] :: (i32 le (idx_slot * 8)) :: x86 list get
       x8664 encode instr (NListSet base_slot idx_slot) cur_vaddr _ _ _ _ _ =
         (x86 mov slot rdi base_slot) :: [72, 139, 148, 36] :: (i32 le (idx_slot * 8)) :: [72, 209, 250, 72, 139, 127, 8, 72, 139, 127, 8, 72, 141, 12, 215, 72, 139, 57, 72, 137, 1, 72, 133, 255, 116, 11, 64, 246, 199, 7, 117, 5] :: (x86 call rt 6 (cur_vaddr + 53)) :: [49, 192]
       x8664 encode instr NAsBool cur_vaddr _ _ _ _ _ =

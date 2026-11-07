@@ -114,6 +114,7 @@ fn :: arm64 instr size RNativeInstr       => Int
       arm64 instr size (NIsList _)        =  4
       arm64 instr size (NIsGen _)         =  4
       arm64 instr size (NListSet _ _)     =  4
+      arm64 instr size (NListGet _ _)     =  4
       arm64 instr size (NGtConv _ _)      =  4
       arm64 instr size NAsBool            =  4
       arm64 instr size NNot               =  4
@@ -247,6 +248,8 @@ fn :: arm64 encode instr RNativeInstr Int Int Int Int [RLabelEntry] [RLabelEntry
       arm64 encode instr (NIsGen _) _ _ _ _ _ _ =
         u32 le (arm64 movz 0 2 0)
       arm64 encode instr (NGtConv _ _) _ _ _ _ _ _ =
+        arm64 nop
+      arm64 encode instr (NListGet _ _) _ _ _ _ _ _ =
         arm64 nop
       arm64 encode instr (NListSet _ _) _ _ _ _ _ _ =
         arm64 nop

@@ -4260,15 +4260,10 @@ fn :: lower slot index read RNativeEnv String Int Int Int RNativeCode => RNative
         nc emit list st2 [NJump end_lbl, NLabel num_lbl, NIndex b i0 (0 - count), NLabel end_lbl] (i0 + count + 1)
 
 fn :: lower gen read RNativeEnv Int Int Int RNativeCode => RNativeCode
-      lower gen read env b i0 1 st =
-        st1 = lower gen bounds env b i0 (i0 + 1) st
-        nc emit st1 (NIndex b i0 (0 - 1)) (i0 + 2)
+      lower gen read env b i0 1 st =  nc emit st (NListGet b i0) (i0 + 2)
       lower gen read env b i0 _ st =
         row = i0 + 2
-        st1 = lower gen bounds env b i0 (i0 + 3) st
-        st2 = nc emit list st1 [NIndex b i0 (0 - 1), NStoreSlot row] (i0 + 3)
-        st3 = lower gen bounds env row (i0 + 1) (i0 + 3) st2
-        nc emit list st3 [NIndex row (i0 + 1) (0 - 1), NStoreSlot (i0 + 3), NCmmDropSlot row, NMoveSlot (i0 + 3)] (i0 + 4)
+        nc emit list st [NListGet b i0, NStoreSlot row, NListGet row (i0 + 1), NStoreSlot (i0 + 3), NCmmDropSlot row, NMoveSlot (i0 + 3)] (i0 + 4)
 
 -- Stop with a runtime error unless 0 <= slot is < length of the List in
 -- slot b (FR-COMP-020 §8). Slot t is a scratch slot.

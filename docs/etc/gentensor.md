@@ -1730,3 +1730,58 @@ Builtin 24 is called through the runtime builtin entry rt 55 (`4198400 + 55*8`):
 ## Copies on send (0.9.41)
 
 FR-COMP-020 §13. The type checker reports, for each send (`send_to`, `ask_to`, `send_through`, `chan_send`, an agent's initial state), the tensor variables and the calls returning a tensor in the message (`:tensor-elem:` facts, `fn|()f|K` for a call to `f`). Lowering wraps each in `:msg-copy:` (`msg copy expr`, also inside a tuple). At run time a list (a GenTensor) is copied by `__rg_gt_copy_any` (rows too) and a numeric tensor by the same copy as `t_` (builtin 90, op 12); any other value passes.
+
+## Fast element reads (0.9.43)
+
+A GenTensor read `t_(i)` is one `NListGet b i` (two for `t_(i, j)`: the row, then the element). It checks the index against the list view (`len - start`), reads the slot at `start + i` and clones it. Out of range, it writes `runtime error: tensor index out of range` to stderr and exits with status 1. Before, a read ran the generic bounds check (`lower gen bounds`) and the runtime index (rt 38).
+
+- **LLVM.** `@__rg_list_get(base, idx)`.
+- **x86-64.** `x86 list get` (`listget.s`, 169 bytes), after `mov rdi, [rsp + b*8]` and `mov rsi, [rsp + i*8]`.
+- **ARM64.** A placeholder (no GenTensor support yet).
+
+`str len` (builtin 10) also has an LLVM fast path, `@__rg_builtin_str_len`: on a String (heap tag 1) it returns the byte length from the header and drops the argument. Other values go to the runtime builtin.
+
+1M reads of `str len t_(i)` on a `Tensor[String * 1000]` (LLVM): 127 ms on 0.9.42, 52-55 ms on 0.9.43. 1M reads of an Int tensor: 36 ms.
+
+```asm
+.set CLONE_SLOT, 4198440
+.set RT_BUILTIN, 4198840
+  test sil, 1
+  jz 3f
+  sar rsi, 1
+  js 3f
+  test rdi, rdi
+  jz 3f
+  test dil, 7
+  jnz 3f
+  mov rax, [rdi+8]
+  mov rcx, [rdi+16]
+  mov rdx, [rax+16]
+  sub rdx, rcx
+  cmp rsi, rdx
+  jge 3f
+  mov rax, [rax+8]
+  add rsi, rcx
+  mov rdi, [rax+rsi*8]
+  sub rsp, 8
+  movabs rax, CLONE_SLOT
+  call rax
+  add rsp, 8
+  jmp 9f
+3:
+  mov eax, 1
+  mov edi, 2
+  lea rsi, [rip+4f]
+  mov edx, 41
+  syscall
+  push 3
+  mov rsi, rsp
+  mov edi, 24
+  mov edx, 1
+  movabs rax, RT_BUILTIN
+  call rax
+  ud2
+4:
+  .ascii "runtime error: tensor index out of range\n"
+9:
+```
