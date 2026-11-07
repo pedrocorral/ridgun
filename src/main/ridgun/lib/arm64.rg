@@ -109,6 +109,7 @@ fn :: arm64 instr size RNativeInstr       => Int
       arm64 instr size (NTupleGet _ _)    =  24
       arm64 instr size (NAdtField _ _)    =  24
       arm64 instr size (NPackSeq _)       =  24
+      arm64 instr size NRealFromBits      =  4
       arm64 instr size NAsBool            =  4
       arm64 instr size NNot               =  4
       arm64 instr size NOut               =  4
@@ -230,6 +231,9 @@ fn :: arm64 encode instr RNativeInstr Int Int Int Int [RLabelEntry] [RLabelEntry
         (arm64 ldr slot 0 slot) :: (arm64 mov imm64 1 idx) :: (arm64 bl rt 32 (cur_vaddr + 20))
       arm64 encode instr (NPackSeq arity) cur_vaddr _ _ _ _ _ =
         (arm64 mov sp to reg 0) :: (arm64 mov imm64 1 arity) :: (arm64 bl rt 19 (cur_vaddr + 20))
+      -- The ARM64 runtime has no Real support yet (rt slot 11 is a NOP).
+      arm64 encode instr NRealFromBits _ _ _ _ _ _ =
+        arm64 nop
       arm64 encode instr NAsBool cur_vaddr _ _ _ _ _ =
         arm64 bl rt 20 cur_vaddr
       arm64 encode instr NNot cur_vaddr _ _ _ _ _ =

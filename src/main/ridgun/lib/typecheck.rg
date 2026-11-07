@@ -94,8 +94,9 @@ fn :: parse type str String => RType
         | s == "Bool" = TyBool
         | s == "Unit" or s == "()" = TyUnit
         | s == "Actor" = TyVar "Agent"
-        | s == "Tensor" or s == "Tensor_GPU" = TyTensor []
-        | str starts with s "Tensor(" = TyTensor (split comma strs (str slice s 7 ((str len s) - 1)))
+        | s == "Tensor" or s == "Tensor_GPU" = TyTensor (tensor elem any) []
+        | str starts with s "Tensor:" = parse typed tensor str (str slice s 7 (str len s))
+        | str starts with s "Tensor(" = TyTensor (tensor elem any) (split comma strs (str slice s 7 ((str len s) - 1)))
         | str starts with s "[" = TyList (parse type str (str slice s 1 ((str len s) - 1)))
         | str starts with s "(" = parse paren type inner (str slice s 1 ((str len s) - 1))
         | otherwise = TyVar s
@@ -115,8 +116,8 @@ fn :: rtype to str RType              => String
       rtype to str TyUnit             =  "()"
       rtype to str (TyList inner)     =  "[" + (rtype to str inner) + "]"
       rtype to str (TyTuple elems)    =  "(" + (rtype list to str elems) + ")"
-      rtype to str (TyTensor [])      =  "Tensor"
-      rtype to str (TyTensor dims)    =  "Tensor(" + (join comma strs dims) + ")"
+      rtype to str (TyTensor e [])    =  "Tensor" + (tensor elem suffix e)
+      rtype to str (TyTensor e dims)  =  "Tensor" + (tensor elem suffix e) + "(" + (join comma strs dims) + ")"
       rtype to str (TyVariadic inner) =  (rtype to str inner) + "..."
       rtype to str (TyFun (TyUnit:[]) ret) = "(=> " + (rtype to str ret) + ")"
       rtype to str (TyFun [] ret)     =  "(=> " + (rtype to str ret) + ")"
@@ -200,7 +201,7 @@ fn :: types compatible RType              RType              => Bool
       types compatible TyString           TyString           =  True
       types compatible TyBool             TyBool             =  True
       types compatible TyUnit             TyUnit             =  True
-      types compatible (TyTensor d1)      (TyTensor d2)      =  tensor dims unify d1 d2
+      types compatible (TyTensor e1 d1)   (TyTensor e2 d2)   =  (types compatible e1 e2) and (tensor dims unify d1 d2)
       types compatible (TyVariadic inner) other              =
         (types compatible inner other) or (types compatible (TyList inner) other)
       types compatible other              (TyVariadic inner) =
@@ -479,8 +480,8 @@ fn :: ctor param types arity fallback [RTypeBind] String (Bool, [RType]) => [RTy
         ctor param types fns ctor_name
 
 fn :: tensor pat expected RType        => RType
-      tensor pat expected (TyTensor d) =  TyTensor d
-      tensor pat expected _            =  TyTensor []
+      tensor pat expected (TyTensor e d) =  TyTensor e d
+      tensor pat expected _            =  TyTensor (tensor elem any) []
 
 fn :: bind int pats [RPattern] [RTypeBind] [RTypeBind] => [RTypeBind]
       bind int pats [] locals _ = locals
@@ -574,7 +575,7 @@ fn :: check einsum terms [RExpr] [String] String [RTypeBind] [RTypeBind] [RDimBi
         check einsum cont es subs fn_name locals fns step
 
 fn :: check einsum one (RType, [RTypeError]) String String [RDimBind] => [RDimBind] [RTypeError]
-      check einsum one ((TyTensor dims), errs1) sub fn_name dim_env
+      check einsum one ((TyTensor _ dims), errs1) sub fn_name dim_env
         | (str list count dims) > 0 and (str list count dims) == (str len sub) = merge dim errs errs1 (bind or check dims dims (sub chars to strs sub 0 (str len sub)) "einsum" fn_name dim_env)
         | otherwise = (dim_env, errs1)
       check einsum one (_, errs1) _ _ dim_env = (dim_env, errs1)
@@ -629,7 +630,7 @@ fn :: check overload lookup String RType RType (Bool, RType) String => RType [RT
         (TyInt, [TypeError fn_name ("arithmetic operator " + sym + " requires numeric or overloaded operands, got " + (rtype to str l_ty) + " and " + (rtype to str r_ty))])
 
 fn :: check arith binop RBinOp RType RType [RTypeBind] String => RType [RTypeError]
-      check arith binop _ (TyTensor d1) (TyTensor _) _ _ = (TyTensor d1, [])
+      check arith binop _ (TyTensor e1 d1) (TyTensor _ _) _ _ = (TyTensor e1 d1, [])
       check arith binop bop l_ty r_ty fns fn_name
         | (is int or poly l_ty) and (is int or poly r_ty) = (TyInt, [])
         | (is real or poly l_ty) and (is real or poly r_ty) = (TyReal, [])
@@ -637,10 +638,10 @@ fn :: check arith binop RBinOp RType RType [RTypeBind] String => RType [RTypeErr
         | otherwise = check overloaded arith bop l_ty r_ty fns fn_name
 
 fn :: check matmul binop RType RType String => RType [RTypeError]
-      check matmul binop (TyTensor (d1a:d1b:[])) (TyTensor (d2a:d2b:[])) fn_name
-        | d1b != d2a = (TyTensor [d1a, d2b], [TypeError fn_name ("tensor contraction dimension mismatch: " + d1b + " vs " + d2a)])
-        | otherwise = (TyTensor [d1a, d2b], [])
-      check matmul binop _ _ _ = (TyTensor [], [])
+      check matmul binop (TyTensor e1 (d1a:d1b:[])) (TyTensor _ (d2a:d2b:[])) fn_name
+        | d1b != d2a = (TyTensor e1 [d1a, d2b], [TypeError fn_name ("tensor contraction dimension mismatch: " + d1b + " vs " + d2a)])
+        | otherwise = (TyTensor e1 [d1a, d2b], [])
+      check matmul binop _ _ _ = (TyTensor (tensor elem any) [], [])
 
 fn :: check concat binop RType RType String => RType [RTypeError]
       check concat binop (TyList (TyVar "_empty")) (TyList r_elem) _ = (TyList r_elem, [])
@@ -677,17 +678,17 @@ fn :: check binop RBinOp RType RType [RTypeBind] String => RType [RTypeError]
       check binop OpAnd l r fns fn_name
         | (types compatible l TyBool) and (types compatible r TyBool) = (TyBool, [])
         | (is int or poly l) and (is int or poly r) = (TyInt, [])
-        | (types compatible l (TyTensor [])) and (types compatible r (TyTensor [])) = (l, [])
+        | (types compatible l (TyTensor (tensor elem any) [])) and (types compatible r (TyTensor (tensor elem any) [])) = (l, [])
         | otherwise = check overloaded arith OpAnd l r fns fn_name
       check binop OpOr l r fns fn_name
         | (types compatible l TyBool) and (types compatible r TyBool) = (TyBool, [])
         | (is int or poly l) and (is int or poly r) = (TyInt, [])
-        | (types compatible l (TyTensor [])) and (types compatible r (TyTensor [])) = (l, [])
+        | (types compatible l (TyTensor (tensor elem any) [])) and (types compatible r (TyTensor (tensor elem any) [])) = (l, [])
         | otherwise = check overloaded arith OpOr l r fns fn_name
       check binop OpXor l r fns fn_name
         | (types compatible l TyBool) and (types compatible r TyBool) = (TyBool, [])
         | (is int or poly l) and (is int or poly r) = (TyInt, [])
-        | (types compatible l (TyTensor [])) and (types compatible r (TyTensor [])) = (l, [])
+        | (types compatible l (TyTensor (tensor elem any) [])) and (types compatible r (TyTensor (tensor elem any) [])) = (l, [])
         | otherwise = check overloaded arith OpXor l r fns fn_name
       check binop _ l r _ fn_name
         | (types compatible l TyInt and types compatible r TyInt) or (types compatible l TyReal and types compatible r TyReal) or (types compatible l TyChar and types compatible r TyChar) or (types compatible l TyString and types compatible r TyString) = (TyBool, [])
@@ -813,7 +814,7 @@ fn :: lookup subscript base (String, String) [RTypeBind] => RType [RTypeError]
 
 fn :: extract subscript ty (Bool, RType) => RType [RTypeError]
       extract subscript ty (True, ty)    =  (ty, [])
-      extract subscript ty (False, _)    =  (TyTensor [], [])
+      extract subscript ty (False, _)    =  (TyTensor (tensor elem any) [], [])
 
 fn :: is last variadic [RType] => Bool
       is last variadic []      =  False
@@ -842,7 +843,7 @@ fn :: check fixed args [RType] [RType] String String Int [RDimBind] => [RTypeErr
         | otherwise = check arg tensor dims arg param args params callee fn_name idx dim_env
 
 fn :: check arg tensor dims RType RType [RType] [RType] String String Int [RDimBind] => [RTypeError]
-      check arg tensor dims (TyTensor adims) (TyTensor pdims) args params callee fn_name idx dim_env
+      check arg tensor dims (TyTensor _ adims) (TyTensor _ pdims) args params callee fn_name idx dim_env
         | (str list count adims) > 0 and (str list count adims) == (str list count pdims) = check arg tensor dims step (bind or check dims adims pdims callee fn_name dim_env) args params callee fn_name idx
       check arg tensor dims _ _ args params callee fn_name idx dim_env =
         check fixed args args params callee fn_name (idx + 1) dim_env
@@ -1090,6 +1091,8 @@ fn :: check expr RExpr String [RTypeBind] [RTypeBind] => RType [RTypeError]
         check record update fields b_res rest_args fn_name locals fns
       check expr (ECall "__missing_import__" ((EStr mod_name):_)) _ _ _ =
         (TyInt, [TypeError "import" ("unresolved import '" + mod_name + "': module not found in project or .stable/deps")])
+      check expr (ECall ":typed-tensor:" ((EStr elem_ty):inner:_)) fn_name locals fns =
+        typed tensor result elem_ty (check expr inner fn_name locals fns)
       check expr (ECall "__syntax_error__" ((EStr msg):_)) _ _ _ =
         (TyVar "_any", [TypeError "syntax" msg])
       check expr (ECall callee args) fn_name locals fns =
@@ -1105,15 +1108,16 @@ fn :: check expr RExpr String [RTypeBind] [RTypeBind] => RType [RTypeError]
         finish tuple type (check expr list elems fn_name locals fns)
       check expr (ETensor elems) fn_name locals fns =
         args_res = check expr list elems fn_name locals fns
-        discard tys return (TyTensor []) args_res
+        discard tys return (TyTensor (tensor elem any) []) args_res
       check expr (EIndex base idxs) fn_name locals fns =
         b_res = check expr base fn_name locals fns
         i_res = check expr list idxs fn_name locals fns
         (infer index expr ty (fst ty b_res) idxs, (snd errs b_res) :: (snd list errs i_res))
-      check expr (EIndexAssign _ idxs val_e) fn_name locals fns =
+      check expr (EIndexAssign tname idxs val_e) fn_name locals fns =
         i_res = check expr list idxs fn_name locals fns
         v_res = check expr val_e fn_name locals fns
-        (TyUnit, (snd list errs i_res) :: (snd errs v_res))
+        w_errs = check tensor elem write tname (fst ty v_res) fn_name locals
+        (TyUnit, (snd list errs i_res) :: (snd errs v_res) :: w_errs)
       check expr (ESeqSelect base mask) fn_name locals fns =
         b_res = check expr base fn_name locals fns
         check seq select b_res mask fn_name
@@ -1131,7 +1135,74 @@ fn :: fst ty (RType, [RTypeError]) => RType
 
 fn :: infer index expr ty RType [RExpr] => RType
       infer index expr ty (TyTuple elem_tys) ((EInt k):[]) = rtype at elem_tys k
+      infer index expr ty (TyTensor e dims) idxs = tensor index ty e dims (tc expr count idxs)
       infer index expr ty _ _ = TyInt
+
+-- ── Tensor element types (FR-COMP-020 §2) ─────────────────────
+-- `TyTensor e dims`: `e` is the element type, or `TyVar "_any"` when the
+-- source gives none (a bare `Tensor`, a literal, a slice). Reading an
+-- element of unknown type gives `Int`, as before element types existed.
+
+fn :: tensor elem any => RType
+      tensor elem any =  TyVar "_any"
+
+fn :: tensor elem suffix RType => String
+      tensor elem suffix (TyVar "_any") =  ""
+      tensor elem suffix e              =  "[" + (rtype to str e) + "]"
+
+fn :: tensor elem read ty RType => RType
+      tensor elem read ty (TyVar "_any") =  TyInt
+      tensor elem read ty e              =  e
+
+fn :: tc expr count [RExpr] => Int
+      tc expr count []     =  0
+      tc expr count (_:xs) =  1 + (tc expr count xs)
+
+fn :: tc str count [String] => Int
+      tc str count []     =  0
+      tc str count (_:xs) =  1 + (tc str count xs)
+
+fn :: tc str drop [String] Int => [String]
+      tc str drop xs 0      =  xs
+      tc str drop [] _      =  []
+      tc str drop (_:xs) n  =  tc str drop xs (n - 1)
+
+fn :: tensor index ty RType [String] Int => RType
+      tensor index ty e [] _ =  tensor elem read ty e
+      tensor index ty e dims n
+        | n < (tc str count dims) = TyTensor e (tc str drop dims n)
+        | otherwise = tensor elem read ty e
+
+-- `Tensor:E` or `Tensor:E(d1,d2)` from the parser, without "Tensor:".
+fn :: parse typed tensor str String => RType
+      parse typed tensor str rest =
+        p = tc find open paren rest 0 (str len rest)
+        typed tensor of (str slice rest 0 p) (str slice rest p (str len rest))
+
+fn :: tc find open paren String Int Int => Int
+      tc find open paren s pos len
+        | pos >= len = len
+        | (str char at s pos) == 40 = pos
+        | otherwise = tc find open paren s (pos + 1) len
+
+fn :: typed tensor of String String => RType
+      typed tensor of e ""   =  TyTensor (parse type str e) []
+      typed tensor of e dims =  TyTensor (parse type str e) (split comma strs (str slice dims 1 ((str len dims) - 1)))
+
+fn :: typed tensor result String (RType, [RTypeError]) => RType [RTypeError]
+      typed tensor result e ((TyTensor _ dims), errs) =  (TyTensor (parse type str e) dims, errs)
+      typed tensor result e (_, errs)                  =  (TyTensor (parse type str e) [], errs)
+
+-- Writing `t_(i) = v` checks `v` against the element type of `t`.
+fn :: check tensor elem write String RType String [RTypeBind] => [RTypeError]
+      check tensor elem write tname val_ty fn_name locals =
+        tensor elem write errs tname val_ty fn_name (lookup type bind locals tname)
+
+fn :: tensor elem write errs String RType String (Bool, RType) => [RTypeError]
+      tensor elem write errs tname val_ty fn_name (True, (TyTensor e _))
+        | types compatible e val_ty = []
+        | otherwise = [TypeError fn_name ("cannot store " + (rtype to str val_ty) + " in an element of tensor '" + tname + "' of " + (rtype to str e))]
+      tensor elem write errs _ _ _ _ =  []
 
 fn :: snd errs (RType, [RTypeError]) => [RTypeError]
       snd errs (_, errs)             =  errs
@@ -1146,7 +1217,7 @@ fn :: check not inner (RType, [RTypeError]) String  => RType [RTypeError]
       check not inner (inner_ty, errs)      fn_name
         | types compatible inner_ty TyBool = (TyBool, errs)
         | is int or poly inner_ty = (TyInt, errs)
-        | types compatible inner_ty (TyTensor []) = (inner_ty, errs)
+        | types compatible inner_ty (TyTensor (tensor elem any) []) = (inner_ty, errs)
         | otherwise = (TyBool, errs :: [TypeError fn_name ("NOT requires Bool or Int operand, got " + (rtype to str inner_ty))])
 
 fn :: check with ctx body String RExpr String [RTypeBind] [RTypeBind] (RType, [RTypeError]) => RType [RTypeError]
@@ -1163,11 +1234,11 @@ fn :: check with ctx body String RExpr String [RTypeBind] [RTypeBind] (RType, [R
         prepend type errs v_errs b_res
 
 fn :: finish einsum check ([RDimBind], [RTypeError]) => RType [RTypeError]
-      finish einsum check (_, errs)                  =  (TyTensor [], errs)
+      finish einsum check (_, errs)                  =  (TyTensor (tensor elem any) [], errs)
 
 fn :: finish hadamard check (RType, [RTypeError]) (RType, [RTypeError]) => RType [RTypeError]
-      finish hadamard check ((TyTensor dims), l_errs) (_, r_errs) = (TyTensor dims, l_errs :: r_errs)
-      finish hadamard check (_, l_errs) (_, r_errs) = (TyTensor [], l_errs :: r_errs)
+      finish hadamard check ((TyTensor e dims), l_errs) (_, r_errs) = (TyTensor e dims, l_errs :: r_errs)
+      finish hadamard check (_, l_errs) (_, r_errs) = (TyTensor (tensor elem any) [], l_errs :: r_errs)
 
 fn :: finish binop check RBinOp (RType, [RTypeError]) (RType, [RTypeError]) [RTypeBind] String => RType [RTypeError]
       finish binop check bop (l_ty, l_errs) (r_ty, r_errs) fns fn_name =
@@ -1332,17 +1403,20 @@ fn :: finish call check String ([RType], [RTypeError]) String [RTypeBind] [RType
         | otherwise =
           base_res = check call target "try_receive_from" arg_tys arg_errs (resolve callee for args "try_receive_from" arg_tys locals fns) fn_name
           specialize hof return "try_receive_from" arg_tys base_res
-      finish call check ":tensor-zeros:" (_, arg_errs) _ _ _ = (TyTensor [], arg_errs)
-      finish call check ":tensor-clone:" (_, arg_errs) _ _ _ = (TyTensor [], arg_errs)
-      finish call check ":tensor-row-slice:" (_, arg_errs) _ _ _ = (TyTensor [], arg_errs)
-      finish call check ":tensor-col-slice:" (_, arg_errs) _ _ _ = (TyTensor [], arg_errs)
+      finish call check ":tensor-zeros:" (_, arg_errs) _ _ _ = (TyTensor (tensor elem any) [], arg_errs)
+      finish call check ":tensor-clone:" (((TyTensor e d):_), arg_errs) _ _ _ = (TyTensor e d, arg_errs)
+      finish call check ":tensor-row-slice:" (((TyTensor e _):_), arg_errs) _ _ _ = (TyTensor e [], arg_errs)
+      finish call check ":tensor-col-slice:" (((TyTensor e _):_), arg_errs) _ _ _ = (TyTensor e [], arg_errs)
+      finish call check ":tensor-clone:" (_, arg_errs) _ _ _ = (TyTensor (tensor elem any) [], arg_errs)
+      finish call check ":tensor-row-slice:" (_, arg_errs) _ _ _ = (TyTensor (tensor elem any) [], arg_errs)
+      finish call check ":tensor-col-slice:" (_, arg_errs) _ _ _ = (TyTensor (tensor elem any) [], arg_errs)
       finish call check ":tensor-set-row:" (_, arg_errs) _ _ _ = (TyUnit, arg_errs)
       finish call check ":tensor-set-col:" (_, arg_errs) _ _ _ = (TyUnit, arg_errs)
-      finish call check ":tensor-map-rows:" (_, arg_errs) _ _ _ = (TyTensor [], arg_errs)
+      finish call check ":tensor-map-rows:" (_, arg_errs) _ _ _ = (TyTensor (tensor elem any) [], arg_errs)
       finish call check ":tensor-map-rows-in:" (_, arg_errs) _ _ _ = (TyVar "_any", arg_errs)
-      finish call check ":tensor-map-cols:" (_, arg_errs) _ _ _ = (TyTensor [], arg_errs)
+      finish call check ":tensor-map-cols:" (_, arg_errs) _ _ _ = (TyTensor (tensor elem any) [], arg_errs)
       finish call check ":tensor-map-cols-in:" (_, arg_errs) _ _ _ = (TyVar "_any", arg_errs)
-      finish call check ":tensor-map-elems:" (_, arg_errs) _ _ _ = (TyTensor [], arg_errs)
+      finish call check ":tensor-map-elems:" (_, arg_errs) _ _ _ = (TyTensor (tensor elem any) [], arg_errs)
       finish call check ":tensor-map-elems-in:" (_, arg_errs) _ _ _ = (TyVar "_any", arg_errs)
       finish call check "__chain__" ((fn_ty:rest_tys), arg_errs) fn_name _ _ =
         check call target "<expr>" rest_tys arg_errs (True, fn_ty) fn_name
@@ -1415,10 +1489,11 @@ fn :: check block stmts scoped [RStmt] RType String [RTypeBind] [RTypeBind] [Str
       check block stmts scoped ((StmtExpr e):ss) _ fn_name locals fns immuts muts =
         e_res = check expr e fn_name locals fns
         check block after expr ss fn_name locals fns immuts muts e_res
-      check block stmts scoped ((StmtIndexAssign _ idxs val_e):ss) _ fn_name locals fns immuts muts =
+      check block stmts scoped ((StmtIndexAssign tname idxs val_e):ss) _ fn_name locals fns immuts muts =
         i_res = check expr list idxs fn_name locals fns
         v_res = check expr val_e fn_name locals fns
-        check block after expr ss fn_name locals fns immuts muts (TyUnit, (snd list errs i_res) :: (snd errs v_res))
+        w_errs = check tensor elem write tname (fst ty v_res) fn_name locals
+        check block after expr ss fn_name locals fns immuts muts (TyUnit, (snd list errs i_res) :: (snd errs v_res) :: w_errs)
 
 fn :: check block after mut String [RStmt] String [RTypeBind] [RTypeBind] [String] [String] (RType, [RTypeError]) => RType [RTypeError]
       check block after mut name ss fn_name locals fns immuts muts (v_ty, v_errs) =

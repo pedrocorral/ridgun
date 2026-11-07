@@ -443,6 +443,8 @@ Tensors are Ridgun's native **mutable** N-dimensional numeric type. They general
 
 **Element types (`FR-COMP-018`):** a tensor stores one 64-bit number per element. The element type in `Tensor[T * n]`, `Tensor[T]` or `Tensor(T, n)` must be `Int`, `Byte`, `U8`, `U16`, `U32`, `U64`, `I8`, `I16`, `I32`, `I64`, `Usize`, `Real` or `Float`. Any other element type, such as `String` or `Bool`, is a compile error.
 
+**Element typing (`FR-COMP-020` §2):** reading `t_(i ...)` gives the element type of `t`. An element of a `Tensor[Real * n]` is a `Real`: `echo t_(0)` prints the number and `t_(0) + 1.0` type-checks. Writing a value of another type, such as `t_(0) = 1` on a `Real` tensor, is a compile error. A tensor whose element type is not known (for example a parameter typed `Tensor`) has `Int` elements.
+
 **Literal syntax:** `Tensor` followed by nested brackets. The nesting depth determines the dimensionality.
 
 ```ridgun

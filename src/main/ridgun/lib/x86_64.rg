@@ -89,6 +89,7 @@ fn :: x8664 instr size RNativeInstr       => Int
         | idx <= -10 = 25
         | otherwise = 23
       x8664 instr size (NPackSeq _)       =  18
+      x8664 instr size NRealFromBits      =  96
       x8664 instr size NAsBool            =  8
       x8664 instr size NNot               =  18
       x8664 instr size NOut               =  8
@@ -222,6 +223,10 @@ fn :: x8664 encode instr RNativeInstr Int Int Int Int [RLabelEntry] [RLabelEntry
           (x86 mov slot rdi slot) :: (x86 mov imm64 rsi idx) :: (x86 call rt 32 (vaddr + 23))
       x8664 encode instr (NPackSeq arity) cur_vaddr _ _ _ _ _ =
         [72, 137, 231] :: (x86 mov imm64 rsi arity) :: (x86 call rt 19 (cur_vaddr + 18))
+      -- FR-COMP-020 section 2: acc holds a Real tensor word (tagged or boxed Int).
+      -- Rebuild the Real RVal [0, bits, 0] with box_rval; pass other values through.
+      x8664 encode instr NRealFromBits cur_vaddr _ _ _ _ _ =
+        [72, 131, 236, 32, 168, 1, 116, 5, 72, 209, 248, 235, 49, 72, 133, 192, 116, 44, 168, 7, 117, 70, 72, 139, 8, 72, 186, 0, 0, 0, 0, 0, 0, 0, 128, 72, 57, 209, 117, 52, 72, 139, 72, 8, 72, 137, 76, 36, 24, 72, 137, 199] :: (x86 call rt 6 (cur_vaddr + 57)) :: [72, 139, 68, 36, 24, 72, 137, 68, 36, 8, 72, 199, 4, 36, 0, 0, 0, 0, 72, 199, 68, 36, 16, 0, 0, 0, 0, 72, 137, 231] :: (x86 call rel 4209847 (cur_vaddr + 92)) :: [72, 131, 196, 32]
       x8664 encode instr NAsBool cur_vaddr _ _ _ _ _ =
         [72, 137, 199] :: (x86 call rt 20 (cur_vaddr + 8))
       x8664 encode instr NNot vaddr _ _ _ _ _ =

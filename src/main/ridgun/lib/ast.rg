@@ -45,7 +45,7 @@ type RTypeDef = TypeDef String [RVariant] [RField]
 type RProgram = Program [RFnDef] [RTypeDef]
 
 -- 11. Type System ADTs (for typecheck.rg)
-type RType = TyInt | TyReal | TyChar | TyString | TyBool | TyUnit | TyList RType | TyTuple [RType] | TyTensor [String] | TyVariadic RType | TyFun [RType] RType | TyVar String
+type RType = TyInt | TyReal | TyChar | TyString | TyBool | TyUnit | TyList RType | TyTuple [RType] | TyTensor RType [String] | TyVariadic RType | TyFun [RType] RType | TyVar String
 
 type RTypeBind = TypeBind String RType
 

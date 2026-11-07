@@ -247,6 +247,21 @@ fn :: finish tensor type (String, [RToken]) => String [RToken]
       finish tensor type ("", rest)         =  ("Tensor", rest)
       finish tensor type (dims, rest)       =  ("Tensor(" + dims + ")", rest)
 
+-- `Tensor[E * d1 * d2]` keeps its element type as `Tensor:E(d1,d2)`, and
+-- `Tensor[E]` as `Tensor:E` (FR-COMP-020 §2). A bare `Tensor` has no
+-- element type.
+
+fn :: tensor bracket elem [RToken] => String
+      tensor bracket elem ((TokIdent e):_)
+        | is upper ident e = e
+        | otherwise = ""
+      tensor bracket elem _ =  ""
+
+fn :: finish typed tensor type String (String, [RToken]) => String [RToken]
+      finish typed tensor type "" res          =  finish tensor type res
+      finish typed tensor type e ("", rest)    =  ("Tensor:" + e, rest)
+      finish typed tensor type e (dims, rest)  =  ("Tensor:" + e + "(" + dims + ")", rest)
+
 fn :: parse type tok [RToken]           => String [RToken]
       parse type tok (TokLBracket:rest) =
         p = parse type tok rest
@@ -257,9 +272,9 @@ fn :: parse type tok [RToken]           => String [RToken]
         | s == "Tensor" or s == "Tensor_GPU" = check variadic suffix (finish tensor type (parse tensor dims rest))
         | otherwise = check variadic suffix (s, [TokLParen] :: rest)
       parse type tok ((TokIdent s):TokIdxLBracket:rest)
-        | s == "Tensor" or s == "Tensor_GPU" = check variadic suffix (finish tensor type (parse tensor bracket dims rest))
+        | s == "Tensor" or s == "Tensor_GPU" = check variadic suffix (finish typed tensor type (tensor bracket elem rest) (parse tensor bracket dims rest))
       parse type tok ((TokIdent s):TokLBracket:rest)
-        | s == "Tensor" or s == "Tensor_GPU" = check variadic suffix (finish tensor type (parse tensor bracket dims rest))
+        | s == "Tensor" or s == "Tensor_GPU" = check variadic suffix (finish typed tensor type (tensor bracket elem rest) (parse tensor bracket dims rest))
       parse type tok ((TokIdent s):rest) =
         check variadic suffix (s, rest)
       parse type tok (_:rest)           =  ("Int", rest)
@@ -1239,7 +1254,7 @@ fn :: parse tensor alloc dims cont (RExpr, [RToken]) => [RExpr] [RToken]
 
 fn :: finish tensor alloc String  ([RExpr], [RToken]) => RExpr [RToken]
       finish tensor alloc elem_ty (dims, rest)        =
-        (ECall ":tensor-zeros:" ([tensor zero fill elem_ty] :: dims), rest)
+        (ECall ":typed-tensor:" [EStr elem_ty, ECall ":tensor-zeros:" ([tensor zero fill elem_ty] :: dims)], rest)
 
 fn :: finish tensor lit ([RExpr], [RToken]) => RExpr [RToken]
       finish tensor lit (elems, rest)       =  (ETensor elems, rest)
@@ -2580,6 +2595,7 @@ fn :: is std builtin String             => Bool
       is std builtin "__with_agent__"   =  True
       is std builtin "__record_update__" = True
       is std builtin ":tensor-zeros:"   =  True
+      is std builtin ":typed-tensor:"   =  True
       is std builtin ":tensor-clone:"   =  True
       is std builtin ":tensor-row-slice:" = True
       is std builtin ":tensor-col-slice:" = True
