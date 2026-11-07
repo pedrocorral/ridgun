@@ -1063,7 +1063,7 @@ fn :: check expr RExpr String [RTypeBind] [RTypeBind] => RType [RTypeError]
       check expr (EStr _) _ _ _ = (TyString, [])
       check expr (EStrInterp parts) fn_name locals fns =
         p_res = check expr list parts fn_name locals fns
-        discard tys return TyString p_res
+        with show tensor facts fn_name parts p_res (discard tys return TyString p_res)
       check expr (EBool _) _ _ _ = (TyBool, [])
       check expr EUnit _ _ _ = (TyUnit, [])
       check expr (ENot inner) fn_name locals fns =
@@ -1120,7 +1120,7 @@ fn :: check expr RExpr String [RTypeBind] [RTypeBind] => RType [RTypeError]
         with msg copy facts callee args args_res fn_name fns (finish call check callee args_res fn_name locals fns)
       check expr (EEcho args) fn_name locals fns =
         args_res = check expr list args fn_name locals fns
-        discard tys return TyUnit args_res
+        with show tensor facts fn_name args args_res (discard tys return TyUnit args_res)
       check expr (EList []) _ _ _ = (TyList (TyVar "_empty"), [])
       check expr (EList elems) fn_name locals fns =
         finish list type (check expr list elems fn_name locals fns) fn_name
@@ -1128,7 +1128,8 @@ fn :: check expr RExpr String [RTypeBind] [RTypeBind] => RType [RTypeError]
         finish tuple type (check expr list elems fn_name locals fns)
       check expr (ETensor elems) fn_name locals fns =
         args_res = check expr list elems fn_name locals fns
-        (TyTensor (tensor elem any) [], (snd list errs args_res) :: (tensor literal errs (fst list tys args_res) fn_name))
+        tys = fst list tys args_res
+        (TyTensor (tensor literal elem tys) [], (snd list errs args_res) :: (tensor literal errs tys fn_name) :: (tensor literal mix errs tys fn_name))
       check expr (EIndex base idxs) fn_name locals fns =
         b_res = check expr base fn_name locals fns
         i_res = check expr list idxs fn_name locals fns
@@ -2216,6 +2217,22 @@ fn :: adt has tensor [RTypeBind] String [RTypeBind] [String] => Bool
         | otherwise = adt has tensor rest n fns seen
       adt has tensor (_:rest) n fns seen =  adt has tensor rest n fns seen
 
+-- `echo` and string interpolation show a numeric tensor with its element
+-- type (FR-COMP-020 §10). Each shown tensor gets a `:show` fact (so the
+-- show helpers are kept) and, for a call, the `()f` fact of its result.
+fn :: with show tensor facts String [RExpr] ([RType], [RTypeError]) (RType, [RTypeError]) => RType [RTypeError]
+      with show tensor facts fn_name es (tys, _) (t, errs) =  (t, errs :: (show tensor facts fn_name es tys))
+
+fn :: show tensor facts String [RExpr] [RType] => [RTypeError]
+      show tensor facts fn_name (e:es) (t:ts) =  (show tensor fact fn_name e t) :: (show tensor facts fn_name es ts)
+      show tensor facts _ _ _ =  []
+
+fn :: show tensor fact String RExpr RType => [RTypeError]
+      show tensor fact fn_name (ECall f _) (TyTensor el d)
+        | not (str starts with f ":") = (tensor elem info fn_name ":show" (TyTensor el d)) :: (tensor elem info fn_name ("()" + f) (TyTensor el d))
+      show tensor fact fn_name _ (TyTensor el d) =  tensor elem info fn_name ":show" (TyTensor el d)
+      show tensor fact _ _ _ =  []
+
 fn :: tensor elem info String String RType => [RTypeError]
       tensor elem info fn_name v (TyTensor e _) =  [TypeError ":tensor-elem:" (fn_name + "|" + v + "|" + (tensor elem kind e))]
       tensor elem info _ _ _ =  []
@@ -2269,6 +2286,30 @@ fn :: tensor literal errs [RType] String => [RTypeError]
       tensor literal errs (t:ts) fn_name
         | tensor literal elem ok t = tensor literal errs ts fn_name
         | otherwise = [TypeError fn_name ("a tensor literal holds numbers, not " + (rtype to str t) + "; use 'tensor from list' for other element types")]
+
+-- A literal whose elements are all `Real` (also in its rows) is a
+-- `Tensor[Real]`, all `Int` a `Tensor[Int]`; other literals (empty, or
+-- with elements of an open type) keep an open element type.
+fn :: tensor literal elem [RType] => RType
+      tensor literal elem tys
+        | (literal leaf count tys TyReal) > 0 and (literal leaf count tys TyInt) == 0 = TyReal
+        | (literal leaf count tys TyInt) > 0 and (literal leaf count tys TyReal) == 0 = TyInt
+        | otherwise = tensor elem any
+
+fn :: tensor literal mix errs [RType] String => [RTypeError]
+      tensor literal mix errs tys fn_name
+        | (literal leaf count tys TyReal) > 0 and (literal leaf count tys TyInt) > 0 = [TypeError fn_name "a tensor literal mixes Int and Real elements; write every element as a Real (1.0, not 1)"]
+        | otherwise = []
+
+fn :: literal leaf count [RType] RType => Int
+      literal leaf count [] _ =  0
+      literal leaf count (t:ts) k =  (literal leaf is t k) + (literal leaf count ts k)
+
+fn :: literal leaf is RType RType => Int
+      literal leaf is TyReal TyReal =  1
+      literal leaf is TyInt TyInt =  1
+      literal leaf is (TyList e) k =  literal leaf is e k
+      literal leaf is _ _ =  0
 
 fn :: tensor literal elem ok RType => Bool
       tensor literal elem ok TyInt =  True

@@ -3,7 +3,7 @@
 -- source: spec.md "Tensors" (sending tensors); FR-COMP-020 §13
 -- expect-output:
 --   5
---   Tensor(shape=[2], data=[0.0, 5.0])
+--   Tensor(shape=[2], data=[0, 5])
 --   b
 --   [, b]
 --   x

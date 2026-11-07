@@ -53,6 +53,10 @@ Let `Tensor` hold any element type with the same syntax as numeric tensors, as p
 
 - 2026-11-07: Open questions closed by the user (0.9.41): an index out of range is an error on every tensor; a tensor sent to another agent is a copy, never the original (Ridgun has no shared type). Bounds: `@__rg_tensor_bounds` (LLVM), `x86 tensor bounds` (x86-64), `lower dim bounds` (slices). Before, a numeric read out of range gave 0, a write was dropped, `t_(0 - 1)` read the last element, and a column write past the end corrupted memory. Copies: `:msg-copy:` at every send and agent initial state. Tuple-pattern parameters (`(t, k)`) now get their tensor kind. Found on the way, not fixed: `ask v to (agent (f))` with the agent created inline prints nothing and drops the rest of the program's output (0.9.40 too); `echo` of a `Real` tensor prints raw bits and `Tensor [1.5, 2.5]` keeps 1.0 and 2.0 (older numeric tensor code).
 
+- 2026-11-07 (0.9.42): `echo` and interpolation show numeric tensors by element type (`__rg_tensor_show_real`/`_int` helpers, kept when the type checker emits a `:show` fact; slices follow their base). Tensor literals: all-`Real` → `Tensor[Real]`, stored as bits (`NRealToBits` on LLVM, x86-64; nop on ARM64); all-`Int` → `Tensor[Int]`; mixed → compile error. Cases `real_tensor_literal_and_typed_echo.rg`, `tensor_literal_mixing_int_and_real_fails.rg`; Int-tensor outputs in 3 cases changed from `0.0` to `0`.
+
+- 2026-11-07 (0.9.42, libs report `tensor-from-list-longitud.md`): `tensor from list` copied the whole RC vector of the list from index 0. A list value is a view `[2, vector, start]`: prepending (`[x] :: acc`) and `tail` move `start`, so a list built at run time gave extra default elements in front, and a tail gave its head back. `__rg_gt_vec_of` (LLVM) and `NGtConv` modes 0 and 1 (x86-64, `copy.s`, `totensor.s`) now start at `start` and use `len - start` elements. Case `tensor_from_list_built_at_run_time.rg`.
+
 ## Files changed (keep current)
 - `docs/requirements/functional/compiler/FR-COMP-020-tensors-of-any-element-type.md`, `INDEX.md`
 - `src/main/ridgun/lib/parser.rg`, `ast.rg`, `typecheck.rg`, `compiler.rg`, `elf64.rg`, `llvm.rg`, `x86_64.rg`, `arm64.rg`
@@ -60,7 +64,7 @@ Let `Tensor` hold any element type with the same syntax as numeric tensors, as p
 - Phases 2-4: `typecheck.rg`, `compiler.rg`, `parser.rg`, `elf64.rg`, `llvm.rg`, `x86_64.rg`, `arm64.rg`; `docs/etc/gentensor.md`, `docs/etc/INDEX.md`; `docs/lang/spec.md` (Tensors: element types); FR-COMP-018 narrowed to `Tensor_GPU`; FR-COMP-020 implementation status; `tests/README.md`
 - Tests: `tests/cases/tensors/gen_tensor_*.rg` (13 cases), `tensor_literal_of_strings_fails.rg`, `tensor_gpu_of_string_fails.rg` and `tensor_gpu_of_bool_in_signature_fails.rg` (renamed from the FR-COMP-018 cases)
 - `with` syntax (0.9.39): `parser.rg`, `typecheck.rg`, `compiler.rg`, `llvm.rg`, `x86_64.rg`; `docs/etc/gentensor.md` (mode 4); `docs/lang/spec.md`; FR-COMP-020; `tests/README.md`; tests `gen_tensor_defaults_and_with.rg` (renamed), `numeric_tensor_of_any_rank_with_value.rg`, `tensor_with_wrong_value_type_fails.rg`, `gen_tensor_without_default_fails.rg`, `gen_tensor_memory_is_freed.rg`, `real_tensor_writes_keep_their_bits.rg`; 0.9.41: `tensor_sent_to_agent_is_copied.rg`, `tensor_in_record_message_fails.rg`, `numeric_tensor_read_out_of_range_exits.rg`, `numeric_tensor_write_out_of_range_exits.rg`, `tensor_column_out_of_range_exits.rg`
-- `build.rg`, `ridgunc/main.rg`, `stable/main.rg`, `llvm.rg`: 0.9.36 → 0.9.37 → 0.9.38 → 0.9.39 → 0.9.40 → 0.9.41
+- `build.rg`, `ridgunc/main.rg`, `stable/main.rg`, `llvm.rg`: 0.9.36 → 0.9.37 → 0.9.38 → 0.9.39 → 0.9.40 → 0.9.41 → 0.9.42
 - 0.9.41: `src/test/ridgun/test parallel and tensors.rg` and `docs/book/{en,es,it}/08-*.md` (`compress block`: column pass `blamka p8`)
 
 ## Verification performed (command → result, newest last)

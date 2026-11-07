@@ -73,6 +73,9 @@ Every file starts with:
   mov rax, [rdi+8]
   mov r12, [rax+8]
   mov r13, [rax+16]
+  mov rcx, [rdi+16]
+  lea r12, [r12+rcx*8]
+  sub r13, rcx
 1:
   test r13, r13
   jnz 2f
@@ -133,6 +136,9 @@ Every file starts with:
   mov rax, [rdi+8]
   mov r12, [rax+8]
   mov r13, [rax+16]
+  mov rcx, [rdi+16]
+  lea r12, [r12+rcx*8]
+  sub r13, rcx
 1:
   mov edi, 8
   movabs rax, ALLOC_BUF

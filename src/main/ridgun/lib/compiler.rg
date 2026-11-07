@@ -2351,7 +2351,8 @@ fn :: lower expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
       lower expr env (EStr s) _ sp st =
         off = env str off env s
         nc emit st (NLoadStrLit off (str len s)) sp
-      lower expr env (EStrInterp parts) bound_locals sp st =
+      lower expr env (EStrInterp raw_parts) bound_locals sp st =
+        parts = show tensor expr list env raw_parts
         count = rexpr list len parts
         st1 = lower expr list to slots env parts bound_locals sp 0 st
         nc emit st1 (NStrInterp sp count) (sp + count + 1)
@@ -2402,6 +2403,9 @@ fn :: lower expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
         st1 = lower expr env e bound_locals sp st
         nc emit st1 NRealFromBits sp
       lower expr env (ECall ":msg-copy:" (e:_)) bound_locals sp st =  lower msg copy env e bound_locals sp st
+      lower expr env (ECall ":real-bits:" (e:_)) bound_locals sp st =
+        st1 = lower expr env e bound_locals sp st
+        nc emit st1 NRealToBits sp
       lower expr env (ECall ":char-zero:" []) bound_locals sp st =  lower expr env (ECall "char_from_code" [EInt 0]) bound_locals sp st
       lower expr env (ECall ":tensor-with:" args) bound_locals sp st =  lower shape tensor env args bound_locals sp st
       lower expr env (ECall ":gt-new:" (d:n:[])) bound_locals sp st =  lower expr env (ECall "__rg_gt_new1" [d, n]) bound_locals sp st
@@ -2427,7 +2431,8 @@ fn :: lower expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
         nc emit list st1 ins_list (sp + arity + 2)
       lower expr env (ECall fname args) bound_locals sp st =
         lower call expr env fname args bound_locals sp st
-      lower expr env (EEcho args) bound_locals sp st =
+      lower expr env (EEcho raw_args) bound_locals sp st =
+        args = show tensor expr list env raw_args
         count = rexpr list len args
         st1 = lower expr list to slots env args bound_locals sp 0 st
         nc emit st1 (NEcho sp count) (sp + count + 1)
@@ -2439,7 +2444,8 @@ fn :: lower expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
         count = rexpr list len elems
         st1 = lower expr list to slots env elems bound_locals sp 0 st
         nc emit st1 (NMakeTuple sp count) (sp + count + 1)
-      lower expr env (ETensor elems) bound_locals sp st =
+      lower expr env (ETensor raw_elems) bound_locals sp st =
+        elems = real bits leaves raw_elems
         count = rexpr list len elems
         st1 = lower expr list to slots env elems bound_locals sp 0 st
         nc emit st1 (NMakeTensor sp count) (sp + count + 1)
@@ -3833,7 +3839,8 @@ fn :: lower program to native RProgram [String] => RNativeProg
         entry_name = find entry fn name raw_fns "main"
         gagent_roots = collect gagent names raw_fns
         refs_map0 = add gt refs (add s2i ref (build fn refs map raw_fns FnRefsEmpty))
-        reach_set0 = expand reachable worklist ([entry_name] :: gagent_roots) refs_map0 StrSetEmpty
+        show_roots = tensor show roots infos
+        reach_set0 = expand reachable worklist ([entry_name] :: gagent_roots :: show_roots) refs_map0 StrSetEmpty
         reach_raw = filter reachable fndefs raw_fns reach_set0 []
         field_tbl = collect typedef fields tys []
         raw_fn_names = collect fn names reach_raw
@@ -3843,7 +3850,7 @@ fn :: lower program to native RProgram [String] => RNativeProg
         sigs = (build cg sigs reach_raw) :: (build field cg sigs field_tbl raw_fn_set)
         all_fns = (opt fndef list (prep fndef list reach_raw sigs)) :: b_wrappers
         refs_map = add gt refs (add s2i ref (build fn refs map all_fns FnRefsEmpty))
-        reachable_set = expand reachable worklist ([entry_name] :: gagent_roots) refs_map StrSetEmpty
+        reachable_set = expand reachable worklist ([entry_name] :: gagent_roots :: show_roots) refs_map StrSetEmpty
         fns = filter reachable fndefs all_fns reachable_set []
         gagent_names = collect gagent names fns
         fn_names = collect fn names fns
@@ -4328,7 +4335,67 @@ fn :: gt helper src lists => String
       gt helper src lists =  "fn :: __rg_gt_copy [A] => [A]\n      __rg_gt_copy xs =  __rg_gt_list_copy xs\nfn :: __rg_gt_deep_copy [[A]] Int Int [[A]] => [[A]]\n      __rg_gt_deep_copy xs i n acc\n        | i >= n = acc\n        | otherwise = __rg_gt_deep_copy xs (i + 1) n (acc :: [(__rg_gt_copy xs_(i))])\nfn :: __rg_gt_copy_any [A] => [A]\n      __rg_gt_copy_any xs\n        | (__rg_gt_len xs) == 0 = []\n        | otherwise = __rg_gt_copy_first xs xs_(0)\nfn :: __rg_gt_copy_first [A] A => [A]\n      __rg_gt_copy_first xs h\n        | __rg_gt_is_list h = __rg_gt_deep_copy xs 0 (__rg_gt_len xs) []\n        | otherwise = __rg_gt_copy xs\nfn :: __rg_gt_from_list [A] => [A]\n      __rg_gt_from_list xs\n        | (__rg_gt_len xs) == 0 = []\n        | otherwise = __rg_gt_from_first xs xs_(0)\nfn :: __rg_gt_from_first [A] A => [A]\n      __rg_gt_from_first xs h\n        | __rg_gt_is_gen h = __rg_gt_copy xs\n        | otherwise = __rg_gt_list_tensor xs\nfn :: __rg_gt_to_list T => [A]\n      __rg_gt_to_list t\n        | __rg_gt_is_list t = __rg_gt_copy_any t\n        | otherwise = __rg_gt_tensor_ints t\nfn :: __rg_gt_to_list_real T => [Real]\n      __rg_gt_to_list_real t =  __rg_gt_tensor_reals t\n"
 
 fn :: gt helper fndefs => [RFnDef]
-      gt helper fndefs =  fndefs of program (parse tokens (tokenize src ((gt helper src stubs) + (gt helper src alloc) + (gt helper src lists))))
+      gt helper fndefs =  fndefs of program (parse tokens (tokenize src ((gt helper src stubs) + (gt helper src alloc) + (gt helper src lists) + (gt helper src show))))
+
+-- `echo t` and `"{t}"` on a numeric tensor: the runtime text keeps the
+-- shape part (`Tensor(shape=[2, 3]`), and the data part is the list of
+-- elements with their type (`[1, 2]`, `[1.5, 2.5]`).
+fn :: gt helper src show => String
+      gt helper src show =  "fn :: __rg_tensor_show_real T => String\n      __rg_tensor_show_real t =\n        xs = __rg_gt_tensor_reals t\n        __rg_tensor_show_join \"{{t}}\" \"{{xs}}\"\nfn :: __rg_tensor_show_int T => String\n      __rg_tensor_show_int t =\n        xs = __rg_gt_tensor_ints t\n        __rg_tensor_show_join \"{{t}}\" \"{{xs}}\"\nfn :: __rg_tensor_show_join String String => String\n      __rg_tensor_show_join s data =  (str_slice s 0 (__rg_tensor_shape_end s 0 (str_len s))) + \", data=\" + data + \")\"\nfn :: __rg_tensor_shape_end String Int Int => Int\n      __rg_tensor_shape_end s i n\n        | i >= n = n\n        | (str_char_at s i) == 93 = i + 1\n        | otherwise = __rg_tensor_shape_end s (i + 1) n\n"
+
+-- A tensor stores raw 64-bit words. A `Real` element of a tensor literal
+-- is stored as its bits (`NRealToBits`); an `Int` passes unchanged.
+fn :: real bits leaves [RExpr] => [RExpr]
+      real bits leaves [] =  []
+      real bits leaves (e:es) =  [real bits leaf e] :: (real bits leaves es)
+
+fn :: real bits leaf RExpr => RExpr
+      real bits leaf (EInt n) =  EInt n
+      real bits leaf (EList es) =  EList (real bits leaves es)
+      real bits leaf (ETensor es) =  ETensor es
+      real bits leaf e =  ECall ":real-bits:" [e]
+
+fn :: tensor show roots [String] => [String]
+      tensor show roots [] =  []
+      tensor show roots (i:is)
+        | str contains i "|:show|" = ["__rg_tensor_show_real", "__rg_tensor_show_int"]
+        | otherwise = tensor show roots is
+
+-- Wraps a shown numeric tensor in its show helper. Only when the helper
+-- was kept (a library without GenTensor helpers keeps the runtime text).
+fn :: show tensor expr list RNativeEnv [RExpr] => [RExpr]
+      show tensor expr list _ [] =  []
+      show tensor expr list env (e:es) =  [show tensor expr env e] :: (show tensor expr list env es)
+
+fn :: show tensor expr RNativeEnv RExpr => RExpr
+      show tensor expr env e
+        | (env fn arity env "__rg_tensor_show_real") != 1 = e
+        | otherwise = show tensor wrap (show tensor kind env e) e
+
+fn :: show tensor kind RNativeEnv RExpr => String
+      show tensor kind env (EVar v) =  env tensor kind env v
+      show tensor kind env (ECall ":tensor-row-slice:" (b:_)) =  show tensor kind env b
+      show tensor kind env (ECall ":tensor-col-slice:" (b:_)) =  show tensor kind env b
+      show tensor kind _ (ETensor es) =  literal show kind es ""
+      show tensor kind env (ECall f _)
+        | not (str starts with f ":") = env tensor kind env ("()" + f)
+      show tensor kind _ _ =  "U"
+
+-- A literal written in `echo`: "N" when every leaf is an Int literal,
+-- "R" when every leaf is a Real literal, "U" otherwise.
+fn :: literal show kind [RExpr] String => String
+      literal show kind [] k
+        | k == "" = "U"
+        | otherwise = k
+      literal show kind ((EList xs):es) k =  literal show kind es (literal show kind xs k)
+      literal show kind ((EInt _):es) k =  literal show kind es (merge tensor kind k "N")
+      literal show kind ((EReal _):es) k =  literal show kind es (merge tensor kind k "R")
+      literal show kind _ _ =  "U"
+
+fn :: show tensor wrap String RExpr => RExpr
+      show tensor wrap "R" e =  ECall "__rg_tensor_show_real" [e]
+      show tensor wrap "N" e =  ECall "__rg_tensor_show_int" [e]
+      show tensor wrap _ e =  e
 
 fn :: with gt helpers [RFnDef] => [RFnDef]
       with gt helpers fns

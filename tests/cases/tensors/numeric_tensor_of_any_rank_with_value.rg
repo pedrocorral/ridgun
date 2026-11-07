@@ -2,7 +2,7 @@
 -- case: a numeric tensor with three or four dimensions keeps its whole shape, starts at zero or at the value given with 'with', and keeps writes to its last element
 -- source: spec.md "Tensors" (initial values); FR-COMP-020 §6
 -- expect-output:
---   Tensor(shape=[2, 3, 4], data=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+--   Tensor(shape=[2, 3, 4], data=[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
 --   5
 --   3
 --   0.5

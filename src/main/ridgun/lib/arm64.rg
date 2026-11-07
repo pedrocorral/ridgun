@@ -110,6 +110,7 @@ fn :: arm64 instr size RNativeInstr       => Int
       arm64 instr size (NAdtField _ _)    =  24
       arm64 instr size (NPackSeq _)       =  24
       arm64 instr size NRealFromBits      =  4
+      arm64 instr size NRealToBits        =  4
       arm64 instr size (NIsList _)        =  4
       arm64 instr size (NIsGen _)         =  4
       arm64 instr size (NListSet _ _)     =  4
@@ -237,6 +238,8 @@ fn :: arm64 encode instr RNativeInstr Int Int Int Int [RLabelEntry] [RLabelEntry
         (arm64 mov sp to reg 0) :: (arm64 mov imm64 1 arity) :: (arm64 bl rt 19 (cur_vaddr + 20))
       -- The ARM64 runtime has no Real support yet (rt slot 11 is a NOP).
       arm64 encode instr NRealFromBits _ _ _ _ _ _ =
+        arm64 nop
+      arm64 encode instr NRealToBits _ _ _ _ _ _ =
         arm64 nop
       -- GenTensors (FR-COMP-020) are not supported by the ARM64 runtime yet.
       arm64 encode instr (NIsList _) _ _ _ _ _ _ =
