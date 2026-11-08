@@ -59,6 +59,8 @@ Let `Tensor` hold any element type with the same syntax as numeric tensors, as p
 
 - 2026-11-07 (0.9.43, libs report: a String read cost 3.5 times an Int read): GenTensor reads now use `NListGet` (LLVM `@__rg_list_get`, x86-64 `listget.s`) instead of the generic bounds check plus runtime index, and `str len` has an LLVM fast path. The libs benchmark (`lectura.rg`, 1M reads): String 127 ms → 52-55 ms, Int 36 ms. Case `gen_tensor_2d_read_out_of_range_exits.rg`.
 
+- 2026-11-08 (0.9.44, libs request `agrupar-contar-ordenar-primitivas.md`): native `sort by ints` / `sort by texts` (FR-COMP-021, `NSortBy`): stable merge sort of tagged indices, LLVM `@__rg_sort_by`, x86-64 `sortby.s` (1099 bytes), ARM64 placeholder. 100k keys: Int 10 ms, String 50 ms on LLVM (162 ms while the merge used `select`/`cmov`; branching lets the CPU overlap the key loads). Cases `lists/sort_by_ints_and_texts.rg`, `lists/sort_by_lists_of_different_lengths_fails.rg`, `perf/sort_by_100k_elements.rg`.
+
 ## Files changed (keep current)
 - `docs/requirements/functional/compiler/FR-COMP-020-tensors-of-any-element-type.md`, `INDEX.md`
 - `src/main/ridgun/lib/parser.rg`, `ast.rg`, `typecheck.rg`, `compiler.rg`, `elf64.rg`, `llvm.rg`, `x86_64.rg`, `arm64.rg`
@@ -66,8 +68,9 @@ Let `Tensor` hold any element type with the same syntax as numeric tensors, as p
 - Phases 2-4: `typecheck.rg`, `compiler.rg`, `parser.rg`, `elf64.rg`, `llvm.rg`, `x86_64.rg`, `arm64.rg`; `docs/etc/gentensor.md`, `docs/etc/INDEX.md`; `docs/lang/spec.md` (Tensors: element types); FR-COMP-018 narrowed to `Tensor_GPU`; FR-COMP-020 implementation status; `tests/README.md`
 - Tests: `tests/cases/tensors/gen_tensor_*.rg` (13 cases), `tensor_literal_of_strings_fails.rg`, `tensor_gpu_of_string_fails.rg` and `tensor_gpu_of_bool_in_signature_fails.rg` (renamed from the FR-COMP-018 cases)
 - `with` syntax (0.9.39): `parser.rg`, `typecheck.rg`, `compiler.rg`, `llvm.rg`, `x86_64.rg`; `docs/etc/gentensor.md` (mode 4); `docs/lang/spec.md`; FR-COMP-020; `tests/README.md`; tests `gen_tensor_defaults_and_with.rg` (renamed), `numeric_tensor_of_any_rank_with_value.rg`, `tensor_with_wrong_value_type_fails.rg`, `gen_tensor_without_default_fails.rg`, `gen_tensor_memory_is_freed.rg`, `real_tensor_writes_keep_their_bits.rg`; 0.9.41: `tensor_sent_to_agent_is_copied.rg`, `tensor_in_record_message_fails.rg`, `numeric_tensor_read_out_of_range_exits.rg`, `numeric_tensor_write_out_of_range_exits.rg`, `tensor_column_out_of_range_exits.rg`
-- `build.rg`, `ridgunc/main.rg`, `stable/main.rg`, `llvm.rg`: 0.9.36 → 0.9.37 → 0.9.38 → 0.9.39 → 0.9.40 → 0.9.41 → 0.9.42 → 0.9.43
+- `build.rg`, `ridgunc/main.rg`, `stable/main.rg`, `llvm.rg`: 0.9.36 → 0.9.37 → 0.9.38 → 0.9.39 → 0.9.40 → 0.9.41 → 0.9.42 → 0.9.43 → 0.9.44
 - 0.9.41: `src/test/ridgun/test parallel and tensors.rg` and `docs/book/{en,es,it}/08-*.md` (`compress block`: column pass `blamka p8`)
+- 0.9.44 (FR-COMP-021): `docs/requirements/functional/compiler/FR-COMP-021-native-sort-by-keys.md`, `INDEX.md`; `parser.rg`, `typecheck.rg`, `compiler.rg`, `elf64.rg`, `llvm.rg`, `x86_64.rg`, `arm64.rg`; `docs/lang/spec.md` (Lists: sorting by keys); `docs/etc/gentensor.md`; `tests/cases/lists/sort_by_*.rg`, `tests/cases/perf/sort_by_100k_elements.rg`
 
 ## Verification performed (command → result, newest last)
 - `aix docs validate` → 0 errors.

@@ -43,7 +43,7 @@ fn :: main => ()
 ## What the cases cover
 | Folder | Cases | Sources |
 |---|---|---|
-| `lists/` | map / filter / fold values; `\|\|map` / `\|\|filter` equal to them in order on 2 000 elements; `::` joins; `[]`, `(x:[])`, `(a:b:rest)` and literal multi-cons patterns | FR-COMP-001 AC1–3 and §3; spec.md:351, 363-368; book 05:51-69 |
+| `lists/` | map / filter / fold values; `\|\|map` / `\|\|filter` equal to them in order on 2 000 elements; `::` joins; `[]`, `(x:[])`, `(a:b:rest)` and literal multi-cons patterns; `sort by ints` / `sort by texts` (order, stability, text order like `<`, run-time-built lists, different lengths exit with status 1) | FR-COMP-001 AC1–3 and §3; spec.md:351, 363-368; book 05:51-69; FR-COMP-021 |
 | `functions/` | function values and `(A => B)` parameters; 100 000 000 self tail calls in constant memory; a call that matches no clause exits with status 1 | FR-COMP-001 §1; book 07:72-76; book 04:174-181; FR-COMP-017 §2 (RG-114) |
 | `guards/` | the four FR-COMP-003 examples: mixfix clamp, guarded binding, the four-level decision tree with `\|.`, and `\|\| … \|\|.` followed by a guarded binding; no guard holding and no `otherwise` exits with status 1 | FR-COMP-003 §1–§3; FR-COMP-017 §2 (RG-114) |
 | `variables/` | `mut` reassignment; reassigning a non-`mut` variable must not compile | FR-COMP-003 §4, AC3 |
@@ -60,7 +60,7 @@ fn :: main => ()
 | `tensors/` | numeric element types build and keep their values; `Real` elements are `Real`s; tensors of `String`, `Bool`, lists, tuples and ADTs (defaults, `Tensor[T * dims] with v`, numeric tensors of any rank, in-place reads and writes, bounds errors, list conversion, no leaks); `Tensor_GPU` of non-numeric elements and tensor literals of non-numbers are compile errors | spec.md "Tensors"; FR-COMP-018; FR-COMP-020 |
 | `strict/` | `--strict` refuses `_` in declared names and function calls, and `(Int, Int)` returns; `" "` and `"_"` never resolve to the same function name | book 02:193-197; FR-COMP-005 §5; FR-COMP-008 |
 | `runtime/` | `sys_exit n` exits with n and stops there | FR-VM-002:32,45 |
-| `perf/` | **Proposals** (`-- kind: proposal`): building a 20 000-element list at either end in under 1 s; 8 agents on 8 equal jobs at once take no longer than one thread doing them in turn | Solstice register RG-085, RG-079 |
+| `perf/` | **Proposals** (`-- kind: proposal`): building a 20 000-element list at either end in under 1 s; 8 agents on 8 equal jobs at once take no longer than one thread doing them in turn. Also `sort by ints` / `sort by texts` on 100 000 elements, whole program under 1 s (a requirement, not a proposal) | Solstice register RG-085, RG-079; FR-COMP-021 §6 |
 
 ## Decisions pending
 The documents leave these points open, or say different things in different places. No case tests them. Each needs a decision, written in spec.md, and then a case.

@@ -1644,7 +1644,7 @@ fn :: prim type tag id String       => Int
       prim type tag id _            =  0
 
 fn :: is gt pseudo name String => Bool
-      is gt pseudo name n =  str in list n ["__rg_gt_is_gen", "__rg_gt_is_list", "__rg_gt_len", "__rg_gt_tlen", "__rg_gt_real_bits", "__rg_gt_list_copy", "__rg_gt_list_tensor", "__rg_gt_tensor_ints", "__rg_gt_tensor_reals", ":gt-new:", ":tensor-with:", ":msg-copy:", "tensor_from_list", "tensor_to_list"]
+      is gt pseudo name n =  str in list n ["__rg_gt_is_gen", "__rg_gt_is_list", "__rg_gt_len", "__rg_gt_tlen", "__rg_gt_real_bits", "__rg_gt_list_copy", "__rg_gt_list_tensor", "__rg_gt_tensor_ints", "__rg_gt_tensor_reals", ":gt-new:", ":tensor-with:", ":msg-copy:", "tensor_from_list", "tensor_to_list", "sort_by_ints", "sort_by_texts"]
 
 fn :: is tensor helper name String             => Bool
       is tensor helper name ":tensor-zeros:"   =  True
@@ -2410,6 +2410,8 @@ fn :: lower expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
       lower expr env (ECall ":tensor-with:" args) bound_locals sp st =  lower shape tensor env args bound_locals sp st
       lower expr env (ECall ":gt-new:" (d:n:[])) bound_locals sp st =  lower expr env (ECall "__rg_gt_new1" [d, n]) bound_locals sp st
       lower expr env (ECall ":gt-new:" (d:r:c:_)) bound_locals sp st =  lower expr env (ECall "__rg_gt_new2" [d, r, c]) bound_locals sp st
+      lower expr env (ECall "sort_by_ints" (xs:ks:_)) bound_locals sp st =  lower sort by env 0 xs ks bound_locals sp st
+      lower expr env (ECall "sort_by_texts" (xs:ks:_)) bound_locals sp st =  lower sort by env 1 xs ks bound_locals sp st
       lower expr env (ECall "tensor_from_list" (x:_)) bound_locals sp st =  lower expr env (ECall "__rg_gt_from_list" [x]) bound_locals sp st
       lower expr env (ECall "tensor_to_list" ((EVar v):_)) bound_locals sp st
         | env is real tensor env v = lower expr env (ECall "__rg_gt_to_list_real" [EVar v]) bound_locals sp st
@@ -4349,6 +4351,14 @@ fn :: real bits leaf RExpr => RExpr
       real bits leaf (EList es) =  EList (real bits leaves es)
       real bits leaf (ETensor es) =  ETensor es
       real bits leaf e =  ECall ":real-bits:" [e]
+
+-- `sort by ints xs keys` (mode 0) and `sort by texts xs keys` (mode 1),
+-- FR-COMP-021: the lists go to slots sp and sp + 1 (borrowed by
+-- `NSortBy`), the sorted list to acc; then both slots are dropped.
+fn :: lower sort by RNativeEnv Int RExpr RExpr [String] Int RNativeCode => RNativeCode
+      lower sort by env mode xs ks bound_locals sp st =
+        st1 = lower expr list to slots env [xs, ks] bound_locals sp 0 st
+        nc emit list st1 [NSortBy sp mode, NStoreSlot (sp + 2), NCmmDropSlot sp, NCmmDropSlot (sp + 1), NMoveSlot (sp + 2)] (sp + 3)
 
 fn :: tensor show roots [String] => [String]
       tensor show roots [] =  []

@@ -437,6 +437,22 @@ fn :: append [Int] [Int] => [Int]
       append a b = a :: b
 ```
 
+**Sorting by keys (`FR-COMP-021`):** `sort by ints xs keys` and `sort by texts xs keys` return the elements of `xs` ordered by a parallel list of keys. Element `i` of `xs` has key `i` of `keys`. To sort a list by itself, pass it twice.
+
+```ridgun
+fn :: sort by ints [A] [Int] => [A]
+fn :: sort by texts [A] [String] => [A]
+
+fn :: by age [Person] => [Person]
+      by age ps = sort by ints ps (ps map age)
+```
+
+- Both sorts are stable: elements with equal keys keep their order.
+- `sort by texts` orders like `<` on Strings: byte by byte, and a prefix comes first (`"Z" < "a" < "ab"`).
+- The result is a new list. `xs` and `keys` do not change.
+- Lists of different lengths stop the program with `runtime error: sort by: the lists have different lengths` (exit status 1).
+- Both run natively (a merge sort in the runtime), without a Ridgun call per comparison.
+
 #### Tensors
 
 Tensors are Ridgun's native **mutable** N-dimensional indexed type. They generalize vectors, matrices, and higher-dimensional arrays into a single type. Elements are `Real` by default.

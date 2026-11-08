@@ -1785,3 +1785,347 @@ A GenTensor read `t_(i)` is one `NListGet b i` (two for `t_(i, j)`: the row, the
   .ascii "runtime error: tensor index out of range\n"
 9:
 ```
+
+## Native sort by keys (0.9.44)
+
+`sort by ints xs keys` and `sort by texts xs keys` (FR-COMP-021) lower to the operands in two slots, then `NSortBy sp mode` (mode 0 = Int keys, 1 = String keys). The result goes to slot `sp + 2`, and both operands are dropped.
+
+The routine is a stable bottom-up merge sort of tagged indices (`2i + 1`):
+
+1. Read both lists as views (`start` and `len - start`). Different lengths: write `runtime error: sort by: the lists have different lengths` to stderr and exit with status 1. An empty list returns `[]`.
+2. Allocate two buffers of `n` words. Fill the first with the indices, the second with tagged `0`.
+3. Merge runs of width 1, 2, 4 ... between the buffers. A right element goes first only when its key is strictly less, so equal keys keep their order.
+4. Replace each index in the sorted buffer with a clone of its element, and box that buffer as the result list. Box the spare buffer (tagged Ints only) as a list and drop it.
+
+Key comparison:
+
+- **Int keys.** The raw 64-bit value (tagged, or boxed).
+- **String keys.** Both keys are Strings (heap tag 1): compare 8 bytes at a time (`bswap`, then unsigned compare), then byte by byte, then the lengths. Otherwise the runtime `<` (rt 37, op 8) on clones.
+
+Backends:
+
+- **LLVM.** `@__rg_sort_by(xs, keys, texts)` in `llvm sort helpers`. The merge branches on each comparison (`takei` / `takej`). A `select` made LLVM emit `cmov`, and then every step waited for the previous key loads (index, String, header, bytes): texts took 162 ms for 100,000 keys instead of 50 ms.
+- **x86-64.** `x86 sort by` (`sortby.s`, 1099 bytes), after `mov rdi, [rsp + sp*8]`, `mov rsi, [rsp + (sp+1)*8]` and `mov edx, mode`. The mode is kept at `[rsp+56]` for `.Lless`. The output index is `ii + jj - mid`.
+- **ARM64.** A placeholder.
+
+100,000 pseudo-random keys, sort time only (the lists built as in `tests/cases/perf/sort_by_100k_elements.rg`):
+
+| Keys | LLVM | x86-64 |
+|---|---|---|
+| Int | 10 ms | 9 ms |
+| String (`int to str`) | 50 ms | 50–63 ms |
+
+```asm
+.set CLONE_SLOT, 4198440
+.set DROP_VAL, 4198448
+.set MAKE_LIST, 4198520
+.set BIN_OP, 4198696
+.set RT_BUILTIN, 4198840
+.set ALLOC_BUF, 4205566
+.set BOX_RC_VEC, 4208821
+.set BOX_RVAL, 4209847
+  push rbx
+  push rbp
+  push r12
+  push r13
+  push r14
+  push r15
+  sub rsp, 72
+  mov [rsp+48], rdx
+  xor r8d, r8d
+  xor r9d, r9d
+  test rdi, rdi
+  jz 1f
+  test dil, 7
+  jnz 1f
+  mov rax, [rdi+8]
+  mov r9, [rax+8]
+  mov r8, [rax+16]
+  mov rcx, [rdi+16]
+  lea r9, [r9+rcx*8]
+  sub r8, rcx
+1:
+  mov [rsp+24], r9
+  mov [rsp+40], r8
+  xor r10d, r10d
+  xor r11d, r11d
+  test rsi, rsi
+  jz 2f
+  test sil, 7
+  jnz 2f
+  mov rax, [rsi+8]
+  mov r11, [rax+8]
+  mov r10, [rax+16]
+  mov rcx, [rsi+16]
+  lea r11, [r11+rcx*8]
+  sub r10, rcx
+2:
+  mov [rsp+32], r11
+  cmp r8, r10
+  jne .Lbad
+  test r8, r8
+  jnz 3f
+  mov rdi, rsp
+  xor esi, esi
+  movabs rax, MAKE_LIST
+  call rax
+  jmp .Ldone
+3:
+  lea rdi, [r8*8]
+  movabs rax, ALLOC_BUF
+  call rax
+  mov r12, rax
+  mov rdi, [rsp+40]
+  shl rdi, 3
+  movabs rax, ALLOC_BUF
+  call rax
+  mov r13, rax
+  mov rcx, [rsp+40]
+  xor eax, eax
+4:
+  lea rdx, [rax+rax+1]
+  mov [r12+rax*8], rdx
+  mov qword ptr [r13+rax*8], 1
+  inc rax
+  cmp rax, rcx
+  jb 4b
+  mov r14d, 1
+.Lpass:
+  cmp r14, [rsp+40]
+  jge .Lfinish
+  xor r15d, r15d
+.Lrun:
+  cmp r15, [rsp+40]
+  jge .Lpass_end
+  mov rax, [rsp+40]
+  lea rbx, [r15+r14]
+  cmp rbx, rax
+  cmovg rbx, rax
+  mov [rsp+64], rbx
+  lea rcx, [r15+r14*2]
+  cmp rcx, rax
+  cmovg rcx, rax
+  mov [rsp+56], rcx
+  mov rbp, rbx
+  mov rbx, r15
+.Lm:
+  cmp rbx, [rsp+64]
+  jge .Lrest
+  cmp rbp, [rsp+56]
+  jge .Lrest
+  mov rdi, [r12+rbp*8]
+  mov rsi, [r12+rbx*8]
+  mov rax, [rsp+32]
+  sar rdi, 1
+  mov rdi, [rax+rdi*8]
+  sar rsi, 1
+  mov rsi, [rax+rsi*8]
+  call .Lless
+  mov rcx, rbx
+  add rcx, rbp
+  sub rcx, [rsp+64]
+  test al, al
+  jz 5f
+  mov rax, [r12+rbp*8]
+  mov [r13+rcx*8], rax
+  inc rbp
+  jmp .Lm
+5:
+  mov rax, [r12+rbx*8]
+  mov [r13+rcx*8], rax
+  inc rbx
+  jmp .Lm
+.Lrest:
+  mov rcx, rbx
+  add rcx, rbp
+  sub rcx, [rsp+64]
+6:
+  cmp rbx, [rsp+64]
+  jge 7f
+  mov rax, [r12+rbx*8]
+  mov [r13+rcx*8], rax
+  inc rbx
+  inc rcx
+  jmp 6b
+7:
+  cmp rbp, [rsp+56]
+  jge 8f
+  mov rax, [r12+rbp*8]
+  mov [r13+rcx*8], rax
+  inc rbp
+  inc rcx
+  jmp 7b
+8:
+  lea r15, [r15+r14*2]
+  jmp .Lrun
+.Lpass_end:
+  xchg r12, r13
+  shl r14, 1
+  jmp .Lpass
+.Lfinish:
+  xor ebx, ebx
+9:
+  mov rax, [r12+rbx*8]
+  sar rax, 1
+  mov rcx, [rsp+24]
+  mov rdi, [rcx+rax*8]
+  movabs rax, CLONE_SLOT
+  call rax
+  mov [r12+rbx*8], rax
+  inc rbx
+  cmp rbx, [rsp+40]
+  jb 9b
+  mov rax, [rsp+40]
+  mov [rsp], rax
+  mov [rsp+8], r12
+  mov [rsp+16], rax
+  mov rdi, rsp
+  movabs rax, BOX_RC_VEC
+  call rax
+  mov qword ptr [rsp], 2
+  mov [rsp+8], rax
+  mov qword ptr [rsp+16], 0
+  mov rdi, rsp
+  movabs rax, BOX_RVAL
+  call rax
+  mov rbx, rax
+  mov rax, [rsp+40]
+  mov [rsp], rax
+  mov [rsp+8], r13
+  mov [rsp+16], rax
+  mov rdi, rsp
+  movabs rax, BOX_RC_VEC
+  call rax
+  mov qword ptr [rsp], 2
+  mov [rsp+8], rax
+  mov qword ptr [rsp+16], 0
+  mov rdi, rsp
+  movabs rax, BOX_RVAL
+  call rax
+  mov rdi, rax
+  movabs rax, DROP_VAL
+  call rax
+  mov rax, rbx
+.Ldone:
+  add rsp, 72
+  pop r15
+  pop r14
+  pop r13
+  pop r12
+  pop rbp
+  pop rbx
+  jmp .Lend
+.Lbad:
+  mov eax, 1
+  mov edi, 2
+  lea rsi, [rip+.Lmsg]
+  mov edx, 57
+  syscall
+  sub rsp, 8
+  push 3
+  mov rsi, rsp
+  mov edi, 24
+  mov edx, 1
+  movabs rax, RT_BUILTIN
+  call rax
+  ud2
+.Lless:
+  cmp qword ptr [rsp+56], 0
+  jne .Ltext
+  test dil, 1
+  jz 10f
+  mov r8, rdi
+  sar r8, 1
+  jmp 11f
+10:
+  mov r8, [rdi+8]
+11:
+  test sil, 1
+  jz 12f
+  mov r9, rsi
+  sar r9, 1
+  jmp 13f
+12:
+  mov r9, [rsi+8]
+13:
+  cmp r8, r9
+  setl al
+  ret
+.Ltext:
+  test rdi, rdi
+  jz .Lslow
+  test dil, 7
+  jnz .Lslow
+  cmp dword ptr [rdi], 1
+  jne .Lslow
+  test rsi, rsi
+  jz .Lslow
+  test sil, 7
+  jnz .Lslow
+  cmp dword ptr [rsi], 1
+  jne .Lslow
+  mov r8, [rdi+8]
+  mov r9, [rsi+8]
+  mov r10, [r8+16]
+  mov r11, [r9+16]
+  mov rdi, [r8+8]
+  mov rsi, [r9+8]
+  mov rcx, r10
+  cmp rcx, r11
+  cmova rcx, r11
+  xor edx, edx
+14:
+  mov rax, rcx
+  sub rax, rdx
+  cmp rax, 8
+  jb 16f
+  mov rax, [rdi+rdx]
+  mov r8, [rsi+rdx]
+  cmp rax, r8
+  jne 15f
+  add rdx, 8
+  jmp 14b
+15:
+  bswap rax
+  bswap r8
+  cmp rax, r8
+  setb al
+  ret
+16:
+  cmp rdx, rcx
+  jae 18f
+  movzx eax, byte ptr [rdi+rdx]
+  movzx r8d, byte ptr [rsi+rdx]
+  cmp eax, r8d
+  jne 17f
+  inc rdx
+  jmp 16b
+17:
+  setb al
+  ret
+18:
+  cmp r10, r11
+  setb al
+  ret
+.Lslow:
+  sub rsp, 24
+  mov [rsp+8], rsi
+  movabs rax, CLONE_SLOT
+  call rax
+  mov [rsp], rax
+  mov rdi, [rsp+8]
+  movabs rax, CLONE_SLOT
+  call rax
+  mov rdx, rax
+  mov edi, 8
+  mov rsi, rsp
+  movabs rax, BIN_OP
+  call rax
+  add rsp, 24
+  cmp rax, 6
+  sete al
+  ret
+.Lmsg:
+  .ascii "runtime error: sort by: the lists have different lengths\n"
+.Lend:
+```
