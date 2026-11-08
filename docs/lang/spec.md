@@ -504,7 +504,12 @@ m[0, 1] = 5.0                            -- set element
 m[0] = Tensor [10, 20]                   -- set entire row
 ```
 
-**Tensor contraction (`@`):** The `@` operator performs Einstein summation. Subscript indices on each operand define the contraction: indices shared across **all** operands are summed; unique indices survive in the result.
+**Tensor contraction (`@`):** The `@` operator performs Einstein summation. Subscript indices on each operand define the contraction:
+
+- An index that appears in more than one operand is summed.
+- An index that appears in one operand only survives in the result, in order of first appearance (`A_ki @ B_ij` has shape `(k, j)`).
+- When every index is summed, the result is a tensor of shape `[1]`.
+- The operands are `Tensor[Int]` or `Tensor[Real]`; the result has their element type.
 
 ```ridgun
 -- A has shape (s, d, f), B has shape (n, d, f)

@@ -453,6 +453,11 @@ fn :: build tc7 result (Int, String, Int, Int) => CaseResult
         ok7 = c7 == 0 and (str contains o7 "REFRESH_OK")
         Result "toolchain: stable deps refreshes updated .rglib bundles from a direct path dependency (RG-105)" ok7 False ("exit " + (int to str c7) + "; output: " + (trim ws o7))
 
+fn :: build tc8 result (Int, String, Int, Int) => CaseResult
+      build tc8 result (c8, o8, _, _) =
+        ok8 = c8 == 0 and (trim ws o8) == "1 []"
+        Result "toolchain: inside an imported lib, a record field name means the lib's accessor even when the program defines a function with that name (FR-COMP-012; libs report 2026-11-08)" ok8 False ("exit " + (int to str c8) + "; output: " + (trim ws o8))
+
 fn :: resolve stable path String => String
       resolve stable path repo =
         pick non empty (sys getenv "STABLE") (repo + "/bin/stable")
@@ -480,7 +485,10 @@ fn :: run toolchain checks String String String String => [CaseResult]
         r6 = build tc6 result (run sh capture ("bash -c '" + tc6_sh + "'") d 60)
         tc7_sh = "set -e; B=\"" + d + "/rg105\"; mkdir -p \"$B/dep/src/main/ridgun/lib\" \"$B/dep/target/bundles\" \"$B/app\"; printf 'fn :: project name => String\\n      project name =  \"dep\"\\n' > \"$B/dep/build.rg\"; echo \"version 1\" > \"$B/dep/target/bundles/thing.rglib\"; printf 'fn :: project name => String\\n      project name =  \"app\"\\n\\nfn :: dependencies => [String]\\n      dependencies =  [\"'\"$B/dep\"'\"]\\n' > \"$B/app/build.rg\"; cd \"$B/app\"; \"" + stable_bin + "\" deps >/dev/null; V1=$(cat .stable/deps/thing.rglib); echo \"version 2\" > \"$B/dep/target/bundles/thing.rglib\"; \"" + stable_bin + "\" deps >/dev/null; V2=$(cat .stable/deps/thing.rglib); [ \"$V1\" = \"version 1\" ] && [ \"$V2\" = \"version 2\" ] && echo REFRESH_OK"
         r7 = build tc7 result (run sh capture ("bash -c '" + tc7_sh + "'") d 60)
-        [r1, r2, r3, r4, r5, r6, r7]
+        write file (d + "/box.rg") "module :: box\n\ntype Box = items: [Int], size: Int\n\nfn :: box new => Box\n      box new = Box [1, 2, 3] 3\n\nfn :: box first Box => Int\n      box first b = first of (items b)\n\nfn :: first of [Int] => Int\n      first of (x:_) = x\n"
+        write file (d + "/field_main.rg") "import box\n\nfn :: items Int => [Int]\n      items n = []\n\nfn :: main => ()\n      main =\n        echo \"{{box first box new}} {{items 5}}\"\n"
+        r8 = build tc8 result (run sh capture ("\"" + ridgunc + "\" build field_main.rg -o field_main >/dev/null && ./field_main") d 600)
+        [r1, r2, r3, r4, r5, r6, r7, r8]
 
 fn :: print case result CaseResult => ()
       print case result (Result name True _ _) =

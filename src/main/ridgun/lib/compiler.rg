@@ -1644,7 +1644,7 @@ fn :: prim type tag id String       => Int
       prim type tag id _            =  0
 
 fn :: is gt pseudo name String => Bool
-      is gt pseudo name n =  str in list n ["__rg_gt_is_gen", "__rg_gt_is_list", "__rg_gt_len", "__rg_gt_tlen", "__rg_gt_real_bits", "__rg_gt_list_copy", "__rg_gt_list_tensor", "__rg_gt_tensor_ints", "__rg_gt_tensor_reals", ":gt-new:", ":tensor-with:", ":msg-copy:", "tensor_from_list", "tensor_to_list", "sort_by_ints", "sort_by_texts"]
+      is gt pseudo name n =  str in list n ["__rg_gt_is_gen", "__rg_gt_is_list", "__rg_gt_len", "__rg_gt_tlen", "__rg_gt_real_bits", "__rg_gt_list_copy", "__rg_gt_list_tensor", "__rg_gt_tensor_ints", "__rg_gt_tensor_reals", "__rg_gt_repeat", ":gt-new:", ":tensor-with:", ":msg-copy:", "tensor_from_list", "tensor_to_list", "sort_by_ints", "sort_by_texts"]
 
 fn :: is tensor helper name String             => Bool
       is tensor helper name ":tensor-zeros:"   =  True
@@ -2393,6 +2393,9 @@ fn :: lower expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
         nc emit st3 (NBinOp (binop id bop) sp) (sp + 1)
       lower expr env (ECall "__rg_gt_is_gen" ((EVar v):_)) _ sp st =  nc emit st (NIsGen (env var slot env v)) sp
       lower expr env (ECall "__rg_gt_is_list" ((EVar v):_)) _ sp st =  nc emit st (NIsList (env var slot env v)) sp
+      lower expr env (ECall "__rg_gt_repeat" (v:n:_)) bound_locals sp st =
+        st1 = lower expr env (EList [v, n]) bound_locals sp st
+        nc emit list st1 [NStoreSlot sp, NGtConv sp 5, NStoreSlot (sp + 1), NCmmDropSlot sp, NMoveSlot (sp + 1)] (sp + 2)
       lower expr env (ECall "__rg_gt_list_copy" ((EVar v):_)) _ sp st =  nc emit st (NGtConv (env var slot env v) 0) sp
       lower expr env (ECall "__rg_gt_list_tensor" ((EVar v):_)) _ sp st =  nc emit st (NGtConv (env var slot env v) 1) sp
       lower expr env (ECall "__rg_gt_tensor_ints" ((EVar v):_)) _ sp st =  nc emit st (NGtConv (env var slot env v) 2) sp
@@ -2451,12 +2454,14 @@ fn :: lower expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
         count = rexpr list len elems
         st1 = lower expr list to slots env elems bound_locals sp 0 st
         nc emit st1 (NMakeTensor sp count) (sp + count + 1)
-      lower expr env (EEinsum es subs) bound_locals sp st =
-        count = rexpr list len es
-        spec = join comma subs
-        off = env str off env spec
-        st1 = lower expr list to slots env es bound_locals sp 0 st
-        nc emit st1 (NEinsum sp count off (str len spec)) (sp + count + 1)
+      lower expr env (EEinsum es subs) bound_locals sp st
+        | all real operands env es = lower real einsum env es subs bound_locals sp st
+        | otherwise =
+          count = rexpr list len es
+          spec = join comma subs
+          off = env str off env spec
+          st1 = lower expr list to slots env es bound_locals sp 0 st
+          nc emit st1 (NEinsum sp count off (str len spec)) (sp + count + 1)
       lower expr env (EHadamard bop l s1 r s2) bound_locals sp st
         | (bop == OpXor or bop == OpAnd or bop == OpOr) or (s1 == s2 and (bop == OpAdd or bop == OpSub or bop == OpMul)) =
           lower bitwise hadamard env bop l r bound_locals sp st
@@ -3369,6 +3374,9 @@ fn :: collect refs expr RExpr              [String] => [String]
       collect refs expr (ENot inner)       acc      =  collect refs expr inner acc
       collect refs expr (EOut inner)       acc      =  collect refs expr inner acc
       collect refs expr (EBin bop l r)     acc      =  acc -> add unique str (binop op tag bop) _ -> collect refs expr l _ -> collect refs expr r _
+      collect refs expr (ECall ":typed-tensor:" ((EStr ty):rest)) acc
+        | is poly elem name ty = acc -> add unique str ":typed-tensor:" _ -> add unique str "__rg_gt_poly" _ -> collect refs expr list rest _
+        | otherwise = acc -> add unique str ":typed-tensor:" _ -> collect refs expr list rest _
       collect refs expr (ECall fname args) acc      =  acc -> add unique str fname _ -> collect refs expr list args _
       collect refs expr (EEcho args)       acc      =  collect refs expr list args acc
       collect refs expr (EStrInterp parts) acc      =  collect refs expr list parts acc
@@ -4285,10 +4293,183 @@ fn :: lower dim bounds RNativeEnv Int Int Int Int RNativeCode => RNativeCode
         st4 = lower expr env (ECall "sys_exit" [EInt 1]) [] (t + 1) st3
         nc emit st4 (NLabel ok_lbl) (t + 1)
 
+-- ── `@` on Real tensors (libs report 2026-11-07, 2026-11-08) ──
+-- The runtime contraction multiplies Int words, so on `Tensor[Real]`
+-- operands it multiplied f64 bits. When every operand is a `Tensor[Real]`
+-- variable, `@` lowers to loops instead, with the runtime's rules: a letter
+-- in more than one operand is summed, a letter in one operand stays in the
+-- result, in order of first appearance; summing every letter gives a
+-- tensor of shape [1]. `NEinsumReal` first tries a native contraction of two
+-- rank-2 operands (LLVM `@__rg_fast_einsum_real`); acc 0 means it did not
+-- apply and the loops run. Slots from sp: the n operands, a dimension and an
+-- index slot per letter, then r (result), r + 1 (sum), r + 2 (product),
+-- r + 3 (base copy), r + 4 ... (index arguments), r + 12 (scratch).
+fn :: all real operands RNativeEnv [RExpr] => Bool
+      all real operands _ [] =  True
+      all real operands env ((EVar v):es)
+        | (env tensor kind env v) == "R" = all real operands env es
+        | otherwise = False
+      all real operands _ _ =  False
+
+fn :: ein uniq [String] String => String
+      ein uniq [] acc =  acc
+      ein uniq (s:ss) acc =  ein uniq ss (ein uniq str s 0 acc)
+
+fn :: ein uniq str String Int String => String
+      ein uniq str s i acc
+        | i >= (str len s) = acc
+        | str contains acc (str slice s i (i + 1)) = ein uniq str s (i + 1) acc
+        | otherwise = ein uniq str s (i + 1) (acc + (str slice s i (i + 1)))
+
+fn :: ein occurs [String] String Int => Int
+      ein occurs [] _ k =  k
+      ein occurs (s:ss) l k
+        | str contains s l = ein occurs ss l (k + 1)
+        | otherwise = ein occurs ss l k
+
+-- The letters of lets that stay in the result (want True) or are summed.
+fn :: ein pick String [String] Bool Int String => String
+      ein pick lets subs want i acc
+        | i >= (str len lets) = acc
+        | want and (ein occurs subs (str slice lets i (i + 1)) 0) == 1 = ein pick lets subs want (i + 1) (acc + (str slice lets i (i + 1)))
+        | (not want) and (ein occurs subs (str slice lets i (i + 1)) 0) > 1 = ein pick lets subs want (i + 1) (acc + (str slice lets i (i + 1)))
+        | otherwise = ein pick lets subs want (i + 1) acc
+
+fn :: ein pos String String Int => Int
+      ein pos s l i
+        | i >= (str len s) = 0 - 1
+        | (str slice s i (i + 1)) == l = i
+        | otherwise = ein pos s l (i + 1)
+
+fn :: ein src op [String] String Int => Int
+      ein src op [] _ _ =  0
+      ein src op (s:ss) l k
+        | str contains s l = k
+        | otherwise = ein src op ss l (k + 1)
+
+fn :: ein nth [String] Int => String
+      ein nth [] _ =  ""
+      ein nth (s:ss) k
+        | k == 0 = s
+        | otherwise = ein nth ss (k - 1)
+
+fn :: ein dslot Int Int String String => Int
+      ein dslot sp n lets l =  sp + n + (ein pos lets l 0)
+
+fn :: ein islot Int Int String String => Int
+      ein islot sp n lets l =  sp + n + (str len lets) + (ein pos lets l 0)
+
+fn :: lower real einsum RNativeEnv [RExpr] [String] [String] Int RNativeCode => RNativeCode
+      lower real einsum env es subs bound_locals sp st =
+        n = rexpr list len es
+        lets = ein uniq subs ""
+        outs = ein pick lets subs True 0 ""
+        sums = ein pick lets subs False 0 ""
+        r = sp + n + 2 * (str len lets)
+        spec = join comma subs
+        st0 = lower expr list to slots env es bound_locals sp 0 st
+        fast = nc lbl st0
+        st1 = nc emit list (nc set lbl st0 (fast + 2)) [NEinsumReal sp n (env str off env spec) (str len spec), NJumpIfNonZero fast] (r + 14)
+        st2 = nc emit list st1 (ein dim ins subs sp n lets 0) (r + 14)
+        st3 = nc emit list st2 (ein result ins sp n lets outs r) (r + 14)
+        st4 = ein out loops subs sp n lets outs sums outs r st3
+        nc emit list st4 ((ein drop ops sp n 0) :: [NMoveSlot r, NJump (fast + 1), NLabel fast, NLabel (fast + 1)]) (r + 14)
+
+fn :: ein dim ins [String] Int Int String Int => [RNativeInstr]
+      ein dim ins subs sp n lets i
+        | i >= (str len lets) = []
+        | otherwise =
+          l = str slice lets i (i + 1)
+          k = ein src op subs l 0
+          p = ein pos (ein nth subs k) l 0
+          [NAdtField (sp + k) (0 - 10 - p), NStoreSlot (sp + n + i)] :: (ein dim ins subs sp n lets (i + 1))
+
+-- The zero result tensor: `NGtConv` mode 4 on [0, d1, ..., dn].
+fn :: ein result ins Int Int String String Int => [RNativeInstr]
+      ein result ins sp n lets outs r
+        | (str len outs) == 0 = [NLoadImmInt 0, NStoreSlot (r + 3), NLoadImmInt 1, NStoreSlot (r + 4), NMakeList (r + 3) 2, NStoreSlot (r + 12), NGtConv (r + 12) 4, NStoreSlot r, NCmmDropSlot (r + 12)]
+        | otherwise = [NLoadImmInt 0, NStoreSlot (r + 3)] :: (ein dim copies sp n lets outs 0 (r + 4)) :: [NMakeList (r + 3) ((str len outs) + 1), NStoreSlot (r + 12), NGtConv (r + 12) 4, NStoreSlot r, NCmmDropSlot (r + 12)]
+
+fn :: ein dim copies Int Int String String Int Int => [RNativeInstr]
+      ein dim copies sp n lets ls j dst
+        | j >= (str len ls) = []
+        | otherwise = [NCloneSlot (ein dslot sp n lets (str slice ls j (j + 1))), NStoreSlot (dst + j)] :: (ein dim copies sp n lets ls (j + 1) dst)
+
+fn :: ein idx ins String Int Int String Int Int => [RNativeInstr]
+      ein idx ins ls sp n lets j dst
+        | j >= (str len ls) = []
+        | otherwise = [NCloneSlot (ein islot sp n lets (str slice ls j (j + 1))), NStoreSlot (dst + j)] :: (ein idx ins ls sp n lets (j + 1) dst)
+
+fn :: ein loop head Int Int String String Int Int => [RNativeInstr]
+      ein loop head sp n lets l top r =
+        i = ein islot sp n lets l
+        [NLoadImmInt 0, NStoreSlot i, NLabel top, NCloneSlot i, NStoreSlot (r + 12), NCloneSlot (ein dslot sp n lets l), NBinOp (binop id OpLt) (r + 12), NAsBool, NJumpIfZero (top + 1)]
+
+fn :: ein loop tail Int Int String String Int Int => [RNativeInstr]
+      ein loop tail sp n lets l top r =
+        i = ein islot sp n lets l
+        [NCloneSlot i, NStoreSlot (r + 12), NLoadImmInt 1, NBinOp (binop id OpAdd) (r + 12), NStoreSlot i, NJump top, NLabel (top + 1)]
+
+fn :: ein out loops [String] Int Int String String String String Int RNativeCode => RNativeCode
+      ein out loops subs sp n lets outs sums rest r st
+        | (str len rest) == 0 =
+          st1 = nc emit list st [NLoadImmInt 0, NRealFromBits, NStoreSlot (r + 1)] (r + 14)
+          st2 = ein sum loops subs sp n lets sums r st1
+          nc emit list st2 (ein store ins sp n lets outs r) (r + 14)
+        | otherwise =
+          l = str slice rest 0 1
+          top = nc lbl st
+          st0 = nc set lbl st (top + 2)
+          st1 = nc emit list st0 (ein loop head sp n lets l top r) (r + 14)
+          st2 = ein out loops subs sp n lets outs sums (str slice rest 1 (str len rest)) r st1
+          nc emit list st2 (ein loop tail sp n lets l top r) (r + 14)
+
+fn :: ein sum loops [String] Int Int String String Int RNativeCode => RNativeCode
+      ein sum loops subs sp n lets rest r st
+        | (str len rest) == 0 = nc emit list st (ein product ins subs sp n lets r 0) (r + 14)
+        | otherwise =
+          l = str slice rest 0 1
+          top = nc lbl st
+          st0 = nc set lbl st (top + 2)
+          st1 = nc emit list st0 (ein loop head sp n lets l top r) (r + 14)
+          st2 = ein sum loops subs sp n lets (str slice rest 1 (str len rest)) r st1
+          nc emit list st2 (ein loop tail sp n lets l top r) (r + 14)
+
+-- Multiply the operand elements at the current indices into r + 2, then
+-- add that product to the sum in r + 1.
+fn :: ein product ins [String] Int Int String Int Int => [RNativeInstr]
+      ein product ins [] _ _ _ r _ =  [NMoveSlot (r + 2), NBinOp (binop id OpAdd) (r + 1), NStoreSlot (r + 1)]
+      ein product ins (s:ss) sp n lets r k
+        | k == 0 = (ein read ins s sp n lets r k) :: [NStoreSlot (r + 2)] :: (ein product ins ss sp n lets r (k + 1))
+        | otherwise = (ein read ins s sp n lets r k) :: [NBinOp (binop id OpMul) (r + 2), NStoreSlot (r + 2)] :: (ein product ins ss sp n lets r (k + 1))
+
+fn :: ein read ins String Int Int String Int Int => [RNativeInstr]
+      ein read ins s sp n lets r k
+        | (str len s) <= 2 = (ein idx ins s sp n lets 0 (r + 4)) :: [NIndex (sp + k) (r + 4) (0 - (str len s)), NRealFromBits]
+        | otherwise = [NCloneSlot (sp + k), NStoreSlot (r + 3)] :: (ein idx ins s sp n lets 0 (r + 4)) :: [NIndex (r + 3) (r + 4) (str len s), NRealFromBits]
+
+fn :: ein store ins Int Int String String Int => [RNativeInstr]
+      ein store ins sp n lets outs r
+        | (str len outs) == 0 = [NLoadImmInt 0, NStoreSlot (r + 4), NMoveSlot (r + 1), NIndexSet r (r + 4) 1, NStoreSlot r]
+        | otherwise = (ein idx ins outs sp n lets 0 (r + 4)) :: [NMoveSlot (r + 1), NIndexSet r (r + 4) (str len outs), NStoreSlot r]
+
+fn :: ein drop ops Int Int Int => [RNativeInstr]
+      ein drop ops sp n k
+        | k >= n = []
+        | otherwise = [NCmmDropSlot (sp + k)] :: (ein drop ops sp n (k + 1))
+
 -- `t_(i ...) = v`: the value is in acc, the indices in slots sp ...
+-- A `Tensor[Int]` or `Tensor[Real]` (kind "N" / "R") may hold a List at run
+-- time when a generic function made it (`Tensor[V * n] with v`), so with one
+-- or two indices it checks like the reads do (libs report 2026-11-08).
+-- Only a program that creates such a tensor (`__rg_gt_poly` is reachable)
+-- pays for the check; elsewhere `Tensor[Int]` and `Tensor[Real]` are numeric.
+fn :: is poly elem name String => Bool
+      is poly elem name s =  (str len s) == 1 and (str char at s 0) >= 65 and (str char at s 0) <= 90
+
 fn :: emit tensor store RNativeEnv String Int Int Int RNativeCode => RNativeCode
       emit tensor store env t tslot sp count st
-        | (env tensor kind env t) == "N" or (env tensor kind env t) == "R" or count > 2 =
+        | count > 2 or (((env tensor kind env t) == "N" or (env tensor kind env t) == "R") and (env fn arity env "__rg_gt_poly") != 1) =
           nc emit list st [NIndexSet tslot sp count, NStoreSlot tslot] (sp + count + 1)
         | (env tensor kind env t) == "G" or (env tensor kind env t) == "L" =
           st1 = nc emit st (NStoreSlot (sp + count)) (sp + count + 1)
@@ -4323,10 +4504,10 @@ fn :: lower gen write RNativeEnv Int Int Int Int RNativeCode => RNativeCode
 -- replaces calls to them with native instructions.
 
 fn :: gt helper src stubs => String
-      gt helper src stubs =  "fn :: __rg_gt_is_gen A => Bool\n      __rg_gt_is_gen v =  False\nfn :: __rg_gt_is_list A => Bool\n      __rg_gt_is_list v =  False\nfn :: __rg_gt_len A => Int\n      __rg_gt_len v =  0\nfn :: __rg_gt_tlen A => Int\n      __rg_gt_tlen v =  0\nfn :: __rg_gt_real_bits A => Real\n      __rg_gt_real_bits v =  0.0\nfn :: __rg_gt_list_copy A => A\n      __rg_gt_list_copy v =  v\nfn :: __rg_gt_list_tensor A => T\n      __rg_gt_list_tensor v =  v\nfn :: __rg_gt_tensor_ints T => [Int]\n      __rg_gt_tensor_ints v =  []\nfn :: __rg_gt_tensor_reals T => [Real]\n      __rg_gt_tensor_reals v =  []\n"
+      gt helper src stubs =  "fn :: __rg_gt_is_gen A => Bool\n      __rg_gt_is_gen v =  False\nfn :: __rg_gt_is_list A => Bool\n      __rg_gt_is_list v =  False\nfn :: __rg_gt_len A => Int\n      __rg_gt_len v =  0\nfn :: __rg_gt_tlen A => Int\n      __rg_gt_tlen v =  0\nfn :: __rg_gt_real_bits A => Real\n      __rg_gt_real_bits v =  0.0\nfn :: __rg_gt_list_copy A => A\n      __rg_gt_list_copy v =  v\nfn :: __rg_gt_list_tensor A => T\n      __rg_gt_list_tensor v =  v\nfn :: __rg_gt_tensor_ints T => [Int]\n      __rg_gt_tensor_ints v =  []\nfn :: __rg_gt_tensor_reals T => [Real]\n      __rg_gt_tensor_reals v =  []\nfn :: __rg_gt_repeat A Int => [A]\n      __rg_gt_repeat v n =  []\nfn :: __rg_gt_poly Int => Int\n      __rg_gt_poly n =  n\n"
 
 fn :: gt helper src alloc => String
-      gt helper src alloc =  "fn :: __rg_gt_build A Int [A] => [A]\n      __rg_gt_build v n acc\n        | n <= 0 = acc\n        | otherwise = __rg_gt_build v (n - 1) (acc :: [v])\nfn :: __rg_gt_new1 A Int => [A]\n      __rg_gt_new1 v n =  __rg_gt_build v n []\nfn :: __rg_gt_rows A Int Int [[A]] => [[A]]\n      __rg_gt_rows v c r acc\n        | r <= 0 = acc\n        | otherwise = __rg_gt_rows v c (r - 1) (acc :: [(__rg_gt_new1 v c)])\nfn :: __rg_gt_new2 A Int Int => [[A]]\n      __rg_gt_new2 v r c =  __rg_gt_rows v c r []\nfn :: __rg_gt_shape [A] Int Int => Int\n      __rg_gt_shape xs k flag\n        | k == 1 = __rg_gt_len xs\n        | (__rg_gt_len xs) == 0 = __rg_gt_shape_pick k 1 0\n        | otherwise = __rg_gt_shape_pick k (__rg_gt_rank_of xs_(0) flag) (__rg_gt_row_len xs_(0))\nfn :: __rg_gt_row_len A => Int\n      __rg_gt_row_len h\n        | __rg_gt_is_list h = __rg_gt_len h\n        | otherwise = 0\nfn :: __rg_gt_rank_of A Int => Int\n      __rg_gt_rank_of h flag\n        | not (__rg_gt_is_list h) = 1\n        | flag == 0 = 2\n        | (__rg_gt_len h) == 0 = 1\n        | otherwise = __rg_gt_rank_inner h_(0)\nfn :: __rg_gt_rank_inner A => Int\n      __rg_gt_rank_inner e\n        | __rg_gt_is_list e = 2\n        | otherwise = 1\nfn :: __rg_gt_shape_pick Int Int Int => Int\n      __rg_gt_shape_pick 0 rank _ =  rank\n      __rg_gt_shape_pick _ 1 _ =  0\n      __rg_gt_shape_pick _ _ rowlen =  rowlen\n"
+      gt helper src alloc =  "fn :: __rg_gt_new1 A Int => [A]\n      __rg_gt_new1 v n =  __rg_gt_repeat v n\nfn :: __rg_gt_rows A Int Int [[A]] => [[A]]\n      __rg_gt_rows v c r acc\n        | r <= 0 = acc\n        | otherwise = __rg_gt_rows v c (r - 1) (acc :: [(__rg_gt_new1 v c)])\nfn :: __rg_gt_new2 A Int Int => [[A]]\n      __rg_gt_new2 v r c =  __rg_gt_rows v c r []\nfn :: __rg_gt_shape [A] Int Int => Int\n      __rg_gt_shape xs k flag\n        | k == 1 = __rg_gt_len xs\n        | (__rg_gt_len xs) == 0 = __rg_gt_shape_pick k 1 0\n        | otherwise = __rg_gt_shape_pick k (__rg_gt_rank_of xs_(0) flag) (__rg_gt_row_len xs_(0))\nfn :: __rg_gt_row_len A => Int\n      __rg_gt_row_len h\n        | __rg_gt_is_list h = __rg_gt_len h\n        | otherwise = 0\nfn :: __rg_gt_rank_of A Int => Int\n      __rg_gt_rank_of h flag\n        | not (__rg_gt_is_list h) = 1\n        | flag == 0 = 2\n        | (__rg_gt_len h) == 0 = 1\n        | otherwise = __rg_gt_rank_inner h_(0)\nfn :: __rg_gt_rank_inner A => Int\n      __rg_gt_rank_inner e\n        | __rg_gt_is_list e = 2\n        | otherwise = 1\nfn :: __rg_gt_shape_pick Int Int Int => Int\n      __rg_gt_shape_pick 0 rank _ =  rank\n      __rg_gt_shape_pick _ 1 _ =  0\n      __rg_gt_shape_pick _ _ rowlen =  rowlen\n"
 
 fn :: gt helper src lists => String
       gt helper src lists =  "fn :: __rg_gt_copy [A] => [A]\n      __rg_gt_copy xs =  __rg_gt_list_copy xs\nfn :: __rg_gt_deep_copy [[A]] Int Int [[A]] => [[A]]\n      __rg_gt_deep_copy xs i n acc\n        | i >= n = acc\n        | otherwise = __rg_gt_deep_copy xs (i + 1) n (acc :: [(__rg_gt_copy xs_(i))])\nfn :: __rg_gt_copy_any [A] => [A]\n      __rg_gt_copy_any xs\n        | (__rg_gt_len xs) == 0 = []\n        | otherwise = __rg_gt_copy_first xs xs_(0)\nfn :: __rg_gt_copy_first [A] A => [A]\n      __rg_gt_copy_first xs h\n        | __rg_gt_is_list h = __rg_gt_deep_copy xs 0 (__rg_gt_len xs) []\n        | otherwise = __rg_gt_copy xs\nfn :: __rg_gt_from_list [A] => [A]\n      __rg_gt_from_list xs\n        | (__rg_gt_len xs) == 0 = []\n        | otherwise = __rg_gt_from_first xs xs_(0)\nfn :: __rg_gt_from_first [A] A => [A]\n      __rg_gt_from_first xs h\n        | __rg_gt_is_gen h = __rg_gt_copy xs\n        | otherwise = __rg_gt_list_tensor xs\nfn :: __rg_gt_to_list T => [A]\n      __rg_gt_to_list t\n        | __rg_gt_is_list t = __rg_gt_copy_any t\n        | otherwise = __rg_gt_tensor_ints t\nfn :: __rg_gt_to_list_real T => [Real]\n      __rg_gt_to_list_real t =  __rg_gt_tensor_reals t\n"
@@ -4382,6 +4563,7 @@ fn :: show tensor kind RNativeEnv RExpr => String
       show tensor kind env (ECall ":tensor-row-slice:" (b:_)) =  show tensor kind env b
       show tensor kind env (ECall ":tensor-col-slice:" (b:_)) =  show tensor kind env b
       show tensor kind _ (ETensor es) =  literal show kind es ""
+      show tensor kind env (EEinsum (e:_) _) =  show tensor kind env e
       show tensor kind env (ECall f _)
         | not (str starts with f ":") = env tensor kind env ("()" + f)
       show tensor kind _ _ =  "U"

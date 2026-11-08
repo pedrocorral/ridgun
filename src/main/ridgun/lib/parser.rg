@@ -4850,6 +4850,36 @@ fn :: collect collided fields [RScopedType] [RScopedType] [String] => [String]
         acc1 = collect fields collided from list fs m all_ts acc
         collect collided fields ts all_ts acc1
 
+-- A field of a type in module m clashes with a function of the same name
+-- in another module (the root program included): the field is then
+-- qualified like two fields of the same name (libs report 2026-11-08: a
+-- program `fn :: items` replaced the accessor `items` inside a lib).
+fn :: fn mod map [RScopedFn] RStrMap => RStrMap
+      fn mod map [] acc = acc
+      fn mod map ((ScopedFn m _ (FnDef fname _ _ _)):fs) acc =
+        fn mod map fs (fn mod map step (":" + m) fname (str map get acc fname) acc)
+
+fn :: fn mod map step String String String RStrMap => RStrMap
+      fn mod map step mk fname "" acc = str map set acc fname mk
+      fn mod map step mk fname prev acc
+        | prev == mk = acc
+        | otherwise = str map set acc fname "__multi__"
+
+fn :: field fn clash String String => Bool
+      field fn clash "" _ = False
+      field fn clash found mk = found != mk
+
+fn :: field fn collided from list [RField] String RStrMap [String] => [String]
+      field fn collided from list [] _ _ acc = acc
+      field fn collided from list ((TypeField fname _):fs) mk fmap acc
+        | field fn clash (str map get fmap fname) mk = field fn collided from list fs mk fmap (add unique seen fname acc)
+        | otherwise = field fn collided from list fs mk fmap acc
+
+fn :: collect field fn collided [RScopedType] RStrMap [String] => [String]
+      collect field fn collided [] _ acc = acc
+      collect field fn collided ((ScopedType m _ (TypeDef _ _ fs)):ts) fmap acc =
+        collect field fn collided ts fmap (field fn collided from list fs (":" + m) fmap acc)
+
 fn :: other mod has fn [RScopedFn] String String => Bool
       other mod has fn [] _ _ = False
       other mod has fn ((ScopedFn m2 _ (FnDef fname2 _ _ _)):fs) m1 target
@@ -6323,7 +6353,7 @@ fn :: resolve scoped state finish ([RTypeDef], [RModCtxEntry]) [RScopedFn] RModC
 fn :: resolve scoped state encoded [RScopedFn] [RScopedType] [RModAlias] => RProgram
       resolve scoped state encoded s_fns s_tys aliases =
         collided_types = collect collided types s_tys s_tys []
-        collided_fields = collect collided fields s_tys s_tys []
+        collided_fields = collect field fn collided s_tys (fn mod map s_fns StrMapEmpty) (collect collided fields s_tys s_tys [])
         collided_fns = collect collided fns s_fns s_fns []
         collided_ctors = collect collided ctors s_tys s_tys []
         base_tmap = build base type map s_tys s_tys collided_types

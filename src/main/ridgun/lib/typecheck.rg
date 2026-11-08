@@ -1079,7 +1079,7 @@ fn :: check expr RExpr String [RTypeBind] [RTypeBind] => RType [RTypeError]
         prepend type errs (snd errs b_res) (TyVar "Result", [])
       check expr (EEinsum es subs) fn_name locals fns =
         e_res = check einsum terms es subs fn_name locals fns []
-        finish einsum check e_res
+        finish einsum check (einsum elem es fn_name locals fns) e_res
       check expr (EHadamard _ l _ r _) fn_name locals fns =
         l_res = check expr l fn_name locals fns
         r_res = check expr r fn_name locals fns
@@ -1254,8 +1254,18 @@ fn :: check with ctx body String RExpr String [RTypeBind] [RTypeBind] (RType, [R
         b_res = check expr body fn_name locals1 fns
         prepend type errs v_errs b_res
 
-fn :: finish einsum check ([RDimBind], [RTypeError]) => RType [RTypeError]
-      finish einsum check (_, errs)                  =  (TyTensor (tensor elem any) [], errs)
+-- The result of `@` has the element type of its first operand, so `echo`
+-- and later reads of a `Real` contraction see `Real`s.
+fn :: einsum elem [RExpr] String [RTypeBind] [RTypeBind] => RType
+      einsum elem (e:_) fn_name locals fns =  einsum elem of (check expr e fn_name locals fns)
+      einsum elem [] _ _ _ =  tensor elem any
+
+fn :: einsum elem of (RType, [RTypeError]) => RType
+      einsum elem of ((TyTensor el _), _) =  el
+      einsum elem of _ =  tensor elem any
+
+fn :: finish einsum check RType ([RDimBind], [RTypeError]) => RType [RTypeError]
+      finish einsum check el (_, errs)               =  (TyTensor el [], errs)
 
 fn :: finish hadamard check (RType, [RTypeError]) (RType, [RTypeError]) String => RType [RTypeError]
       finish hadamard check ((TyTensor e dims), l_errs) (r_ty, r_errs) fn_name = (TyTensor e dims, l_errs :: r_errs :: (numeric tensor errs "element-wise operator" (TyTensor e dims) r_ty fn_name))

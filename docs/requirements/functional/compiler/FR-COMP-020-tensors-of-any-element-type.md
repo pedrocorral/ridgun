@@ -47,13 +47,18 @@ verified_by: [TS-COMP-020]
 4. Compile errors for numeric-only operations, `Tensor_GPU` and parallel writes (§7, §11).
 5. Bounds errors on numeric tensors (§8) and copies on send (§13).
 
-## Implementation status (0.9.42)
+## Implementation status (0.9.45)
 - Done on LLVM and the pure x86-64 encoder: the Statement (including shape patterns) and §1-§11, §13 (phases 1-5).
 - Every `tests/cases/tensors` case gives the same output and exit status on LLVM and on the pure x86-64 encoder (`--target x86_64-elf`).
 - §12: the ARM64 encoder emits placeholders for the GenTensor instructions. Its runtime has no `Real` or GenTensor support yet.
 - Representation: a GenTensor is not a separate heap tag. A one-dimensional GenTensor is an RC vector of boxed elements (the list representation, tag `2`); a two-dimensional one is a vector of row vectors. The type checker keeps numeric-only code away from it (§7). Details: `docs/etc/gentensor.md`.
 - A GenTensor has one or two dimensions; a third dimension is a compile error.
 - Initial value (§6): `Tensor[T * dims] with v`, on numeric tensors of any rank and on GenTensors of one or two dimensions.
+- 0.9.45 (libs report 2026-11-08):
+  - A tensor made by a generic function (`Tensor[V * n] with v`) is a GenTensor even when `V` is `Int` or `Real`. Writes through a `Tensor[Int]` or `Tensor[Real]` parameter now check for it at run time, like reads. Only programs that create such a tensor pay for the check.
+  - Creating a GenTensor of n elements is one allocation and n clones (`NGtConv` mode 5), not n list appends: 1,000,000 `String` elements in about 20 ms instead of 790 ms.
+  - `@` on `Tensor[Real]` operands computes with `Real`s (loops; on LLVM a native path for two rank-2 operands). Before, it multiplied the f64 bits as integers and gave zeros.
+  - Known gap: a generic function that reads a numeric `Tensor[Real]` (made with `Tensor[Real * n]`, not generically) gets the f64 bits as an `Int`, because a numeric tensor does not record its element type at run time.
 
 ## Open questions
 - Copying a tensor inside a list, an ADT or a record on send (today a compile error, §13).

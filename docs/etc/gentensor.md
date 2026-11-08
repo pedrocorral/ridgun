@@ -2129,3 +2129,113 @@ Backends:
   .ascii "runtime error: sort by: the lists have different lengths\n"
 .Lend:
 ```
+
+## Generic tensors and `Real` contraction (0.9.45)
+
+Three fixes from the libs report of 2026-11-08 (`hashmap-tensores-y-campos.md`).
+
+### Creating a GenTensor (`NGtConv` mode 5)
+
+`__rg_gt_new1 v n` (one dimension, and each row of `__rg_gt_new2`) is `__rg_gt_repeat v n`. That pseudo call lowers to the list `[v, n]` in a slot, then `NGtConv slot 5`: one buffer of n words, each a clone of `v`, boxed as a list. Before, `__rg_gt_build` appended one element at a time (`acc :: [v]`), about 0.75 µs per element.
+
+- **LLVM.** `@__rg_gt_repeat(src)` in `llvm gt conv helpers`.
+- **x86-64.** `repeat.s` (230 bytes, below), the same frame as `copy.s`.
+
+| 1,000,000 elements | 0.9.44 | 0.9.45 |
+|---|---|---|
+| `Tensor[String * n]` | 792 ms | 20 ms |
+| `Tensor[V * n] with v`, V = `Int` | 679 ms | 2 ms |
+
+### Writes through a numeric parameter
+
+A tensor made by a generic function (`Tensor[V * n] with v`) is a GenTensor (a list) even when `V` is `Int`. A `Tensor[Int]` or `Tensor[Real]` parameter can receive it. A write `t_(i) = v` of kind "N" or "R" with one or two indices therefore checks `NIsList` at run time and takes the list path for a list, like the reads. Before, it went to the numeric runtime write, which ignored the list, and the write was lost.
+
+The check costs about 8% on a loop of numeric writes. It is emitted only when the program creates a tensor with a type-variable element: the reference collector adds the helper `__rg_gt_poly` for `:typed-tensor:` with a one-letter upper-case element type, and `emit tensor store` checks `env fn arity env "__rg_gt_poly" == 1`.
+
+### `@` on `Real` tensors
+
+The runtime contraction (rt einsum, and the LLVM fast path `@__rg_fast_einsum`) multiplies the data words as integers. When every operand of `@` is a variable of kind "R", `lower real einsum` emits:
+
+1. `NEinsumReal sp n spec_off spec_len`. On LLVM it calls `@__rg_fast_einsum_real`, the integer fast path with `double` arithmetic: two rank-2 numeric operands, spec `xy,yz`. It returns 0 when it does not apply. On x86-64 and ARM64 it sets acc to 0.
+2. Otherwise, loops with the runtime's rules: a letter in more than one operand is summed, a letter in one operand stays in the result in order of first appearance, and summing every letter gives shape `[1]`. Each letter has a dimension slot (`NAdtField op (-10 - pos)`) and an index slot. Each step reads the operands with `NIndex` and `NRealFromBits`, multiplies and adds with `NBinOp`, and stores the sum with `NIndexSet`. The zero result comes from `NGtConv` mode 4 on `[0, d1, ..., dn]`.
+
+The type checker gives the result of `@` the element type of its first operand, so `echo` and later reads see `Real`s.
+
+| 200 x 200 `Real` matrix product | LLVM | x86-64 |
+|---|---|---|
+| 0.9.44 | zeros | zeros |
+| 0.9.45 | 1 ms (native path) | 2.1 s (loops) |
+
+```asm
+.set ALLOC_BUF, 4205566
+.set BOX_RC_VEC, 4208821
+.set BOX_RVAL, 4209847
+.set CLONE_SLOT, 4198440
+.set MAKE_LIST, 4198520
+  push rbx
+  push r12
+  push r13
+  push r14
+  push r15
+  sub rsp, 32
+  xor r13d, r13d
+  test rdi, rdi
+  jz 1f
+  test dil, 7
+  jnz 1f
+  mov rax, [rdi+8]
+  mov r12, [rax+8]
+  mov rdx, [rax+16]
+  mov rcx, [rdi+16]
+  sub rdx, rcx
+  cmp rdx, 2
+  jb 1f
+  lea r12, [r12+rcx*8]
+  mov r15, [r12]
+  mov rax, [r12+8]
+  test al, 1
+  jz 1f
+  sar rax, 1
+  mov r13, rax
+1:
+  test r13, r13
+  jg 2f
+  mov rdi, rsp
+  xor esi, esi
+  movabs rax, MAKE_LIST
+  call rax
+  jmp 9f
+2:
+  lea rdi, [r13*8]
+  movabs rax, ALLOC_BUF
+  call rax
+  mov r14, rax
+  xor ebx, ebx
+3:
+  mov rdi, r15
+  movabs rax, CLONE_SLOT
+  call rax
+  mov [r14+rbx*8], rax
+  inc rbx
+  cmp rbx, r13
+  jb 3b
+  mov [rsp], r13
+  mov [rsp+8], r14
+  mov [rsp+16], r13
+  mov rdi, rsp
+  movabs rax, BOX_RC_VEC
+  call rax
+  mov qword ptr [rsp], 2
+  mov [rsp+8], rax
+  mov qword ptr [rsp+16], 0
+  mov rdi, rsp
+  movabs rax, BOX_RVAL
+  call rax
+9:
+  add rsp, 32
+  pop r15
+  pop r14
+  pop r13
+  pop r12
+  pop rbx
+```

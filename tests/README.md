@@ -34,11 +34,12 @@ fn :: main => ()
 ```
 `-- expect-build-error: TEXT` makes the case pass only when the build fails and its output contains TEXT. An empty TEXT accepts any build failure, for removed or forbidden constructs whose message the documents don't fix. `-- uses-libs` copies the ridgun-libs bundles next to the case; no case needs them yet.
 
-`run.rg` also holds four toolchain checks that no single program can express:
+`run.rg` also holds toolchain checks that no single program can express, among them:
 - `-o` into a folder that doesn't exist either creates the folder or fails. It never reports success without writing the file (FR-COMP-004: build writes the ELF; Solstice register RG-081).
 - A type error exits with a non-zero status and writes no binary.
 - Build time stays near-linear in the number of functions: 200 → 800 functions takes at most 8× as long. The documents promise nothing here; Solstice register RG-075 measured 26 s for any program importing Solstice.
 - Building a program that imports standard libraries (`str`, `io`, `list`, `cli`) completes in under 3 000 ms (RG-075).
+- Inside an imported lib, a record field name means the lib's accessor even when the program defines a function with that name (FR-COMP-012; libs report 2026-11-08).
 
 ## What the cases cover
 | Folder | Cases | Sources |
@@ -57,10 +58,10 @@ fn :: main => ()
 | `files/` | `read_file` gives back exactly what `write_file` wrote, for every byte value | consistency; Solstice register RG-089 |
 | `removed/` | `global ::` and `spawn` / `join` must not compile | FR-COMP-009 §5, AC-4 |
 | `syntax/` | a top-level line that is no known declaration must not build (today it is dropped silently) | spec.md (a file is a sequence of declarations); Solstice register RG-090 |
-| `tensors/` | numeric element types build and keep their values; `Real` elements are `Real`s; tensors of `String`, `Bool`, lists, tuples and ADTs (defaults, `Tensor[T * dims] with v`, numeric tensors of any rank, in-place reads and writes, bounds errors, list conversion, no leaks); `Tensor_GPU` of non-numeric elements and tensor literals of non-numbers are compile errors | spec.md "Tensors"; FR-COMP-018; FR-COMP-020 |
+| `tensors/` | numeric element types build and keep their values; `Real` elements are `Real`s; tensors of `String`, `Bool`, lists, tuples and ADTs (defaults, `Tensor[T * dims] with v`, numeric tensors of any rank, in-place reads and writes, also through a numeric parameter to a generically made tensor, bounds errors, list conversion, no leaks); `@` on `Real` tensors; `Tensor_GPU` of non-numeric elements and tensor literals of non-numbers are compile errors | spec.md "Tensors"; FR-COMP-018; FR-COMP-020 |
 | `strict/` | `--strict` refuses `_` in declared names and function calls, and `(Int, Int)` returns; `" "` and `"_"` never resolve to the same function name | book 02:193-197; FR-COMP-005 §5; FR-COMP-008 |
 | `runtime/` | `sys_exit n` exits with n and stops there | FR-VM-002:32,45 |
-| `perf/` | **Proposals** (`-- kind: proposal`): building a 20 000-element list at either end in under 1 s; 8 agents on 8 equal jobs at once take no longer than one thread doing them in turn. Also `sort by ints` / `sort by texts` on 100 000 elements, whole program under 1 s (a requirement, not a proposal) | Solstice register RG-085, RG-079; FR-COMP-021 §6 |
+| `perf/` | **Proposals** (`-- kind: proposal`): building a 20 000-element list at either end in under 1 s; 8 agents on 8 equal jobs at once take no longer than one thread doing them in turn. Also `sort by ints` / `sort by texts` on 100 000 elements, whole program under 1 s (a requirement, not a proposal); creating 1 000 000-element tensors of `String` and of a generic element type, and a 120 × 120 `Real` matrix product, under 1 s | Solstice register RG-085, RG-079; FR-COMP-021 §6 |
 
 ## Decisions pending
 The documents leave these points open, or say different things in different places. No case tests them. Each needs a decision, written in spec.md, and then a case.
