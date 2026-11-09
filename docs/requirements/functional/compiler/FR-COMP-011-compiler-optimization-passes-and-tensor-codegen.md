@@ -4,12 +4,12 @@ title: Compiler Optimization Catalog, O(N) Contiguous Tensor Allocation, In-Plac
 status: implemented
 priority: must
 created: 2026-10-24
-updated: 2026-10-25
+updated: 2026-11-08
 depends_on:
   - FR-COMP-002
   - FR-COMP-004
   - FR-COMP-010
-verified_by: []
+verified_by: [TS-COMP-011]
 ---
 # FR-COMP-011 — Compiler Optimization Catalog, O(N) Contiguous Tensor Allocation, In-Place Tensor Mutation, and Ephemeral SHA-256 Fusion
 
@@ -48,6 +48,13 @@ The `ridgunc` native compiler SHALL maintain a documented catalog of compile-tim
    - **OPT-013 — Direct SSA Register Calling Convention (`@__rg_fn_{fid}_reg`) & Caller Frame Escape Elimination**: Emits a register-parameter entry `@__rg_fn_{fid}_reg(i64 %arg_0, ...)` for user functions (`fid >= 5`, `arity <= 8`) alongside the indirect ABI wrapper `@__rg_fn_{fid}(ptr %args)`, and lowers direct `NCallFn` instructions to load arguments from `%frame`, zero the caller argument slots (`store i64 0`), and call `@__rg_fn_{fid}_reg` directly in hardware registers so caller `%frame` pointers do not escape across calls.
    - **OPT-014 — AST-Level Higher-Order Function (`fold`, `map`, `filter`) Direct-Call Specialization**: Specializes `fold f init xs`, `map f xs`, and `filter p xs` when `f`/`p` is a known top-level function or non-capturing lambda into direct-call recursive helpers (`__rg_spec_fold_*`, `__rg_spec_map_*`, `__rg_spec_filter_*`) that leverage self-TCO (`OPT-002`) and direct register calls (`OPT-013`) instead of indirect runtime dispatch (`NCallIndirect1` / `NCallIndirect2`).
 
+7. **OPT-015..OPT-018 — Cheap Loops, Field Reads and Small Calls (TASK-0059)**:
+   - **OPT-015**: On LLVM, a function with a self tail call and at most 24 slots SHALL copy the tail-call arguments, drop its slots and return without calling the runtime (`@__rg_rt_tco_copy`, `@__rg_rt_epilogue`), so its frame stays in registers.
+   - **OPT-016**: A record field read `field r` SHALL read the field from the record without calling the accessor; when `r` is a local variable the record SHALL NOT be cloned or dropped. On LLVM, field reads and constructor matches on ADTs SHALL run inline, with the runtime call kept only for values that are not ADTs or fields out of range.
+   - **OPT-017**: In a self tail call, a parameter passed as an argument and read by a later argument SHALL be moved, not cloned.
+   - **OPT-018**: A parameter that every clause of a function only matches with a pattern (constructor, tuple, `[]`, string or `_`) SHALL be borrowed: the caller passes a local variable without a clone and the callee does not drop it. This applies only to functions that are called directly (not used as values, partially applied, dispatched by name, agents, entry points or library exports) and do not call themselves.
+   - These optimizations SHALL NOT change any program output, exit status or `cmm live blocks` result.
+
 ## Rationale
 - High-performance library code in pure Ridgun (`crypto.rg`, `argon2id.rg`, numerical/scientific computing) must achieve sub-second throughput through legitimate compiler and runtime codegen optimizations rather than by embedding library algorithms (`pbkdf2`, `argon2id`) as compiler built-ins.
 - Documenting every compiler optimization pass with a stable identifier (`OPT-001`..`OPT-006`) establishes a dedicated optimization architecture area in `ridgunc` that can grow systematically.
@@ -56,3 +63,4 @@ The `ridgunc` native compiler SHALL maintain a documented catalog of compile-tim
 1. **AC-1 (Optimization Catalog)**: `docs/etc/compiler_optimizations.md` documents `OPT-001` through `OPT-006` with AST/IR patterns, preconditions, and cost models, and is indexed in `docs/etc/INDEX.md`.
 2. **AC-2 ($\mathcal{O}(N)$ Large Tensor Allocation & In-Place Argument Mutation)**: Allocating `Tensor[U64 * 160000 * 16]` (~20 MiB) and mutating a `Tensor` inside a function returning `()` or `Int` succeed in `< 50 ms` and preserve mutations in the caller.
 3. **AC-3 (Cryptographic Hot-Loop Throughput in Pure Ridgun)**: 600,000 iterations of `sha256 raw (opad + (sha256 raw (ipad + u)))` (PBKDF2-HMAC-SHA256 core) and Argon2id / BlaMka tensor block compression execute in `< 1 s` in pure Ridgun.
+4. **AC-4 (Field Reads and Small Calls, TS-COMP-011)**: 10 000 000 field reads, 10 000 000 calls to a function that matches its record parameter, and 10 000 000 turns of an empty self tail call loop run in under 400 ms on LLVM (`tests/cases/perf/field_reads_and_small_calls.rg`); borrowed parameters give the same results as owned ones with locals, temporaries, the same record twice, multi-variant constructors, tuples, strings and lists, and leak no blocks (`tests/cases/functions/borrowed_pattern_parameters.rg`).

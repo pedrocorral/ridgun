@@ -31,6 +31,10 @@ Every optimization in `ridgunc` is assigned a stable `OPT-NNN` identifier and do
 | `OPT-012` | SIMD-Vectorized Flat Hadamard (`+`,`-`,`*`,`and`,`or`,`xor`) & Fast 2D `NEinsum` | AST -> LLVM IR (`compiler.rg`, `llvm.rg`) | `A_ij + B_ij`, `A_ij * B_ij`, `A_ij xor B_ij`, `A_ik @ B_kj` | Hoists `op_id` switch into 6 branch-free vectorizable loops (`vpaddq`/`vpmullq`/`vpxor`) and runs 2D matmul in cache-friendly unit-stride `i-k-j` order |
 | `OPT-013` | Direct SSA Register Calling Convention (`@__rg_fn_{fid}_reg`) & Caller Frame Escape Elimination | Native IR -> LLVM IR (`compiler.rg`, `llvm.rg`) | Direct function calls `NCallFn fid start_slot count` (`fid >= 5`, `arity <= 8`) | Passes arguments in hardware registers (`rdi..r9`), stops caller `%frame` pointers from escaping on calls (unlocking cross-call `SROA`), and enables LLVM `CGSCC` cross-function inlining |
 | `OPT-014` | AST-Level Higher-Order Function (`fold`, `map`, `filter`) Direct-Call Specialization | AST -> AST (`compiler.rg`) | `fold f init xs`, `map f xs`, `filter p xs` where `f`/`p` is a known top-level function or lambda | Replaces indirect runtime closure dispatch (`NCallIndirect1` / `NCallIndirect2`) with specialized direct-call (`OPT-013`) and self-TCO (`OPT-002`) loops |
+| `OPT-015` | Inline Tail-Call Frame Copy & Epilogue for Small Frames | Native IR -> LLVM IR (`llvm.rg`) | Functions with a self tail call (`NTailCall`), `num_slots <= 24` | Replaces `@__rg_rt_tco_copy`, `@__rg_rt_epilogue` and `@__rg_rt_clear_locals` with unrolled loads, stores and `@__rg_fast_drop_val`; `%frame` no longer escapes, so loops run in registers |
+| `OPT-016` | Direct Record Field Reads & Inline ADT Match/Field Fast Paths | AST -> Native IR -> LLVM IR (`compiler.rg`, `llvm.rg`) | `field r` (record accessor call), constructor patterns, `NAdtField slot k`, `NMatchAdt` | Reads the field from the record's slot without a call, a clone or a drop of the record; tag and field reads inline in LLVM |
+| `OPT-017` | Deferred Parameter Move in Self Tail Calls | AST -> Native IR (`compiler.rg`) | `loop r (j + 1) (acc + field r)`: a parameter passed on and read by a later argument | Moves the parameter into its argument slot after the other arguments instead of cloning it |
+| `OPT-018` | Borrowed Pattern Parameters | AST -> Native IR (`compiler.rg`, all backends) | Parameters that every clause matches with a constructor, tuple, `[]`, string or `_` pattern | The caller passes a local without a clone and the callee empties the slot without a drop (`NPeekSlot`, `NForgetSlot`) |
 
 ---
 
@@ -135,6 +139,50 @@ Every optimization in `ridgunc` is assigned a stable `OPT-NNN` identifier and do
   - When `fold f init xs`, `map f xs`, or `filter p xs` is called where the first argument `f`/`p` is an `EVar fn_name` referencing a known top-level function (including lifted lambdas `__rg_lambda_*` after lambda lifting), `compiler.rg` synthesizes a specialized recursive helper function (`__rg_spec_fold_{id}`, `__rg_spec_map_{id}`, `__rg_spec_filter_{id}`) that invokes `fn_name` via a direct `ECall` and replaces the HOF call site with a direct call to the specialized helper.
   - Because the synthesized helper is a standard `FnDef`, it automatically benefits from `OPT-002` (self-TCO loop for `fold`), `OPT-003` (`RMM1` static last-use drops), `OPT-009` (unrolled frame `SROA`), and `OPT-013` (`@__rg_fn_{fid}_reg` register calling convention and cross-function inlining of `fn_name` into the loop).
 
+
+### `OPT-015` — Inline Tail-Call Frame Copy & Epilogue for Small Frames
+- **Location**: `emit_llvm_fn`, `emit_llvm_instr` (`NTailCall`, `NClearLocals`), `llvm_unroll_tco_copy` in `src/main/ridgun/lib/llvm.rg`.
+- **Problem Addressed**: `OPT-009` unrolls the prologue and epilogue only for functions without a self tail call. A loop (`OPT-002`) still called `@__rg_rt_tco_copy` on every turn (a 256-byte buffer clear plus a drop loop) and `@__rg_rt_epilogue` on exit. Passing `ptr %frame` to these calls kept the whole frame in memory. An empty three-argument loop cost about 20 ns per turn.
+- **Transformation**: For `fid >= 5`, `arity <= 8` and `num_slots <= 24`:
+  1. The prologue stores the register arguments and zeroes the other slots one by one; the epilogue is `llvm_unroll_epilogue`.
+  2. `NTailCall start arity` becomes, in this order: load and zero `%frame[start + i]` for each argument; load, zero and `@__rg_fast_drop_val` every slot `0 .. num_slots - 1`; store the arguments in `%frame[0 .. arity - 1]`. This is the order of effects of `@__rg_rt_tco_copy`.
+  3. `NClearLocals` is unrolled up to 24 slots (was 8).
+- **Effect**: no call takes `%frame`, so `SROA` turns the frame into SSA values and the loop body into register code: 1 000 000 turns of an empty loop take 3 ms instead of 20 ms.
+
+### `OPT-016` — Direct Record Field Reads & Inline ADT Match/Field Fast Paths
+- **Location**: `lower_field_read` (`lower_call_expr`) in `src/main/ridgun/lib/compiler.rg`; `@__rg_adt_field_fast`, `@__rg_match_adt_fast` in `src/main/ridgun/lib/llvm.rg`.
+- **Problem Addressed**: `field r` called the accessor function. The caller cloned the record, the accessor read the field through the runtime and dropped the record: three runtime calls per read.
+- **Transformation**:
+  1. `field r` with `r` a local variable lowers to `NAdtField (slot of r) k`: the record stays in its slot (borrowed), only the field is cloned. Any other record expression is computed into a scratch slot, read, and dropped (`NCmmDropSlot`).
+  2. LLVM: `NAdtField slot k` (k >= 0) calls `@__rg_adt_field_fast`: if the value is a heap ADT (tag 4) and `k` is below the field count, it reads the field word from the field vector and clones it with `@__rg_fast_clone_slot`; otherwise it calls `@__rg_rt_adt_field`.
+  3. LLVM: `NMatchAdt slot off len arity` calls `@__rg_match_adt_fast`: tag 4, same constructor name length, same bytes (the name is a constant in `@__rg_rodata`, so the loop folds to immediate compares), same field count.
+- **ADT layout used** (same as `@__rg_rt_adt_field` and `@__rg_rt_match_adt`): `i32` tag 4 at `+0`; constructor name header at `+8` (data pointer at `+8`, length at `+16`); field vector header at `+16` (data pointer at `+8`, length at `+16`, one 8-byte word per field).
+
+### `OPT-017` — Deferred Parameter Move in Self Tail Calls
+- **Location**: `tco_deferred_vars`, `lower_tco_args_deferred`, `lower_tco_deferred_moves` (`lower_tail_return_cmm`) in `src/main/ridgun/lib/compiler.rg`.
+- **Problem Addressed**: `OPT-002` moves a parameter into its argument slot only when no later argument reads it. In `loop r (j + 1) (acc + field r)` the record `r` was cloned on every turn and the old copy dropped by the frame copy.
+- **Transformation**: A parameter passed as a plain argument and read by a later argument is skipped in the first pass; the other arguments are computed (they read it from its own slot, and cannot move it: it is added to the scope variables); then it is moved into its argument slot. Only parameters qualify: they cannot be reassigned, so the value is the same at both points.
+
+### `OPT-018` — Borrowed Pattern Parameters
+- **Location**: `borrow_masks`, `fn_borrow_mask`, `lower_borrow_call`, `borrow_fn_instrs` in `src/main/ridgun/lib/compiler.rg`; `NPeekSlot`, `NForgetSlot` in `elf64.rg`, `llvm.rg`, `x86_64.rg`, `arm64.rg`.
+- **Problem Addressed**: A small function that matches its record parameter (`get a (R a _ _) = a`) received a clone of the record and dropped it on return: two reference-count updates through the runtime per call.
+- **Which parameters are borrowed**: parameter `i` of function `f` when every clause matches it with a pattern that only reads it: a constructor (not a typed-tensor or primitive wrapper pattern), a tuple, `[]`, a string, or `_`. The value is never bound to a name, so the body cannot return, store or pass it. `f` must also: have arity 1..20 and the same number of patterns in every clause, have no sequence binding, not call itself, not start with `__`, not be an overloadable operator, and not be in the dispatch set (function values, partial application, names used as strings, agents, entry points, show roots, every function of a library). Those are exactly the functions that are only called through `lower_direct_or_partial_call`. The bit mask is stored in the function arity map under the key `"#b " + name`.
+- **Callee**: before every `NReturn` (and at the end of the instructions) it emits `NForgetSlot i` for each borrowed parameter: the slot is set to 0 without a drop, so the epilogue leaves the value alone. Argument slots are never in a `NClearLocals` range (those start at `arity`).
+- **Caller**: arguments for owned parameters are computed as before. For a borrowed parameter:
+  - a local variable is skipped in the first pass and copied as is (`NPeekSlot` then `NStoreSlot`) right before the call: no clone; the variable keeps ownership;
+  - any other expression is computed into its argument slot, moved to a scratch slot `sp + count + i`, copied as is into the argument slot, and the scratch slot is dropped after the call (`NCmmDropSlot`; the result is parked in `sp + 2 * count` meanwhile).
+  - The call itself zeroes the argument slots as before (`OPT-013` on LLVM; `@__rg_rt_init_frame` on x86-64 and ARM64), so the value is owned once.
+- **Tail calls**: a function that any function calls in tail position never borrows (`borrow_tail_fns` adds those names to the excluded set: the last expression of a body, of a block, of every guard branch and of a `where` body). A borrowed call drops its scratch values after the call returns, so in tail position it would no longer be the last instruction, and the backend could not turn it into a jump. The `lower_tco_arg_expr` direct-call clause (which may move arguments) does not apply to borrowing callees either.
+- **Incident (2026-11-08, fixed in 0.9.46)**: the first version had no tail-call exclusion. In the lexer, `lex loop at` calls `lex step (lex one tok ...) src len rev_acc` in tail position and `lex step` calls `lex loop at` back. The call became a real call with a drop after it. Each pending `lex loop at` frame kept `rev_acc` alive, so `[tok] :: rev_acc` copied the whole list on every token, and memory grew quadratically: 1 000 rounds 24 MB, 4 000 rounds 321 MB. The self-built compiler passed 7 GB in 3 s on `check`; uncapped runs crashed the machine. Regression test: `tests/cases/functions/tail_call_to_pattern_parameter_function.rg`.
+- **Effect**: 1 000 000 calls of `get a r` in a loop: 6 ms (62 ms on 0.9.45). x86-64: 80 ms (124 ms).
+
+### Rule: tail calls stay last
+Applies to every new or changed optimization.
+- A call in tail position (the last expression of a function body, a block, a guard branch or a `where` body) must stay the last instruction before the return. Then the backend reuses the frame: `NTailCall` for self calls, and LLVM may turn other calls into a jump.
+- An optimization must not emit code after such a call (drops, moves, stores of values that are read later). If it needs work after the call, it must skip calls in tail position, as `OPT-018` does with `borrow_tail_fns`.
+- Losing a tail call does more than grow the stack. The pending frames keep their values alive, so reference counts stay above 1 and in-place updates (`::`, `+` on strings, tensor writes) start copying. Memory can then grow quadratically.
+- Every compiler, bootstrap stage and test run must be capped (`ulimit -v` 3-4 GB plus `timeout`). Before trusting a new compiler, compare the stage-2 peak memory on `check` and on a self-build with the installed compiler.
+
 ---
 
 ## RMM1 / RMM2 Invariants & Future RMM Evolution Guide
@@ -162,6 +210,8 @@ Under the current `RMM1` / `RMM2` lowering in `compiler.rg`:
    - In **direct register calls** via `@__rg_fn_{fid}_reg(i64 %arg_0, ...)` (`OPT-013`), the **caller** loads `%av_i = %frame[start_slot + i]` and **immediately zeroes `%frame[start_slot + i]` (`store i64 0`)** before calling `@__rg_fn_{fid}_reg`.
    - **Why zeroing caller `start_slot + i` is mandatory**: If the caller did not zero `%frame[start_slot + i]` after passing `%av_i` by value into `@__rg_fn_{fid}_reg`, both the callee's epilogue (which drops `%frame[0..arity-1]`) AND the caller's epilogue (or subsequent `NStoreSlot` overwriting `%frame[start_slot + i]`) would drop the same heap `RVal` pointer, causing a double-free.
 3. **Callee Return & Epilogue (`OPT-009`)**: Before jumping to `epilogue_exit:`, the return expression's slot is moved into `%acc` (`NMoveSlot` zeroes that slot in `%frame`), and `llvm_unroll_epilogue` drops all remaining non-zero slots in `%frame[0..num_slots-1]`.
+
+**Exception (`OPT-018`)**: parameters that every clause only matches with a pattern are caller-owned borrows. The callee empties their slots with `NForgetSlot` before it returns, and the caller passes local variables with `NPeekSlot` (no clone). Points 1 to 3 below are what that implementation does for those parameters.
 
 **Impact on future RMM changes**:
 - If a future RMM changes function parameters from **callee-owned (sink/move)** to **caller-owned read-only borrows** (so the caller does not `NCloneSlot` non-last-use arguments and the callee does not drop untouched parameters `0..arity-1` on exit):

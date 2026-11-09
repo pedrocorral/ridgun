@@ -1622,6 +1622,30 @@ fn :: lower var expr RNativeEnv String [String] Int RNativeCode => RNativeCode
           off = env str off env name
           nc emit st (NLoadStrLit off (str len name)) sp
 
+-- A record field read (`field r`) reads the field straight from the record:
+-- no call to the accessor. A local record is borrowed from its slot (no
+-- clone of the record); any other record expression is evaluated into a
+-- scratch slot and dropped after the read.
+-- True when `fname` is a generated field accessor. A program function with
+-- the same name as a field replaces the accessor (`build fn table fields`
+-- skips it), and then `fname x` must call that function.
+fn :: env is getter RNativeEnv String => Bool
+      env is getter env fname = (env fn arity env ("#g " + fname)) == 1
+
+fn :: add getter marks [RFieldEntry] RStrSet RStrIntMap => RStrIntMap
+      add getter marks [] _ m = m
+      add getter marks ((FieldEntry fname _):rest) fn_name_set m
+        | str set has fn_name_set fname = add getter marks rest fn_name_set m
+        | otherwise = add getter marks rest fn_name_set (str int map insert m ("#g " + fname) 1)
+
+fn :: lower field read RNativeEnv Int RExpr [String] Int RNativeCode => RNativeCode
+      lower field read env fidx (EVar v) bound_locals sp st
+        | (lookup local bound_locals v) >= 0 =
+          nc emit st (NAdtField (env var slot env v) fidx) sp
+      lower field read env fidx rec_e bound_locals sp st =
+        st1 = lower expr env rec_e bound_locals sp st
+        nc emit list st1 [NStoreSlot sp, NAdtField sp fidx, NStoreSlot (sp + 1), NCmmDropSlot sp, NMoveSlot (sp + 1)] (sp + 2)
+
 fn :: prim type tag id String       => Int
       prim type tag id "Int"        =  1
       prim type tag id "Byte"       =  1
@@ -2249,12 +2273,192 @@ fn :: lower direct or partial call RNativeEnv String [RExpr] Int Int [String] In
           st1 = nc emit list st [NLoadStrLit off slen, NStoreSlot sp] (sp + 1)
           st2 = lower expr list to slots env args bound_locals (sp + 1) 0 st1
           nc emit list st2 [NMakeList (sp + 1) count, NStoreSlot (sp + 1), NMakeTuple sp 2] (sp + count + 2)
+        | count == fn_ar and (env borrow mask env fname) > 0 =
+          lower borrow call env fname args count count (env borrow mask env fname) bound_locals sp st
         | count == fn_ar =
           st1 = lower expr list to slots env args bound_locals sp 0 st
           nc emit st1 (NCallFn (env fn id env fname) sp count) (sp + count + 1)
+        | (env borrow mask env fname) > 0 =
+          lower borrow call env fname args count (0 - 1) (env borrow mask env fname) bound_locals sp st
         | otherwise =
           st1 = lower expr list to slots env args bound_locals sp 0 st
           nc emit st1 (NCallFn (env fn id env fname) sp (0 - 1)) (sp + count + 1)
+
+-- ── Borrowed parameters (TASK-0059) ─────────────────────────
+-- A parameter is borrowed when every clause matches it with a pattern that
+-- only reads it (a constructor, tuple, `[]`, string or `_` pattern): the
+-- value itself is never bound to a name. The callee then leaves the value
+-- alone: it reads fields from the argument slot and empties the slot without
+-- a drop before it returns (`NForgetSlot`). The caller keeps ownership:
+--   * a local variable is passed as is (`NPeekSlot`), without a clone;
+--   * any other value is computed, parked in a scratch slot, passed as is,
+--     and dropped after the call.
+-- `borrow masks` decides which functions do this (bit i = parameter i).
+fn :: env borrow mask RNativeEnv String => Int
+      env borrow mask env fname = env fn arity env ("#b " + fname)
+
+fn :: borrow pow Int => Int
+      borrow pow n
+        | n <= 0 = 1
+        | otherwise = 2 * (borrow pow (n - 1))
+
+fn :: borrow bit Int Int => Bool
+      borrow bit mask idx = ((mask / (borrow pow idx)) % 2) == 1
+
+fn :: borrow local arg RExpr [String] => Bool
+      borrow local arg (EVar v) bound_locals = (lookup local bound_locals v) >= 0
+      borrow local arg _ _ = False
+
+fn :: borrow var slot RNativeEnv RExpr => Int
+      borrow var slot env (EVar v) = env var slot env v
+      borrow var slot _ _ = 0
+
+fn :: lower borrow call RNativeEnv String [RExpr] Int Int Int [String] Int RNativeCode => RNativeCode
+      lower borrow call env fname args count call_count mask bound_locals sp st =
+        top = sp + (2 * count) + 1
+        st1 = lower borrow args env args mask bound_locals sp 0 st
+        st2 = nc emit list st1 (borrow fixup ins env args mask bound_locals sp count 0 []) top
+        st3 = nc emit st2 (NCallFn (env fn id env fname) sp call_count) top
+        drops = borrow drop ins args mask bound_locals sp count 0 []
+        lower borrow cleanup drops (sp + (2 * count)) top st3
+
+fn :: lower borrow args RNativeEnv [RExpr] Int [String] Int Int RNativeCode => RNativeCode
+      lower borrow args _ [] _ _ _ _ st = st
+      lower borrow args env (e:es) mask bound_locals sp idx st
+        | (borrow bit mask idx) and (borrow local arg e bound_locals) =
+          lower borrow args env es mask bound_locals sp (idx + 1) st
+        | otherwise =
+          cur_slot = sp + idx
+          st1 = lower expr env e bound_locals cur_slot st
+          st2 = nc emit st1 (NStoreSlot cur_slot) (cur_slot + 1)
+          lower borrow args env es mask bound_locals sp (idx + 1) st2
+
+fn :: borrow fixup ins RNativeEnv [RExpr] Int [String] Int Int Int [RNativeInstr] => [RNativeInstr]
+      borrow fixup ins _ [] _ _ _ _ _ acc = acc
+      borrow fixup ins env (e:es) mask bound_locals sp count idx acc
+        | not (borrow bit mask idx) = borrow fixup ins env es mask bound_locals sp count (idx + 1) acc
+        | borrow local arg e bound_locals =
+          borrow fixup ins env es mask bound_locals sp count (idx + 1) (acc :: [NPeekSlot (borrow var slot env e), NStoreSlot (sp + idx)])
+        | otherwise =
+          scr = sp + count + idx
+          borrow fixup ins env es mask bound_locals sp count (idx + 1) (acc :: [NMoveSlot (sp + idx), NStoreSlot scr, NPeekSlot scr, NStoreSlot (sp + idx)])
+
+fn :: borrow drop ins [RExpr] Int [String] Int Int Int [RNativeInstr] => [RNativeInstr]
+      borrow drop ins [] _ _ _ _ _ acc = acc
+      borrow drop ins (e:es) mask bound_locals sp count idx acc
+        | (borrow bit mask idx) and (not (borrow local arg e bound_locals)) =
+          borrow drop ins es mask bound_locals sp count (idx + 1) (acc :: [NCmmDropSlot (sp + count + idx)])
+        | otherwise = borrow drop ins es mask bound_locals sp count (idx + 1) acc
+
+fn :: lower borrow cleanup [RNativeInstr] Int Int RNativeCode => RNativeCode
+      lower borrow cleanup [] _ _ st = st
+      lower borrow cleanup drops res top st =
+        nc emit list st ([NStoreSlot res] :: drops :: [NMoveSlot res]) top
+
+fn :: borrow pat ok RPattern => Bool
+      borrow pat ok (PatCtor ":tensor-pat:" _) = False
+      borrow pat ok (PatCtor c _) = (prim type tag id c) <= 0
+      borrow pat ok (PatTuple _) = True
+      borrow pat ok PatWild = True
+      borrow pat ok PatEmpty = True
+      borrow pat ok (PatStr _) = True
+      borrow pat ok _ = False
+
+fn :: borrow nth pat [RPattern] Int => RPattern
+      borrow nth pat [] _ = PatVar ""
+      borrow nth pat (p:ps) i
+        | i <= 0 = p
+        | otherwise = borrow nth pat ps (i - 1)
+
+fn :: borrow param ok [RFnCase] Int => Bool
+      borrow param ok [] _ = True
+      borrow param ok ((FnCase pats _ _):cs) i = (borrow pat ok (borrow nth pat pats i)) and (borrow param ok cs i)
+
+fn :: borrow cases shape ok [RFnCase] Int => Bool
+      borrow cases shape ok [] _ = True
+      borrow cases shape ok ((FnCase pats _ _):cs) arity = ((rpat list len pats) == arity) and (not (borrow has seq bind pats)) and (borrow cases shape ok cs arity)
+
+fn :: borrow has seq bind [RPattern] => Bool
+      borrow has seq bind [] = False
+      borrow has seq bind ((PatSeqBind _):_) = True
+      borrow has seq bind (_:ps) = borrow has seq bind ps
+
+fn :: rpat list len [RPattern] => Int
+      rpat list len [] = 0
+      rpat list len (_:ps) = 1 + (rpat list len ps)
+
+fn :: borrow mask of [RFnCase] Int Int Int => Int
+      borrow mask of cases i arity acc
+        | i >= arity = acc
+        | borrow param ok cases i = borrow mask of cases (i + 1) arity (acc + (borrow pow i))
+        | otherwise = borrow mask of cases (i + 1) arity acc
+
+fn :: fn borrow mask String [RFnCase] RStrSet RStrIntMap => Int
+      fn borrow mask name cases excluded ar_map
+        | (str len name) >= 2 and (str slice name 0 2) == "__" = 0
+        | str set has excluded name = 0
+        | is overloadable binop name name = 0
+        | (str int map lookup ar_map name) < 1 or (str int map lookup ar_map name) > 20 = 0
+        | not (borrow cases shape ok cases (str int map lookup ar_map name)) = 0
+        | str in list name (collect refs cases cases []) = 0
+        | otherwise = borrow mask of cases 0 (str int map lookup ar_map name) 0
+
+fn :: put borrow mask RStrIntMap String Int => RStrIntMap
+      put borrow mask m name mask
+        | mask > 0 = str int map insert m ("#b " + name) mask
+        | otherwise = m
+
+-- A call in tail position must stay the last instruction of the caller, so
+-- the backend can turn it into a jump (`a` returns `b x`, `b` returns `a y`
+-- and so on, without stack growth). A borrowed call drops its scratch
+-- values after the call returns, which would turn every such tail call into
+-- a real call and overflow the stack on long chains. Functions that some
+-- caller calls in tail position therefore never borrow.
+fn :: borrow tail targets RExpr [String] => [String]
+      borrow tail targets (ECall f _) acc = acc :: [f]
+      borrow tail targets (EBlock stmts) acc = borrow tail stmts stmts acc
+      borrow tail targets (EGuard gs) acc = borrow tail guards gs acc
+      borrow tail targets (EWhere body _) acc = borrow tail targets body acc
+      borrow tail targets _ acc = acc
+
+fn :: borrow tail stmts [RStmt] [String] => [String]
+      borrow tail stmts [] acc = acc
+      borrow tail stmts ((StmtExpr e):[]) acc = borrow tail targets e acc
+      borrow tail stmts (_:ss) acc = borrow tail stmts ss acc
+
+fn :: borrow tail guards [RGuard] [String] => [String]
+      borrow tail guards [] acc = acc
+      borrow tail guards ((GuardBranch _ body):gs) acc = borrow tail guards gs (borrow tail targets body acc)
+
+fn :: borrow tail cases [RFnCase] [String] => [String]
+      borrow tail cases [] acc = acc
+      borrow tail cases ((FnCase _ gs body):cs) acc = borrow tail cases cs (borrow tail targets body (borrow tail guards gs acc))
+
+fn :: borrow tail fns [RFnDef] [String] => [String]
+      borrow tail fns [] acc = acc
+      borrow tail fns ((FnDef _ _ _ cases):fs) acc = borrow tail fns fs (borrow tail cases cases acc)
+
+-- Functions in `excluded` can be called with owned arguments (function
+-- values, partial application, dispatch by name, agents, entry points) or
+-- are called in tail position, so they never borrow.
+fn :: borrow masks [RFnDef] RStrSet RStrIntMap RStrIntMap => RStrIntMap
+      borrow masks [] _ _ m = m
+      borrow masks ((FnDef name _ _ cases):fs) excluded ar_map m =
+        borrow masks fs excluded ar_map (put borrow mask m name (fn borrow mask name cases excluded ar_map))
+
+-- Callee side: empty borrowed argument slots before every return.
+fn :: borrow forget ins Int Int Int [RNativeInstr] => [RNativeInstr]
+      borrow forget ins mask i arity acc
+        | i >= arity = acc
+        | borrow bit mask i = borrow forget ins mask (i + 1) arity (acc :: [NForgetSlot i])
+        | otherwise = borrow forget ins mask (i + 1) arity acc
+
+fn :: add borrow forgets [RNativeInstr] [RNativeInstr] [RNativeInstr] => [RNativeInstr]
+      add borrow forgets [] forgets rev_acc = rev native instrs (rev native instrs forgets rev_acc) []
+      add borrow forgets (NReturn:rest) forgets rev_acc =
+        add borrow forgets rest forgets (rev native instrs (forgets :: [NReturn]) rev_acc)
+      add borrow forgets (ins:rest) forgets rev_acc =
+        add borrow forgets rest forgets ([ins] :: rev_acc)
 
 fn :: lower call expr RNativeEnv String [RExpr] [String] Int RNativeCode => RNativeCode
       lower call expr env "__chain__" (fn_e:call_args) bound_locals sp st =
@@ -2280,6 +2484,8 @@ fn :: lower call expr RNativeEnv String [RExpr] [String] Int RNativeCode => RNat
           st1 = lower expr env rec_e bound_locals sp st
           st2 = nc emit list st1 [NStoreSlot sp, NAdtField sp fidx, NStoreSlot sp] (sp + 1)
           lower indirect call slots env sp call_args bound_locals (sp + 1) st2
+        | (env has field env fname) and (env is getter env fname) and (rexpr list len call_args) == 0 =
+          lower field read env (env field idx env fname) rec_e bound_locals sp st
       lower call expr env fname args bound_locals sp st
         | is upper ident fname =
           count = rexpr list len args
@@ -2751,7 +2957,7 @@ fn :: lower tco arg expr RNativeEnv RExpr [RExpr] [String] [String] Int RNativeC
         st1 = lower tco arg list to slots env elems es bound_locals scope_vars sp 0 st
         nc emit st1 (NMakeTuple sp count) (sp + count + 1)
       lower tco arg expr env (ECall fname args) es bound_locals scope_vars sp st
-        | (lookup local bound_locals fname) < 0 and (not (is upper ident fname)) and (builtin call id fname) < 0 and (not (is agent call name fname)) and (not (is tensor helper name fname)) and (not (is gt pseudo name fname)) and fname != "sys_os" and fname != "sys_arch" and fname != "__record_update__" and fname != "__unpack2__" and fname != "__chain__" and (rexpr list len args) == (env fn arity env fname) and (not ((env has field env fname) and (env fn arity env fname) == 1 and (rexpr list len args) > 1)) =
+        | (lookup local bound_locals fname) < 0 and (not (is upper ident fname)) and (builtin call id fname) < 0 and (not (is agent call name fname)) and (not (is tensor helper name fname)) and (not (is gt pseudo name fname)) and fname != "sys_os" and fname != "sys_arch" and fname != "__record_update__" and fname != "__unpack2__" and fname != "__chain__" and (rexpr list len args) == (env fn arity env fname) and (not ((env has field env fname) and (env fn arity env fname) == 1 and (rexpr list len args) > 1)) and (env borrow mask env fname) <= 0 =
           count = rexpr list len args
           st1 = lower tco arg list to slots env args es bound_locals scope_vars sp 0 st
           nc emit st1 (NCallFn (env fn id env fname) sp count) (sp + count + 1)
@@ -2766,6 +2972,50 @@ fn :: lower tco arg list to slots RNativeEnv [RExpr] [RExpr] [String] [String] I
         st2 = nc emit st1 (NStoreSlot cur_slot) (cur_slot + 1)
         lower tco arg list to slots env es after bound_locals scope_vars sp (idx + 1) st2
 
+-- Self tail call: a parameter passed as a plain argument and read again by a
+-- later argument (`loop r (acc + field r)`) is moved into its argument slot
+-- after the other arguments are computed, instead of being cloned. The later
+-- arguments read it from its own slot. Parameters cannot be reassigned, so
+-- the value is the same at either point.
+fn :: env is param RNativeEnv String => Bool
+      env is param (NativeEnv _ arity all_locals _ _ _ _ _ _) name =
+        idx = lookup local all_locals name
+        idx >= 0 and idx < arity
+
+fn :: tco deferred vars RNativeEnv [RExpr] [String] [String] [String] => [String]
+      tco deferred vars _ [] _ _ acc = acc
+      tco deferred vars env ((EVar v):es) locals scope_vars acc
+        | (lookup local locals v) >= 0 and (env is param env v) and (not (str in list v scope_vars)) and (not (str in list v acc)) and (str in list v (cmm expr list vars es [])) =
+          tco deferred vars env es locals scope_vars (acc :: [v])
+      tco deferred vars env (_:es) locals scope_vars acc =
+        tco deferred vars env es locals scope_vars acc
+
+fn :: tco deferred arg RExpr [String] [String] => String
+      tco deferred arg (EVar v) deferred seen
+        | (str in list v deferred) and (not (str in list v seen)) = v
+      tco deferred arg _ _ _ = ""
+
+fn :: lower tco args deferred RNativeEnv [RExpr] [String] [String] [String] [String] Int Int RNativeCode => RNativeCode
+      lower tco args deferred _ [] _ _ _ _ _ _ st = st
+      lower tco args deferred env (e:es) deferred seen bound_locals scope_vars sp idx st
+        | (tco deferred arg e deferred seen) != "" =
+          lower tco args deferred env es deferred (seen :: [tco deferred arg e deferred seen]) bound_locals scope_vars sp (idx + 1) st
+        | otherwise =
+          cur_slot = sp + idx
+          st1 = lower tco arg expr env e es bound_locals (scope_vars :: deferred) cur_slot st
+          st2 = nc emit st1 (NStoreSlot cur_slot) (cur_slot + 1)
+          lower tco args deferred env es deferred seen bound_locals scope_vars sp (idx + 1) st2
+
+fn :: lower tco deferred moves RNativeEnv [RExpr] [String] [String] Int Int RNativeCode => RNativeCode
+      lower tco deferred moves _ [] _ _ _ _ st = st
+      lower tco deferred moves env (e:es) deferred seen sp idx st
+        | (tco deferred arg e deferred seen) != "" =
+          v = tco deferred arg e deferred seen
+          cur_slot = sp + idx
+          st1 = nc emit list st [NMoveSlot (env var slot env v), NStoreSlot cur_slot] (cur_slot + 1)
+          lower tco deferred moves env es deferred (seen :: [v]) sp (idx + 1) st1
+        | otherwise = lower tco deferred moves env es deferred seen sp (idx + 1) st
+
 fn :: lower tail return RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
       lower tail return env expr bound_locals sp st =
         lower tail return cmm env expr bound_locals [] sp st
@@ -2774,7 +3024,9 @@ fn :: lower tail return cmm RNativeEnv RExpr [String] [String] Int RNativeCode =
       lower tail return cmm env (ECall fname args) bound_locals scope_vars sp st
         | (builtin call id fname) < 0 and fname == (env fn name env) and (rexpr list len args) == (env arity env) and (lookup local bound_locals fname) < 0 =
           arity = env arity env
-          st1 = lower tco arg list to slots env args [] bound_locals scope_vars sp 0 st
+          deferred = tco deferred vars env args bound_locals scope_vars []
+          st0 = lower tco args deferred env args deferred [] bound_locals scope_vars sp 0 st
+          st1 = lower tco deferred moves env args deferred [] sp 0 st0
           st2 = lower cmm drops env scope_vars (sp + arity + 1) st1
           nc emit st2 (NTailCall sp arity) (sp + arity + 1)
       lower tail return cmm env (EBlock stmts) bound_locals scope_vars sp st =
@@ -3305,7 +3557,13 @@ fn :: lower fndef RFnDef RStrIntMap RStrIntMap RStrIntMap RStrSet RStrIntMap [St
         init_st = NativeCode [] 1 (max int (base_sp + 1) 2)
         st1 = lower cases list env cases base_sp init_st
         st2 = lower no match tail env name cases base_sp st1
-        NativeFn fid name arity (nc max sp st2) (nc instrs st2)
+        bmask = env borrow mask env name
+        NativeFn fid name arity (nc max sp st2) (borrow fn instrs bmask arity (nc instrs st2))
+
+fn :: borrow fn instrs Int Int [RNativeInstr] => [RNativeInstr]
+      borrow fn instrs mask arity ins
+        | mask > 0 = add borrow forgets ins (borrow forget ins mask 0 arity []) []
+        | otherwise = ins
 
 -- ── No matching clause (RG-114) ─────────────────────────────
 -- When the last clause can fail (a refutable pattern, or guards without
@@ -3877,13 +4135,15 @@ fn :: lower program to native RProgram [String] => RNativeProg
         field_map = insert gagent ids gagent_names 0 (build field idx map field_tbl StrIntEmpty)
         disp_set0 = str list to set field_names (str list to set b_val_names StrSetEmpty)
         disp_set = collect disp fndefs fns fn_arity_map disp_set0
+        borrow_excl = str list to set ([entry_name] :: gagent_names :: show_roots :: (borrow tail fns fns [])) disp_set
+        fn_arity_map_b = add getter marks field_tbl fn_name_set (borrow masks fns borrow_excl fn_arity_map fn_arity_map)
         entry_fid = lookup fn id map fn_id_map entry_name
         main_wrapper = build main wrapper fndef entry_fid gagent_names fn_id_map
         spawn_disp = NativeFn 2 "__rg_dispatch_spawn" 2 6 (build spawn dispatch entry fn_tbl str_map disp_set)
         call2_slots = max int 7 (4 + (highest entry arity fn_tbl))
         call2_disp = NativeFn 3 "__rg_dispatch_call2" 3 call2_slots (build call2 dispatch instrs fn_tbl str_map disp_set 1 [])
         binop_disp = NativeFn 4 "__rg_dispatch_binop" 3 6 (build binop dispatch instrs fn_tbl str_map 1 [])
-        user_native_fns = lower fndef list acc fns str_map fn_id_map fn_arity_map heavy_set field_map infos []
+        user_native_fns = lower fndef list acc fns str_map fn_id_map fn_arity_map_b heavy_set field_map infos []
         field_native_fns = lower field getter fns field_tbl fn_name_set fn_id_map []
         all_native_fns = [main_wrapper, spawn_disp, call2_disp, binop_disp] :: user_native_fns :: field_native_fns
         NativeProg 1 2 3 4 all_native_fns rodata_str
@@ -3922,7 +4182,7 @@ fn :: lower library to native RProgram [String] => RNativeProg
         call2_slots = max int 7 (4 + (highest entry arity fn_tbl))
         call2_disp = NativeFn 3 "__rg_dispatch_call2" 3 call2_slots (build call2 dispatch instrs fn_tbl str_map disp_set 1 [])
         binop_disp = NativeFn 4 "__rg_dispatch_binop" 3 6 (build binop dispatch instrs fn_tbl str_map 1 [])
-        user_native_fns = lower fndef list acc fns str_map fn_id_map fn_arity_map heavy_set field_map infos []
+        user_native_fns = lower fndef list acc fns str_map fn_id_map (add getter marks field_tbl fn_name_set fn_arity_map) heavy_set field_map infos []
         field_native_fns = lower field getter fns field_tbl fn_name_set fn_id_map []
         all_native_fns = [main_wrapper, spawn_disp, call2_disp, binop_disp] :: user_native_fns :: field_native_fns
         NativeProg 1 2 3 4 all_native_fns rodata_str

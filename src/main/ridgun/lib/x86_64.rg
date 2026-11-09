@@ -167,6 +167,8 @@ fn :: x8664 instr size RNativeInstr       => Int
       x8664 instr size (NLoadAdt0 _ _)    =  25
       x8664 instr size (NCloneSlot _)     =  13
       x8664 instr size (NMoveSlot _)      =  13
+      x8664 instr size (NPeekSlot _)      =  8
+      x8664 instr size (NForgetSlot _)    =  12
       x8664 instr size (NStoreSlot _)     =  16
       x8664 instr size (NRebindSlot _)    =  16
       x8664 instr size (NCmmDropSlot _)   =  13
@@ -303,6 +305,10 @@ fn :: x8664 encode instr RNativeInstr Int Int Int Int [RLabelEntry] [RLabelEntry
         (x86 mov imm64 rdi (rodata_vaddr + off)) :: (x86 mov imm64 rsi len) :: (x86 call rt 13 (cur_vaddr + 25))
       x8664 encode instr (NCloneSlot slot) cur_vaddr _ _ _ _ _ =
         (x86 mov slot rdi slot) :: (x86 call rt 5 (cur_vaddr + 13))
+      x8664 encode instr (NPeekSlot slot) _ _ _ _ _ _ =
+        [72, 139, 132, 36] :: (i32 le (slot * 8))
+      x8664 encode instr (NForgetSlot slot) _ _ _ _ _ _ =
+        [72, 199, 132, 36] :: (i32 le (slot * 8)) :: [0, 0, 0, 0]
       x8664 encode instr (NMoveSlot slot) cur_vaddr _ _ _ _ _ =
         (x86 lea slot rdi slot) :: (x86 call rt 7 (cur_vaddr + 13))
       x8664 encode instr (NStoreSlot slot) cur_vaddr _ _ _ _ _ =

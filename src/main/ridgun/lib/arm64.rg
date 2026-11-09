@@ -87,6 +87,8 @@ fn :: arm64 instr size RNativeInstr       => Int
       arm64 instr size (NLoadAdt0 _ _)    =  36
       arm64 instr size (NCloneSlot _)     =  8
       arm64 instr size (NMoveSlot _)      =  8
+      arm64 instr size (NPeekSlot _)      =  4
+      arm64 instr size (NForgetSlot _)    =  4
       arm64 instr size (NStoreSlot _)     =  12
       arm64 instr size (NRebindSlot _)    =  12
       arm64 instr size (NCmmDropSlot _)   =  8
@@ -193,6 +195,10 @@ fn :: arm64 encode instr RNativeInstr Int Int Int Int [RLabelEntry] [RLabelEntry
         (arm64 mov imm64 0 (rodata_vaddr + off)) :: (arm64 mov imm64 1 len) :: (arm64 bl rt 13 (cur_vaddr + 32))
       arm64 encode instr (NCloneSlot slot) cur_vaddr _ _ _ _ _ =
         (arm64 ldr slot 0 slot) :: (arm64 bl rt 5 (cur_vaddr + 4))
+      arm64 encode instr (NPeekSlot slot) _ _ _ _ _ _ =
+        arm64 ldr slot 0 slot
+      arm64 encode instr (NForgetSlot slot) _ _ _ _ _ _ =
+        u32 le (4177527807 + ((slot % 4096) * 1024))
       arm64 encode instr (NMoveSlot slot) cur_vaddr _ _ _ _ _ =
         (arm64 lea slot 0 slot) :: (arm64 bl rt 7 (cur_vaddr + 4))
       arm64 encode instr (NStoreSlot slot) cur_vaddr _ _ _ _ _ =
