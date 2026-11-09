@@ -9,11 +9,15 @@ Every expected value comes from the language's own documents, and each case says
 ./bin/ridgunc run tests/run.rg                  # every case under tests/cases/ and the toolchain checks
 ./bin/ridgunc run tests/run.rg agents lists     # cases whose path contains "agents" or "lists"
 ./bin/ridgunc run tests/run.rg --no-toolchain   # cases only
+./bin/ridgunc run tests/run.rg --llvm           # cases built only for LLVM (the default target)
+./bin/ridgunc run tests/run.rg --x86            # cases built only for the pure x86-64 encoder
 ```
+- Every case is built and run twice: for LLVM (the default target) and for the pure x86-64 encoder (`--target x86_64-elf`), as FR-COMP-004 and FR-COMP-020 require. The x86-64 rows end in `[x86_64-elf]`, and the summary counts each backend apart. On x86-64 a case checks output, exit status and `max-rss-mb`; `max-ms` and `max-cpu-ms` are LLVM promises (FR-COMP-011 AC-4) and are not checked there, and every x86-64 run may take 30 s. The toolchain checks use LLVM only.
 - Every build is `ridgunc build --strict`. The cases use the canonical style: spaced names in declarations and calls (no `_` in function names or calls), and tuples written `=> Int Int`. Local variables and parameters may contain `_`.
 - `RIDGUNC=/path/to/ridgunc` tests another build. The default is `bin/ridgunc`.
 - Work folders go to `~/.cache/ridgun-compiler-tests/work`. They never go to `/tmp`, which is a tmpfs with limited inodes, and never inside a repository.
-- Builds and runs are capped at 4 GB of address space and a time limit.
+- Builds and runs are capped at 4 GB of address space and a time limit. A case without `max-ms` may run for 30 s; with `max-ms`, for that limit rounded up to whole seconds, and at least 5 s. A run past its time limit is stopped and exits with 124.
+- `tests/run_case.sh` runs each case binary. It reads the binary's CPU time from `times` and its peak resident memory from `VmHWM` in `/proc/<pid>/status`, sampled every 2 ms. Growth in the last 2 ms before the binary exits can go unseen.
 - The run ends with the promised behaviours that failed, then the proposals not met. It exits with 1 only if a promised behaviour failed.
 
 ## A case
@@ -25,7 +29,7 @@ Every expected value comes from the language's own documents, and each case says
 --   second line
 -- expect-exit: 3              (optional; 0 by default)
 -- max-ms: 1000                (optional: wall-time limit for the run)
--- max-rss-mb: 16              (optional: peak resident memory limit for the run)
+-- max-rss-mb: 16              (optional: peak resident memory limit for the run, in MB of 1 024 kB)
 -- max-cpu-ms: 150             (optional: user + system CPU limit for the run; a busy wait shows here)
 -- kind: proposal               (optional: no document promises it; reported apart, doesn't fail the run)
 

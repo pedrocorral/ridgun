@@ -5,6 +5,10 @@
 --   ./bin/ridgunc run tests/run.rg                  (all cases + toolchain checks)
 --   ./bin/ridgunc run tests/run.rg lists strings    (cases matching filter)
 --   ./bin/ridgunc run tests/run.rg --no-toolchain   (cases only)
+--   ./bin/ridgunc run tests/run.rg --llvm           (cases built only for LLVM)
+--   ./bin/ridgunc run tests/run.rg --x86            (cases built only with --target x86_64-elf)
+-- Every case is built and run on both backends by default; tests/run_case.sh
+-- runs each case binary and measures its CPU time and peak resident memory.
 -- ============================================================
 
 type CaseHeader = Header String String Bool String Bool String Bool Int Bool Int Bool Int Bool Int Bool Bool
@@ -231,6 +235,24 @@ fn :: run sh capture String String Int => Int String Int Int
         cpu_ms = parse bash time ms (read file time_f)
         (code, out_txt, wall_ms, cpu_ms)
 
+fn :: case runner script => String
+      case runner script = (sys getcwd) + "/tests/run_case.sh"
+
+fn :: run case capture String String Int => Int String Int Int Int
+      run case capture exe cwd timeout_s =
+        out_f = cwd + "/.cmd_out.txt"
+        time_f = cwd + "/.cmd_time.txt"
+        rss_f = cwd + "/.cmd_rss.txt"
+        shell exec ("rm -f \"" + out_f + "\" \"" + time_f + "\" \"" + rss_f + "\"") -> ()
+        t0 = sys time ms
+        code = shell exec ("bash \"" + case runner script + "\" \"" + cwd + "\" " + (int to str timeout_s) + " \"" + out_f + "\" \"" + time_f + "\" \"" + rss_f + "\" \"" + exe + "\"")
+        t1 = sys time ms
+        wall_ms = t1 - t0
+        out_txt = read file out_f
+        cpu_ms = parse bash time ms (read file time_f)
+        rss_kb = str to int (pick non empty (trim ws (read file rss_f)) "0")
+        (code, out_txt, wall_ms, cpu_ms, rss_kb)
+
 fn :: drop str lines [String] Int => [String]
       drop str lines xs 0 = xs
       drop str lines [] _ = []
@@ -318,17 +340,25 @@ fn :: check cpu problem Int Int Bool Int [String] => [String]
           acc :: ["used " + (int to str cpu_ms) + " ms of CPU in " + (int to str wall_ms) + " ms of wall time, limit " + (int to str max_cpu) + " ms"]
         | otherwise = acc
 
+fn :: check rss problem Int Bool Int [String] => [String]
+      check rss problem _ False _ acc = acc
+      check rss problem rss_kb True max_mb acc
+        | rss_kb > (max_mb * 1024) =
+          acc :: ["peak resident memory " + (int to str ((rss_kb + 1023) / 1024)) + " MB (" + (int to str rss_kb) + " kB), limit " + (int to str max_mb) + " MB"]
+        | otherwise = acc
+
 fn :: finish case problems String Bool [String] => CaseResult
       finish case problems rel prop [] = Result rel True prop ""
       finish case problems rel prop probs = Result rel False prop (join indented probs)
 
-fn :: evaluate case run String CaseHeader (Int, String, Int, Int) => CaseResult
-      evaluate case run rel (Header _ _ has_out out_s _ _ has_ex ex_v has_ms ms_v _ _ has_cpu cpu_v _ prop) (code, out_txt, wall_ms, cpu_ms) =
+fn :: evaluate case run String CaseHeader (Int, String, Int, Int, Int) => CaseResult
+      evaluate case run rel (Header _ _ has_out out_s _ _ has_ex ex_v has_ms ms_v has_rss rss_v has_cpu cpu_v _ prop) (code, out_txt, wall_ms, cpu_ms, rss_kb) =
         p0 = check exit problem code has_ex ex_v []
         p1 = check output problem out_txt has_out out_s p0
         p2 = check ms problem wall_ms has_ms ms_v p1
         p3 = check cpu problem cpu_ms wall_ms has_cpu cpu_v p2
-        finish case problems rel prop p3
+        p4 = check rss problem rss_kb has_rss rss_v p3
+        finish case problems rel prop p4
 
 fn :: case timeout seconds CaseHeader => Int
       case timeout seconds (Header _ _ _ _ _ _ _ _ True ms_v _ _ _ _ _ _) =
@@ -336,47 +366,66 @@ fn :: case timeout seconds CaseHeader => Int
       case timeout seconds _ = 30
 
 fn :: run built case String String CaseHeader => CaseResult
-      run built case rel work hdr =
+      run built case label work hdr =
         exe = work + "/target/case"
-        evaluate case run rel hdr (run sh capture ("\"" + exe + "\"") work (case timeout seconds hdr))
+        evaluate case run label hdr (run case capture exe work (case timeout seconds hdr))
 
 fn :: finish case build String String String CaseHeader (Int, String, Int, Int) => CaseResult
-      finish case build rel work exe (Header c_desc src has_out out_s has_berr berr_s has_ex ex_v has_ms ms_v has_rss rss_v has_cpu cpu_v libs prop) (b_code, b_out, _, _) =
+      finish case build label work exe (Header c_desc src has_out out_s has_berr berr_s has_ex ex_v has_ms ms_v has_rss rss_v has_cpu cpu_v libs prop) (b_code, b_out, _, _) =
         built = b_code == 0 and (file exists exe)
-        dispatch built case rel work built ( b_out ) (Header c_desc src has_out out_s has_berr berr_s has_ex ex_v has_ms ms_v has_rss rss_v has_cpu cpu_v libs prop)
+        dispatch built case label work built ( b_out ) (Header c_desc src has_out out_s has_berr berr_s has_ex ex_v has_ms ms_v has_rss rss_v has_cpu cpu_v libs prop)
 
 fn :: dispatch built case String String Bool String CaseHeader => CaseResult
-      dispatch built case rel _ built b_out (Header _ _ _ _ True berr_s _ _ _ _ _ _ _ _ _ prop) =
-        check build error result rel built berr_s b_out prop
-      dispatch built case rel _ False b_out (Header _ _ _ _ False _ _ _ _ _ _ _ _ _ _ prop) =
+      dispatch built case label _ built b_out (Header _ _ _ _ True berr_s _ _ _ _ _ _ _ _ _ prop) =
+        check build error result label built berr_s b_out prop
+      dispatch built case label _ False b_out (Header _ _ _ _ False _ _ _ _ _ _ _ _ _ _ prop) =
         last4 = join indented (tail lines (split lines (trim ws b_out)) 4)
-        Result rel False prop ("does not build:\n       " + last4)
-      dispatch built case rel work True _ hdr =
-        run built case rel work hdr
+        Result label False prop ("does not build:\n       " + last4)
+      dispatch built case label work True _ hdr =
+        run built case label work hdr
 
 fn :: strict flag for case String => String
       strict flag for case full_path
         | str contains (read file full_path) "-- no-strict" = " "
         | otherwise = " --strict "
 
-fn :: execute case with header String String String String String CaseHeader => CaseResult
-      execute case with header _ rel _ _ _ (Header _ "" _ _ _ _ _ _ _ _ _ _ _ _ _ prop) =
-        Result rel False prop "the case has no '-- source:' line"
-      execute case with header full_path rel ridgunc libs_dir work_root (Header c_desc src has_out out_s has_berr berr_s has_ex ex_v has_ms ms_v has_rss rss_v has_cpu cpu_v libs prop) =
-        name = sanitize case name rel
-        work = work_root + "/" + name
+fn :: backend label String => String
+      backend label "" = ""
+      backend label target = " [" + target + "]"
+
+fn :: backend target flag String => String
+      backend target flag "" = ""
+      backend target flag target = " --target " + target
+
+fn :: backend work root String String => String
+      backend work root work_root "" = work_root + "/llvm"
+      backend work root work_root target = work_root + "/" + target
+
+-- Wall-time and CPU limits are promises for LLVM (FR-COMP-011 AC-4); on another target a case checks
+-- output, exit status and memory (FR-COMP-004 AC-5, FR-COMP-020) and may run for the default 30 s.
+fn :: backend header String CaseHeader => CaseHeader
+      backend header "" hdr = hdr
+      backend header _ (Header c_desc src has_out out_s has_berr berr_s has_ex ex_v _ ms_v has_rss rss_v _ cpu_v libs prop) =
+        Header c_desc src has_out out_s has_berr berr_s has_ex ex_v False ms_v has_rss rss_v False cpu_v libs prop
+
+fn :: execute case with header String String String String String String CaseHeader => CaseResult
+      execute case with header _ label _ _ _ _ (Header _ "" _ _ _ _ _ _ _ _ _ _ _ _ _ prop) =
+        Result label False prop "the case has no '-- source:' line"
+      execute case with header full_path label ridgunc libs_dir work target (Header c_desc src has_out out_s has_berr berr_s has_ex ex_v has_ms ms_v has_rss rss_v has_cpu cpu_v libs prop) =
         shell exec ("mkdir -p \"" + work + "/target\" && cp -f \"" + full_path + "\" \"" + work + "/main.rg\"") -> ()
         copy libs if needed libs work libs_dir
         exe = work + "/target/case"
-        hdr = Header c_desc src has_out out_s has_berr berr_s has_ex ex_v has_ms ms_v has_rss rss_v has_cpu cpu_v libs prop
+        hdr = backend header target (Header c_desc src has_out out_s has_berr berr_s has_ex ex_v has_ms ms_v has_rss rss_v has_cpu cpu_v libs prop)
         sflag = strict flag for case full_path
-        finish case build rel work exe hdr (run sh capture ("\"" + ridgunc + "\" build" + sflag + "main.rg -o \"" + exe + "\"") work 600)
+        tflag = backend target flag target
+        finish case build label work exe hdr (run sh capture ("\"" + ridgunc + "\" build" + sflag + "main.rg -o \"" + exe + "\"" + tflag) work 600)
 
-fn :: execute single case String String String String String => CaseResult
-      execute single case repo ridgunc libs_dir work_root rel =
+fn :: execute single case String String String String String String => CaseResult
+      execute single case repo ridgunc libs_dir work_root target rel =
         full_path = repo + "/tests/cases/" + rel
         hdr = parse case header full_path
-        execute case with header full_path rel ridgunc libs_dir work_root hdr
+        work = (backend work root work_root target) + "/" + (sanitize case name rel)
+        execute case with header full_path (rel + (backend label target)) ridgunc libs_dir work target hdr
 
 fn :: step word next Int String String => String
       step word next 0 ch acc = "step " + ch + acc
@@ -538,12 +587,28 @@ fn :: non flag args [String] => [String]
         | str starts with a "--" = non flag args as
         | otherwise = [a] :: (non flag args as)
 
-fn :: run case list [String] String String String String [CaseResult] => [CaseResult]
-      run case list [] _ _ _ _ acc = acc
-      run case list (c:cs) repo ridgunc libs_dir work_root acc =
-        res = execute single case repo ridgunc libs_dir work_root c
+fn :: has flag String [String] => Bool
+      has flag _ [] = False
+      has flag f (x:xs)
+        | x == f = True
+        | otherwise = has flag f xs
+
+fn :: select backends Bool Bool => [String]
+      select backends True False = [""]
+      select backends False True = ["x86_64-elf"]
+      select backends _ _ = ["", "x86_64-elf"]
+
+fn :: run case on backends String [String] String String String String [CaseResult] => [CaseResult]
+      run case on backends _ [] _ _ _ _ acc = acc
+      run case on backends c (t:ts) repo ridgunc libs_dir work_root acc =
+        res = execute single case repo ridgunc libs_dir work_root t c
         print case result res
-        run case list cs repo ridgunc libs_dir work_root (acc :: [res])
+        run case on backends c ts repo ridgunc libs_dir work_root (acc :: [res])
+
+fn :: run case list [String] [String] String String String String [CaseResult] => [CaseResult]
+      run case list [] _ _ _ _ _ acc = acc
+      run case list (c:cs) targets repo ridgunc libs_dir work_root acc =
+        run case list cs targets repo ridgunc libs_dir work_root (run case on backends c targets repo ridgunc libs_dir work_root acc)
 
 fn :: print result list [CaseResult] => ()
       print result list [] = ()
@@ -592,6 +657,25 @@ fn :: exit by failed count Int => ()
       exit by failed count 0 = sys exit 0
       exit by failed count _ = sys exit 1
 
+fn :: same bool Bool Bool => Bool
+      same bool True True = True
+      same bool False False = True
+      same bool _ _ = False
+
+fn :: is x86 row String => Bool
+      is x86 row name = str contains name (backend label "x86_64-elf")
+
+fn :: backend tally [CaseResult] Bool Int Int => Int Int
+      backend tally [] _ total passed = (total, passed)
+      backend tally ((Result name ok prop _):rs) want_x86 total passed
+        | prop or (not (same bool (is x86 row name) want_x86)) = backend tally rs want_x86 total passed
+        | ok = backend tally rs want_x86 (total + 1) (passed + 1)
+        | otherwise = backend tally rs want_x86 (total + 1) passed
+
+fn :: format tally String (Int, Int) => String
+      format tally label (0, _) = label + " not run"
+      format tally label (total, passed) = label + " " + (int to str passed) + " of " + (int to str total)
+
 fn :: finish test run [CaseResult] => ()
       finish test run rows =
         failed = collect failed names rows
@@ -600,6 +684,7 @@ fn :: finish test run [CaseResult] => ()
         failed_c = list len failed
         passed_c = promised_c - failed_c
         echo ("\n" + (int to str passed_c) + " of " + (int to str promised_c) + " promised behaviours passed" + (format summary list failed))
+        echo ("by backend: " + (format tally "llvm" (backend tally rows False 0 0)) + "; " + (format tally "x86_64-elf" (backend tally rows True 0 0)))
         report unmet unmet
         exit by failed count failed_c
 
@@ -617,6 +702,7 @@ fn :: main => ()
         raw_args = strip runner argv cli args
         no_tc = has no toolchain flag raw_args
         filters = non flag args raw_args
+        targets = select backends (has flag "--llvm" raw_args) (has flag "--x86" raw_args)
         repo = sys getcwd
         ridgunc = resolve ridgunc path repo
         libs_dir = resolve libs bundles dir repo
@@ -625,6 +711,6 @@ fn :: main => ()
         print banner repo ridgunc work_root
         all_cases = discover cases repo work_root
         selected = filter cases by args all_cases filters
-        case_rows = run case list selected repo ridgunc libs_dir work_root []
+        case_rows = run case list selected targets repo ridgunc libs_dir work_root []
         tc_rows = maybe run toolchain no_tc filters repo ridgunc libs_dir work_root
         finish test run (case_rows :: tc_rows)
