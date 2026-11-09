@@ -14,7 +14,8 @@ Every expected value comes from the language's own documents, and each case says
 ```
 - Every case is built and run twice: for LLVM (the default target) and for the pure x86-64 encoder (`--target x86_64-elf`), as FR-COMP-004 and FR-COMP-020 require. The x86-64 rows end in `[x86_64-elf]`, and the summary counts each backend apart. On x86-64 a case checks output, exit status and `max-rss-mb`; `max-ms` and `max-cpu-ms` are LLVM promises (FR-COMP-011 AC-4) and are not checked there, and every x86-64 run may take 30 s. The toolchain checks use LLVM only.
 - Every build is `ridgunc build --strict`. The cases use the canonical style: spaced names in declarations and calls (no `_` in function names or calls), and tuples written `=> Int Int`. Local variables and parameters may contain `_`.
-- `RIDGUNC=/path/to/ridgunc` tests another build. The default is `bin/ridgunc`.
+- `RIDGUNC=/path/to/ridgunc` tests another build. The default is `bin/ridgunc`. `STABLE=/path/to/stable` does the same for the `stable deps` checks; the default is `bin/stable`. A relative path in either variable is read from the repository root.
+- A toolchain check that needs a shell script writes it to a file in its work folder and runs `bash file.sh`. Never nest a script inside `bash -c '...'`: its `printf '...'` quotes end the outer quotes.
 - Work folders go to `~/.cache/ridgun-compiler-tests/work`. They never go to `/tmp`, which is a tmpfs with limited inodes, and never inside a repository.
 - Builds and runs are capped at 4 GB of address space and a time limit. A case without `max-ms` may run for 30 s; with `max-ms`, for that limit rounded up to whole seconds, and at least 5 s. A run past its time limit is stopped and exits with 124.
 - `tests/run_case.sh` runs each case binary. It reads the binary's CPU time from `times` and its peak resident memory from `VmHWM` in `/proc/<pid>/status`, sampled every 2 ms. Growth in the last 2 ms before the binary exits can go unseen.

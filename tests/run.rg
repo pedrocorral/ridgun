@@ -199,9 +199,15 @@ fn :: pick non empty String String => String
       pick non empty "" fallback = fallback
       pick non empty s _ = s
 
+-- checks run inside work folders, so a relative RIDGUNC / STABLE is taken from the repository root
+fn :: absolute from String String => String
+      absolute from repo path
+        | str starts with path "/" = path
+        | otherwise = repo + "/" + path
+
 fn :: resolve ridgunc path String => String
       resolve ridgunc path repo =
-        pick non empty (sys getenv "RIDGUNC") (repo + "/bin/ridgunc")
+        absolute from repo (pick non empty (sys getenv "RIDGUNC") (repo + "/bin/ridgunc"))
 
 fn :: resolve libs default String => String
       resolve libs default repo
@@ -226,6 +232,8 @@ fn :: run sh capture String String Int => Int String Int Int
         time_f = cwd + "/.cmd_time.txt"
         script_f = cwd + "/.cmd_run.sh"
         script_body = "#!/usr/bin/env bash\ncd \"" + cwd + "\" || exit 1\nulimit -v 4000000\nTIMEFORMAT='%3U %3S'\n{ time timeout " + (int to str timeout_s) + "s " + cmd + " > \"" + out_f + "\" 2>&1; } 2> \"" + time_f + "\"\nexit $?\n"
+        write file out_f ""
+        write file time_f ""
         write file script_f script_body
         t0 = sys time ms
         code = shell exec ("bash \"" + script_f + "\"")
@@ -509,7 +517,7 @@ fn :: build tc8 result (Int, String, Int, Int) => CaseResult
 
 fn :: resolve stable path String => String
       resolve stable path repo =
-        pick non empty (sys getenv "STABLE") (repo + "/bin/stable")
+        absolute from repo (pick non empty (sys getenv "STABLE") (repo + "/bin/stable"))
 
 fn :: run toolchain checks String String String String => [CaseResult]
       run toolchain checks repo ridgunc libs_dir work_root =
@@ -531,9 +539,11 @@ fn :: run toolchain checks String String String String => [CaseResult]
         write file (d + "/syntax_bad.rg") "fn :: broken Int => [Int]\n      broken x = [x, x + 1]]\n"
         r5 = build tc5 result (run sh capture ("\"" + ridgunc + "\" check syntax_bad.rg") d 600)
         tc6_sh = "set -e; O=\"" + d + "/outer\"; mkdir -p \"$O/src/main/ridgun/lib\" \"$O/alpha\" \"$O/zeta\" \"$O/inner/src/main/ridgun\"; cd \"$O\"; printf 'fn :: project name => String\\n      project name =  \"outer\"\\nfn :: project kind => String\\n      project kind =  \"lib\"\\nfn :: project version => String\\n      project version =  \"0.1.0\"\\n' > build.rg; printf 'fn :: hello => Int\\n      hello =  1\\n' > src/main/ridgun/lib/outer.rg; touch alpha/a zeta/z README.md; cd inner; printf 'fn :: project name => String\\n      project name =  \"inner\"\\nfn :: project version => String\\n      project version =  \"0.1.0\"\\nfn :: main entry => String\\n      main entry =  \"main.rg\"\\nfn :: dependencies => [String]\\n      dependencies =  [\"'\"$O\"'\"]\\n' > build.rg; printf 'fn :: main => ()\\n      main =  echo 1\\n' > src/main/ridgun/main.rg; \"" + stable_bin + "\" deps >/dev/null; S=$(ls -A \"$O\" | sort | tr '\\n' ' '); C=$(ls -A .stable/deps/outer | sort | tr '\\n' ' '); [ \"$S\" = \"$C\" ] && echo MATCH_OK; [ ! -e src/main/ridgun/lib/build.rg ] && echo NO_BUILD_RG_OK; printf 'fn :: project name => String\\n      project name =  \"bad\"\\nfn :: dependencies => [String]\\n      dependencies =  [\"/nonexistent/rg_dep_xyz\"]\\n' > build.rg; if \"" + stable_bin + "\" deps >/dev/null 2>&1; then exit 1; else echo FAIL_ON_MISSING_OK; fi"
-        r6 = build tc6 result (run sh capture ("bash -c '" + tc6_sh + "'") d 60)
+        write file (d + "/tc6.sh") tc6_sh
+        r6 = build tc6 result (run sh capture "bash tc6.sh" d 60)
         tc7_sh = "set -e; B=\"" + d + "/rg105\"; mkdir -p \"$B/dep/src/main/ridgun/lib\" \"$B/dep/target/bundles\" \"$B/app\"; printf 'fn :: project name => String\\n      project name =  \"dep\"\\n' > \"$B/dep/build.rg\"; echo \"version 1\" > \"$B/dep/target/bundles/thing.rglib\"; printf 'fn :: project name => String\\n      project name =  \"app\"\\n\\nfn :: dependencies => [String]\\n      dependencies =  [\"'\"$B/dep\"'\"]\\n' > \"$B/app/build.rg\"; cd \"$B/app\"; \"" + stable_bin + "\" deps >/dev/null; V1=$(cat .stable/deps/thing.rglib); echo \"version 2\" > \"$B/dep/target/bundles/thing.rglib\"; \"" + stable_bin + "\" deps >/dev/null; V2=$(cat .stable/deps/thing.rglib); [ \"$V1\" = \"version 1\" ] && [ \"$V2\" = \"version 2\" ] && echo REFRESH_OK"
-        r7 = build tc7 result (run sh capture ("bash -c '" + tc7_sh + "'") d 60)
+        write file (d + "/tc7.sh") tc7_sh
+        r7 = build tc7 result (run sh capture "bash tc7.sh" d 60)
         write file (d + "/box.rg") "module :: box\n\ntype Box = items: [Int], size: Int\n\nfn :: box new => Box\n      box new = Box [1, 2, 3] 3\n\nfn :: box first Box => Int\n      box first b = first of (items b)\n\nfn :: first of [Int] => Int\n      first of (x:_) = x\n"
         write file (d + "/field_main.rg") "import box\n\nfn :: items Int => [Int]\n      items n = []\n\nfn :: main => ()\n      main =\n        echo \"{{box first box new}} {{items 5}}\"\n"
         r8 = build tc8 result (run sh capture ("\"" + ridgunc + "\" build field_main.rg -o field_main >/dev/null && ./field_main") d 600)
