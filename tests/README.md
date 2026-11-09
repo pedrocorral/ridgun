@@ -11,7 +11,8 @@ Every expected value comes from the language's own documents, and each case says
 ./bin/ridgunc run tests/run.rg --no-toolchain   # cases only
 ```
 - Every build is `ridgunc build --strict`. The cases use the canonical style: spaced names in declarations and calls (no `_` in function names or calls), and tuples written `=> Int Int`. Local variables and parameters may contain `_`.
-- `RIDGUNC=/path/to/ridgunc` tests another build. The default is `bin/ridgunc`.
+- `RIDGUNC=/path/to/ridgunc` tests another build. The default is `bin/ridgunc`. `STABLE=/path/to/stable` does the same for the `stable deps` checks; the default is `bin/stable`. A relative path in either variable is read from the repository root.
+- A toolchain check that needs a shell script writes it to a file in its work folder and runs `bash file.sh`. Never nest a script inside `bash -c '...'`: its `printf '...'` quotes end the outer quotes.
 - Work folders go to `~/.cache/ridgun-compiler-tests/work`. They never go to `/tmp`, which is a tmpfs with limited inodes, and never inside a repository.
 - Builds and runs are capped at 4 GB of address space and a time limit.
 - The run ends with the promised behaviours that failed, then the proposals not met. It exits with 1 only if a promised behaviour failed.
