@@ -2457,6 +2457,8 @@ fn :: add borrow forgets [RNativeInstr] [RNativeInstr] [RNativeInstr] => [RNativ
       add borrow forgets [] forgets rev_acc = rev native instrs (rev native instrs forgets rev_acc) []
       add borrow forgets (NReturn:rest) forgets rev_acc =
         add borrow forgets rest forgets (rev native instrs (forgets :: [NReturn]) rev_acc)
+      add borrow forgets ((NTailCallFn f a c k):rest) forgets rev_acc =
+        add borrow forgets rest forgets (rev native instrs (forgets :: [NTailCallFn f a c k]) rev_acc)
       add borrow forgets (ins:rest) forgets rev_acc =
         add borrow forgets rest forgets ([ins] :: rev_acc)
 
@@ -2939,9 +2941,37 @@ fn :: guards have self tail call String [RGuard] => Bool
         | expr has self tail call target body = True
         | otherwise = guards have self tail call target gs
 
+-- OPT-019: a guard branch that ends in a direct call to another function
+-- is lowered by `lower tail guards cmm`, so the call stays in tail position.
+fn :: expr has direct tail call RNativeEnv RExpr [String] => Bool
+      expr has direct tail call env (ECall fname args) bound_locals = is direct call target env fname args bound_locals
+      expr has direct tail call env (EBlock stmts) bound_locals = stmts have direct tail call env stmts bound_locals
+      expr has direct tail call env (EGuard guards) bound_locals = guards have direct tail call env guards bound_locals
+      expr has direct tail call env (EWhere body _) bound_locals = expr has direct tail call env body bound_locals
+      expr has direct tail call _ _ _ = False
+
+fn :: stmts have direct tail call RNativeEnv [RStmt] [String] => Bool
+      stmts have direct tail call _ [] _ = False
+      stmts have direct tail call env ((StmtExpr e):[]) bound_locals = expr has direct tail call env e bound_locals
+      stmts have direct tail call env (_:rest) bound_locals = stmts have direct tail call env rest bound_locals
+
+fn :: guards have direct tail call RNativeEnv [RGuard] [String] => Bool
+      guards have direct tail call _ [] _ = False
+      guards have direct tail call env ((GuardBranch _ body):gs) bound_locals
+        | expr has direct tail call env body bound_locals = True
+        | otherwise = guards have direct tail call env gs bound_locals
+
 fn :: can move param var String [String] [String] [String] => Bool
       can move param var v locals scope_vars later_vars =
         ((lookup local locals v) >= 0) and (not (str in list v scope_vars)) and (not (str in list v later_vars))
+
+-- A call to a user function with all its arguments (no builtin, constructor,
+-- agent, tensor helper, record getter with extra arguments, local function
+-- value or borrowing callee): lowered as a direct `NCallFn`, and in tail
+-- position as `NTailCallFn` (OPT-019).
+fn :: is direct call target RNativeEnv String [RExpr] [String] => Bool
+      is direct call target env fname args bound_locals =
+        (lookup local bound_locals fname) < 0 and (not (is upper ident fname)) and (builtin call id fname) < 0 and (not (is agent call name fname)) and (not (is tensor helper name fname)) and (not (is gt pseudo name fname)) and fname != "sys_os" and fname != "sys_arch" and fname != "__record_update__" and fname != "__unpack2__" and fname != "__chain__" and (rexpr list len args) == (env fn arity env fname) and (not ((env has field env fname) and (env fn arity env fname) == 1 and (rexpr list len args) > 1)) and (env borrow mask env fname) <= 0
 
 fn :: lower tco arg expr RNativeEnv RExpr [RExpr] [String] [String] Int RNativeCode => RNativeCode
       lower tco arg expr env (EVar v) es bound_locals scope_vars sp st
@@ -2957,7 +2987,7 @@ fn :: lower tco arg expr RNativeEnv RExpr [RExpr] [String] [String] Int RNativeC
         st1 = lower tco arg list to slots env elems es bound_locals scope_vars sp 0 st
         nc emit st1 (NMakeTuple sp count) (sp + count + 1)
       lower tco arg expr env (ECall fname args) es bound_locals scope_vars sp st
-        | (lookup local bound_locals fname) < 0 and (not (is upper ident fname)) and (builtin call id fname) < 0 and (not (is agent call name fname)) and (not (is tensor helper name fname)) and (not (is gt pseudo name fname)) and fname != "sys_os" and fname != "sys_arch" and fname != "__record_update__" and fname != "__unpack2__" and fname != "__chain__" and (rexpr list len args) == (env fn arity env fname) and (not ((env has field env fname) and (env fn arity env fname) == 1 and (rexpr list len args) > 1)) and (env borrow mask env fname) <= 0 =
+        | is direct call target env fname args bound_locals =
           count = rexpr list len args
           st1 = lower tco arg list to slots env args es bound_locals scope_vars sp 0 st
           nc emit st1 (NCallFn (env fn id env fname) sp count) (sp + count + 1)
@@ -3032,7 +3062,7 @@ fn :: lower tail return cmm RNativeEnv RExpr [String] [String] Int RNativeCode =
       lower tail return cmm env (EBlock stmts) bound_locals scope_vars sp st =
         lower tail stmts cmm env stmts bound_locals scope_vars sp st
       lower tail return cmm env (EGuard guards) bound_locals scope_vars sp st
-        | guards have self tail call (env fn name env) guards =
+        | (guards have self tail call (env fn name env) guards) or (guards have direct tail call env guards bound_locals) =
           lower tail guards cmm env guards bound_locals scope_vars sp st
       lower tail return cmm env (EWhere body binds) bound_locals scope_vars sp st =
         lower tail where cmm env binds body bound_locals scope_vars sp st
@@ -3044,6 +3074,12 @@ fn :: lower tail return cmm RNativeEnv RExpr [String] [String] Int RNativeCode =
         lower tail return expr env expr bound_locals scope_vars used sp st
 
 fn :: lower tail return expr RNativeEnv RExpr [String] [String] [String] Int RNativeCode => RNativeCode
+      lower tail return expr env (ECall fname args) bound_locals scope_vars used sp st
+        | is direct call target env fname args bound_locals =
+          count = rexpr list len args
+          st1 = lower tco arg list to slots env args [] bound_locals scope_vars sp 0 st
+          st2 = lower cmm drops env used (sp + count + 1) st1
+          nc emit st2 (NTailCallFn (env fn id env fname) sp count 0) (sp + count + 1)
       lower tail return expr env expr bound_locals scope_vars [] sp st =
         st1 = lower tco arg expr env expr [] bound_locals scope_vars sp st
         nc emit st1 NReturn sp
@@ -3507,47 +3543,66 @@ fn :: lower cases list RNativeEnv [RFnCase] Int RNativeCode => RNativeCode
         st1 = lower single case env c False sp st
         lower cases list env cs sp st1
 
-fn :: wrap unit return stmts String [RStmt] => [RStmt]
-      wrap unit return stmts _ [] = [StmtExpr EUnit]
-      wrap unit return stmts _ ((StmtExpr EUnit):[]) = [StmtExpr EUnit]
-      wrap unit return stmts name ((StmtExpr e):[])
-        | expr has self tail call name e = [StmtExpr (wrap unit return expr name e)]
+fn :: wrap unit return stmts String RStrIntMap [RStmt] => [RStmt]
+      wrap unit return stmts _ _ [] = [StmtExpr EUnit]
+      wrap unit return stmts _ _ ((StmtExpr EUnit):[]) = [StmtExpr EUnit]
+      wrap unit return stmts name units ((StmtExpr e):[])
+        | unit tail call ok name units e = [StmtExpr (wrap unit return expr name units e)]
         | otherwise = [StmtExpr e, StmtExpr EUnit]
-      wrap unit return stmts _ (last_s:[]) = [last_s, StmtExpr EUnit]
-      wrap unit return stmts name (s:rest) = [s] :: (wrap unit return stmts name rest)
+      wrap unit return stmts _ _ (last_s:[]) = [last_s, StmtExpr EUnit]
+      wrap unit return stmts name units (s:rest) = [s] :: (wrap unit return stmts name units rest)
 
-fn :: wrap unit return guards String [RGuard] => [RGuard]
-      wrap unit return guards _ [] = []
-      wrap unit return guards name ((GuardBranch c b):gs) =
-        [GuardBranch c (wrap unit return expr name b)] :: (wrap unit return guards name gs)
+fn :: wrap unit return guards String RStrIntMap [RGuard] => [RGuard]
+      wrap unit return guards _ _ [] = []
+      wrap unit return guards name units ((GuardBranch c b):gs) =
+        [GuardBranch c (wrap unit return expr name units b)] :: (wrap unit return guards name units gs)
 
-fn :: wrap unit return expr String RExpr => RExpr
-      wrap unit return expr _ EUnit = EUnit
-      wrap unit return expr name (EBlock stmts) =
-        EBlock (wrap unit return stmts name stmts)
-      wrap unit return expr name (EGuard guards) =
-        EGuard (wrap unit return guards name guards)
-      wrap unit return expr name (EWhere body binds) =
-        EWhere (wrap unit return expr name body) binds
-      wrap unit return expr name e
-        | expr has self tail call name e = e
+-- A unit function keeps a call in tail position as it is (no `()` after it)
+-- when it calls itself, or (OPT-019) another unit function with all its
+-- arguments: that call already returns `()`, and stays a tail call.
+fn :: unit tail call ok String RStrIntMap RExpr => Bool
+      unit tail call ok name units (ECall fname args)
+        | fname == name = True
+        | otherwise = (str int map lookup units ("#u " + fname)) == 1 and (str int map lookup units fname) == (rexpr list len args) and (not (is agent call name fname))
+      unit tail call ok name _ e = expr has self tail call name e
+
+fn :: wrap unit return expr String RStrIntMap RExpr => RExpr
+      wrap unit return expr _ _ EUnit = EUnit
+      wrap unit return expr name units (EBlock stmts) =
+        EBlock (wrap unit return stmts name units stmts)
+      wrap unit return expr name units (EGuard guards) =
+        EGuard (wrap unit return guards name units guards)
+      wrap unit return expr name units (EWhere body binds) =
+        EWhere (wrap unit return expr name units body) binds
+      wrap unit return expr name units e
+        | unit tail call ok name units e = e
         | otherwise = EBlock [StmtExpr e, StmtExpr EUnit]
 
-fn :: wrap unit return cases String [RFnCase] => [RFnCase]
-      wrap unit return cases _ [] = []
-      wrap unit return cases name ((FnCase pats [] body):cs) =
-        [FnCase pats [] (wrap unit return expr name body)] :: (wrap unit return cases name cs)
-      wrap unit return cases name ((FnCase pats guards body):cs) =
-        [FnCase pats (wrap unit return guards name guards) body] :: (wrap unit return cases name cs)
+fn :: wrap unit return cases String RStrIntMap [RFnCase] => [RFnCase]
+      wrap unit return cases _ _ [] = []
+      wrap unit return cases name units ((FnCase pats [] body):cs) =
+        [FnCase pats [] (wrap unit return expr name units body)] :: (wrap unit return cases name units cs)
+      wrap unit return cases name units ((FnCase pats guards body):cs) =
+        [FnCase pats (wrap unit return guards name units guards) body] :: (wrap unit return cases name units cs)
 
-fn :: maybe wrap unit cases String String [RFnCase] => [RFnCase]
-      maybe wrap unit cases name ret cases
-        | ret == "()" or ret == "Unit" = wrap unit return cases name cases
+fn :: is unit ret String => Bool
+      is unit ret ret =  ret == "()" or ret == "Unit"
+
+fn :: maybe wrap unit cases String String RStrIntMap [RFnCase] => [RFnCase]
+      maybe wrap unit cases name ret units cases
+        | is unit ret ret = wrap unit return cases name units cases
         | otherwise = cases
+
+-- Marks unit functions in the arity map ("#u " + name), read by `unit tail call ok`.
+fn :: add unit marks [RFnDef] RStrIntMap => RStrIntMap
+      add unit marks [] m = m
+      add unit marks ((FnDef name _ ret _):fs) m
+        | is unit ret ret = add unit marks fs (str int map insert m ("#u " + name) 1)
+        | otherwise = add unit marks fs m
 
 fn :: lower fndef RFnDef RStrIntMap RStrIntMap RStrIntMap RStrSet RStrIntMap [String] => RNativeFn
       lower fndef (FnDef name params ret raw_cases) str_map fn_id_map fn_arity_map heavy_set field_map infos =
-        cases = maybe wrap unit cases name ret raw_cases
+        cases = maybe wrap unit cases name ret fn_arity_map raw_cases
         fid = lookup fn id map fn_id_map name
         arity = infer fndef arity params cases
         all_locals = collect cases all locals cases []
@@ -4136,7 +4191,7 @@ fn :: lower program to native RProgram [String] => RNativeProg
         disp_set0 = str list to set field_names (str list to set b_val_names StrSetEmpty)
         disp_set = collect disp fndefs fns fn_arity_map disp_set0
         borrow_excl = str list to set ([entry_name] :: gagent_names :: show_roots :: (borrow tail fns fns [])) disp_set
-        fn_arity_map_b = add getter marks field_tbl fn_name_set (borrow masks fns borrow_excl fn_arity_map fn_arity_map)
+        fn_arity_map_b = add unit marks fns (add getter marks field_tbl fn_name_set (borrow masks fns borrow_excl fn_arity_map fn_arity_map))
         entry_fid = lookup fn id map fn_id_map entry_name
         main_wrapper = build main wrapper fndef entry_fid gagent_names fn_id_map
         spawn_disp = NativeFn 2 "__rg_dispatch_spawn" 2 6 (build spawn dispatch entry fn_tbl str_map disp_set)
@@ -4146,7 +4201,31 @@ fn :: lower program to native RProgram [String] => RNativeProg
         user_native_fns = lower fndef list acc fns str_map fn_id_map fn_arity_map_b heavy_set field_map infos []
         field_native_fns = lower field getter fns field_tbl fn_name_set fn_id_map []
         all_native_fns = [main_wrapper, spawn_disp, call2_disp, binop_disp] :: user_native_fns :: field_native_fns
-        NativeProg 1 2 3 4 all_native_fns rodata_str
+        NativeProg 1 2 3 4 (fill tail call fns all_native_fns (tail callee slots all_native_fns StrIntEmpty) []) rodata_str
+
+-- OPT-019: `NTailCallFn fid start count slots` carries the callee's frame
+-- size, which the x86-64 encoder needs to resize the frame before the jump.
+-- Callees are lowered after their callers, so it is filled in here.
+fn :: tail callee slots [RNativeFn] RStrIntMap => RStrIntMap
+      tail callee slots [] m = m
+      tail callee slots ((NativeFn fid _ _ ns _):fs) m = tail callee slots fs (str int map insert m (int to str fid) ns)
+
+fn :: instrs have tail call fn [RNativeInstr] => Bool
+      instrs have tail call fn [] = False
+      instrs have tail call fn ((NTailCallFn _ _ _ _):_) = True
+      instrs have tail call fn (_:rest) = instrs have tail call fn rest
+
+fn :: fill tail call instrs [RNativeInstr] RStrIntMap [RNativeInstr] => [RNativeInstr]
+      fill tail call instrs [] _ acc = rev native instrs acc []
+      fill tail call instrs ((NTailCallFn f a c _):rest) m acc =
+        fill tail call instrs rest m ([NTailCallFn f a c (str int map lookup m (int to str f))] :: acc)
+      fill tail call instrs (i:rest) m acc = fill tail call instrs rest m ([i] :: acc)
+
+fn :: fill tail call fns [RNativeFn] RStrIntMap [RNativeFn] => [RNativeFn]
+      fill tail call fns [] _ acc = rev native fns acc []
+      fill tail call fns ((NativeFn fid nm ar ns ins):fs) m acc
+        | instrs have tail call fn ins = fill tail call fns fs m ([NativeFn fid nm ar ns (fill tail call instrs ins m [])] :: acc)
+        | otherwise = fill tail call fns fs m ([NativeFn fid nm ar ns ins] :: acc)
 
 fn :: build lib entry wrapper Int       => RNativeFn
       build lib entry wrapper 0         =  NativeFn 1 "__rg_entry_main" 0 2 [NLoadImmRaw 0, NReturn]
@@ -4182,10 +4261,10 @@ fn :: lower library to native RProgram [String] => RNativeProg
         call2_slots = max int 7 (4 + (highest entry arity fn_tbl))
         call2_disp = NativeFn 3 "__rg_dispatch_call2" 3 call2_slots (build call2 dispatch instrs fn_tbl str_map disp_set 1 [])
         binop_disp = NativeFn 4 "__rg_dispatch_binop" 3 6 (build binop dispatch instrs fn_tbl str_map 1 [])
-        user_native_fns = lower fndef list acc fns str_map fn_id_map (add getter marks field_tbl fn_name_set fn_arity_map) heavy_set field_map infos []
+        user_native_fns = lower fndef list acc fns str_map fn_id_map (add unit marks fns (add getter marks field_tbl fn_name_set fn_arity_map)) heavy_set field_map infos []
         field_native_fns = lower field getter fns field_tbl fn_name_set fn_id_map []
         all_native_fns = [main_wrapper, spawn_disp, call2_disp, binop_disp] :: user_native_fns :: field_native_fns
-        NativeProg 1 2 3 4 all_native_fns rodata_str
+        NativeProg 1 2 3 4 (fill tail call fns all_native_fns (tail callee slots all_native_fns StrIntEmpty) []) rodata_str
 
 -- ── Bytecode (.rgc), Library (.rglib / .so), & ELF64 Emission ─
 

@@ -41,7 +41,8 @@ fn :: test llvm instr emission => Int
         ir_tfill = emit llvm instr (NCallBuiltin 88 1 3) 11 4 16
         e12 = assert true (str contains ir_tfill "call i64 @__rg_builtin_tensor_fill(") "NCallBuiltin 88 calls @__rg_builtin_tensor_fill"
         ir_tco = emit llvm instr (NTailCall 2 2) 12 4 16
-        e13 = assert true ((str contains ir_tco "call void @__rg_rt_tco_copy(") and (str contains ir_tco "br label %tco_entry")) "NTailCall copies args and branches to %tco_entry"
+        ir_tco_big = emit llvm instr (NTailCall 2 2) 12 30 16
+        e13 = assert true ((str contains ir_tco "%tcv_12_1 = load i64") and (str contains ir_tco "br label %tco_entry") and (str contains ir_tco_big "call void @__rg_rt_tco_copy(") and (str contains ir_tco_big "br label %tco_entry")) "NTailCall copies args (inline up to 24 slots, OPT-015) and branches to %tco_entry"
         ir_bin = emit llvm instr (NBinOp 0 1) 13 4 16
         e14 = assert true (str contains ir_bin "call i64 @__rg_fast_bin_op(i64 0,") "NBinOp emits @__rg_fast_bin_op"
         ir_cslot = emit llvm instr (NCloneSlot 2) 14 4 16
@@ -65,10 +66,14 @@ fn :: test llvm instr emission => Int
         ir_clr = emit llvm instr (NClearLocals 2 4) 23 4 16
         e24 = assert true (str contains ir_clr "call i64 @__rg_fast_drop_val(") "Small NClearLocals unrolls constant-offset @__rg_fast_drop_val"
         ir_call_reg = emit llvm instr (NCallFn 7 2 2) 24 6 16
-        e25 = assert true ((str contains ir_call_reg "call i64 @__rg_fn_7_reg(i64 %cav_24_0, i64 %cav_24_1)") and (str contains ir_call_reg "store i64 0, ptr %cap_24_0")) "OPT-013 NCallFn emits direct register call @__rg_fn_7_reg and zeroes caller slots"
+        e25 = assert true ((str contains ir_call_reg "call tailcc i64 @__rg_fn_7_reg(i64 %cav_24_0, i64 %cav_24_1)") and (str contains ir_call_reg "store i64 0, ptr %cap_24_0")) "OPT-013 NCallFn emits direct register call @__rg_fn_7_reg and zeroes caller slots"
         fn_reg_ir = emit llvm fn (NativeFn 7 "add_two" 2 4 [NMoveSlot 0, NStoreSlot 2, NMoveSlot 1, NBinOp 0 2, NReturn]) 16
-        e26 = assert true ((str contains fn_reg_ir "define i64 @__rg_fn_7_reg(i64 %arg_0, i64 %arg_1) inlinehint nounwind") and (str contains fn_reg_ir "define i64 @__rg_fn_7(ptr %args) nounwind")) "OPT-013 emit llvm fn emits @__rg_fn_7_reg and ABI wrapper @__rg_fn_7"
-        e1 + e2 + e3 + e4 + e5 + e6 + e7 + e8 + e9 + e10 + e11 + e12 + e13 + e14 + e15 + e16 + e17 + e18 + e19 + e20 + e21 + e22 + e23 + e24 + e25 + e26
+        e26 = assert true ((str contains fn_reg_ir "define tailcc i64 @__rg_fn_7_reg(i64 %arg_0, i64 %arg_1) inlinehint nounwind") and (str contains fn_reg_ir "define i64 @__rg_fn_7(ptr %args) nounwind")) "OPT-013 emit llvm fn emits @__rg_fn_7_reg and ABI wrapper @__rg_fn_7"
+        ir_tail_fn = emit llvm instr (NTailCallFn 7 2 2 4) 30 4 16
+        e27 = assert true ((str contains ir_tail_fn "store i64 0, ptr %cap_30_0") and (str contains ir_tail_fn "@__rg_fast_drop_val(i64 %tdv_30_3)") and (str contains ir_tail_fn "tail call tailcc i64 @__rg_fn_7_reg(i64 %cav_30_0, i64 %cav_30_1)\n  ret i64 %r_30")) "OPT-019 NTailCallFn moves the arguments out, drops the frame, then tail calls and returns"
+        ir_tail_ptr = emit llvm instr (NTailCallFn 7 2 9 12) 31 12 16
+        e28 = assert true ((str contains ir_tail_ptr "call i64 @__rg_fn_7(ptr %s_31)") and (str contains ir_tail_ptr "br label %epilogue_exit")) "OPT-019 NTailCallFn with more than 8 arguments stays a call followed by a return"
+        e1 + e2 + e3 + e4 + e5 + e6 + e7 + e8 + e9 + e10 + e11 + e12 + e13 + e14 + e15 + e16 + e17 + e18 + e19 + e20 + e21 + e22 + e23 + e24 + e25 + e26 + e27 + e28
 
 fn :: verify llc status Int String => Int
       verify llc status 0 tmp_base =

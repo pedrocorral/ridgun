@@ -246,6 +246,13 @@ fn :: llvm tco put args Int Int Int [String] => String
           line = "  %tsp_{step}_{cur} = getelementptr inbounds i64, ptr %frame, i64 {cur}\n  store i64 %tcv_{step}_{cur}, ptr %tsp_{step}_{cur}, align 8\n"
           llvm tco put args (cur + 1) arity step (acc :: [line])
 
+-- OPT-019: before a tail call to another function, drop every slot of the
+-- frame (the arguments were already moved out), as the epilogue would.
+fn :: llvm tail teardown Int Int => String
+      llvm tail teardown num_slots step
+        | num_slots <= 24 = llvm tco drop slots 0 num_slots step []
+        | otherwise = "  %te_{step} = call i64 @__rg_rt_epilogue(ptr %frame, i64 {num_slots}, i64 0)\n"
+
 fn :: llvm instr is tco RNativeInstr => Bool
       llvm instr is tco (NTailCall _ _) = True
       llvm instr is tco _               = False
@@ -419,7 +426,7 @@ fn :: emit llvm instr RNativeInstr Int Int Int => String
         | fid >= 5 and count >= 0 and count <= 8 =
           load_ir = llvm load call args start_slot 0 count step []
           arg_list = llvm call arg list 0 count step []
-          load_ir + "  %r_{step} = call i64 @__rg_fn_{fid}_reg(" + arg_list + ")\n  store i64 %r_{step}, ptr %acc, align 8\n"
+          load_ir + "  %r_{step} = call tailcc i64 @__rg_fn_{fid}_reg(" + arg_list + ")\n  store i64 %r_{step}, ptr %acc, align 8\n"
         | otherwise =
           "  %s_{step} = getelementptr inbounds i64, ptr %frame, i64 {start_slot}\n  %r_{step} = call i64 @__rg_fn_{fid}(ptr %s_{step})\n  store i64 %r_{step}, ptr %acc, align 8\n"
       emit llvm instr (NCallBuiltin 1 start_slot _) step _ _ =
@@ -486,6 +493,13 @@ fn :: emit llvm instr RNativeInstr Int Int Int => String
           llvm unroll tco copy start_slot arity num_slots step + "  br label %tco_entry\ndead_{step}:\n"
         | otherwise =
         "  call void @__rg_rt_tco_copy(ptr %frame, i64 {start_slot}, i64 {arity}, i64 {num_slots})\n  br label %tco_entry\ndead_{step}:\n"
+      emit llvm instr (NTailCallFn fid start_slot count _) step num_slots rodata_len
+        | fid >= 5 and count >= 0 and count <= 8 =
+          load_ir = llvm load call args start_slot 0 count step []
+          arg_list = llvm call arg list 0 count step []
+          load_ir + (llvm tail teardown num_slots step) + "  %r_{step} = tail call tailcc i64 @__rg_fn_{fid}_reg(" + arg_list + ")\n  ret i64 %r_{step}\ndead_{step}:\n"
+        | otherwise =
+          (emit llvm instr (NCallFn fid start_slot count) step num_slots rodata_len) + (emit llvm instr NReturn step num_slots rodata_len)
       emit llvm instr NReturn step _ _ =
         "  br label %epilogue_exit\ndead_{step}:\n"
 
@@ -509,16 +523,25 @@ fn :: emit llvm reg wrapper Int Int => String
       emit llvm reg wrapper fid arity =
         load_ir = llvm load wrapper args 0 arity []
         arg_list = llvm wrapper arg list 0 arity []
-        "define i64 @__rg_fn_{fid}(ptr %args) nounwind {{\nentry:\n" + load_ir + "  %r = call i64 @__rg_fn_{fid}_reg(" + arg_list + ")\n  ret i64 %r\n}}\n\n"
+        "define i64 @__rg_fn_{fid}(ptr %args) nounwind {{\nentry:\n" + load_ir + "  %r = call tailcc i64 @__rg_fn_{fid}_reg(" + arg_list + ")\n  ret i64 %r\n}}\n\n"
 
 fn :: emit llvm fn RNativeFn Int => String
-      emit llvm fn (NativeFn fid _ arity num_slots instrs) rodata_len
+      emit llvm fn nf rodata_len =  emit llvm fn linked nf rodata_len ""
+
+-- `lk` is the linkage prefix of the `_reg` definition: "" (external) or
+-- "weak_odr " for the targets of `NTailCallFn` (OPT-019). Without it LLVM
+-- may prove that the callee always returns the same value (a unit function
+-- returns 0) and return that constant instead of the call's result; the call
+-- is then no longer in tail position and the stack grows. `weak_odr` keeps
+-- the function inlinable but stops that deduction.
+fn :: emit llvm fn linked RNativeFn Int String => String
+      emit llvm fn linked (NativeFn fid _ arity num_slots instrs) rodata_len lk
         | fid >= 5 and arity >= 0 and arity <= 8 and num_slots <= 24 and (not (llvm fn has tco instrs)) =
           aslots = llvm alloc slots num_slots
           rparams = llvm reg param list 0 arity []
           init_ir = llvm unroll init frame reg 0 arity num_slots []
           epi_ir = llvm unroll epilogue 0 num_slots []
-          hdr = "define i64 @__rg_fn_{fid}_reg(" + rparams + ") inlinehint nounwind {{\nentry:\n  %acc = alloca i64, align 8\n  %frame = alloca [{aslots} x i64], align 8\n  store i64 0, ptr %acc, align 8\n" + init_ir + "  br label %tco_entry\ntco_entry:\n"
+          hdr = "define " + lk + "tailcc i64 @__rg_fn_{fid}_reg(" + rparams + ") inlinehint nounwind {{\nentry:\n  %acc = alloca i64, align 8\n  %frame = alloca [{aslots} x i64], align 8\n  store i64 0, ptr %acc, align 8\n" + init_ir + "  br label %tco_entry\ntco_entry:\n"
           body_chunks = emit llvm instr list instrs 0 num_slots rodata_len []
           ftr = "  br label %epilogue_exit\nepilogue_exit:\n  %a_end = load i64, ptr %acc, align 8\n" + epi_ir + "  ret i64 %a_end\n}}\n\n"
           wrap = emit llvm reg wrapper fid arity
@@ -528,7 +551,7 @@ fn :: emit llvm fn RNativeFn Int => String
           rparams = llvm reg param list 0 arity []
           init_ir = llvm unroll init frame reg 0 arity num_slots []
           epi_ir = llvm unroll epilogue 0 num_slots []
-          hdr = "define i64 @__rg_fn_{fid}_reg(" + rparams + ") nounwind {{\nentry:\n  %acc = alloca i64, align 8\n  %frame = alloca [{aslots} x i64], align 8\n  store i64 0, ptr %acc, align 8\n" + init_ir + "  br label %tco_entry\ntco_entry:\n"
+          hdr = "define " + lk + "tailcc i64 @__rg_fn_{fid}_reg(" + rparams + ") nounwind {{\nentry:\n  %acc = alloca i64, align 8\n  %frame = alloca [{aslots} x i64], align 8\n  store i64 0, ptr %acc, align 8\n" + init_ir + "  br label %tco_entry\ntco_entry:\n"
           body_chunks = emit llvm instr list instrs 0 num_slots rodata_len []
           ftr = "  br label %epilogue_exit\nepilogue_exit:\n  %a_end = load i64, ptr %acc, align 8\n" + epi_ir + "  ret i64 %a_end\n}}\n\n"
           wrap = emit llvm reg wrapper fid arity
@@ -538,7 +561,7 @@ fn :: emit llvm fn RNativeFn Int => String
           fbytes = aslots * 8
           rparams = llvm reg param list 0 arity []
           init_ir = llvm store reg args 0 arity []
-          hdr = "define i64 @__rg_fn_{fid}_reg(" + rparams + ") nounwind {{\nentry:\n  %acc = alloca i64, align 8\n  %frame = alloca [{aslots} x i64], align 8\n  store i64 0, ptr %acc, align 8\n  call void @llvm.memset.p0.i64(ptr align 8 %frame, i8 0, i64 {fbytes}, i1 false)\n" + init_ir + "  br label %tco_entry\ntco_entry:\n"
+          hdr = "define " + lk + "tailcc i64 @__rg_fn_{fid}_reg(" + rparams + ") nounwind {{\nentry:\n  %acc = alloca i64, align 8\n  %frame = alloca [{aslots} x i64], align 8\n  store i64 0, ptr %acc, align 8\n  call void @llvm.memset.p0.i64(ptr align 8 %frame, i8 0, i64 {fbytes}, i1 false)\n" + init_ir + "  br label %tco_entry\ntco_entry:\n"
           body_chunks = emit llvm instr list instrs 0 num_slots rodata_len []
           ftr = "  br label %epilogue_exit\nepilogue_exit:\n  %a_end = load i64, ptr %acc, align 8\n  %r_end = call i64 @__rg_rt_epilogue(ptr %frame, i64 {num_slots}, i64 %a_end)\n  ret i64 %r_end\n}}\n\n"
           wrap = emit llvm reg wrapper fid arity
@@ -552,10 +575,39 @@ fn :: emit llvm fn RNativeFn Int => String
           join str tree ([hdr] :: body_chunks :: [ftr])
 
 fn :: emit llvm fn list [RNativeFn] Int [String] => [String]
-      emit llvm fn list [] _ acc = llvm rev strs acc []
-      emit llvm fn list (f:fs) rodata_len acc =
-        fn_ir = emit llvm fn f rodata_len
-        emit llvm fn list fs rodata_len ([fn_ir] :: acc)
+      emit llvm fn list fns rodata_len acc =
+        targets = llvm tail targets fns []
+        emit llvm fn list linked fns rodata_len (sort by ints targets targets) acc
+
+-- `targets`: the sorted fids of `NTailCallFn` targets. The functions come in
+-- increasing fid order, so one pass drops the targets below the current fid.
+fn :: emit llvm fn list linked [RNativeFn] Int [Int] [String] => [String]
+      emit llvm fn list linked [] _ _ acc = llvm rev strs acc []
+      emit llvm fn list linked ((NativeFn fid nm ar ns ins):fs) rodata_len targets acc =
+        rest_t = llvm drop targets below targets fid
+        fn_ir = emit llvm fn linked (NativeFn fid nm ar ns ins) rodata_len (llvm target linkage rest_t fid)
+        emit llvm fn list linked fs rodata_len rest_t ([fn_ir] :: acc)
+
+fn :: llvm drop targets below [Int] Int => [Int]
+      llvm drop targets below [] _ = []
+      llvm drop targets below (t:ts) fid
+        | t < fid = llvm drop targets below ts fid
+        | otherwise = [t] :: ts
+
+fn :: llvm target linkage [Int] Int => String
+      llvm target linkage (t:_) fid
+        | t == fid = "weak_odr "
+      llvm target linkage _ _ = ""
+
+fn :: llvm tail targets [RNativeFn] [Int] => [Int]
+      llvm tail targets [] acc = acc
+      llvm tail targets ((NativeFn _ _ _ _ ins):fs) acc = llvm tail targets fs (llvm tail targets in ins acc)
+
+fn :: llvm tail targets in [RNativeInstr] [Int] => [Int]
+      llvm tail targets in [] acc = acc
+      llvm tail targets in ((NTailCallFn f _ c _):rest) acc
+        | f >= 5 and c >= 0 and c <= 8 = llvm tail targets in rest ([f] :: acc)
+      llvm tail targets in (_:rest) acc = llvm tail targets in rest acc
 
 fn :: llvm target triple String           => String
       llvm target triple "arm64"          =  "aarch64-unknown-linux-gnu"
@@ -638,8 +690,8 @@ fn :: build llvm x8664 executable RNativeProg String     => Int
           ll_path = tmp_base + ".ll"
           bc_path = tmp_base + ".bc"
           obj_path = tmp_base + ".o"
-          rt_path = "/tmp/__rg_llvm_cache_v0_9_46.rt"
-          lds_path = "/tmp/__rg_llvm_cache_v0_9_46.lds"
+          rt_path = "/tmp/__rg_llvm_cache_v0_9_47.rt"
+          lds_path = "/tmp/__rg_llvm_cache_v0_9_47.lds"
           ensure cached rt files rt_path lds_path
           nprog -> emit llvm ir -> write file ll_path _
           cmd = "/usr/bin/opt -O2 \"" + ll_path + "\" -o \"" + bc_path + "\" && /usr/bin/llc -O2 -filetype=obj \"" + bc_path + "\" -o \"" + obj_path + "\" && /usr/bin/ld -n --no-warn-rwx-segments -T \"" + lds_path + "\" -b binary \"" + rt_path + "\" -b elf64-x86-64 \"" + obj_path + "\" -o \"" + output_bin + "\""
@@ -655,8 +707,8 @@ fn :: build llvm x8664 so library RNativeProg String    => Int
           ll_path = tmp_base + ".ll"
           bc_path = tmp_base + ".bc"
           obj_path = tmp_base + ".o"
-          rt_path = "/tmp/__rg_llvm_cache_v0_9_46.rt"
-          lds_path = "/tmp/__rg_llvm_cache_v0_9_46.lds"
+          rt_path = "/tmp/__rg_llvm_cache_v0_9_47.rt"
+          lds_path = "/tmp/__rg_llvm_cache_v0_9_47.lds"
           ensure cached rt files rt_path lds_path
           nprog -> emit llvm ir -> write file ll_path _
           cmd = "/usr/bin/opt -O2 \"" + ll_path + "\" -o \"" + bc_path + "\" && /usr/bin/llc -O2 -relocation-model=pic -filetype=obj \"" + bc_path + "\" -o \"" + obj_path + "\" && /usr/bin/ld -shared -n --no-warn-rwx-segments -T \"" + lds_path + "\" -b binary \"" + rt_path + "\" -b elf64-x86-64 \"" + obj_path + "\" -o \"" + output_so + "\""

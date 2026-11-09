@@ -2,7 +2,7 @@
 
 | Seat | State | Who | Task | Next action | Heartbeat |
 |---|---|---|---|---|---|
-| agent-001 | dead | agent gemini@solarfall | none |  | 4392 min ago |
-| agent-002 | dead | claude claude@solarfall | TASK-0059 | None for this seat. | 1185 min ago |
+| agent-001 | dead | agent gemini@solarfall | TASK-0053 |  | 8244 min ago |
+| agent-002 | live | claude claude@solarfall | none | None for this seat. | 0 min ago |
 
 Claim a seat: `aix agent claim`. A task is started with `aix task start ID` and signed by your seat; a task another live seat holds is refused.

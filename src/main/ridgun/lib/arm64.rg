@@ -143,6 +143,7 @@ fn :: arm64 instr size RNativeInstr       => Int
       arm64 instr size (NCallIndirect1 _ _) = 12
       arm64 instr size (NCallIndirect2 _ _) = 12
       arm64 instr size (NTailCall _ _)    =  60
+      arm64 instr size (NTailCallFn _ _ _ _) = 60
       arm64 instr size NReturn            =  52
 
 fn :: arm64 scan instrs [RNativeInstr] Int [RLabelEntry] => RScanResult
@@ -312,6 +313,10 @@ fn :: arm64 encode instr RNativeInstr Int Int Int Int [RLabelEntry] [RLabelEntry
         (arm64 ldr slot 0 fn_slot) :: (arm64 lea slot 1 start_slot) :: (arm64 bl rt 54 (cur_vaddr + 8))
       arm64 encode instr (NTailCall start_slot arity) cur_vaddr fn_vaddr num_slots _ _ _ =
         (arm64 mov sp to reg 0) :: (arm64 mov imm64 1 start_slot) :: (arm64 mov imm64 2 arity) :: (arm64 mov imm64 3 num_slots) :: (arm64 bl rt 3 (cur_vaddr + 52)) :: (arm64 b (fn_vaddr + 72) (cur_vaddr + 56))
+-- OPT-019 is not implemented on ARM64: a tail call to another function is a
+-- call followed by a return (the stack grows by one frame per round).
+      arm64 encode instr (NTailCallFn fid start_slot count _) cur_vaddr fn_vaddr num_slots rodata_vaddr lbl_table fn_table =
+        (arm64 encode instr (NCallFn fid start_slot count) cur_vaddr fn_vaddr num_slots rodata_vaddr lbl_table fn_table) :: (arm64 encode instr NReturn (cur_vaddr + 8) fn_vaddr num_slots rodata_vaddr lbl_table fn_table)
       arm64 encode instr NReturn cur_vaddr _ num_slots _ _ _ =
         fsz = arm64 frame size num_slots
         (arm64 mov reg 2 0) :: (arm64 mov sp to reg 0) :: (arm64 mov imm64 1 num_slots) :: (arm64 bl rt 2 (cur_vaddr + 24)) :: (arm64 mov imm64 9 fsz) :: (u32 le 2334196735) :: (u32 le 2831155197) :: (u32 le 3596551104)

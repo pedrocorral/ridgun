@@ -1,20 +1,20 @@
 ---
-updated: 2026-11-08T17:10
+updated: 2026-11-09T13:06
 active_task: none
 agent_runtime: claude
 ---
 # Session state — read this first when resuming
 
 ## Where we are (3 lines max)
-- `TASK-0055` is complete: ridgunc / stable 0.9.34 fix RG-113 (`FR-COMP-016`, 64-bit `Int` literals and `str_to_int`) and RG-114 (`FR-COMP-017`, constructor patterns in tuples, runtime error when no clause matches).
-- `TASK-0056` is complete: 0.9.35 rejects non-numeric tensor element types (`FR-COMP-018`). `bin/ridgunc` and `bin/stable` are 0.9.35, built from a bootstrap fixed point.
+- `TASK-0061` is complete: ridgunc / stable 0.9.47 reuse the frame for calls in tail position to other functions (OPT-019) on LLVM and x86-64; ARM64 still uses a call + return (FR-COMP-004 §3).
+- `bin/ridgunc` and `bin/stable` are 0.9.47, built from a bootstrap fixed point (s2/s3 differ by 3 bytes).
 
 ## Files to load for the active task (nothing else)
 - None.
 
 ## Last verified facts (tests green? migrations applied? env?)
-- `bin/ridgunc run tests/run.rg` → 77/79; the two failures are the pre-existing RG-105 / RG-107 `stable deps` cases.
-- `bin/stable test` → 6/7; `test lib and plugins.rg` fails as it did on 0.9.33.
+- All 113 cases on LLVM and x86-64: only the known failures (`rg113_int64_literals` on x86-64, three `names/` cases under `--strict`).
+- `ridgunc run tests/run.rg` → 117/119; the two failures are the `stable deps` harness bugs fixed by TASK-0060 on its branch.
 - `aix docs validate` → 0 errors.
 
 ## Immediate next action

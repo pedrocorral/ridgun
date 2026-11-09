@@ -4,7 +4,7 @@ title: Compiler Optimization Catalog, O(N) Contiguous Tensor Allocation, In-Plac
 status: implemented
 priority: must
 created: 2026-10-24
-updated: 2026-11-08
+updated: 2026-11-09
 depends_on:
   - FR-COMP-002
   - FR-COMP-004
@@ -54,6 +54,10 @@ The `ridgunc` native compiler SHALL maintain a documented catalog of compile-tim
    - **OPT-017**: In a self tail call, a parameter passed as an argument and read by a later argument SHALL be moved, not cloned.
    - **OPT-018**: A parameter that every clause of a function only matches with a pattern (constructor, tuple, `[]`, string or `_`) SHALL be borrowed: the caller passes a local variable without a clone and the callee does not drop it. This applies only to functions that are called directly (not used as values, partially applied, dispatched by name, agents, entry points or library exports) and do not call themselves.
    - These optimizations SHALL NOT change any program output, exit status or `cmm live blocks` result.
+8. **OPT-019 — Tail Calls Between Different Functions (TASK-0061)**:
+   - A direct call to another function in tail position SHALL compute its arguments, drop the caller's remaining values, release the caller's frame and then transfer control to the callee, which returns straight to the caller's caller (`NTailCallFn`). No work SHALL follow the call ("Rule: tail calls stay last" in `docs/etc/compiler_optimizations.md`).
+   - On LLVM the register entry points `@__rg_fn_{fid}_reg` use the `tailcc` calling convention, so a `tail call` in tail position is always a jump; the targets of such calls have `weak_odr` linkage so the optimizer cannot replace the call's result by a constant and lose the tail position.
+   - The limits per backend are listed in FR-COMP-004 §3.
 
 ## Rationale
 - High-performance library code in pure Ridgun (`crypto.rg`, `argon2id.rg`, numerical/scientific computing) must achieve sub-second throughput through legitimate compiler and runtime codegen optimizations rather than by embedding library algorithms (`pbkdf2`, `argon2id`) as compiler built-ins.

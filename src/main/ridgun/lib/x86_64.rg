@@ -253,6 +253,9 @@ fn :: x8664 instr size RNativeInstr       => Int
       x8664 instr size (NCallIndirect1 _ _) = 21
       x8664 instr size (NCallIndirect2 _ _) = 21
       x8664 instr size (NTailCall _ _)    =  43
+      x8664 instr size (NTailCallFn _ _ count cs)
+        | x86 tail fn ok count cs = 68 + (16 * count)
+        | otherwise = 43
       x8664 instr size NReturn            =  30
 
 fn :: x8664 scan instrs [RNativeInstr] Int [RLabelEntry] => RScanResult
@@ -486,9 +489,53 @@ fn :: x8664 encode instr RNativeInstr Int Int Int Int [RLabelEntry] [RLabelEntry
         (x86 mov slot rdi fn_slot) :: (x86 lea slot rsi start_slot) :: (x86 call rt 54 (cur_vaddr + 21))
       x8664 encode instr (NTailCall start_slot arity) cur_vaddr fn_vaddr num_slots _ _ _ =
         [72, 137, 231] :: (x86 mov imm64 rsi start_slot) :: (x86 mov imm64 rdx arity) :: (x86 mov imm64 rcx num_slots) :: (x86 call rt 3 (cur_vaddr + 38)) :: (x86 jmp rel (fn_vaddr + 42) (cur_vaddr + 43))
+      x8664 encode instr (NTailCallFn fid start_slot count cs) cur_vaddr fn_vaddr num_slots rodata_vaddr lbl_table fn_table
+        | x86 tail fn ok count cs =
+          target_fn = lookup label offset fn_table fid
+          d = (x8664 frame size num_slots) - (x8664 frame size cs)
+          copy = [72, 137, 231] :: (x86 mov imm64 rsi start_slot) :: (x86 mov imm64 rdx count) :: (x86 mov imm64 rcx num_slots) :: (x86 call rt 3 (cur_vaddr + 38))
+          zero = (x86 lea slot rdi count) :: [185] :: (i32 le (cs - count)) :: [49, 192, 243, 72, 171]
+          end_vaddr = cur_vaddr + 68 + (16 * count)
+          copy :: (x86 tail fn shift d count) :: zero :: (x86 jmp rel (target_fn + 42) end_vaddr)
+        | otherwise =
+          (x8664 encode instr (NCallFn fid start_slot count) cur_vaddr fn_vaddr num_slots rodata_vaddr lbl_table fn_table) :: (x8664 encode instr NReturn (cur_vaddr + 13) fn_vaddr num_slots rodata_vaddr lbl_table fn_table)
       x8664 encode instr NReturn cur_vaddr _ num_slots _ _ _ =
         fsz = x8664 frame size num_slots
         [72, 137, 231] :: (x86 mov imm64 rsi num_slots) :: [72, 137, 194] :: (x86 call rt 2 (cur_vaddr + 21)) :: [72, 129, 196] :: (i32 le fsz) :: [93, 195]
+
+-- OPT-019 tail call to another function (`NTailCallFn fid start count cs`):
+--   rg_tco_copy moves the arguments to slots 0..count-1 and drops every other
+--   slot; the arguments move to the base of a frame of the callee's size
+--   (rsp = rbp - frame size cs); slots count..cs-1 are zeroed (rep stosq);
+--   then a jump to the callee's body, after its 42-byte prologue. The callee
+--   returns straight to our caller. Up to 32 arguments (rg_tco_copy).
+fn :: x86 tail fn ok Int Int => Bool
+      x86 tail fn ok count cs =  count >= 0 and count <= 32 and cs >= count
+
+-- Moves the arguments by d bytes (d = old frame size - new frame size) and
+-- adds d to rsp: 16 bytes per argument plus 7, whatever the sign of d.
+fn :: x86 tail fn shift Int Int => [Int]
+      x86 tail fn shift d count
+        | d >= 0 = (x86 tail fn moves (count - 1) (0 - 1) (0 - 1) d []) :: (x86 add rsp imm32 d)
+        | otherwise = (x86 add rsp imm32 d) :: (x86 tail fn moves 0 1 count (0 - d) [])
+
+-- One move per argument i, from i stepping by `dir` until `stop`:
+-- mov rax, [rsp + src_off + i*8]; mov [rsp + dst_off + i*8], rax
+-- (shrink: src_off 0, dst_off d, descending; grow: src_off -d, dst_off 0, ascending).
+fn :: x86 tail fn moves Int Int Int Int [Int] => [Int]
+      x86 tail fn moves i dir stop off acc
+        | i == stop = acc
+        | dir < 0 = x86 tail fn moves (i + dir) dir stop off (acc :: (x86 mov rax rsp disp (i * 8)) :: (x86 mov rsp disp rax (off + (i * 8))))
+        | otherwise = x86 tail fn moves (i + dir) dir stop off (acc :: (x86 mov rax rsp disp (off + (i * 8))) :: (x86 mov rsp disp rax (i * 8)))
+
+fn :: x86 mov rax rsp disp Int => [Int]
+      x86 mov rax rsp disp off =  [72, 139, 132, 36] :: (i32 le off)
+
+fn :: x86 mov rsp disp rax Int => [Int]
+      x86 mov rsp disp rax off =  [72, 137, 132, 36] :: (i32 le off)
+
+fn :: x86 add rsp imm32 Int => [Int]
+      x86 add rsp imm32 v =  [72, 129, 196] :: (i32 le v)
 
 fn :: x8664 encode instrs [RNativeInstr] Int Int Int Int [RLabelEntry] [RLabelEntry] [Int] => [Int]
       x8664 encode instrs [] _ _ _ _ _ _ acc = acc
