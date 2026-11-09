@@ -280,6 +280,7 @@ Ridgun achieves deterministic memory management with **zero Garbage Collector pa
 | | `read bytes path` | `String => Tensor[U8]` | Read raw file bytes (packed `Tensor[U8]`, FR-COMP-022) |
 | | `write bytes path bytes` | `String Tensor[U8] => ()` | Write raw bytes to file (also accepts `[Int]` of `0..255`) |
 | | `tensor from str s` / `tensor to str t` | `String => Tensor[U8]` / `Tensor[U8] => String` | Convert bytes with one copy |
+| | `tensor u8 from list xs` | `[Int] => Tensor[U8]` | Fixed bytes (headers, test vectors); values 0..255 |
 | | `crc32 range data from to crc` | `String or Tensor[U8], Int, Int, Int => Int` | CRC-32 (zlib), chainable |
 | | `sha256 str text` / `sha256 file path` | `String => String` | Lowercase 64-char SHA-256 hex digest of string or file |
 | | `sha256 raw text` | `String => String` | Raw 32-byte SHA-256 digest |
@@ -290,7 +291,7 @@ Ridgun achieves deterministic memory management with **zero Garbage Collector pa
 | | `sys chdir path` | `String => Int` | Change working directory (`0` on success) |
 | | `sys getcwd` / `sys getenv k` | `=> String` / `String => String` | Current working directory or env var |
 | | `sys setenv k v` | `String String => Int` | Set environment variable (`0` on success) |
-| | `sys exec prog args env` / `sys execve prog args env` | `String [String] [String] => Int` | Spawn / exec process without `/bin/sh` |
+| | `sys exec prog args env` / `sys execve prog argv env` | `String [String] [String] => Int` | Spawn (`prog` is argv[0]) / exec as `execve(2)` (`argv` includes argv[0]), without `/bin/sh` |
 | | `sys exit code` | `Int => ()` | Exit process immediately |
 | | `sys os` / `sys arch` | `=> SysOs` / `=> SysArch` | Target OS (`Linux \| MacOS \| Windows`) & CPU arch (`X86_64 \| Arm64`) |
 | | `sys getpid` / `sys getuid` / `sys getgid` / `sys time ms` | `=> Int` | Process ID, UID, GID, or monotonic time in ms |

@@ -520,7 +520,20 @@ fn :: parse tensor pat after elem (String, [RToken]) Bool => RPattern [RToken]
 
 fn :: parse tensor pat [RToken] Bool      => RPattern [RToken]
       parse tensor pat ts       has_paren =
-        parse tensor pat after elem (parse type tok ts) has_paren
+        parse tensor pat typed (parse type tok ts) has_paren
+
+fn :: parse tensor pat typed (String, [RToken]) Bool => RPattern [RToken]
+      parse tensor pat typed (elem, rest) has_paren =
+        name tensor pat binder elem (parse tensor pat after elem (elem, rest) has_paren)
+
+-- A tensor pattern without a name (`(Tensor[U8 * n] _)`, `(Tensor[U8 * n])`)
+-- binds the tensor to a hidden name, so the type checker records its
+-- element kind and the compiler reads the shape the right way (a packed
+-- Tensor[U8] keeps its dimensions inside its data, FR-COMP-022).
+fn :: name tensor pat binder String (RPattern, [RToken]) => RPattern [RToken]
+      name tensor pat binder elem ((PatCtor ":tensor-pat:" (PatWild:more)), rest) =
+        (PatCtor ":tensor-pat:" ((PatVar ("_tp_" + elem)):more), rest)
+      name tensor pat binder _ r =  r
 
 fn :: parse pattern [RToken]           => RPattern [RToken]
       parse pattern ((TokInt n):rest)  =  (PatInt n, rest)
@@ -1174,6 +1187,9 @@ fn :: parse atom base [RToken]           => RExpr [RToken]
       parse atom base (TokType:rest)     =  (EVar "type", rest)
       parse atom base (TokWith:rest)     =  (EVar "with", rest)
       parse atom base (TokNot:rest)      =  (EVar "not", rest)
+      parse atom base (TokAnd:rest)      =  (EVar "and", rest)
+      parse atom base (TokOr:rest)       =  (EVar "or", rest)
+      parse atom base (TokXor:rest)      =  (EVar "xor", rest)
       parse atom base ((TokIdent s):TokLBracket:rest)
         | (s == "Tensor" or s == "Tensor_GPU") and (is tensor alloc rest) = tensor alloc of (tensor elem prefix rest)
       parse atom base ((TokIdent s):TokIdxLBracket:rest)
@@ -2508,7 +2524,7 @@ fn :: arity matches Int Int    => Bool
 
 fn :: builtin arity entries => [RArityEntry]
       builtin arity entries =
-        [ArityEntry "tensor_from_list" 1, ArityEntry "sort_by_ints" 2, ArityEntry "sort_by_texts" 2, ArityEntry "tensor_to_list" 1, ArityEntry "assert_equals" 2, ArityEntry "assert_true" 1, ArityEntry "send_to" 2, ArityEntry "ask_to" 2, ArityEntry "send_through" 2, ArityEntry "receive_from" 1, ArityEntry "try_receive_from" 1, ArityEntry "receive_from_timeout" 2, ArityEntry "stop" 1, ArityEntry "agent_alive" 1, ArityEntry "agent_dropped" 1, ArityEntry "agent_flush" 1, ArityEntry "agent_state" 1, ArityEntry "new_mailbox" 0, ArityEntry "new_channel" 0, ArityEntry "new_bounded_channel" 1, ArityEntry "chan_send" 2, ArityEntry "chan_recv" 1, ArityEntry "chan_try_recv" 1, ArityEntry "str_len" 1, ArityEntry "str_char_at" 2, ArityEntry "str_slice" 3, ArityEntry "str_contains" 2, ArityEntry "str_starts_with" 2, ArityEntry "str_concat" 2, ArityEntry "int_to_str" 1, ArityEntry "str_to_int" 1, ArityEntry "char_from_code" 1, ArityEntry "trim_str" 1, ArityEntry "read_file" 1, ArityEntry "load_rg_source" 1, ArityEntry "read_bytes" 1, ArityEntry "write_bytes" 2, ArityEntry "write_file" 2, ArityEntry "shell_exec" 1, ArityEntry "list_str_len" 1, ArityEntry "list_dir" 1, ArityEntry "file_lstat" 1, ArityEntry "sha256_file" 1, ArityEntry "sha256_str" 1, ArityEntry "sha256_raw" 1, ArityEntry "sha256_bytes" 1, ArityEntry "sys_os" 0, ArityEntry "sys_arch" 0, ArityEntry "sys_mkdir" 2, ArityEntry "sys_chmod" 2, ArityEntry "sys_exec" 3, ArityEntry "sys_chdir" 1, ArityEntry "sys_getcwd" 0, ArityEntry "sys_getenv" 1, ArityEntry "sys_setenv" 2, ArityEntry "sys_exit" 1, ArityEntry "sys_getuid" 0, ArityEntry "sys_getgid" 0, ArityEntry "sys_getpid" 0, ArityEntry "sys_time_ms" 0, ArityEntry "sys_time_ns" 0, ArityEntry "sys_wall_time_ms" 0, ArityEntry "crc32_range" 4, ArityEntry "tensor_from_str" 1, ArityEntry "tensor_to_str" 1, ArityEntry "sha256_digest" 1, ArityEntry "sys_read_into" 4, ArityEntry "sys_write_from" 4, ArityEntry "sys_deadline_ms" 0, ArityEntry "sys_remaining_ms" 0, ArityEntry "sys_sleep_ms" 1, ArityEntry "sys_open_mode" 2, ArityEntry "sys_open" 3, ArityEntry "sys_close" 1, ArityEntry "sys_read_fd" 2, ArityEntry "sys_write_fd" 2, ArityEntry "sys_poll" 3, ArityEntry "sys_terminate" 2, ArityEntry "sys_kill" 2, ArityEntry "sys_call" 7, ArityEntry "sys_pipe" 0, ArityEntry "sys_waitpid" 2, ArityEntry "sys_username" 1, ArityEntry "sys_user_groups" 1, ArityEntry "sys_lookup_uid_gid" 1, ArityEntry "sys_setresgid" 1, ArityEntry "sys_setgroups" 1, ArityEntry "sys_setresuid" 1, ArityEntry "sys_execve" 3, ArityEntry "sys_read_pass" 1, ArityEntry "cli_args" 0, ArityEntry "cmm_live_blocks" 0, ArityEntry "cmm_cond_spared" 0, ArityEntry "cmm_cond_freed" 0, ArityEntry "cmm_same_ptr" 2, ArityEntry "seq_map" 2, ArityEntry "par_map" 2, ArityEntry "seq_filter" 2, ArityEntry "par_filter" 2]
+        [ArityEntry "tensor_from_list" 1, ArityEntry "sort_by_ints" 2, ArityEntry "sort_by_texts" 2, ArityEntry "tensor_to_list" 1, ArityEntry "assert_equals" 2, ArityEntry "assert_true" 1, ArityEntry "send_to" 2, ArityEntry "ask_to" 2, ArityEntry "send_through" 2, ArityEntry "receive_from" 1, ArityEntry "try_receive_from" 1, ArityEntry "receive_from_timeout" 2, ArityEntry "stop" 1, ArityEntry "agent_alive" 1, ArityEntry "agent_dropped" 1, ArityEntry "agent_flush" 1, ArityEntry "agent_state" 1, ArityEntry "new_mailbox" 0, ArityEntry "new_channel" 0, ArityEntry "new_bounded_channel" 1, ArityEntry "chan_send" 2, ArityEntry "chan_recv" 1, ArityEntry "chan_try_recv" 1, ArityEntry "str_len" 1, ArityEntry "str_char_at" 2, ArityEntry "str_slice" 3, ArityEntry "str_contains" 2, ArityEntry "str_starts_with" 2, ArityEntry "str_concat" 2, ArityEntry "int_to_str" 1, ArityEntry "str_to_int" 1, ArityEntry "char_from_code" 1, ArityEntry "trim_str" 1, ArityEntry "read_file" 1, ArityEntry "load_rg_source" 1, ArityEntry "read_bytes" 1, ArityEntry "write_bytes" 2, ArityEntry "write_file" 2, ArityEntry "shell_exec" 1, ArityEntry "list_str_len" 1, ArityEntry "list_dir" 1, ArityEntry "file_lstat" 1, ArityEntry "sha256_file" 1, ArityEntry "sha256_str" 1, ArityEntry "sha256_raw" 1, ArityEntry "sha256_bytes" 1, ArityEntry "sys_os" 0, ArityEntry "sys_arch" 0, ArityEntry "sys_mkdir" 2, ArityEntry "sys_chmod" 2, ArityEntry "sys_exec" 3, ArityEntry "sys_chdir" 1, ArityEntry "sys_getcwd" 0, ArityEntry "sys_getenv" 1, ArityEntry "sys_setenv" 2, ArityEntry "sys_exit" 1, ArityEntry "sys_getuid" 0, ArityEntry "sys_getgid" 0, ArityEntry "sys_getpid" 0, ArityEntry "sys_time_ms" 0, ArityEntry "sys_time_ns" 0, ArityEntry "sys_wall_time_ms" 0, ArityEntry "crc32_range" 4, ArityEntry "tensor_from_str" 1, ArityEntry "tensor_u8_from_list" 1, ArityEntry "tensor_to_str" 1, ArityEntry "sha256_digest" 1, ArityEntry "sys_read_into" 4, ArityEntry "sys_write_from" 4, ArityEntry "sys_deadline_ms" 0, ArityEntry "sys_remaining_ms" 0, ArityEntry "sys_sleep_ms" 1, ArityEntry "sys_open_mode" 2, ArityEntry "sys_open" 3, ArityEntry "sys_close" 1, ArityEntry "sys_read_fd" 2, ArityEntry "sys_write_fd" 2, ArityEntry "sys_poll" 3, ArityEntry "sys_terminate" 2, ArityEntry "sys_kill" 2, ArityEntry "sys_call" 7, ArityEntry "sys_pipe" 0, ArityEntry "sys_waitpid" 2, ArityEntry "sys_username" 1, ArityEntry "sys_user_groups" 1, ArityEntry "sys_lookup_uid_gid" 1, ArityEntry "sys_setresgid" 1, ArityEntry "sys_setgroups" 1, ArityEntry "sys_setresuid" 1, ArityEntry "sys_execve" 3, ArityEntry "sys_read_pass" 1, ArityEntry "cli_args" 0, ArityEntry "cmm_live_blocks" 0, ArityEntry "cmm_cond_spared" 0, ArityEntry "cmm_cond_freed" 0, ArityEntry "cmm_same_ptr" 2, ArityEntry "seq_map" 2, ArityEntry "par_map" 2, ArityEntry "seq_filter" 2, ArityEntry "par_filter" 2]
 
 fn :: collect fn arities [RFnDef] => [RArityEntry]
       collect fn arities [] = builtin arity entries
@@ -2655,6 +2671,7 @@ fn :: is std builtin String             => Bool
       is std builtin "sys_time_ns"      =  True
       is std builtin "sys_wall_time_ms" =  True
       is std builtin "tensor_from_str"  =  True
+      is std builtin "tensor_u8_from_list"  =  True
       is std builtin "tensor_to_str"    =  True
       is std builtin "sha256_digest"    =  True
       is std builtin "sys_read_into"    =  True
@@ -2721,6 +2738,7 @@ fn :: std builtin arity String     => Int
       std builtin arity "str_char_at" = 2
       std builtin arity "str_slice" = 3
       std builtin arity "tensor_from_str" = 1
+      std builtin arity "tensor_u8_from_list" = 1
       std builtin arity "tensor_to_str" = 1
       std builtin arity "sha256_digest" = 1
       std builtin arity "sys_read_into" = 4
@@ -3245,24 +3263,47 @@ fn :: can absorb mixfix verify String [RArityEntry] (String, [RExpr]) => Bool
         c_ops = maybe collapse args full_ops ar arities
         (str contains full_mangled ("_" + conj_word)) and (arity matches ar (expr list count c_ops))
 
+-- Operator words may be part of a function name (`mask xor`, `pred and`,
+-- `xor first`, `not empty`): a call is read as that function when the
+-- words form a known name with the right number of arguments.
+fn :: op name word RBinOp => String
+      op name word OpAnd  =  "and"
+      op name word OpOr   =  "or"
+      op name word OpXor  =  "xor"
+      op name word OpShl  =  "shl"
+      op name word OpShr  =  "shr"
+      op name word OpRotl =  "rotl"
+      op name word OpRotr =  "rotr"
+      op name word _      =  ""
+
+fn :: can lead mixfix String [RExpr] [RArityEntry] => Bool
+      can lead mixfix word args arities =
+        can lead mixfix verify word arities (extract mixfix call "" ([EVar word] :: args) arities [])
+
+fn :: can lead mixfix verify String [RArityEntry] (String, [RExpr]) => Bool
+      can lead mixfix verify word arities (full_mangled, full_ops) =
+        ar = lookup arity arities full_mangled
+        c_ops = maybe collapse args full_ops ar arities
+        (str starts with full_mangled (word + "_")) and (arity matches ar (expr list count c_ops))
+
 fn :: norm expr RExpr              [RArityEntry] => RExpr
       norm expr (EVar name)        arities
         | is upper ident name = EVar name
         | (lookup var arity arities name) == 0 = ECall name []
         | is subscript ident name = EVar (extract fst str (split subscript name))
         | otherwise = EVar name
+      norm expr (ENot (EVar fn_name)) arities
+        | (lookup arity arities fn_name) < 0 and (can lead mixfix "not" [EVar fn_name] arities) = norm call "not" [EVar fn_name] arities
+      norm expr (ENot (ECall fn_name args)) arities
+        | (lookup arity arities fn_name) < 0 and (can lead mixfix "not" ([EVar fn_name] :: args) arities) = norm call "not" ([EVar fn_name] :: args) arities
       norm expr (ENot inner)       arities       =  ENot (norm expr inner arities)
       norm expr (EOut (EVar name)) arities
         | (lookup arity arities (name + "_out")) == 0 = ECall (name + "_out") []
       norm expr (EOut inner)       arities       =  EOut (norm expr inner arities)
-      norm expr (EBin OpAnd (EVar fn_name) r) arities
-        | (lookup arity arities fn_name) < 0 and (can absorb mixfix conj fn_name [] "and" r arities) = norm call fn_name ([EVar "and"] :: (flatten mixfix rhs r arities)) arities
-      norm expr (EBin OpAnd (ECall fn_name args) r) arities
-        | (lookup arity arities fn_name) < 0 and (can absorb mixfix conj fn_name args "and" r arities) = norm call fn_name (args :: [EVar "and"] :: (flatten mixfix rhs r arities)) arities
-      norm expr (EBin OpOr (EVar fn_name) r) arities
-        | (lookup arity arities fn_name) < 0 and (can absorb mixfix conj fn_name [] "or" r arities) = norm call fn_name ([EVar "or"] :: (flatten mixfix rhs r arities)) arities
-      norm expr (EBin OpOr (ECall fn_name args) r) arities
-        | (lookup arity arities fn_name) < 0 and (can absorb mixfix conj fn_name args "or" r arities) = norm call fn_name (args :: [EVar "or"] :: (flatten mixfix rhs r arities)) arities
+      norm expr (EBin bop (EVar fn_name) r) arities
+        | (op name word bop) != "" and (lookup arity arities fn_name) < 0 and (can absorb mixfix conj fn_name [] (op name word bop) r arities) = norm call fn_name ([EVar (op name word bop)] :: (flatten mixfix rhs r arities)) arities
+      norm expr (EBin bop (ECall fn_name args) r) arities
+        | (op name word bop) != "" and (lookup arity arities fn_name) < 0 and (can absorb mixfix conj fn_name args (op name word bop) r arities) = norm call fn_name (args :: [EVar (op name word bop)] :: (flatten mixfix rhs r arities)) arities
       norm expr (EBin bop l r)     arities       =  EBin bop (norm expr l arities) (norm expr r arities)
       norm expr (ECall fn_name args) arities     =  norm call fn_name args arities
       norm expr (EEcho args)       arities       =  EEcho (fold echo args (collapse fn ref args args arities) arities)
@@ -5963,6 +6004,10 @@ fn :: collect expr ident words set RExpr RStrSet => RStrSet
       collect expr ident words set (EBin OpAnd l r) acc = collect expr ident words set r (collect expr ident words set l (str set add acc "and"))
       collect expr ident words set (EBin OpOr l r) acc = collect expr ident words set r (collect expr ident words set l (str set add acc "or"))
       collect expr ident words set (EBin OpXor l r) acc = collect expr ident words set r (collect expr ident words set l (str set add acc "xor"))
+      collect expr ident words set (EBin OpShl l r) acc = collect expr ident words set r (collect expr ident words set l (str set add acc "shl"))
+      collect expr ident words set (EBin OpShr l r) acc = collect expr ident words set r (collect expr ident words set l (str set add acc "shr"))
+      collect expr ident words set (EBin OpRotl l r) acc = collect expr ident words set r (collect expr ident words set l (str set add acc "rotl"))
+      collect expr ident words set (EBin OpRotr l r) acc = collect expr ident words set r (collect expr ident words set l (str set add acc "rotr"))
       collect expr ident words set (EBin OpAdd l r) acc = collect expr ident words set r (collect expr ident words set l (str set add acc "+"))
       collect expr ident words set (EBin OpSub l r) acc = collect expr ident words set r (collect expr ident words set l (str set add acc "-"))
       collect expr ident words set (EBin OpMul l r) acc = collect expr ident words set r (collect expr ident words set l (str set add acc "*"))

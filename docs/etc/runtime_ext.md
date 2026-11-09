@@ -34,6 +34,8 @@ The arguments are the values in `slots[0 .. count-1]`. The routine consumes them
 | 116 | `sys call` | nr, a1 ... a6 | the system call result |
 | 117 | `sha256 raw` on `Tensor[U8]` | t | 32-byte String |
 | 118 | `sha256 digest` | String or `Tensor[U8]` | `Tensor[U8 * 32]` |
+| 119 | `tensor u8 from list` | list of Int 0..255 | `Tensor[U8]` |
+| 120 | `sys execve` | path, argv (argv[0] included), envp | `-errno` (returns only on failure) |
 
 ## `Tensor[U8]` layout
 
@@ -64,7 +66,9 @@ ld.lld -T rtx.ld -o rtx.elf rtx.o
 llvm-objcopy -O binary --only-section=.rtx rtx.elf rtx.bin
 ```
 
-Then check that the object has only PC-relative relocations (`llvm-readobj -r rtx.o`: `R_X86_64_PC32` and `R_X86_64_PLT32`), and that `llvm-nm rtx.elf` lists no undefined symbol. Replace the list in `x86 rt ext` with the bytes of `rtx.bin` (`od -An -tu1 -v rtx.bin`), writing the trailing zero bytes as `zero bytes n`. Built with clang 19.1.7: 10 128 bytes, of which the last 4 096 are zero.
+Then check that the object has only PC-relative relocations (`llvm-readobj -r rtx.o`: `R_X86_64_PC32` and `R_X86_64_PLT32`), and that `llvm-nm rtx.elf` lists no undefined symbol. Replace the list in `x86 rt ext` with the bytes of `rtx.bin` (`od -An -tu1 -v rtx.bin`), writing the trailing zero bytes as `zero bytes n`. Built with clang 19.1.7: 11 120 bytes, of which the last 4 096 are zero.
+
+**LLVM runtime cache.** The LLVM backend keeps the assembled runtime and its linker script in `/tmp/__rg_llvm_cache_<runtime fingerprint>_<script fingerprint>.rt` / `.lds` (`llvm rt cache base` in `llvm.rg`). Any change to the runtime gives a new name, so no build links a stale copy. Until 0.9.49 the name held only the version: a runtime changed without a version bump was linked stale, and a builtin missing from it crashed or did nothing in LLVM builds while x86-64 builds worked.
 
 To test the logic natively, compile `rtx.c` with `-DHARNESS` and link it with a C file that defines the `rt_*` functions.
 
@@ -512,6 +516,75 @@ static i64 u8_to_words(i64 t) {
   return rval_new(5, vec_new(shape, k), vec_new(data, n));
 }
 
+/* sys execve path argv envp, as execve(2): argv is passed whole (argv[0]
+   included). The strings are copied NUL-terminated into one block with the
+   two pointer tables. Returns only on failure, with -errno. */
+static i64 str_list(i64 v, i64 **xs, i64 *st) {
+  if (!is_ptr(v) || heap_tag(v) != 2) return 0;
+  i64 h = *field(v, 1);
+  *xs = *(i64 **)(h + 8);
+  *st = *field(v, 2);
+  i64 n = *(i64 *)(h + 16) - *st;
+  return n > 0 ? n : 0;
+}
+static i64 list_bytes(i64 *xs, i64 st, i64 n) {
+  i64 total = 0;
+  for (i64 i = 0; i < n; i++) {
+    u8 *d;
+    i64 len;
+    if (bytes_of(xs[st + i], &d, &len)) total += len;
+    total += 1;
+  }
+  return total;
+}
+static char **fill_table(char **tab, char *buf, i64 *xs, i64 st, i64 n, char **next) {
+  for (i64 i = 0; i < n; i++) {
+    u8 *d;
+    i64 len = 0;
+    if (!bytes_of(xs[st + i], &d, &len)) len = 0;
+    mem_copy((u8 *)buf, d, len);
+    buf[len] = 0;
+    tab[i] = buf;
+    buf += len + 1;
+  }
+  tab[n] = 0;
+  *next = buf;
+  return tab;
+}
+static i64 exec_full(i64 path, i64 argv, i64 envp) {
+  char p[4096];
+  if (!path_of(path, p, sizeof p)) return -2; /* ENOENT */
+  i64 *av = 0, *ev = 0, ast = 0, est = 0;
+  i64 an = str_list(argv, &av, &ast), en = str_list(envp, &ev, &est);
+  i64 size = (an + 1 + en + 1) * 8 + list_bytes(av, ast, an) + list_bytes(ev, est, en);
+  char **block = (char **)rt_alloc_buf(size > 8 ? size : 8);
+  char *strs = (char *)(block + an + 1 + en + 1);
+  char *next;
+  char **a = fill_table(block, strs, av, ast, an, &next);
+  char **e = fill_table(block + an + 1, next, ev, est, en, &next);
+  return sc3(59, (i64)p, (i64)a, (i64)e);
+}
+
+/* tensor u8 from list: a list of Ints 0..255 => Tensor[U8 * n] */
+static i64 list_to_u8(i64 v) {
+  i64 *xs = 0, n = 0, st = 0;
+  if (is_ptr(v) && heap_tag(v) == 2) {
+    i64 h = *field(v, 1);
+    xs = *(i64 **)(h + 8);
+    n = *(i64 *)(h + 16);
+    st = *field(v, 2);
+  }
+  i64 d = n > st ? n - st : 0;
+  for (i64 i = 0; i < d; i++) {
+    i64 b = int_arg(xs[st + i]);
+    if (b < 0 || b > 255) FAIL(MSG_U8);
+  }
+  i64 t = u8_new(1, &d, 0);
+  u8 *out = u8_data(t);
+  for (i64 i = 0; i < d; i++) out[i] = (u8)int_arg(xs[st + i]);
+  return t;
+}
+
 static i64 str_to_u8(i64 s) {
   u8 *d;
   i64 n;
@@ -551,7 +624,7 @@ enum {
   ID_U8_NEW = 104, ID_U8_GET = 105, ID_U8_SET = 106, ID_U8_DIM = 107,
   ID_FROM_STR = 108, ID_TO_STR = 109, ID_TO_LIST = 110, ID_TO_WORDS = 111,
   ID_READ_BYTES = 112, ID_WRITE_BYTES = 113, ID_READ_INTO = 114, ID_WRITE_FROM = 115,
-  ID_SYS_CALL = 116, ID_SHA_RAW = 117, ID_SHA_DIGEST = 118
+  ID_SYS_CALL = 116, ID_SHA_RAW = 117, ID_SHA_DIGEST = 118, ID_FROM_LIST = 119, ID_EXECVE = 120
 };
 
 __attribute__((used)) i64 rg_rtx(i64 id, i64 *s, i64 count) {
@@ -603,6 +676,8 @@ __attribute__((used)) i64 rg_rtx(i64 id, i64 *s, i64 count) {
   case ID_FROM_STR: r = str_to_u8(s[0]); break;
   case ID_TO_STR: r = rt_alloc_str(u8_data(s[0]), u8_count(s[0])); break;
   case ID_TO_LIST: r = u8_to_list(s[0]); break;
+  case ID_FROM_LIST: r = list_to_u8(s[0]); break;
+  case ID_EXECVE: r = tag_int(exec_full(s[0], s[1], s[2])); break;
   case ID_TO_WORDS: r = u8_to_words(s[0]); break;
   case ID_READ_BYTES: r = read_bytes(s[0]); break;
   case ID_WRITE_BYTES: r = write_bytes(s[0], s[1]); break;

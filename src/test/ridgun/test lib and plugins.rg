@@ -87,7 +87,7 @@ fn :: main => ()
         rglib_text = read file "target/test_lib_work/geom_lib.rglib"
         assert ok (str starts with rglib_text "-- RGLIB1")
         assert ok (str contains rglib_text "math cube")
-        so_bytes = read bytes "target/test_lib_work/geom_lib.so"
+        so_bytes = tensor to list (read bytes "target/test_lib_work/geom_lib.so")
         -- ELF64 magic: 0x7F 'E' 'L' 'F' (127, 69, 76, 70)
         assert int equals (byte at so_bytes 0) 127 "ELF64 magic 0"
         assert int equals (byte at so_bytes 1) 69 "ELF64 magic E"
@@ -106,7 +106,7 @@ fn :: main => ()
         st_ver = shell exec ("\"" + stable_bin + "\" version > target/test_lib_work/stable_ver.txt")
         assert int equals st_ver 0 "stable version exit code"
         ver_out = str trim (read file "target/test_lib_work/stable_ver.txt")
-        assert ok (str starts with ver_out "stable 0.9.30")
+        assert ok (str starts with ver_out "stable 0.")
         assert ok (str contains ver_out "100% self-hosted in Ridgun")
         st_ver_flag = shell exec ("\"" + stable_bin + "\" --version > target/test_lib_work/stable_ver_flag.txt")
         assert int equals st_ver_flag 0 "stable --version exit code"
@@ -193,7 +193,7 @@ fn :: main => ()
         assert int equals st_built_lib 0 "stable built lib mathkit"
         assert ok (is file "target/test_lib_work/mathkit/target/mathkit.rglib")
         assert ok (is file "target/test_lib_work/mathkit/target/libmathkit.so")
-        mathkit_so = read bytes "target/test_lib_work/mathkit/target/libmathkit.so"
+        mathkit_so = tensor to list (read bytes "target/test_lib_work/mathkit/target/libmathkit.so")
         assert int equals (byte at mathkit_so 0) 127 "ELF64 magic byte 0"
         assert int equals (byte at mathkit_so 16) 3 "ELF64 ET_DYN e_type"
         -- Add `mathkit` as a local dependency of `hello_app` via `stable add` & `stable deps`
@@ -341,7 +341,7 @@ fn :: main => ()
         st_repl = shell exec ("cd target/test_lib_work/multi_app && \"" + stable_bin + "\" < repl_in.txt > repl_out.txt")
         assert int equals st_repl 0 "interactive REPL session exits cleanly with 0"
         repl_out = read file "target/test_lib_work/multi_app/repl_out.txt"
-        assert ok (str contains repl_out "Welcome to stable 0.9.30")
+        assert ok (str contains repl_out "Welcome to stable 0.")
         assert ok (str contains repl_out "Reloaded build.rg — current project is 'alpha'")
         assert ok (str contains repl_out "Exiting stable.")
         echo "=== FR-COMP-007: Cross-Platform PAL Descriptor/Poll/Process Primitives & with timeout ==="

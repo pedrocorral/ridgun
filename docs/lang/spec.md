@@ -125,6 +125,7 @@ Functions and natural-language/infix operators are declared by a type signature 
   ```
 - **Natural-language spaces in `fn ::`, built-ins, and filenames (`FR-COMP-005`)**:
   - `fn ::` declarations and calls support multi-word names separated by spaces (`fn :: format app err AppErr => String`, `fn :: project name => String`), just like `op ::` and prefixless declarations.
+  - Operator words (`and`, `or`, `xor`, `not`, `shl`, `shr`, `rotl`, `rotr`) can be words of a function name in any position (`fn :: mask xor Int Int`, `fn :: not empty [Int] => Bool`). A call is read as that function when its words form a known name with the right number of arguments (`mask xor 6 3`); everywhere else the words are operators (`a xor b`).
   - Built-in runtime and test functions can be called with spaces (`assert equals a b`, `str len s`, `read file p`, `cmm live blocks`) while keeping `_` forms backward-compatible.
   - First-class multi-word function references (`map double val xs`, `||map double val xs`, `filter is even xs`, `fold add pair 0 xs`) and `.rg` filenames with spaces (`src/test/ridgun/test core language.rg`) are supported natively by `ridgunc` and `stable`.
 
@@ -466,6 +467,7 @@ frame = Tensor[U8 * 4]
 frame_(0) = 22
 s = tensor to str frame                     -- the 4 bytes as a String
 t = tensor from str "hello"                 -- Tensor[U8 * 5]
+png = tensor u8 from list [137, 80, 78, 71] -- fixed bytes; a value outside 0..255 is a runtime error
 crc = crc32 range t 0 5 0                   -- CRC-32 (IEEE, as zlib), 0..4294967295
 crc2 = crc32 range s 2 4 (crc32 range s 0 2 0)  -- chained: same as crc32 range s 0 4 0
 d = sha256 digest t                         -- Tensor[U8 * 32]
@@ -1142,6 +1144,7 @@ Ridgun provides standard sequential collection combinators (`map`, `filter`, `fo
    - `load rg source : String => String` is used exclusively by the compiler toolchain when loading `.rg` source files with `import` splicing.
    - `read bytes : String => Tensor[U8]` reads a file as bytes. `write bytes : String Tensor[U8] => ()` writes them (it also accepts a `[Int]` of values `0..255`).
    - `tensor from str : String => Tensor[U8]` and `tensor to str : Tensor[U8] => String` convert with one copy; any byte `0..255` is allowed.
+   - `tensor u8 from list : [Int] => Tensor[U8]` makes a byte tensor from a list of values `0..255` in one allocation; a value outside `0..255` stops the program with `runtime error: U8 element out of 0..255`. (`tensor from list` of `[Int]` gives a `Tensor[Int]`.)
    - `crc32 range : data Int Int Int => Int` (`data` a `String` or a `Tensor[U8]`, then `from`, `to`, `crc`): the CRC-32 of the bytes `from .. to - 1`, chained through `crc` (`0` to start). A range outside the data stops the program with `runtime error: crc32 range: range out of bounds`.
    - `sha256 raw` takes a `String` or a `Tensor[U8]` and returns the 32-byte digest as a `String`; `sha256 digest` returns it as a `Tensor[U8 * 32]`.
 2. **POSIX Filesystem, Process & Security Built-ins (`FR-VM-002`)**:

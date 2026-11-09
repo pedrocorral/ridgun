@@ -672,6 +672,20 @@ fn :: write cached rt files String String => ()
         build x8664 rt kernel -> write bytes rt_path _
         emit llvm linker script -> write file lds_path _ -> ()
 
+-- The cached runtime and linker script are named by a fingerprint of their
+-- content, so a compiler with a different runtime never links a stale copy
+-- (a version-only name did: a builtin missing from the old copy crashed or
+-- did nothing in LLVM builds while x86-64 builds worked).
+fn :: rt fingerprint [Int] Int => Int
+      rt fingerprint [] h =  h
+      rt fingerprint (b:bs) h =  rt fingerprint bs (((h * 257) + b + 1) % 2147483629)
+
+fn :: llvm rt cache base => String
+      llvm rt cache base =
+        rt_fp = rt fingerprint (build x8664 rt kernel) 7
+        lds_fp = rt fingerprint (str to bytes (emit llvm linker script)) 11
+        "/tmp/__rg_llvm_cache_" + (int to str rt_fp) + "_" + (int to str lds_fp)
+
 fn :: ensure cached rt files String String => ()
       ensure cached rt files rt_path lds_path
         | (str len (read file lds_path)) > 0 = ()
@@ -697,8 +711,9 @@ fn :: build llvm x8664 executable RNativeProg String     => Int
           ll_path = tmp_base + ".ll"
           bc_path = tmp_base + ".bc"
           obj_path = tmp_base + ".o"
-          rt_path = "/tmp/__rg_llvm_cache_v0_9_49.rt"
-          lds_path = "/tmp/__rg_llvm_cache_v0_9_49.lds"
+          cache_base = llvm rt cache base
+          rt_path = cache_base + ".rt"
+          lds_path = cache_base + ".lds"
           ensure cached rt files rt_path lds_path
           nprog -> emit llvm ir -> write file ll_path _
           cmd = "/usr/bin/opt -O2 \"" + ll_path + "\" -o \"" + bc_path + "\" && /usr/bin/llc -O2 -filetype=obj \"" + bc_path + "\" -o \"" + obj_path + "\" && /usr/bin/ld -n --no-warn-rwx-segments -T \"" + lds_path + "\" -b binary \"" + rt_path + "\" -b elf64-x86-64 \"" + obj_path + "\" -o \"" + output_bin + "\""
@@ -714,8 +729,9 @@ fn :: build llvm x8664 so library RNativeProg String    => Int
           ll_path = tmp_base + ".ll"
           bc_path = tmp_base + ".bc"
           obj_path = tmp_base + ".o"
-          rt_path = "/tmp/__rg_llvm_cache_v0_9_49.rt"
-          lds_path = "/tmp/__rg_llvm_cache_v0_9_49.lds"
+          cache_base = llvm rt cache base
+          rt_path = cache_base + ".rt"
+          lds_path = cache_base + ".lds"
           ensure cached rt files rt_path lds_path
           nprog -> emit llvm ir -> write file ll_path _
           cmd = "/usr/bin/opt -O2 \"" + ll_path + "\" -o \"" + bc_path + "\" && /usr/bin/llc -O2 -relocation-model=pic -filetype=obj \"" + bc_path + "\" -o \"" + obj_path + "\" && /usr/bin/ld -shared -n --no-warn-rwx-segments -T \"" + lds_path + "\" -b binary \"" + rt_path + "\" -b elf64-x86-64 \"" + obj_path + "\" -o \"" + output_so + "\""

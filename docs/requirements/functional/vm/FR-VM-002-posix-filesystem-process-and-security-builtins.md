@@ -37,7 +37,7 @@ The `ridgunc` runtime SHALL provide direct OS/POSIX built-in functions for files
 - **`sys_user_groups : String => [String]`**: Returns all group names to which `username` belongs (`/etc/passwd` primary GID + `/etc/group` supplementary memberships).
 - **`sys_lookup_uid_gid : String => (Int, Int)`**: Resolves `username` to `(uid, gid)` (or `(-1, -1)` if not found).
 - **`sys_setresgid : Int => Int`**, **`sys_setgroups : [Int] => Int`**, **`sys_setresuid : Int => Int`**: Drop or switch group and user credentials directly via libc/Linux syscalls.
-- **`sys_execve : String [String] [String] => Int`**: Replaces the current process image (`execve`) with `prog`, `argv`, and explicit sanitized `envp` (`KEY=VAL` list), **never** invoking `/bin/sh`.
+- **`sys_execve : String [String] [String] => Int`**: Replaces the current process image with `execve(2)`: `prog` is the file to run, `argv` is the complete argument vector, `argv[0]` included (`sys execve "/bin/ls" ["ls", "-l"] env`), and `envp` is the explicit sanitized environment (`KEY=VAL` list); **never** invokes `/bin/sh`. It returns only on failure, with `-errno` (since 0.9.50; before, `prog` was always inserted as `argv[0]`).
 - **`sys_read_pass : String => String`**: Prints `prompt` to `/dev/tty` with terminal echo disabled (`termios`), reads one line, restores terminal state, and returns the password string.
 
 ## Acceptance Criteria

@@ -23,8 +23,9 @@ Binary data in Ridgun SHALL be a one-dimensional `Tensor[U8]` (`Byte` is the sam
    ```ridgun
    fn :: tensor from str String => Tensor[U8]   -- the bytes of the String
    fn :: tensor to str Tensor[U8] => String     -- the bytes as a String
+   fn :: tensor u8 from list [Int] => Tensor[U8] -- fixed bytes: headers, test vectors, keys
    ```
-   Each conversion makes one allocation and copies the bytes once. Any byte 0..255 is allowed, including bytes that UTF-8 never uses.
+   Each conversion makes one allocation and copies the bytes once. Any byte 0..255 is allowed, including bytes that UTF-8 never uses. `tensor u8 from list` stops the program, as an element write does, when a value is outside 0..255.
 4. **Files.** `read bytes path => Tensor[U8]` replaces the `[Int]` form. `write bytes path Tensor[U8] => ()` also accepts a `[Int]` of values 0..255 while the compiler writes its own output with it (stage 1 of the bootstrap is built by the previous compiler).
 5. **File descriptors.** Besides the String forms, `sys read into fd t from count => Int` reads up to `count` bytes into `t` starting at index `from`, without allocating, and returns the number of bytes read (or a negative errno); `sys write from fd t from count => Int` writes `count` bytes of `t` starting at `from`.
 6. **System calls with buffers.** An argument of `sys call` may be a `Tensor[U8]`: the kernel receives the address of its first byte. The tensor stays alive and is not moved during the call. This lets a library read results that the kernel writes into memory (`clock_gettime`, `stat`, `getrandom`, socket addresses).
@@ -45,5 +46,7 @@ Binary formats (TLS, PostgreSQL, the Eterval log) build frames byte by byte, wri
 
 ## Implementation status
 Implemented in 0.9.48 (TASK-0063): one shared runtime routine for both backends (`docs/etc/runtime_ext.md`, builtins 103-118), with inline LLVM fast paths for one-dimensional reads and writes. Tests: `tests/cases/tensors/bytes_*.rg`, `tests/cases/perf/bytes_crc32_and_conversions.rg`.
+
+0.9.50 (TASK-0065, libs report `tensor-u8`): `tensor u8 from list`; a shape pattern binds the right dimensions also when the tensor is `_` or has no name; a `Tensor[U8]` bound inside a constructor, list cons, tuple or `Some` pattern is read by bytes. Tests: `bytes_from_list*.rg`, `bytes_shape_pattern_without_name.rg`, `bytes_in_constructor_pattern.rg`.
 
 Known limit: `echo` of a list, tuple or record that holds a `Tensor[U8]` shows the tensor's storage words; `echo t` on the tensor shows its elements.
