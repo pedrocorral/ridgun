@@ -117,7 +117,7 @@ Eta sistema eragilearekin lan egiteko:
 |---|---|---|
 | `cli args` | `=> [String]` | Komando-lerroko argumentuak (`argv`). |
 | `read file` / `write file` | `String => String` / `String String => ()` | Diskoko fitxategien irakurketa eta idazketa osoa. |
-| `read bytes` / `write bytes` | `String => [Int]` / `String [Int] => ()` | Bytez byteko (`0..255`) irakurketa eta idazketa bitar zehatza. |
+| `read bytes` / `write bytes` | `String => Tensor[U8]` / `String Tensor[U8] => ()` | Bytez byteko (`0..255`) irakurketa eta idazketa bitar zehatza. |
 | `list dir` / `file lstat` | `String => [String]` / `String => ...` | Direktorioen zerrendatzea eta POSIX metadatuen ikuskapena (`lstat`). |
 | `sha256 file` / `sha256 str` / `sha256 raw` | `String => String` | SHA-256 hash kriptografiko natiboa (64 karaktereko hamaseitarrean edo 32 byteko laburpen bitar gordinean `sha256 raw` / `sha256 bytes`-ekin). |
 | `sys exec` / `shell exec` | `... => Int` | Sistema eragileko prozesuen exekuzioa. |

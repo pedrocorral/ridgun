@@ -12,7 +12,7 @@ fn :: strict mode => Bool
       strict mode =  True
 
 fn :: project version => String
-      project version =  "0.9.47"
+      project version =  "0.9.48"
 
 fn :: main entry => String
       main entry =  "src/main/ridgun/ridgunc/main.rg"

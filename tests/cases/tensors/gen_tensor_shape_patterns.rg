@@ -24,9 +24,9 @@ fn :: generic size Tensor[A] => Int
       generic size (Tensor[A * r * c] g) =  r * 10 + c
       generic size (Tensor[A * n] v) =  n
 
-fn :: shape sum Tensor[Byte] => Int
-      shape sum (Tensor[Byte * f * c] m) = f * 100 + c + m_(0, 0)
-      shape sum (Tensor[Byte * n] v) = n * 10 + v_(0)
+fn :: shape sum Tensor[Int] => Int
+      shape sum (Tensor[Int * f * c] m) = f * 100 + c + m_(0, 0)
+      shape sum (Tensor[Int * n] v) = n * 10 + v_(0)
 
 fn :: main => ()
       main =

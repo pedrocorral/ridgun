@@ -127,7 +127,7 @@ Y para trabajar con el sistema operativo:
 |---|---|---|
 | `cli args` | `=> [String]` | Argumentos de línea de comandos (`argv`). |
 | `read file` / `write file` | `String => String` / `String String => ()` | Lectura y escritura íntegra de archivos en disco. |
-| `read bytes` / `write bytes` | `String => [Int]` / `String [Int] => ()` | Lectura y escritura binaria exacta byte a byte (`0..255`). |
+| `read bytes` / `write bytes` | `String => Tensor[U8]` / `String Tensor[U8] => ()` | Lectura y escritura binaria exacta byte a byte (`0..255`). |
 | `list dir` / `file lstat` | `String => [String]` / `String => ...` | Listado de directorios e inspección de metadatos POSIX (`lstat`). |
 | `sha256 file` / `sha256 str` | `String => String` | Hash criptográfico SHA-256 nativo en hexadecimal (64 caracteres). |
 | `sha256 raw` / `sha256 bytes` | `String => String` | Digest SHA-256 binario crudo de 32 bytes (con soporte completo para bytes `0x00` intermedios y cero conversiones hex). |

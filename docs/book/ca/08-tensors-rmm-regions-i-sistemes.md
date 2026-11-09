@@ -117,7 +117,7 @@ I per treballar amb el sistema operatiu:
 |---|---|---|
 | `cli args` | `=> [String]` | Arguments de línia d'ordres (`argv`). |
 | `read file` / `write file` | `String => String` / `String String => ()` | Lectura i escriptura íntegra de fitxers en disc. |
-| `read bytes` / `write bytes` | `String => [Int]` / `String [Int] => ()` | Lectura i escriptura binària exacta byte a byte (`0..255`). |
+| `read bytes` / `write bytes` | `String => Tensor[U8]` / `String Tensor[U8] => ()` | Lectura i escriptura binària exacta byte a byte (`0..255`). |
 | `list dir` / `file lstat` | `String => [String]` / `String => ...` | Llistat de directoris i inspecció de metadades POSIX (`lstat`). |
 | `sha256 file` / `sha256 str` / `sha256 raw` | `String => String` | Resum criptogràfic SHA-256 natiu (en hexadecimal de 64 caràcters o digest binari cru de 32 bytes amb `sha256 raw` / `sha256 bytes`). |
 | `sys exec` / `shell exec` | `... => Int` | Execució de processos del sistema operatiu. |

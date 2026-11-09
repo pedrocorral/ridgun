@@ -277,8 +277,10 @@ Ridgun achieves deterministic memory management with **zero Garbage Collector pa
 | | `fold f init xs` | `(B A => B) B [A] => B` | Left fold |
 | **File & Byte I/O** | `read file path` | `String => String` | Read UTF-8 file verbatim |
 | | `write file path text` | `String String => ()` | Write string to file (preserves existing POSIX mode on overwrite; `0644` on new files) |
-| | `read bytes path` | `String => [Int]` | Read raw file bytes (`0..255`) |
-| | `write bytes path bytes` | `String [Int] => ()` | Write raw bytes (`0..255`) to file |
+| | `read bytes path` | `String => Tensor[U8]` | Read raw file bytes (packed `Tensor[U8]`, FR-COMP-022) |
+| | `write bytes path bytes` | `String Tensor[U8] => ()` | Write raw bytes to file (also accepts `[Int]` of `0..255`) |
+| | `tensor from str s` / `tensor to str t` | `String => Tensor[U8]` / `Tensor[U8] => String` | Convert bytes with one copy |
+| | `crc32 range data from to crc` | `String or Tensor[U8], Int, Int, Int => Int` | CRC-32 (zlib), chainable |
 | | `sha256 str text` / `sha256 file path` | `String => String` | Lowercase 64-char SHA-256 hex digest of string or file |
 | | `sha256 raw text` | `String => String` | Raw 32-byte SHA-256 digest |
 | **Filesystem & OS** | `list dir path` | `String => [String]` | Sorted directory entry names |

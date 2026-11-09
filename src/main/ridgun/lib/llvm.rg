@@ -90,7 +90,7 @@ fn :: llvm runtime declarations => String
         d3 = "declare i64 @__rg_rt_load_real_lit(ptr, i64)\ndeclare i64 @__rg_rt_load_str_lit(ptr, i64)\ndeclare i64 @__rg_rt_load_adt0(ptr, i64)\ndeclare i64 @__rg_rt_make_adt(ptr, i64, ptr, i64)\ndeclare i64 @__rg_rt_make_list(ptr, i64)\ndeclare i64 @__rg_rt_make_tuple(ptr, i64)\ndeclare i64 @__rg_rt_make_tensor(ptr, i64)\ndeclare i64 @__rg_rt_str_interp(ptr, i64)\ndeclare i64 @__rg_rt_pack_seq(ptr, i64)\ndeclare i64 @__rg_rt_as_bool(i64)\n"
         d4 = "declare i64 @__rg_rt_match_int(i64, i64)\ndeclare i64 @__rg_rt_match_real(i64, ptr, i64)\ndeclare i64 @__rg_rt_match_str(i64, ptr, i64)\ndeclare i64 @__rg_rt_match_bool(i64, i64)\ndeclare i64 @__rg_rt_match_empty(i64)\ndeclare i64 @__rg_rt_match_nonempty(i64)\ndeclare i64 @__rg_rt_list_head(i64)\ndeclare i64 @__rg_rt_list_tail(i64)\ndeclare i64 @__rg_rt_match_tuple(i64, i64)\ndeclare i64 @__rg_rt_tuple_get(i64, i64)\n"
         d5 = "declare i64 @__rg_rt_match_adt(i64, ptr, i64, i64)\ndeclare i64 @__rg_rt_adt_field(i64, i64)\ndeclare i64 @__rg_rt_adt_set(ptr, i64, i64)\ndeclare i64 @__rg_rt_bool_inv(i64)\ndeclare i64 @__rg_rt_out(i64)\ndeclare i64 @__rg_rt_echo(ptr, i64)\ndeclare i64 @__rg_rt_bin_op(i64, ptr, i64)\ndeclare i64 @__rg_rt_index(ptr, ptr, i64)\ndeclare i64 @__rg_rt_index_set(ptr, ptr, i64, i64)\ndeclare i64 @__rg_rt_seq_select(i64, ptr, i64)\n"
-        d6 = "declare i64 @__rg_rt_einsum(ptr, i64, ptr, i64)\ndeclare i64 @__rg_rt_hadamard(i64, ptr, i64, ptr, i64)\ndeclare i64 @__rg_rt_enter_region()\ndeclare i64 @__rg_rt_exit_region(i64, i64)\ndeclare i64 @__rg_rt_call_indirect1(i64, ptr)\ndeclare i64 @__rg_rt_call_indirect2(i64, ptr)\ndeclare i64 @__rg_rt_builtin(i64, ptr, i64)\ndeclare i64 @__rg_rt_pal_dispatch(i64, ptr, i64)\ndeclare void @__rg_rt_drop_slot(ptr)\ndeclare noalias ptr @__rg_rt_alloc_buf(i64)\ndeclare noalias ptr @__rg_rt_box_rc_vec(ptr)\ndeclare i64 @__rg_rt_box_rval(ptr)\ndeclare i64 @__rg_rt_pop_i64(ptr)\ndeclare i64 @__rg_rt_alloc_str(ptr, i64)\n"
+        d6 = "declare i64 @__rg_rt_einsum(ptr, i64, ptr, i64)\ndeclare i64 @__rg_rt_hadamard(i64, ptr, i64, ptr, i64)\ndeclare i64 @__rg_rt_enter_region()\ndeclare i64 @__rg_rt_exit_region(i64, i64)\ndeclare i64 @__rg_rt_call_indirect1(i64, ptr)\ndeclare i64 @__rg_rt_call_indirect2(i64, ptr)\ndeclare i64 @__rg_rt_builtin(i64, ptr, i64)\ndeclare i64 @__rg_rt_pal_dispatch(i64, ptr, i64)\ndeclare i64 @__rg_rt_ext(i64, ptr, i64)\ndeclare void @__rg_rt_drop_slot(ptr)\ndeclare noalias ptr @__rg_rt_alloc_buf(i64)\ndeclare noalias ptr @__rg_rt_box_rc_vec(ptr)\ndeclare i64 @__rg_rt_box_rval(ptr)\ndeclare i64 @__rg_rt_pop_i64(ptr)\ndeclare i64 @__rg_rt_alloc_str(ptr, i64)\n"
         join str tree [d1, d2, d3, d4, d5, d6]
 
 fn :: llvm sha256 helpers => String
@@ -127,7 +127,8 @@ fn :: llvm tensor and builtin helpers => String
         h16 = llvm gen tensor helpers
         h17 = llvm gt conv helpers
         h18 = llvm sort helpers
-        join str tree [h1, h1b, h1c, h1d, h1e, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11, h12, h13, h14, h15, h16, h17, h18]
+        h19 = llvm u8 helpers
+        join str tree [h1, h1b, h1c, h1d, h1e, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11, h12, h13, h14, h15, h16, h17, h18, h19]
 
 -- ── RNativeInstr => LLVM IR Instruction Emitter ─────────────
 
@@ -479,7 +480,13 @@ fn :: emit llvm instr RNativeInstr Int Int Int => String
         "  %s_{step} = getelementptr inbounds i64, ptr %frame, i64 {start_slot}\n  %r_{step} = call i64 @__rg_builtin_chan_try_recv_tagged(ptr %s_{step}, i64 {count})\n  store i64 %r_{step}, ptr %acc, align 8\n"
       emit llvm instr (NCallBuiltin 99 start_slot _) step _ _ =
         "  %s_{step} = getelementptr inbounds i64, ptr %frame, i64 {start_slot}\n  %r_{step} = call i64 @__rg_builtin_list_extract_tid(ptr %s_{step})\n  store i64 %r_{step}, ptr %acc, align 8\n"
+      emit llvm instr (NCallBuiltin 105 start_slot 2) step _ _ =
+        "  %s_{step} = getelementptr inbounds i64, ptr %frame, i64 {start_slot}\n  %t_{step} = getelementptr inbounds i64, ptr %s_{step}, i64 1\n  %iv_{step} = load i64, ptr %s_{step}, align 8\n  %tv_{step} = load i64, ptr %t_{step}, align 8\n  store i64 0, ptr %s_{step}, align 8\n  store i64 0, ptr %t_{step}, align 8\n  %r_{step} = call i64 @__rg_u8_get1(i64 %tv_{step}, i64 %iv_{step})\n  store i64 %r_{step}, ptr %acc, align 8\n"
+      emit llvm instr (NCallBuiltin 106 start_slot 3) step _ _ =
+        "  %s_{step} = getelementptr inbounds i64, ptr %frame, i64 {start_slot}\n  %v_{step} = getelementptr inbounds i64, ptr %s_{step}, i64 1\n  %t_{step} = getelementptr inbounds i64, ptr %s_{step}, i64 2\n  %iv_{step} = load i64, ptr %s_{step}, align 8\n  %vv_{step} = load i64, ptr %v_{step}, align 8\n  %tv_{step} = load i64, ptr %t_{step}, align 8\n  store i64 0, ptr %s_{step}, align 8\n  store i64 0, ptr %v_{step}, align 8\n  store i64 0, ptr %t_{step}, align 8\n  call void @__rg_u8_set1(i64 %tv_{step}, i64 %iv_{step}, i64 %vv_{step})\n  store i64 0, ptr %acc, align 8\n"
       emit llvm instr (NCallBuiltin b_id start_slot count) step _ _
+        | b_id >= 100 =
+          "  %s_{step} = getelementptr inbounds i64, ptr %frame, i64 {start_slot}\n  %r_{step} = call i64 @__rg_rt_ext(i64 {b_id}, ptr %s_{step}, i64 {count})\n  store i64 %r_{step}, ptr %acc, align 8\n"
         | b_id >= 70 =
           "  %s_{step} = getelementptr inbounds i64, ptr %frame, i64 {start_slot}\n  %r_{step} = call i64 @__rg_rt_pal_dispatch(i64 {b_id}, ptr %s_{step}, i64 {count})\n  store i64 %r_{step}, ptr %acc, align 8\n"
         | otherwise =
@@ -648,7 +655,7 @@ fn :: emit llvm linker script => String
         s1 = "ENTRY(_start)\nPHDRS {{\n  all PT_LOAD FILEHDR PHDRS FLAGS(7);\n}}\nSECTIONS {{\n  . = 0x400080;\n  .rg_page0 : {{ KEEP(*(.rg_page0)) }} :all\n  . = 0x401000;\n  _start = .;\n  .rg_rt : {{ KEEP(*__rg_llvm_*.rt(.data)) }} :all\n  .text : ALIGN(16) {{ *(.text .text.*) }} :all\n  .rodata : ALIGN(16) {{ *(.rodata .rodata.*) }} :all\n  .data : ALIGN(16) {{ *(.data .data.*) }} :all\n  .bss : ALIGN(16) {{ *(.bss .bss.* COMMON) . = . + 131072; }} :all\n  /DISCARD/ : {{ *(.note*) *(.eh_frame*) *(.comment*) }}\n}}\n"
         s2 = "__rg_rt_init_frame = 4214136;\n__rg_rt_epilogue = 4214193;\n__rg_rt_tco_copy = 4214263;\n__rg_rt_clear_locals = 4214429;\n__rg_rt_clone_slot = 4214484;\n__rg_rt_drop_val = 4214519;\n__rg_rt_cmm_move = 4214549;\n__rg_rt_store_slot = 4214557;\n__rg_rt_rebind_slot = 4214596;\n__rg_rt_cmm_drop_slot = 4214624;\n__rg_rt_load_real_lit = 4214724;\n__rg_rt_load_str_lit = 4214782;\n__rg_rt_load_adt0 = 4214814;\n__rg_rt_make_adt = 4214846;\n__rg_rt_make_list = 4214925;\n__rg_rt_make_tuple = 4214963;\n__rg_rt_make_tensor = 4215291;\n__rg_rt_str_interp = 4215765;\n__rg_rt_pack_seq = 4215982;\n__rg_rt_as_bool = 4216188;\n"
         s3 = "__rg_rt_match_int = 4216208;\n__rg_rt_match_real = 4216225;\n__rg_rt_match_str = 4216329;\n__rg_rt_match_bool = 4216427;\n__rg_rt_match_empty = 4216452;\n__rg_rt_match_nonempty = 4216495;\n__rg_rt_list_head = 4216538;\n__rg_rt_list_tail = 4216614;\n__rg_rt_match_tuple = 4216754;\n__rg_rt_tuple_get = 4216825;\n__rg_rt_match_adt = 4216940;\n__rg_rt_adt_field = 4217065;\n__rg_rt_adt_set = 4217137;\n__rg_rt_bool_inv = 4217445;\n__rg_rt_out = 4217469;\n__rg_rt_echo = 4217589;\n__rg_rt_bin_op = 4217830;\n__rg_rt_index = 4222964;\n__rg_rt_index_set = 4223746;\n__rg_rt_seq_select = 4224237;\n"
-        s4 = "__rg_rt_einsum = 4227142;\n__rg_rt_hadamard = 4227321;\n__rg_rt_enter_region = 4229186;\n__rg_rt_exit_region = 4229444;\n__rg_rt_call_indirect1 = 4230596;\n__rg_rt_call_indirect2 = 4230720;\n__rg_rt_builtin = 4241227;\n__rg_rt_pal_dispatch = 4286080;\n__rg_rt_drop_slot = 4200437;\n__rg_rt_alloc_buf = 4205566;\n__rg_rt_box_rc_vec = 4208821;\n__rg_rt_box_rval = 4209847;\n__rg_rt_pop_i64 = 4212364;\n__rg_rt_alloc_str = 4212489;\nmemcpy = __rg_memcpy;\nmemset = __rg_memset;\n"
+        s4 = "__rg_rt_einsum = 4227142;\n__rg_rt_hadamard = 4227321;\n__rg_rt_enter_region = 4229186;\n__rg_rt_exit_region = 4229444;\n__rg_rt_call_indirect1 = 4230596;\n__rg_rt_call_indirect2 = 4230720;\n__rg_rt_builtin = 4241227;\n__rg_rt_pal_dispatch = 4286080;\n__rg_rt_ext = 4289168;\n__rg_rt_drop_slot = 4200437;\n__rg_rt_alloc_buf = 4205566;\n__rg_rt_box_rc_vec = 4208821;\n__rg_rt_box_rval = 4209847;\n__rg_rt_pop_i64 = 4212364;\n__rg_rt_alloc_str = 4212489;\nmemcpy = __rg_memcpy;\nmemset = __rg_memset;\n"
         join str tree [s1, s2, s3, s4]
 
 fn :: finish llvm link Int String String => Int
@@ -690,8 +697,8 @@ fn :: build llvm x8664 executable RNativeProg String     => Int
           ll_path = tmp_base + ".ll"
           bc_path = tmp_base + ".bc"
           obj_path = tmp_base + ".o"
-          rt_path = "/tmp/__rg_llvm_cache_v0_9_47.rt"
-          lds_path = "/tmp/__rg_llvm_cache_v0_9_47.lds"
+          rt_path = "/tmp/__rg_llvm_cache_v0_9_48.rt"
+          lds_path = "/tmp/__rg_llvm_cache_v0_9_48.lds"
           ensure cached rt files rt_path lds_path
           nprog -> emit llvm ir -> write file ll_path _
           cmd = "/usr/bin/opt -O2 \"" + ll_path + "\" -o \"" + bc_path + "\" && /usr/bin/llc -O2 -filetype=obj \"" + bc_path + "\" -o \"" + obj_path + "\" && /usr/bin/ld -n --no-warn-rwx-segments -T \"" + lds_path + "\" -b binary \"" + rt_path + "\" -b elf64-x86-64 \"" + obj_path + "\" -o \"" + output_bin + "\""
@@ -707,8 +714,8 @@ fn :: build llvm x8664 so library RNativeProg String    => Int
           ll_path = tmp_base + ".ll"
           bc_path = tmp_base + ".bc"
           obj_path = tmp_base + ".o"
-          rt_path = "/tmp/__rg_llvm_cache_v0_9_47.rt"
-          lds_path = "/tmp/__rg_llvm_cache_v0_9_47.lds"
+          rt_path = "/tmp/__rg_llvm_cache_v0_9_48.rt"
+          lds_path = "/tmp/__rg_llvm_cache_v0_9_48.lds"
           ensure cached rt files rt_path lds_path
           nprog -> emit llvm ir -> write file ll_path _
           cmd = "/usr/bin/opt -O2 \"" + ll_path + "\" -o \"" + bc_path + "\" && /usr/bin/llc -O2 -relocation-model=pic -filetype=obj \"" + bc_path + "\" -o \"" + obj_path + "\" && /usr/bin/ld -shared -n --no-warn-rwx-segments -T \"" + lds_path + "\" -b binary \"" + rt_path + "\" -b elf64-x86-64 \"" + obj_path + "\" -o \"" + output_so + "\""
@@ -769,3 +776,12 @@ fn :: llvm gen tensor helpers => String
         g = "define i64 @__rg_list_get(i64 %base, i64 %iv) inlinehint nounwind {{\nentry:\n  %ib = and i64 %iv, 1\n  %isi = icmp ne i64 %ib, 0\n  br i1 %isi, label %chk, label %oob\nchk:\n  %i = ashr i64 %iv, 1\n  %bp = inttoptr i64 %base to ptr\n  %vp = getelementptr inbounds i8, ptr %bp, i64 8\n  %vec = load ptr, ptr %vp, align 8\n  %stp = getelementptr inbounds i8, ptr %bp, i64 16\n  %st = load i64, ptr %stp, align 8\n  %lp = getelementptr inbounds i8, ptr %vec, i64 16\n  %len0 = load i64, ptr %lp, align 8\n  %len = sub i64 %len0, %st\n  %ge = icmp sge i64 %i, 0\n  %lt = icmp slt i64 %i, %len\n  %ok = and i1 %ge, %lt\n  br i1 %ok, label %get, label %oob\nget:\n  %bufp = getelementptr inbounds i8, ptr %vec, i64 8\n  %buf = load ptr, ptr %bufp, align 8\n  %j = add i64 %i, %st\n  %ep = getelementptr inbounds i64, ptr %buf, i64 %j\n  %v = load i64, ptr %ep, align 8\n  %c = call i64 @__rg_fast_clone_slot(i64 %v)\n  ret i64 %c\noob:\n  call void @__rg_tensor_oob()\n  ret i64 0\n}}\n"
         c = "define i64 @__rg_list_set(i64 %base, i64 %iv, i64 %val) noinline nounwind {{\nentry:\n  %bp = inttoptr i64 %base to ptr\n  %vp = getelementptr inbounds i8, ptr %bp, i64 8\n  %vec = load ptr, ptr %vp, align 8\n  %bufp = getelementptr inbounds i8, ptr %vec, i64 8\n  %buf = load ptr, ptr %bufp, align 8\n  %i = ashr i64 %iv, 1\n  %ep = getelementptr inbounds i64, ptr %buf, i64 %i\n  %old = load i64, ptr %ep, align 8\n  store i64 %val, ptr %ep, align 8\n  %d = call i64 @__rg_fast_drop_val(i64 %old)\n  ret i64 0\n}}\n"
         a + b + g + c
+
+-- FR-COMP-022: one-dimensional reads and writes of a `Tensor[U8]`
+-- (builtins 105 and 106 with one index) in line: an Int index in range and,
+-- for a write, an Int value in 0..255 go straight to the byte; anything else
+-- goes to the shared runtime extension (`@__rg_rt_ext`), which stops with
+-- the runtime error. Layout: data word 0 = rank, word 1 = length, bytes
+-- from word 2 (`docs/etc/runtime_ext.md`).
+fn :: llvm u8 helpers => String
+      llvm u8 helpers =  "define i64 @__rg_u8_get1(i64 %t, i64 %iv) alwaysinline nounwind {{\nentry:\n  %tb = inttoptr i64 %t to ptr\n  %dhp = getelementptr inbounds i8, ptr %tb, i64 16\n  %dh = load ptr, ptr %dhp, align 8, !invariant.load !0\n  %wpp = getelementptr inbounds i8, ptr %dh, i64 8\n  %w = load ptr, ptr %wpp, align 8, !invariant.load !0\n  %rk = load i64, ptr %w, align 8, !invariant.load !0\n  %d1p = getelementptr inbounds i64, ptr %w, i64 1\n  %d1 = load i64, ptr %d1p, align 8, !invariant.load !0\n  %i = ashr i64 %iv, 1\n  %isint = trunc i64 %iv to i1\n  %r1 = icmp eq i64 %rk, 1\n  %inb = icmp ult i64 %i, %d1\n  %c0 = and i1 %isint, %r1\n  %ok = and i1 %c0, %inb\n  br i1 %ok, label %fast, label %slow\nfast:\n  %bp0 = getelementptr inbounds i64, ptr %w, i64 2\n  %bp = getelementptr inbounds i8, ptr %bp0, i64 %i\n  %b = load i8, ptr %bp, align 1\n  %bz = zext i8 %b to i64\n  %bs = shl i64 %bz, 1\n  %r = or i64 %bs, 1\n  ret i64 %r\nslow:\n  %rs = call i64 @__rg_u8_get1_slow(i64 %t, i64 %iv)\n  ret i64 %rs\n}}\n\ndefine i64 @__rg_u8_get1_slow(i64 %t, i64 %iv) noinline nounwind {{\nentry:\n  %s = alloca [2 x i64], align 8\n  %s1 = getelementptr inbounds [2 x i64], ptr %s, i64 0, i64 1\n  store i64 %iv, ptr %s, align 8\n  store i64 %t, ptr %s1, align 8\n  %r = call i64 @__rg_rt_ext(i64 105, ptr %s, i64 2)\n  ret i64 %r\n}}\n\ndefine void @__rg_u8_set1(i64 %t, i64 %iv, i64 %vv) alwaysinline nounwind {{\nentry:\n  %tb = inttoptr i64 %t to ptr\n  %dhp = getelementptr inbounds i8, ptr %tb, i64 16\n  %dh = load ptr, ptr %dhp, align 8, !invariant.load !0\n  %wpp = getelementptr inbounds i8, ptr %dh, i64 8\n  %w = load ptr, ptr %wpp, align 8, !invariant.load !0\n  %rk = load i64, ptr %w, align 8, !invariant.load !0\n  %d1p = getelementptr inbounds i64, ptr %w, i64 1\n  %d1 = load i64, ptr %d1p, align 8, !invariant.load !0\n  %i = ashr i64 %iv, 1\n  %v = ashr i64 %vv, 1\n  %ii = and i64 %iv, %vv\n  %isint = trunc i64 %ii to i1\n  %r1 = icmp eq i64 %rk, 1\n  %inb = icmp ult i64 %i, %d1\n  %vok = icmp ult i64 %v, 256\n  %c0 = and i1 %isint, %r1\n  %c1 = and i1 %c0, %inb\n  %ok = and i1 %c1, %vok\n  br i1 %ok, label %fast, label %slow\nfast:\n  %bp0 = getelementptr inbounds i64, ptr %w, i64 2\n  %bp = getelementptr inbounds i8, ptr %bp0, i64 %i\n  %b = trunc i64 %v to i8\n  store i8 %b, ptr %bp, align 1\n  ret void\nslow:\n  call void @__rg_u8_set1_slow(i64 %t, i64 %iv, i64 %vv)\n  ret void\n}}\n\ndefine void @__rg_u8_set1_slow(i64 %t, i64 %iv, i64 %vv) noinline nounwind {{\nentry:\n  %s = alloca [3 x i64], align 8\n  %s1 = getelementptr inbounds [3 x i64], ptr %s, i64 0, i64 1\n  %s2 = getelementptr inbounds [3 x i64], ptr %s, i64 0, i64 2\n  store i64 %iv, ptr %s, align 8\n  store i64 %vv, ptr %s1, align 8\n  store i64 %t, ptr %s2, align 8\n  %r = call i64 @__rg_rt_ext(i64 106, ptr %s, i64 3)\n  ret void\n}}\n"

@@ -166,10 +166,15 @@ fn :: consultar contador (Agent Int Int) Int => Int
         send n to ag
         receive from ag
 
-fn :: tensor shape sum Tensor[Byte] => Int
-      tensor shape sum (Tensor[Byte * f * c] m) = f * 100 + c + m_(0, 0)
-      tensor shape sum (Tensor[Byte * n] v) = n * 10 + v_(0)
+fn :: tensor shape sum Tensor[Int] => Int
+      tensor shape sum (Tensor[Int * f * c] m) = f * 100 + c + m_(0, 0)
+      tensor shape sum (Tensor[Int * n] v) = n * 10 + v_(0)
       tensor shape sum _            =  0 - 1
+
+fn :: byte shape sum Tensor[Byte] => Int
+      byte shape sum (Tensor[Byte * f * c] m) = f * 100 + c + m_(0, 0)
+      byte shape sum (Tensor[Byte * n] v) = n * 10 + v_(0)
+      byte shape sum _            =  0 - 1
 
 fn :: inc vec elem Tensor[U64 * _] => Tensor[U64 * _]
       inc vec elem v               =
@@ -414,17 +419,18 @@ fn :: main => ()
         assert equals (tensor shape sum m23) 210
         assert equals (tensor shape sum v4) 45
         z23 = Tensor[Byte * 2 * 3]
-        assert equals (tensor shape sum z23) 203
+        assert equals (byte shape sum z23) 203
         z23_(1, 2) = 99
         assert equals z23_(1, 2) 99
         col1 = m23_(,1)
         assert equals col1_(0) 8
         assert equals col1_(1) 11
-        z23_(0,) = Tensor [1, 2, 3]
-        z23_(,2) = Tensor [30, 40]
-        assert equals z23_(0, 1) 2
-        assert equals z23_(0, 2) 30
-        assert equals z23_(1, 2) 40
+        w23 = Tensor[Int * 2 * 3]
+        w23_(0,) = Tensor [1, 2, 3]
+        w23_(,2) = Tensor [30, 40]
+        assert equals w23_(0, 1) 2
+        assert equals w23_(0, 2) 30
+        assert equals w23_(1, 2) 40
         m23Copy = map inc vec elem m23_(i,)
         assert equals m23_(0, 0) 7
         assert equals m23Copy_(0, 0) 17

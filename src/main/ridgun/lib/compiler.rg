@@ -1439,7 +1439,9 @@ fn :: builtin zero arg id String             => Int
       builtin zero arg id "sys_getuid"       =  3
       builtin zero arg id "sys_getgid"       =  4
       builtin zero arg id "sys_getpid"       =  70
-      builtin zero arg id "sys_time_ms"      =  71
+      builtin zero arg id "sys_time_ms"      =  102
+      builtin zero arg id "sys_time_ns"      =  100
+      builtin zero arg id "sys_wall_time_ms" =  101
       builtin zero arg id "sys_deadline_ms"  =  72
       builtin zero arg id "sys_remaining_ms" =  73
       builtin zero arg id "sys_pipe"         =  86
@@ -1466,7 +1468,7 @@ fn :: builtin call id String             => Int
       builtin call id "str_to_int"       =  13
       builtin call id "read_file"        =  14
       builtin call id "load_rg_source"   =  15
-      builtin call id "read_bytes"       =  16
+      builtin call id "read_bytes"       =  112
       builtin call id "shell_exec"       =  17
       builtin call id "list_dir"         =  18
       builtin call id "file_lstat"       =  19
@@ -1493,7 +1495,7 @@ fn :: builtin call id String             => Int
       builtin call id "str_concat"       =  41
       builtin call id "str_starts_with"  =  42
       builtin call id "str_contains"     =  43
-      builtin call id "write_bytes"      =  44
+      builtin call id "write_bytes"      =  113
       builtin call id "write_file"       =  45
       builtin call id "sys_mkdir"        =  46
       builtin call id "sys_chmod"        =  47
@@ -1515,7 +1517,15 @@ fn :: builtin call id String             => Int
       builtin call id "sys_exec"         =  62
       builtin call id "sys_execve"       =  63
       builtin call id "sys_getpid"       =  70
-      builtin call id "sys_time_ms"      =  71
+      builtin call id "sys_time_ms"      =  102
+      builtin call id "sys_time_ns"      =  100
+      builtin call id "sys_wall_time_ms" =  101
+      builtin call id "crc32_range"      =  103
+      builtin call id "tensor_from_str"  =  108
+      builtin call id "tensor_to_str"    =  109
+      builtin call id "sys_read_into"    =  114
+      builtin call id "sys_write_from"   =  115
+      builtin call id "sha256_digest"    =  118
       builtin call id "sys_deadline_ms"  =  72
       builtin call id "sys_remaining_ms" =  73
       builtin call id "sys_sleep_ms"     =  74
@@ -1756,6 +1766,11 @@ fn :: store back mutated tensor RNativeEnv RExpr [String] Int Int RNativeCode =>
       store back mutated tensor _ _ _ _ _ st = st
 
 fn :: lower tensor helper RNativeEnv String [RExpr] [String] Int RNativeCode => RNativeCode
+      lower tensor helper env ":typed-tensor:" ((EStr ty):(ECall f args):_) boundLocals sp st
+        | (is u8 elem name ty) and (f == ":tensor-zeros:" or f == ":tensor-with:") =
+          count = rexpr list len args
+          st1 = lower expr list to slots env args boundLocals sp 0 st
+          nc emit st1 (NCallBuiltin 104 sp count) (sp + count + 1)
       lower tensor helper env ":typed-tensor:" (_:inner:_) boundLocals sp st =
         lower expr env inner boundLocals sp st
       lower tensor helper env ":tensor-zeros:" (fillE:d1:[]) boundLocals sp st =
@@ -2501,6 +2516,10 @@ fn :: lower call expr RNativeEnv String [RExpr] [String] Int RNativeCode => RNat
           lower filter or closure filter env fname args bound_locals sp st
         | fname == "fold" =
           lower fold or closure fold env args bound_locals sp st
+      lower call expr env "sha256_raw" (d:[]) bound_locals sp st
+        | (lookup local bound_locals "sha256_raw") < 0 and (expr tensor kind env d) == "B" =
+          st1 = lower expr list to slots env [d] bound_locals sp 0 st
+          nc emit st1 (NCallBuiltin 117 sp 1) (sp + 2)
       lower call expr env "sha256_raw" ((EBin OpAdd a b):[]) bound_locals sp st
         | (lookup local bound_locals "sha256_raw") < 0 =
           st1 = lower expr list to slots env [a, b] bound_locals sp 0 st
@@ -2521,7 +2540,7 @@ fn :: lower call expr RNativeEnv String [RExpr] [String] Int RNativeCode => RNat
         | fname == "sys_call" =
           pargs = pad syscall args args
           st1 = lower expr list to slots env pargs bound_locals sp 0 st
-          nc emit st1 (NCallBuiltin 83 sp 7) (sp + 8)
+          nc emit st1 (NCallBuiltin 116 sp 7) (sp + 8)
         | (builtin call id fname) >= 0 and (not ((is wrapable builtin fn fname) and (rexpr list len args) > 0 and (rexpr list len args) < (std builtin arity fname))) =
           count = rexpr list len args
           bid = select par collection builtin env fname args bound_locals
@@ -2624,6 +2643,13 @@ fn :: lower expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
       lower expr env (ECall "sort_by_ints" (xs:ks:_)) bound_locals sp st =  lower sort by env 0 xs ks bound_locals sp st
       lower expr env (ECall "sort_by_texts" (xs:ks:_)) bound_locals sp st =  lower sort by env 1 xs ks bound_locals sp st
       lower expr env (ECall "tensor_from_list" (x:_)) bound_locals sp st =  lower expr env (ECall "__rg_gt_from_list" [x]) bound_locals sp st
+      lower expr env (ECall "tensor_to_list" (x:_)) bound_locals sp st
+        | (expr tensor kind env x) == "B" =
+          st1 = lower expr list to slots env [x] bound_locals sp 0 st
+          nc emit st1 (NCallBuiltin 110 sp 1) (sp + 2)
+      lower expr env (ECall ":u8-words:" (x:_)) bound_locals sp st =
+        st1 = lower expr list to slots env [x] bound_locals sp 0 st
+        nc emit st1 (NCallBuiltin 111 sp 1) (sp + 2)
       lower expr env (ECall "tensor_to_list" ((EVar v):_)) bound_locals sp st
         | env is real tensor env v = lower expr env (ECall "__rg_gt_to_list_real" [EVar v]) bound_locals sp st
       lower expr env (ECall "tensor_to_list" (x:_)) bound_locals sp st =  lower expr env (ECall "__rg_gt_to_list" [x]) bound_locals sp st
@@ -3272,6 +3298,7 @@ fn :: tensor pat mode RNativeEnv RPattern => String
       tensor pat mode env p =  tensor pat mode of (env has gt shape env) (tensor pat kind env p)
 
 fn :: tensor pat mode of Bool String => String
+      tensor pat mode of _ "B" =  "B"
       tensor pat mode of False _ =  "N"
       tensor pat mode of True "N" =  "N"
       tensor pat mode of True "R" =  "N"
@@ -3281,6 +3308,7 @@ fn :: tensor pat mode of Bool String => String
 
 fn :: gen tensor pat flag String => Int
       gen tensor pat flag "L" =  1
+      gen tensor pat flag "B" =  2
       gen tensor pat flag _ =  0
 
 fn :: lower tensor pat cond RNativeEnv String RPattern RPattern [RPattern] Int Int Int RNativeCode => RNativeCode
@@ -3289,6 +3317,9 @@ fn :: lower tensor pat cond RNativeEnv String RPattern RPattern [RPattern] Int I
         st2 = lower pat cond env t_pat slot fail_lbl sp st1
         st3 = lower tensor dim cond env rank_pat slot (0 - 1) fail_lbl sp st2
         lower tensor dims cond list env dim_pats slot 0 fail_lbl sp st3
+      lower tensor pat cond env "B" t_pat rank_pat dim_pats slot fail_lbl sp st =
+        st1 = nc emit list st [NMatchAdt slot 0 0 (0 - 5), NJumpIfZero fail_lbl] sp
+        lower gen tensor pat cond env 2 t_pat rank_pat dim_pats slot fail_lbl sp st1
       lower tensor pat cond env "D" t_pat rank_pat dim_pats slot fail_lbl sp st =
         num_lbl = nc lbl st
         end_lbl = num_lbl + 1
@@ -3325,6 +3356,8 @@ fn :: lower gen shape cond RNativeEnv Int RPattern Int Int Int Int RNativeCode =
 -- Calls `__rg_gt_shape t k flag` (k: 0 rank, 1 rows, 2 columns) and leaves
 -- the result in slot sp.
 fn :: lower gen shape value RNativeEnv Int Int Int Int RNativeCode => RNativeCode
+      lower gen shape value env 2 slot k sp st =
+        nc emit list st [NLoadImmInt k, NStoreSlot sp, NPeekSlot slot, NStoreSlot (sp + 1), NCallBuiltin 107 sp 2, NStoreSlot sp] (sp + 2)
       lower gen shape value env flag slot k sp st =
         nc emit list st [NCloneSlot slot, NStoreSlot sp, NLoadImmInt k, NStoreSlot (sp + 1), NLoadImmInt flag, NStoreSlot (sp + 2), NCallFn (env fn id env "__rg_gt_shape") sp 3, NStoreSlot sp] (sp + 4)
 
@@ -4513,6 +4546,38 @@ fn :: merge tensor kind String String => String
         | a == b = a
         | otherwise = "U"
 
+-- ── Packed byte tensors (FR-COMP-022) ─────────────────────────
+-- A `Tensor[U8]` (kind "B") is handled by the shared runtime extension
+-- (builtins 104-111, `docs/etc/runtime_ext.md`). The type checker makes
+-- sure that every packed tensor that is read, shown, hashed or turned
+-- into a list is one of the expressions below.
+fn :: is u8 elem name String => Bool
+      is u8 elem name s =  s == "U8" or s == "Byte"
+
+fn :: expr tensor kind RNativeEnv RExpr => String
+      expr tensor kind env (EVar v) =  env tensor kind env v
+      expr tensor kind _ (ECall ":typed-tensor:" ((EStr ty):_))
+        | is u8 elem name ty = "B"
+      expr tensor kind env (ECall ":tensor-clone:" (b:_)) =  expr tensor kind env b
+      expr tensor kind env (ECall f _)
+        | not (str starts with f ":") = env tensor kind env ("()" + f)
+      expr tensor kind _ _ =  "U"
+
+-- `t_(i ...)` on a `Tensor[U8]`: builtin 105 with slots [i ..., t]; t is
+-- borrowed (`NPeekSlot`), a temporary base is dropped after the read.
+fn :: lower u8 read RNativeEnv RExpr [RExpr] [String] Int RNativeCode => RNativeCode
+      lower u8 read env (EVar v) idxs bound_locals sp st
+        | (lookup local bound_locals v) >= 0 =
+          k = rexpr list len idxs
+          st1 = lower expr list to slots env idxs bound_locals sp 0 st
+          nc emit list st1 [NPeekSlot (env var slot env v), NStoreSlot (sp + k), NCallBuiltin 105 sp (k + 1)] (sp + k + 1)
+      lower u8 read env base idxs bound_locals sp st =
+        k = rexpr list len idxs
+        st1 = lower expr env base bound_locals sp st
+        st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
+        st3 = lower expr list to slots env idxs bound_locals (sp + 1) 0 st2
+        nc emit list st3 [NPeekSlot sp, NStoreSlot (sp + k + 1), NCallBuiltin 105 (sp + 1) (k + 1), NStoreSlot (sp + k + 2), NCmmDropSlot sp, NMoveSlot (sp + k + 2)] (sp + k + 3)
+
 fn :: env is real tensor RNativeEnv String => Bool
       env is real tensor env v =  (env tensor kind env v) == "R"
 
@@ -4574,6 +4639,7 @@ fn :: gen tensor oob msg => String
 -- `v_(i ...)`, `v` a variable.
 fn :: lower var index read RNativeEnv String [RExpr] [String] Int RNativeCode => RNativeCode
       lower var index read env v idxs bound_locals sp st
+        | (env tensor kind env v) == "B" = lower u8 read env (EVar v) idxs bound_locals sp st
         | (env tensor kind env v) == "R" =
           st1 = lower tensor read env (EVar v) idxs bound_locals sp st
           nc emit st1 NRealFromBits sp
@@ -4587,6 +4653,7 @@ fn :: lower var index read RNativeEnv String [RExpr] [String] Int RNativeCode =>
 -- `base_(i ...)`, `base` any expression: it is evaluated into slot sp.
 fn :: lower base index read RNativeEnv RExpr [RExpr] [String] Int RNativeCode => RNativeCode
       lower base index read env base idxs bound_locals sp st
+        | (expr tensor kind env base) == "B" = lower u8 read env base idxs bound_locals sp st
         | (rexpr list len idxs) == 1 or (rexpr list len idxs) == 2 =
           count = rexpr list len idxs
           st1 = lower expr env base bound_locals sp st
@@ -4808,6 +4875,8 @@ fn :: is poly elem name String => Bool
 
 fn :: emit tensor store RNativeEnv String Int Int Int RNativeCode => RNativeCode
       emit tensor store env t tslot sp count st
+        | (env tensor kind env t) == "B" =
+          nc emit list st [NStoreSlot (sp + count), NPeekSlot tslot, NStoreSlot (sp + count + 1), NCallBuiltin 106 sp (count + 2)] (sp + count + 2)
         | count > 2 or (((env tensor kind env t) == "N" or (env tensor kind env t) == "R") and (env fn arity env "__rg_gt_poly") != 1) =
           nc emit list st [NIndexSet tslot sp count, NStoreSlot tslot] (sp + count + 1)
         | (env tensor kind env t) == "G" or (env tensor kind env t) == "L" =
@@ -4899,6 +4968,8 @@ fn :: show tensor expr RNativeEnv RExpr => RExpr
 
 fn :: show tensor kind RNativeEnv RExpr => String
       show tensor kind env (EVar v) =  env tensor kind env v
+      show tensor kind env (ECall ":typed-tensor:" args) =  expr tensor kind env (ECall ":typed-tensor:" args)
+      show tensor kind env (ECall ":tensor-clone:" (b:_)) =  show tensor kind env b
       show tensor kind env (ECall ":tensor-row-slice:" (b:_)) =  show tensor kind env b
       show tensor kind env (ECall ":tensor-col-slice:" (b:_)) =  show tensor kind env b
       show tensor kind _ (ETensor es) =  literal show kind es ""
@@ -4921,6 +4992,7 @@ fn :: literal show kind [RExpr] String => String
 fn :: show tensor wrap String RExpr => RExpr
       show tensor wrap "R" e =  ECall "__rg_tensor_show_real" [e]
       show tensor wrap "N" e =  ECall "__rg_tensor_show_int" [e]
+      show tensor wrap "B" e =  ECall "__rg_tensor_show_int" [ECall ":u8-words:" [e]]
       show tensor wrap _ e =  e
 
 fn :: with gt helpers [RFnDef] => [RFnDef]

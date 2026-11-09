@@ -16,7 +16,7 @@ verified_by: [TS-COMP-018]
 > Since 0.9.37 (`FR-COMP-020`), only `Tensor_GPU` keeps this rule. `Tensor` accepts any element type.
 
 ## Statement
-1. **Numeric element types.** A tensor stores one 64-bit number per element. The element type of a tensor, written as `Tensor[T * n ...]`, `Tensor[T]` or `Tensor(T, n ...)` in a type or in an allocation expression, SHALL be one of `Int`, `Byte`, `U8`, `U16`, `U32`, `U64`, `I8`, `I16`, `I32`, `I64`, `Usize`, `Real` or `Float`. The same rule applies to `Tensor_GPU`.
+1. **Numeric element types.** A tensor stores one 64-bit number per element, except `Tensor[U8]` and `Tensor[Byte]`, which store one byte per element (FR-COMP-022). The element type of a tensor, written as `Tensor[T * n ...]`, `Tensor[T]` or `Tensor(T, n ...)` in a type or in an allocation expression, SHALL be one of `Int`, `Byte`, `U8`, `U16`, `U32`, `U64`, `I8`, `I16`, `I32`, `I64`, `Usize`, `Real` or `Float`. The same rule applies to `Tensor_GPU`.
 2. **Compile error.** For `Tensor_GPU`, any other element type (for example `String`, `Bool`, `Char`, a list or a user-defined type) SHALL be a compile error: `syntax error: Tensor_GPU element type '<T>' is not supported: a Tensor_GPU holds numbers only (Int, Byte, U8, U16, U32, U64, I8, I16, I32, I64, Usize, Real, Float) in function '<name>'`. (Before 0.9.37 the rule also applied to `Tensor`.)
 
 ## Rationale

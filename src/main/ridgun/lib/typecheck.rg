@@ -201,7 +201,9 @@ fn :: types compatible RType              RType              => Bool
       types compatible TyString           TyString           =  True
       types compatible TyBool             TyBool             =  True
       types compatible TyUnit             TyUnit             =  True
-      types compatible (TyTensor e1 d1)   (TyTensor e2 d2)   =  (types compatible e1 e2) and (tensor dims unify d1 d2)
+      types compatible (TyTensor e1 d1)   (TyTensor e2 d2)
+        | (is u8 elem e1) != (is u8 elem e2) = False
+        | otherwise = (types compatible e1 e2) and (tensor dims unify d1 d2)
       types compatible (TyVariadic inner) other              =
         (types compatible inner other) or (types compatible (TyList inner) other)
       types compatible other              (TyVariadic inner) =
@@ -220,6 +222,10 @@ fn :: types compatible RType              RType              => Bool
       types compatible (TyTuple ((TyVar "SinkAgent"):_)) (TyVar "Agent") = True
       types compatible (TyVar "SinkAgent") (TyTuple ((TyVar "SinkAgent"):_)) = True
       types compatible (TyTuple ((TyVar "SinkAgent"):_)) (TyVar "SinkAgent") = True
+      types compatible (TyVar a)          other
+        | is u8 param a = u8 param accepts a other
+      types compatible other              (TyVar b)
+        | is u8 param b = u8 param accepts b other
       types compatible (TyVar "Channel")  TyInt              = True
       types compatible TyInt              (TyVar "Channel")  = True
       types compatible (TyVar a)          other
@@ -300,11 +306,11 @@ fn :: put type bind [RTypeBind] String RType => [RTypeBind]
 
 fn :: builtin local types => [RTypeBind]
       builtin local types =
-        [TypeBind "new_mailbox" TyInt, TypeBind "mailbox" TyInt, TypeBind "new_channel" (TyVar "Channel"), TypeBind "channel" (TyVar "Channel"), TypeBind "cli_args" (TyList TyString), TypeBind "sys_os" (TyVar "adt:SysOs"), TypeBind "sys_arch" (TyVar "adt:SysArch"), TypeBind "sys_getcwd" TyString, TypeBind "sys_getuid" TyInt, TypeBind "sys_getgid" TyInt, TypeBind "sys_getpid" TyInt, TypeBind "sys_pipe" (TyTuple [TyInt, TyInt]), TypeBind "sys_time_ms" TyInt, TypeBind "sys_deadline_ms" TyInt, TypeBind "sys_remaining_ms" TyInt, TypeBind "cmm_live_blocks" TyInt, TypeBind "cmm_cond_spared" TyInt, TypeBind "cmm_cond_freed" TyInt]
+        [TypeBind "new_mailbox" TyInt, TypeBind "mailbox" TyInt, TypeBind "new_channel" (TyVar "Channel"), TypeBind "channel" (TyVar "Channel"), TypeBind "cli_args" (TyList TyString), TypeBind "sys_os" (TyVar "adt:SysOs"), TypeBind "sys_arch" (TyVar "adt:SysArch"), TypeBind "sys_getcwd" TyString, TypeBind "sys_getuid" TyInt, TypeBind "sys_getgid" TyInt, TypeBind "sys_getpid" TyInt, TypeBind "sys_pipe" (TyTuple [TyInt, TyInt]), TypeBind "sys_time_ms" TyInt, TypeBind "sys_time_ns" TyInt, TypeBind "sys_wall_time_ms" TyInt, TypeBind "sys_deadline_ms" TyInt, TypeBind "sys_remaining_ms" TyInt, TypeBind "cmm_live_blocks" TyInt, TypeBind "cmm_cond_spared" TyInt, TypeBind "cmm_cond_freed" TyInt]
 
 fn :: builtin fn types => [RTypeBind]
       builtin fn types =
-        [TypeBind "cli_args" (TyFun [] (TyList TyString)), TypeBind "new_mailbox" (TyFun [] TyInt), TypeBind "new_channel" (TyFun [] (TyVar "Channel")), TypeBind "stop" (TyFun [TyVar "Agent"] TyUnit), TypeBind "agent_alive" (TyFun [TyVar "Agent"] TyBool), TypeBind "agent_dropped" (TyFun [TyVar "Agent"] TyInt), TypeBind "agent_flush" (TyFun [TyVar "Agent"] TyUnit), TypeBind "agent_state" (TyFun [TyVar "Agent"] (TyVar "A")), TypeBind "send_to" (TyFun [TyVar "A", TyVar "Agent"] TyUnit), TypeBind "ask_to" (TyFun [TyVar "A", TyVar "Agent"] (TyVar "B")), TypeBind "new_bounded_channel" (TyFun [TyInt] (TyVar "Channel")), TypeBind "send_through" (TyFun [TyVar "A", TyVar "Channel"] TyUnit), TypeBind "chan_send" (TyFun [TyVar "A", TyVar "Channel"] TyUnit), TypeBind "receive_from" (TyFun [TyVar "_chan_or_agent"] (TyVar "A")), TypeBind "chan_recv" (TyFun [TyVar "Channel"] (TyVar "A")), TypeBind "try_receive_from" (TyFun [TyVar "_chan_or_agent"] (TyVar "Option")), TypeBind "chan_try_recv" (TyFun [TyVar "Channel"] (TyVar "Option")), TypeBind "receive_from_timeout" (TyFun [TyVar "Channel", TyInt] (TyVar "Option")), TypeBind "str_len" (TyFun [TyString] TyInt), TypeBind "sort_by_ints" (TyFun [TyList (TyVar "A"), TyList TyInt] (TyList (TyVar "A"))), TypeBind "sort_by_texts" (TyFun [TyList (TyVar "A"), TyList TyString] (TyList (TyVar "A"))), TypeBind "str_char_at" (TyFun [TyString, TyInt] TyInt), TypeBind "str_slice" (TyFun [TyString, TyInt, TyInt] TyString), TypeBind "char_from_code" (TyFun [TyInt] TyString), TypeBind "str_concat" (TyFun [TyString, TyString] TyString), TypeBind "int_to_str" (TyFun [TyInt] TyString), TypeBind "str_to_int" (TyFun [TyString] TyInt), TypeBind "str_starts_with" (TyFun [TyString, TyString] TyBool), TypeBind "str_contains" (TyFun [TyString, TyString] TyBool), TypeBind "read_file" (TyFun [TyString] TyString), TypeBind "load_rg_source" (TyFun [TyString] TyString), TypeBind "read_bytes" (TyFun [TyString] (TyList TyInt)), TypeBind "write_bytes" (TyFun [TyString, TyList TyInt] TyUnit), TypeBind "write_file" (TyFun [TyString, TyString] TyUnit), TypeBind "shell_exec" (TyFun [TyString] TyInt), TypeBind "map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "seq_map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "||map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "par_map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "seq_filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "||filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "par_filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "fold" (TyFun [TyFun [TyVar "B", TyVar "A"] (TyVar "B"), TyVar "B", TyList (TyVar "A")] (TyVar "B")), TypeBind "list_dir" (TyFun [TyString] (TyList TyString)), TypeBind "file_lstat" (TyFun [TyString] (TyTuple [TyBool, TyString, TyInt, TyInt, TyInt, TyString, TyString, TyInt, TyString])), TypeBind "sha256_file" (TyFun [TyString] TyString), TypeBind "sha256_str" (TyFun [TyString] TyString), TypeBind "sha256_raw" (TyFun [TyString] TyString), TypeBind "sha256_bytes" (TyFun [TyString] TyString), TypeBind "sys_os" (TyFun [] (TyVar "adt:SysOs")), TypeBind "sys_arch" (TyFun [] (TyVar "adt:SysArch")), TypeBind "sys_mkdir" (TyFun [TyString, TyInt] TyInt), TypeBind "sys_chmod" (TyFun [TyString, TyInt] TyInt), TypeBind "sys_exec" (TyFun [TyString, TyList TyString, TyList TyString] TyInt), TypeBind "sys_chdir" (TyFun [TyString] TyInt), TypeBind "sys_getcwd" (TyFun [] TyString), TypeBind "sys_getenv" (TyFun [TyString] TyString), TypeBind "sys_setenv" (TyFun [TyString, TyString] TyInt), TypeBind "sys_exit" (TyFun [TyInt] TyUnit), TypeBind "sys_getuid" (TyFun [] TyInt), TypeBind "sys_getgid" (TyFun [] TyInt), TypeBind "sys_getpid" (TyFun [] TyInt), TypeBind "sys_time_ms" (TyFun [] TyInt), TypeBind "sys_deadline_ms" (TyFun [] TyInt), TypeBind "sys_remaining_ms" (TyFun [] TyInt), TypeBind "sys_sleep_ms" (TyFun [TyInt] TyUnit), TypeBind "sys_open_mode" (TyFun [TyString, TyString] TyInt), TypeBind "sys_open" (TyFun [TyString, TyInt, TyInt] TyInt), TypeBind "sys_close" (TyFun [TyInt] TyInt), TypeBind "sys_read_fd" (TyFun [TyInt, TyInt] TyString), TypeBind "sys_write_fd" (TyFun [TyInt, TyString] TyInt), TypeBind "sys_poll" (TyFun [TyInt, TyInt, TyInt] TyInt), TypeBind "sys_terminate" (TyFun [TyInt, TyBool] TyInt), TypeBind "sys_kill" (TyFun [TyInt, TyInt] TyInt), TypeBind "sys_call" (TyFun [TyInt, TyVariadic TyInt] TyInt), TypeBind "sys_pipe" (TyFun [] (TyTuple [TyInt, TyInt])), TypeBind "sys_waitpid" (TyFun [TyInt, TyInt] (TyTuple [TyInt, TyInt])), TypeBind "sys_username" (TyFun [TyInt] TyString), TypeBind "sys_user_groups" (TyFun [TyString] (TyList TyString)), TypeBind "sys_lookup_uid_gid" (TyFun [TyString] (TyTuple [TyInt, TyInt])), TypeBind "sys_setresgid" (TyFun [TyInt] TyInt), TypeBind "sys_setgroups" (TyFun [TyList TyInt] TyInt), TypeBind "sys_setresuid" (TyFun [TyInt] TyInt), TypeBind "sys_execve" (TyFun [TyString, TyList TyString, TyList TyString] TyInt), TypeBind "sys_read_pass" (TyFun [TyString] TyString), TypeBind "cmm_live_blocks" (TyFun [] TyInt), TypeBind "cmm_cond_spared" (TyFun [] TyInt), TypeBind "cmm_cond_freed" (TyFun [] TyInt), TypeBind "cmm_same_ptr" (TyFun [TyVar "A", TyVar "A"] TyBool)]
+        [TypeBind "cli_args" (TyFun [] (TyList TyString)), TypeBind "new_mailbox" (TyFun [] TyInt), TypeBind "new_channel" (TyFun [] (TyVar "Channel")), TypeBind "stop" (TyFun [TyVar "Agent"] TyUnit), TypeBind "agent_alive" (TyFun [TyVar "Agent"] TyBool), TypeBind "agent_dropped" (TyFun [TyVar "Agent"] TyInt), TypeBind "agent_flush" (TyFun [TyVar "Agent"] TyUnit), TypeBind "agent_state" (TyFun [TyVar "Agent"] (TyVar "A")), TypeBind "send_to" (TyFun [TyVar "A", TyVar "Agent"] TyUnit), TypeBind "ask_to" (TyFun [TyVar "A", TyVar "Agent"] (TyVar "B")), TypeBind "new_bounded_channel" (TyFun [TyInt] (TyVar "Channel")), TypeBind "send_through" (TyFun [TyVar "A", TyVar "Channel"] TyUnit), TypeBind "chan_send" (TyFun [TyVar "A", TyVar "Channel"] TyUnit), TypeBind "receive_from" (TyFun [TyVar "_chan_or_agent"] (TyVar "A")), TypeBind "chan_recv" (TyFun [TyVar "Channel"] (TyVar "A")), TypeBind "try_receive_from" (TyFun [TyVar "_chan_or_agent"] (TyVar "Option")), TypeBind "chan_try_recv" (TyFun [TyVar "Channel"] (TyVar "Option")), TypeBind "receive_from_timeout" (TyFun [TyVar "Channel", TyInt] (TyVar "Option")), TypeBind "str_len" (TyFun [TyString] TyInt), TypeBind "sort_by_ints" (TyFun [TyList (TyVar "A"), TyList TyInt] (TyList (TyVar "A"))), TypeBind "sort_by_texts" (TyFun [TyList (TyVar "A"), TyList TyString] (TyList (TyVar "A"))), TypeBind "str_char_at" (TyFun [TyString, TyInt] TyInt), TypeBind "str_slice" (TyFun [TyString, TyInt, TyInt] TyString), TypeBind "char_from_code" (TyFun [TyInt] TyString), TypeBind "str_concat" (TyFun [TyString, TyString] TyString), TypeBind "int_to_str" (TyFun [TyInt] TyString), TypeBind "str_to_int" (TyFun [TyString] TyInt), TypeBind "str_starts_with" (TyFun [TyString, TyString] TyBool), TypeBind "str_contains" (TyFun [TyString, TyString] TyBool), TypeBind "read_file" (TyFun [TyString] TyString), TypeBind "load_rg_source" (TyFun [TyString] TyString), TypeBind "read_bytes" (TyFun [TyString] u8 tensor ty), TypeBind "write_bytes" (TyFun [TyString, TyVar "_u8_or_ints"] TyUnit), TypeBind "write_file" (TyFun [TyString, TyString] TyUnit), TypeBind "shell_exec" (TyFun [TyString] TyInt), TypeBind "map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "seq_map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "||map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "par_map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "seq_filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "||filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "par_filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "fold" (TyFun [TyFun [TyVar "B", TyVar "A"] (TyVar "B"), TyVar "B", TyList (TyVar "A")] (TyVar "B")), TypeBind "list_dir" (TyFun [TyString] (TyList TyString)), TypeBind "file_lstat" (TyFun [TyString] (TyTuple [TyBool, TyString, TyInt, TyInt, TyInt, TyString, TyString, TyInt, TyString])), TypeBind "sha256_file" (TyFun [TyString] TyString), TypeBind "sha256_str" (TyFun [TyString] TyString), TypeBind "sha256_raw" (TyFun [TyVar "_u8_data"] TyString), TypeBind "sha256_bytes" (TyFun [TyString] TyString), TypeBind "sys_os" (TyFun [] (TyVar "adt:SysOs")), TypeBind "sys_arch" (TyFun [] (TyVar "adt:SysArch")), TypeBind "sys_mkdir" (TyFun [TyString, TyInt] TyInt), TypeBind "sys_chmod" (TyFun [TyString, TyInt] TyInt), TypeBind "sys_exec" (TyFun [TyString, TyList TyString, TyList TyString] TyInt), TypeBind "sys_chdir" (TyFun [TyString] TyInt), TypeBind "sys_getcwd" (TyFun [] TyString), TypeBind "sys_getenv" (TyFun [TyString] TyString), TypeBind "sys_setenv" (TyFun [TyString, TyString] TyInt), TypeBind "sys_exit" (TyFun [TyInt] TyUnit), TypeBind "sys_getuid" (TyFun [] TyInt), TypeBind "sys_getgid" (TyFun [] TyInt), TypeBind "sys_getpid" (TyFun [] TyInt), TypeBind "sys_time_ms" (TyFun [] TyInt), TypeBind "sys_time_ns" (TyFun [] TyInt), TypeBind "sys_wall_time_ms" (TyFun [] TyInt), TypeBind "crc32_range" (TyFun [TyVar "_u8_data", TyInt, TyInt, TyInt] TyInt), TypeBind "tensor_from_str" (TyFun [TyString] u8 tensor ty), TypeBind "tensor_to_str" (TyFun [u8 tensor ty] TyString), TypeBind "sha256_digest" (TyFun [TyVar "_u8_data"] u8 tensor ty), TypeBind "sys_read_into" (TyFun [TyInt, u8 tensor ty, TyInt, TyInt] TyInt), TypeBind "sys_write_from" (TyFun [TyInt, u8 tensor ty, TyInt, TyInt] TyInt), TypeBind "sys_deadline_ms" (TyFun [] TyInt), TypeBind "sys_remaining_ms" (TyFun [] TyInt), TypeBind "sys_sleep_ms" (TyFun [TyInt] TyUnit), TypeBind "sys_open_mode" (TyFun [TyString, TyString] TyInt), TypeBind "sys_open" (TyFun [TyString, TyInt, TyInt] TyInt), TypeBind "sys_close" (TyFun [TyInt] TyInt), TypeBind "sys_read_fd" (TyFun [TyInt, TyInt] TyString), TypeBind "sys_write_fd" (TyFun [TyInt, TyString] TyInt), TypeBind "sys_poll" (TyFun [TyInt, TyInt, TyInt] TyInt), TypeBind "sys_terminate" (TyFun [TyInt, TyBool] TyInt), TypeBind "sys_kill" (TyFun [TyInt, TyInt] TyInt), TypeBind "sys_call" (TyFun [TyInt, TyVariadic (TyVar "_int_or_u8")] TyInt), TypeBind "sys_pipe" (TyFun [] (TyTuple [TyInt, TyInt])), TypeBind "sys_waitpid" (TyFun [TyInt, TyInt] (TyTuple [TyInt, TyInt])), TypeBind "sys_username" (TyFun [TyInt] TyString), TypeBind "sys_user_groups" (TyFun [TyString] (TyList TyString)), TypeBind "sys_lookup_uid_gid" (TyFun [TyString] (TyTuple [TyInt, TyInt])), TypeBind "sys_setresgid" (TyFun [TyInt] TyInt), TypeBind "sys_setgroups" (TyFun [TyList TyInt] TyInt), TypeBind "sys_setresuid" (TyFun [TyInt] TyInt), TypeBind "sys_execve" (TyFun [TyString, TyList TyString, TyList TyString] TyInt), TypeBind "sys_read_pass" (TyFun [TyString] TyString), TypeBind "cmm_live_blocks" (TyFun [] TyInt), TypeBind "cmm_cond_spared" (TyFun [] TyInt), TypeBind "cmm_cond_freed" (TyFun [] TyInt), TypeBind "cmm_same_ptr" (TyFun [TyVar "A", TyVar "A"] TyBool)]
 
 fn :: join adt ret ty RType RType => RType
       join adt ret ty (TyVar a) (TyVar b)
@@ -1112,12 +1118,16 @@ fn :: check expr RExpr String [RTypeBind] [RTypeBind] => RType [RTypeError]
       check expr (ECall "tensor_from_list" (xs:[])) fn_name locals fns =
         tensor from list result (check expr xs fn_name locals fns) fn_name
       check expr (ECall "tensor_to_list" (t:[])) fn_name locals fns =
-        tensor to list result (check expr t fn_name locals fns) fn_name
+        t_res = check expr t fn_name locals fns
+        with u8 use errs fn_name t (fst ty t_res) (tensor to list result t_res fn_name)
+      check expr (ECall "sha256_raw" (d:[])) fn_name locals fns =
+        d_res = check expr d fn_name locals fns
+        with u8 use errs fn_name d (fst ty d_res) (with u8 call fact fn_name "sha256_raw" (finish call check "sha256_raw" ([fst ty d_res], snd errs d_res) fn_name locals fns))
       check expr (ECall "__syntax_error__" ((EStr msg):_)) _ _ _ =
         (TyVar "_any", [TypeError "syntax" msg])
       check expr (ECall callee args) fn_name locals fns =
         args_res = check expr list args fn_name locals fns
-        with msg copy facts callee args args_res fn_name fns (finish call check callee args_res fn_name locals fns)
+        with u8 call fact fn_name callee (with msg copy facts callee args args_res fn_name fns (finish call check callee args_res fn_name locals fns))
       check expr (EEcho args) fn_name locals fns =
         args_res = check expr list args fn_name locals fns
         with show tensor facts fn_name args args_res (discard tys return TyUnit args_res)
@@ -1133,7 +1143,7 @@ fn :: check expr RExpr String [RTypeBind] [RTypeBind] => RType [RTypeError]
       check expr (EIndex base idxs) fn_name locals fns =
         b_res = check expr base fn_name locals fns
         i_res = check expr list idxs fn_name locals fns
-        (infer index expr ty (fst ty b_res) idxs, (snd errs b_res) :: (snd list errs i_res))
+        (infer index expr ty (fst ty b_res) idxs, (snd errs b_res) :: (snd list errs i_res) :: (u8 use errs fn_name base (fst ty b_res)))
       check expr (EIndexAssign tname idxs val_e) fn_name locals fns =
         i_res = check expr list idxs fn_name locals fns
         v_res = check expr val_e fn_name locals fns
@@ -1173,6 +1183,7 @@ fn :: tensor elem suffix RType => String
 
 fn :: tensor elem read ty RType => RType
       tensor elem read ty (TyVar "_any") =  TyInt
+      tensor elem read ty (TyVar "U8")   =  TyInt
       tensor elem read ty e              =  e
 
 fn :: tc expr count [RExpr] => Int
@@ -1207,12 +1218,49 @@ fn :: tc find at sign String Int Int => Int
         | otherwise = tc find at sign s (pos + 1) len
 
 fn :: typed tensor of String String => RType
-      typed tensor of e ""   =  TyTensor (parse type str e) []
-      typed tensor of e dims =  TyTensor (parse type str e) (split comma strs (str slice dims 1 (str len dims)))
+      typed tensor of e ""   =  TyTensor (tensor elem type str e) []
+      typed tensor of e dims =  TyTensor (tensor elem type str e) (split comma strs (str slice dims 1 (str len dims)))
 
 fn :: typed tensor result String (RType, [RTypeError]) => RType [RTypeError]
-      typed tensor result e ((TyTensor _ dims), errs) =  (TyTensor (parse type str e) dims, errs)
-      typed tensor result e (_, errs)                  =  (TyTensor (parse type str e) [], errs)
+      typed tensor result e ((TyTensor _ dims), errs) =  (TyTensor (tensor elem type str e) dims, errs)
+      typed tensor result e (_, errs)                  =  (TyTensor (tensor elem type str e) [], errs)
+
+-- ── Packed byte tensors (FR-COMP-022) ─────────────────────────
+-- In element position `U8` and `Byte` are their own type, `TyVar "U8"`:
+-- a `Tensor[U8]` stores one byte per element, so it is compatible only
+-- with another `Tensor[U8]` (not with `Tensor[Int]`, a bare `Tensor` or
+-- `Tensor[T]`). Lowering then always knows when a tensor is packed
+-- (element kind "B"). Reading an element gives an `Int`; writing takes one.
+fn :: tensor elem type str String => RType
+      tensor elem type str e
+        | e == "U8" or e == "Byte" = u8 elem ty
+        | otherwise = parse type str e
+
+fn :: u8 elem ty => RType
+      u8 elem ty =  TyVar "U8"
+
+fn :: u8 tensor ty => RType
+      u8 tensor ty =  TyTensor u8 elem ty []
+
+fn :: is u8 elem RType => Bool
+      is u8 elem (TyVar "U8") =  True
+      is u8 elem _            =  False
+
+fn :: is u8 tensor RType => Bool
+      is u8 tensor (TyTensor (TyVar "U8") _) =  True
+      is u8 tensor _                          =  False
+
+-- Builtin parameters that take a String or a `Tensor[U8]` ("_u8_data"),
+-- a `Tensor[U8]` or a list of Ints ("_u8_or_ints", `write bytes`), and an
+-- Int or a `Tensor[U8]` ("_int_or_u8", `sys call` arguments).
+fn :: u8 param accepts String RType => Bool
+      u8 param accepts "_u8_data" t =  (is u8 tensor t) or (types compatible TyString t)
+      u8 param accepts "_u8_or_ints" t =  (is u8 tensor t) or (types compatible (TyList TyInt) t)
+      u8 param accepts "_int_or_u8" t =  (is u8 tensor t) or (types compatible TyInt t)
+      u8 param accepts _ _ =  False
+
+fn :: is u8 param String => Bool
+      is u8 param s =  s == "_u8_data" or s == "_u8_or_ints" or s == "_int_or_u8"
 
 -- Writing `t_(i) = v` checks `v` against the element type of `t`.
 fn :: check tensor elem write String RType String [RTypeBind] => [RTypeError]
@@ -1221,6 +1269,7 @@ fn :: check tensor elem write String RType String [RTypeBind] => [RTypeError]
 
 fn :: tensor elem write errs String RType String (Bool, RType) => [RTypeError]
       tensor elem write errs tname val_ty fn_name (True, (TyTensor e _))
+        | is u8 elem e and (types compatible TyInt val_ty) = []
         | types compatible e val_ty = []
         | otherwise = [TypeError fn_name ("cannot store " + (rtype to str val_ty) + " in an element of tensor '" + tname + "' of " + (rtype to str e))]
       tensor elem write errs _ _ _ _ =  []
@@ -1435,7 +1484,7 @@ fn :: finish call check String ([RType], [RTypeError]) String [RTypeBind] [RType
           base_res = check call target "try_receive_from" arg_tys arg_errs (resolve callee for args "try_receive_from" arg_tys locals fns) fn_name
           specialize hof return "try_receive_from" arg_tys base_res
       finish call check callee (arg_tys, arg_errs) fn_name _ _
-        | (numeric tensor helper name callee) != "" and (numeric tensor arg errs "" arg_tys fn_name) != [] = (TyTensor (tensor elem any) [], arg_errs :: (numeric tensor arg errs (numeric tensor helper name callee) arg_tys fn_name))
+        | (numeric tensor helper name callee) != "" and (numeric tensor arg errs (numeric tensor helper name callee) arg_tys fn_name) != [] = (TyTensor (tensor elem any) [], arg_errs :: (numeric tensor arg errs (numeric tensor helper name callee) arg_tys fn_name))
       finish call check ":tensor-zeros:" (_, arg_errs) _ _ _ = (TyTensor (tensor elem any) [], arg_errs)
       finish call check ":tensor-clone:" (((TyTensor e d):_), arg_errs) _ _ _ = (TyTensor e d, arg_errs)
       finish call check ":tensor-row-slice:" (((TyTensor e _):_), arg_errs) _ _ _ = (TyTensor e [], arg_errs)
@@ -2090,6 +2139,7 @@ fn :: check strict tokens [RToken] => [RTypeError]
 -- `typecheck program` drops these entries; `tensor infos of` keeps them.
 
 fn :: tensor elem kind RType => String
+      tensor elem kind (TyVar "U8")  =  "B"
       tensor elem kind TyInt         =  "N"
       tensor elem kind TyReal        =  "R"
       tensor elem kind TyString      =  "G"
@@ -2121,6 +2171,8 @@ fn :: gen tensor elem str RType => String
 
 fn :: numeric tensor errs String RType RType String => [RTypeError]
       numeric tensor errs what l r fn_name
+        | is u8 tensor l = [TypeError fn_name (what + " is not available on Tensor[U8]")]
+        | is u8 tensor r = [TypeError fn_name (what + " is not available on Tensor[U8]")]
         | gen tensor ty l = [TypeError fn_name (what + " needs tensors of numbers, got a tensor of " + (gen tensor elem str l))]
         | gen tensor ty r = [TypeError fn_name (what + " needs tensors of numbers, got a tensor of " + (gen tensor elem str r))]
         | otherwise = []
@@ -2128,6 +2180,8 @@ fn :: numeric tensor errs String RType RType String => [RTypeError]
 fn :: numeric tensor arg errs String [RType] String => [RTypeError]
       numeric tensor arg errs _ [] _ =  []
       numeric tensor arg errs what (t:ts) fn_name
+        | is u8 tensor t and what == "a tensor copy (t_)" = numeric tensor arg errs what ts fn_name
+        | is u8 tensor t = [TypeError fn_name (what + " is not available on Tensor[U8]")]
         | gen tensor ty t = [TypeError fn_name (what + " needs a tensor of numbers, got a tensor of " + (gen tensor elem str t))]
         | otherwise = numeric tensor arg errs what ts fn_name
 
@@ -2147,6 +2201,7 @@ fn :: numeric tensor helper name String => String
 
 fn :: par write errs String (Bool, RType) String => [RTypeError]
       par write errs target (True, t) fn_name
+        | is u8 tensor t = [TypeError fn_name ("parallel writes into tensor '" + target + "' of U8 are not supported")]
         | gen tensor ty t = [TypeError fn_name ("parallel writes into tensor '" + target + "' of " + (gen tensor elem str t) + " are not supported: its elements are not numbers")]
       par write errs _ _ _ =  []
 
@@ -2238,10 +2293,35 @@ fn :: show tensor facts String [RExpr] [RType] => [RTypeError]
       show tensor facts _ _ _ =  []
 
 fn :: show tensor fact String RExpr RType => [RTypeError]
+      show tensor fact fn_name e (TyTensor (TyVar "U8") d)
+        | not (u8 visible e) = u8 use errs fn_name e (TyTensor (TyVar "U8") d)
       show tensor fact fn_name (ECall f _) (TyTensor el d)
         | not (str starts with f ":") = (tensor elem info fn_name ":show" (TyTensor el d)) :: (tensor elem info fn_name ("()" + f) (TyTensor el d))
       show tensor fact fn_name _ (TyTensor el d) =  tensor elem info fn_name ":show" (TyTensor el d)
       show tensor fact _ _ _ =  []
+
+-- A call that returns a `Tensor[U8]` gets the `()f` fact of its result, so
+-- lowering knows the tensor is packed wherever the call is used.
+fn :: with u8 call fact String String (RType, [RTypeError]) => RType [RTypeError]
+      with u8 call fact fn_name callee (t, errs)
+        | (is u8 tensor t) and not (str starts with callee ":") = (t, errs :: (tensor elem info fn_name ("()" + callee) t))
+        | otherwise = (t, errs)
+
+-- Lowering finds the element kind of a variable, of a call, of a typed
+-- tensor and of a copy `t_`. A `Tensor[U8]` read, shown, hashed or turned
+-- into a list must be one of those.
+fn :: u8 visible RExpr => Bool
+      u8 visible (EVar _) =  True
+      u8 visible (ECall f _) =  (not (str starts with f ":")) or f == ":typed-tensor:" or f == ":tensor-clone:"
+      u8 visible _ =  False
+
+fn :: u8 use errs String RExpr RType => [RTypeError]
+      u8 use errs fn_name e t
+        | (is u8 tensor t) and not (u8 visible e) = [TypeError fn_name "bind this Tensor[U8] to a variable before using it here"]
+        | otherwise = []
+
+fn :: with u8 use errs String RExpr RType (RType, [RTypeError]) => RType [RTypeError]
+      with u8 use errs fn_name e t (rt, errs) =  (rt, errs :: (u8 use errs fn_name e t))
 
 fn :: tensor elem info String String RType => [RTypeError]
       tensor elem info fn_name v (TyTensor e _) =  [TypeError ":tensor-elem:" (fn_name + "|" + v + "|" + (tensor elem kind e))]

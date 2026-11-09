@@ -98,10 +98,10 @@ fn :: test llvm triples and disk target builds => ()
         assert equals st_win 0
         mac_bytes = read bytes out_macos
         win_bytes = read bytes out_win
-        assert equals (byte at idx mac_bytes 0) 207
-        assert equals (byte at idx mac_bytes 1) 250
-        assert equals (byte at idx win_bytes 0) 77
-        assert equals (byte at idx win_bytes 1) 90
+        assert equals mac_bytes_(0) 207
+        assert equals mac_bytes_(1) 250
+        assert equals win_bytes_(0) 77
+        assert equals win_bytes_(1) 90
         shell exec ("rm -f \"" + tmp_rg + "\" \"" + out_macos + "\" \"" + out_win + "\"") -> ()
 
 fn :: main => ()

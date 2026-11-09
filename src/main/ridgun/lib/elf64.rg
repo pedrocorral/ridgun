@@ -24,10 +24,13 @@ fn :: scan labels RScanResult => [RLabelEntry]
 
 -- ── Little-Endian Integer Encoders ───────────────────────────
 
+-- Every encoder gives the low bytes of the two's complement of v, each in
+-- 0..255, for any Int (write bytes rejects anything outside 0..255).
+
 fn :: u16 le Int => [Int]
-      u16 le v   =
-        u = normalize u32 v
-        [u % 256, (u / 256) % 256]
+      u16 le v
+        | v >= 0 = [v % 256, (v / 256) % 256]
+        | otherwise = le bytes v 2
 
 fn :: normalize u32 Int => Int
       normalize u32 v
@@ -35,17 +38,26 @@ fn :: normalize u32 Int => Int
         | otherwise = v
 
 fn :: u32 le Int => [Int]
-      u32 le v   =
-        u = normalize u32 v
-        [u % 256, (u / 256) % 256, (u / 65536) % 256, (u / 16777216) % 256]
+      u32 le v
+        | v >= 0 = [v % 256, (v / 256) % 256, (v / 65536) % 256, (v / 16777216) % 256]
+        | otherwise = le bytes v 4
 
 fn :: i32 le Int => [Int]
       i32 le v   =  u32 le v
 
 fn :: u64 le Int => [Int]
       u64 le v
-        | v < 0 = (u32 le (v + 4294967296)) :: [255, 255, 255, 255]
-        | otherwise = (u32 le (v % 4294967296)) :: (u32 le (v / 4294967296))
+        | v >= 0 = (u32 le (v % 4294967296)) :: (u32 le (v / 4294967296))
+        | otherwise = le bytes v 8
+
+-- n low bytes of a negative v: v = -(m + 1) with m >= 0, and each byte of v
+-- is 255 minus the same byte of m (bitwise not).
+fn :: le bytes Int Int => [Int]
+      le bytes v n
+        | n <= 0 = []
+        | otherwise =
+          m = 0 - v - 1
+          [255 - (m % 256)] :: (le bytes (0 - (m / 256) - 1) (n - 1))
 
 fn :: align up Int Int   => Int
       align up val align =

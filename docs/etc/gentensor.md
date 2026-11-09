@@ -7,6 +7,7 @@ A *GenTensor* is a `Tensor` whose elements are not numbers (`String`, `Bool`, `C
 - A one-dimensional GenTensor is a list value (heap tag `2`): an RC vector of boxed elements. `t_(i)` reads and writes the vector slot in place.
 - A two-dimensional GenTensor is a list of row lists. Every row has its own RC vector, so a write never reaches another row or another tensor.
 - Numeric tensors keep their representation (heap tag `5`, raw 64-bit words). The type checker keeps numeric-only operations away from GenTensors (`FR-COMP-020` §7).
+- `Tensor[U8]` and `Tensor[Byte]` (element kind `B`) store packed bytes inside a heap tag `5` value; their operations live in the shared runtime extension (`runtime_ext.md`, `FR-COMP-022`).
 - A GenTensor has one or two dimensions.
 
 ## Typing and lowering

@@ -117,7 +117,7 @@ Och för att arbeta med operativsystemet:
 |---|---|---|
 | `cli args` | `=> [String]` | Kommandoradsargument (`argv`). |
 | `read file` / `write file` | `String => String` / `String String => ()` | Läsning och skrivning av hela filer på disk. |
-| `read bytes` / `write bytes` | `String => [Int]` / `String [Int] => ()` | Exakt binär läsning och skrivning byte för byte (`0..255`). |
+| `read bytes` / `write bytes` | `String => Tensor[U8]` / `String Tensor[U8] => ()` | Exakt binär läsning och skrivning byte för byte (`0..255`). |
 | `list dir` / `file lstat` | `String => [String]` / `String => ...` | Listning av kataloger och inspektion av POSIX-metadata (`lstat`). |
 | `sha256 file` / `sha256 str` / `sha256 raw` | `String => String` | Inbyggd kryptografisk SHA-256-hash (64 tecken hexadecimalt eller rått 32-bytes binärt sammandrag med `sha256 raw` / `sha256 bytes`). |
 | `sys exec` / `shell exec` | `... => Int` | Körning av operativsystemprocesser. |

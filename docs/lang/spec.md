@@ -457,7 +457,19 @@ fn :: by age [Person] => [Person]
 
 Tensors are Ridgun's native **mutable** N-dimensional indexed type. They generalize vectors, matrices, and higher-dimensional arrays into a single type. Elements are `Real` by default.
 
-**Element types (`FR-COMP-020`):** a tensor holds elements of any type. A tensor of numbers (`Int`, `Byte`, `U8`, `U16`, `U32`, `U64`, `I8`, `I16`, `I32`, `I64`, `Usize`, `Real`, `Float`) stores one 64-bit number per element. A tensor of other elements (`String`, `Bool`, `Char`, lists, tuples, records, ADTs) stores one value per element and has one or two dimensions. `Tensor_GPU` holds numbers only: another element type is a compile error (`FR-COMP-018`).
+**Element types (`FR-COMP-020`):** a tensor holds elements of any type. A tensor of numbers (`Int`, `U16`, `U32`, `U64`, `I8`, `I16`, `I32`, `I64`, `Usize`, `Real`, `Float`) stores one 64-bit number per element. A tensor of other elements (`String`, `Bool`, `Char`, lists, tuples, records, ADTs) stores one value per element and has one or two dimensions. `Tensor_GPU` holds numbers only: another element type is a compile error (`FR-COMP-018`).
+
+**Bytes (`FR-COMP-022`):** `Tensor[U8]` (`Tensor[Byte]` is the same type) stores one byte per element, like `[]byte` or `Vec<u8>`. Reading an element gives an `Int` in 0..255; writing an `Int` outside 0..255 stops the program with `runtime error: U8 element out of 0..255` (exit status 1). A `Tensor[U8]` is only compatible with another `Tensor[U8]`: a parameter of type `Tensor[Int]`, `Tensor` or `Tensor[T]` does not take it. `@`, element-wise and bitwise operators, row and column slices and maps are not available on it. A `Tensor[U8]` that is indexed, shown, hashed or turned into a list must be a variable, a call, an allocation or a copy (`t_ij`).
+
+```ridgun
+frame = Tensor[U8 * 4]
+frame_(0) = 22
+s = tensor to str frame                     -- the 4 bytes as a String
+t = tensor from str "hello"                 -- Tensor[U8 * 5]
+crc = crc32 range t 0 5 0                   -- CRC-32 (IEEE, as zlib), 0..4294967295
+crc2 = crc32 range s 2 4 (crc32 range s 0 2 0)  -- chained: same as crc32 range s 0 4 0
+d = sha256 digest t                         -- Tensor[U8 * 32]
+```
 
 ```ridgun
 names = Tensor[String * 3]          -- ["", "", ""]
@@ -1128,7 +1140,10 @@ Ridgun provides standard sequential collection combinators (`map`, `filter`, `fo
 1. **Verbatim File & Byte Stream I/O (`FR-VM-001`)**:
    - `read file : String => String` reads file contents verbatim (preserving `\r\n` and exact EOF newline presence/absence, and never running the compiler's `.rg` `import` preprocessor on data files).
    - `load rg source : String => String` is used exclusively by the compiler toolchain when loading `.rg` source files with `import` splicing.
-   - `read bytes : String => [Int]` and `write bytes : String [Int] => ()` read and write raw binary byte streams (`0..255`, including `0x00` NUL and `0x80..0xFF`).
+   - `read bytes : String => Tensor[U8]` reads a file as bytes. `write bytes : String Tensor[U8] => ()` writes them (it also accepts a `[Int]` of values `0..255`).
+   - `tensor from str : String => Tensor[U8]` and `tensor to str : Tensor[U8] => String` convert with one copy; any byte `0..255` is allowed.
+   - `crc32 range : data Int Int Int => Int` (`data` a `String` or a `Tensor[U8]`, then `from`, `to`, `crc`): the CRC-32 of the bytes `from .. to - 1`, chained through `crc` (`0` to start). A range outside the data stops the program with `runtime error: crc32 range: range out of bounds`.
+   - `sha256 raw` takes a `String` or a `Tensor[U8]` and returns the 32-byte digest as a `String`; `sha256 digest` returns it as a `Tensor[U8 * 32]`.
 2. **POSIX Filesystem, Process & Security Built-ins (`FR-VM-002`)**:
    - **Filesystem**: `list dir`, `file lstat`, `sha256 file`, `sys mkdir`, `sys chmod`.
    - **Process & Environment**: `sys exec`, `sys chdir`, `sys getcwd`, `sys getenv`, `sys setenv`, `sys exit`.
@@ -1145,10 +1160,11 @@ Ridgun provides standard sequential collection combinators (`map`, `filter`, `fo
      - `sys close Int => Int` (`fd` -> `0` or `-errno`)
      - `sys read fd Int Int => String` (`fd`, `max_bytes` -> string read from `fd`)
      - `sys write fd Int String => Int` (`fd`, `data` -> bytes written or `-errno`)
+     - `sys read into Int Tensor[U8] Int Int => Int` and `sys write from Int Tensor[U8] Int Int => Int` (`fd`, buffer, `from`, `count` -> bytes read or written, or `-errno`; no allocation; a range outside the buffer stops the program with `runtime error: byte range out of bounds`)
      - `sys poll Int Int Int => Int` (`fd`, Ridgun PAL normalized `events` (`1` = `POLLIN`/read, `4` = `POLLOUT`/write), `timeout_ms` -> `> 0` revents when ready, `0` on timeout, `< 0` on `-errno`; uses `sys remaining ms` when `timeout_ms < 0` inside `with timeout`)
      - `sys terminate Int Bool => Int` (`pid`, `force` -> portable graceful/forced process termination) and `sys kill Int Int => Int` (`pid`, normalized signal -> `0` or `-errno`)
-     - `sys call Int Int... => Int` (`nr` plus `0..6` arguments `a1..a6` -> low-level target-OS ABI syscall escape hatch)
-     - `sys time ms => Int` and `sys sleep ms Int => ()` (monotonic millisecond clock and sleep)
+     - `sys call Int Int... => Int` (`nr` plus `0..6` arguments `a1..a6` -> low-level target-OS ABI syscall escape hatch; a `Tensor[U8]` argument passes the address of its first byte and stays alive during the call)
+     - `sys time ms => Int`, `sys time ns => Int` and `sys wall time ms => Int` (monotonic clock in milliseconds and nanoseconds, wall clock in milliseconds since 1970-01-01 UTC; read through the vDSO, `FR-COMP-023`) and `sys sleep ms Int => ()`
      - `sys deadline ms => Int` and `sys remaining ms => Int` (active lexical timeout deadline and remaining milliseconds, or `-1` when unbounded)
    - **Layer 2 — Declarative `with timeout <duration> do` Execution Quota**:
      - Just as `with region 64_KB do` sets a lexical byte quota, `with timeout 500_ms do` (or combined `with region 64_KB, timeout 500_ms do`) sets a lexical execution deadline (`sys time ms + duration_ms`) on the current thread context and restores the previous deadline upon block exit:

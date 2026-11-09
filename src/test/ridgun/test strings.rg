@@ -34,7 +34,7 @@ fn :: main => ()
         write file "target/.test_verbatim.txt" "import fake_module\r\nno_trailing_newline"
         assert equals (read file "target/.test_verbatim.txt") "import fake_module\r\nno_trailing_newline"
         write bytes "target/.test_bytes.bin" [0, 65, 255, 10]
-        assert equals (read bytes "target/.test_bytes.bin") [0, 65, 255, 10]
+        assert equals (tensor to list (read bytes "target/.test_bytes.bin")) [0, 65, 255, 10]
         assert equals (lstat kind (file lstat "target/.test_bytes.bin")) "file"
         assert equals (sha256 str "abc") "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         shell exec "rm -f target/.test_verbatim.txt target/.test_bytes.bin"
