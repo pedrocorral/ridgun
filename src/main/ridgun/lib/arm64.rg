@@ -12,7 +12,7 @@ import elf64
 
 fn :: arm64 movz Int Int   Int       => Int
       arm64 movz rd  imm16 shift_idx =
-        3489660928 + (shift_idx * 2097152) + ((imm16 % 65536) * 32) + rd
+        3531603968 + (shift_idx * 2097152) + ((imm16 % 65536) * 32) + rd
 
 fn :: arm64 movk Int Int   Int       => Int
       arm64 movk rd  imm16 shift_idx =
@@ -20,13 +20,25 @@ fn :: arm64 movk Int Int   Int       => Int
 
 fn :: arm64 mov imm64 Int Int => [Int]
       arm64 mov imm64 rd  val =
-        u_lo = normalize u32 (val % 4294967296)
-        u_hi = normalize u32 (val / 4294967296)
-        w0 = u_lo % 65536
-        w1 = (u_lo / 65536) % 65536
-        w2 = u_hi % 65536
-        w3 = (u_hi / 65536) % 65536
+        w0 = arm64 imm16 at val 0
+        w1 = arm64 imm16 at val 1
+        w2 = arm64 imm16 at val 2
+        w3 = arm64 imm16 at val 3
         (u32 le (arm64 movz rd w0 0)) :: (u32 le (arm64 movk rd w1 1)) :: (u32 le (arm64 movk rd w2 2)) :: (u32 le (arm64 movk rd w3 3))
+
+-- Halfword k (0..3) of the two's complement of v, in 0..65535, for any Int.
+-- A negative v is -(m + 1) with m >= 0: each halfword is 65535 minus the
+-- same halfword of m (bitwise not).
+fn :: arm64 imm16 at Int Int => Int
+      arm64 imm16 at v k
+        | v >= 0 = (v / (arm64 imm16 scale k)) % 65536
+        | otherwise = 65535 - (((0 - v - 1) / (arm64 imm16 scale k)) % 65536)
+
+fn :: arm64 imm16 scale Int => Int
+      arm64 imm16 scale 0 =  1
+      arm64 imm16 scale 1 =  65536
+      arm64 imm16 scale 2 =  4294967296
+      arm64 imm16 scale _ =  281474976710656
 
 fn :: arm64 mov reg Int Int => [Int]
       arm64 mov reg rd  rm  =  u32 le (2852127712 + (rm * 65536) + rd)

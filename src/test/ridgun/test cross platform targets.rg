@@ -14,6 +14,7 @@ import elf64
 import macho64
 import pe64
 import llvm
+import arm64
 
 fn :: byte at idx [Int]  Int => Int
       byte at idx []     _   =  0 - 1
@@ -23,7 +24,7 @@ fn :: byte at idx [Int]  Int => Int
 
 fn :: lower sample prog String => RNativeProg
       lower sample prog src    =
-        src -> tokenize src -> parse tokens -> lower program to native
+        lower program to native (parse tokens (tokenize src src)) []
 
 fn :: test macho64 x8664 and arm64 headers => ()
       test macho64 x8664 and arm64 headers =
@@ -104,10 +105,25 @@ fn :: test llvm triples and disk target builds => ()
         assert equals win_bytes_(1) 90
         shell exec ("rm -f \"" + tmp_rg + "\" \"" + out_macos + "\" \"" + out_win + "\"") -> ()
 
+-- MOVZ/MOVK sequence for rd 5: halfword k of the two's complement of the value,
+-- MOVZ = 0xD2800000, MOVK = 0xF2800000, hw << 21, imm16 << 5 (Arm ARM C6.2).
+fn :: test arm64 immediates => ()
+      test arm64 immediates =
+        echo "--- 4. Testing ARM64 64-bit immediate loads (MOVZ/MOVK) ---"
+        assert equals (arm64 mov imm64 5 0) [5, 0, 128, 210, 5, 0, 160, 242, 5, 0, 192, 242, 5, 0, 224, 242]
+        assert equals (arm64 mov imm64 5 1) [37, 0, 128, 210, 5, 0, 160, 242, 5, 0, 192, 242, 5, 0, 224, 242]
+        assert equals (arm64 mov imm64 5 (0 - 1)) [229, 255, 159, 210, 229, 255, 191, 242, 229, 255, 223, 242, 229, 255, 255, 242]
+        assert equals (arm64 mov imm64 5 (0 - 65537)) [229, 255, 159, 210, 197, 255, 191, 242, 229, 255, 223, 242, 229, 255, 255, 242]
+        assert equals (arm64 mov imm64 5 (0 - 4294967297)) [229, 255, 159, 210, 229, 255, 191, 242, 197, 255, 223, 242, 229, 255, 255, 242]
+        assert equals (arm64 mov imm64 5 4294967296) [5, 0, 128, 210, 5, 0, 160, 242, 37, 0, 192, 242, 5, 0, 224, 242]
+        assert equals (arm64 mov imm64 5 9223372036854775807) [229, 255, 159, 210, 229, 255, 191, 242, 229, 255, 223, 242, 229, 255, 239, 242]
+        assert equals (arm64 mov imm64 5 ((0 - 9223372036854775807) - 1)) [5, 0, 128, 210, 5, 0, 160, 242, 5, 0, 192, 242, 5, 0, 240, 242]
+
 fn :: main => ()
       main =
         echo "=== Ridgun Cross-Platform Target Codegen Test Suite (FR-COMP-015) ==="
         test macho64 x8664 and arm64 headers
         test pe64 x8664 and arm64 headers
         test llvm triples and disk target builds
+        test arm64 immediates
         echo "=== All Cross-Platform Target Codegen Tests Passed! ==="
