@@ -334,7 +334,7 @@ Ridgun achieves deterministic memory management with **zero Garbage Collector pa
 ## 7. Toolchain & Verification Workflow (`stable` and `ridgunc`)
 1. **Scaffold / Dependencies / Plugins (`FR-TOOL-002`, `FR-TOOL-003`)**:
    - `stable new [--lib] <name>` or `stable init [--lib]`: create `build.rg`, `src/main/ridgun/...`, `src/test/ridgun/test main.rg`, and `.gitignore`.
-   - `stable deps` or `stable add <git_url_or_path>`: synchronize `dependencies` from `build.rg` into `.stable/deps/`.
+   - `stable deps` or `stable add <package>`: synchronize the packages `build.rg` names (installed by omni, locked in `omni.lock`) into `.stable/deps/`. Paths and URLs are rejected.
    - `stable tasks` / `stable plugins` / `stable <task_name>`: inspect or run custom `fn :: task <name> => String` definitions and `plugins/*.rg` extensions from `build.rg`.
    - `stable install [target]`: build and install native ELF64 binaries into `~/.local/bin/` and `bin/`.
 2. **Format**: `./target/stable format [file.rg ...]` (to apply canonical tabular alignment).

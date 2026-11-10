@@ -1,6 +1,6 @@
 -- ============================================================
 -- src/main/ridgun/stable/main.rg
--- `stable` v0.9.52 — The Interactive Build Tool for Ridgun (100% Ridgun)
+-- `stable` v0.9.53 — The Interactive Build Tool for Ridgun (100% Ridgun)
 -- Written in Ridgun's natural-language mixfix operator style (`op :: ...`).
 -- Decoupled from `ridgunc` internals per ADR-0001: delegates `check`,
 -- `compile`, `build`, `build lib`, and test/plugin compilation to the
@@ -916,12 +916,74 @@ op :: init current dir named String lib Bool  => Int
       init current dir named pname  lib True  =  scaffold lib project named pname in "."
       init current dir named pname  lib False =  scaffold project named pname in "."
 
-op :: fetch dependency source String into String => Int
-      fetch dependency source dep    into dest
-        | (str starts with dep "http://") or (str starts with dep "https://") or (str starts with dep "git@") =
-          shell exec ('if [ -d "' + dest + '/.git" ]; then git -C "' + dest + '" pull -q; else git clone -q "' + dep + '" "' + dest + '"; fi')
+-- Dependencies (ADR-0003): build.rg lists package names (`json`, `solstice@0.1.0`); omni installs them and
+-- records each one in the project's omni.lock as name|product|library|version|digest|artifact. stable never
+-- downloads: it reads the artifact omni installed, an .rglib file or a package folder.
+op :: is path or url String => Bool
+      is path or url dep =  (str contains dep "/") or (str contains dep "\\") or (str contains dep ":") or (str starts with dep ".") or (str starts with dep "~")
+
+op :: dep name of String => String
+      dep name of dep
+        | (str index of dep "@") < 0 = dep
+        | otherwise = str slice dep 0 (str index of dep "@")
+
+op :: dep version of String => String
+      dep version of dep
+        | (str index of dep "@") < 0 = ""
+        | otherwise = str slice dep ((str index of dep "@") + 1) (str len dep)
+
+op :: lock field [String] Int => String
+      lock field []     _ =  ""
+      lock field (x:xs) i
+        | i == 0 = x
+        | otherwise = lock field xs (i - 1)
+
+op :: find locked String in [String] => [String]
+      find locked _    in []     =  []
+      find locked name in (e:es)
+        | (lock field (str split e "|") 0) == name = str split e "|"
+        | otherwise = find locked name in es
+
+op :: omni lock entries => [String]
+      omni lock entries
+        | not (file "omni.lock" exists) = []
+        | otherwise = extract list function body from (split lines of (read file "omni.lock")) named "locked_packages"
+
+op :: not installed String => Int
+      not installed dep =
+        log error "Dependency '{dep}' is not installed: run `omni install {dep}`."
+        1
+
+op :: sync locked dependency String String String [String] => Int
+      sync locked dependency dep _    _    []    =  not installed dep
+      sync locked dependency dep name want entry
+        | (lock field entry 3) == "local" =
+          log error "Dependency '{name}' is a local path in omni.lock; install it from ridgun.com: `omni install {dep}`."
+          1
+        | (want != "") and (want != (lock field entry 3)) = version mismatch dep name (lock field entry 3)
+        | str ends with (lock field entry 5) ".rglib" = sync locked library dep name (lock field entry 5)
+        | otherwise = sync locked package dep name (lock field entry 5)
+
+op :: version mismatch String String String => Int
+      version mismatch dep name locked =
+        log error "build.rg asks for {dep}, omni.lock has {name} {locked}: run `omni install {dep}`."
+        1
+
+op :: sync locked library String String String => Int
+      sync locked library dep name art
+        | file art exists =
+          log step "dep" "{name} -> {art}"
+          0
+        | otherwise = not installed dep
+
+op :: sync locked package String String String => Int
+      sync locked package dep name dir
+        | (shell exec ('[ -d "' + dir + '" ]')) != 0 = not installed dep
         | otherwise =
-          shell exec ('[ -d "' + dep + '" ] && rm -rf "' + dest + '" && mkdir -p "' + dest + '" && tar -C "' + dep + '" --exclude=".stable" --exclude="target" -cf - . | tar -C "' + dest + '" -xf -')
+          dest = ".stable/deps/" + name
+          shell exec 'mkdir -p .stable/deps src/main/ridgun/lib'
+          st = shell exec ('rm -rf "' + dest + '" && mkdir -p "' + dest + '" && tar -C "' + dir + '" --exclude=".stable" --exclude="target" -cf - . | tar -C "' + dest + '" -xf -')
+          finish sync single dependency dir name dest st
 
 op :: finish sync single dependency String String String Int => Int
       finish sync single dependency dep bname dest 0 =
@@ -933,12 +995,11 @@ op :: finish sync single dependency String String String Int => Int
         st
 
 op :: sync single dependency String => Int
-      sync single dependency dep    =
-        bname = base filename of dep at 0 len (str len dep) slash (0 - 1)
-        dest = ".stable/deps/" + bname
-        shell exec 'mkdir -p .stable/deps src/main/ridgun/lib'
-        st = fetch dependency source dep into dest
-        finish sync single dependency dep bname dest st
+      sync single dependency dep
+        | is path or url dep =
+          log error "Dependency '{dep}' is a path or URL: build.rg lists package names, installed with omni (`omni install <name>`)."
+          1
+        | otherwise = sync locked dependency dep (dep name of dep) (dep version of dep) (find locked (dep name of dep) in (omni lock entries))
 
 op :: sync dependency rest [String] Int => Int
       sync dependency rest ds 0  = sync dependency list ds
@@ -973,24 +1034,41 @@ op :: format dep items [String] => String
       format dep items (d:[])   =  '"' + d + '"'
       format dep items (d:ds)   =  '"' + d + '", ' + (format dep items ds)
 
-op :: append dep block if needed String    => ()
-      append dep block if needed dep_block
-        | not (file "build.rg" exists) = write file "build.rg" dep_block -> ()
-        | str contains (read file "build.rg") "dependencies" = ()
-        | otherwise = write file "build.rg" ((read file "build.rg") + dep_block) -> ()
+op :: replace dep line [String] with String => [String]
+      replace dep line []     with _    =  []
+      replace dep line (l:ls) with line
+        | str starts with (str trim l) "dependencies =" = [line] :: (replace dep line ls with line)
+        | otherwise = [l] :: (replace dep line ls with line)
+
+op :: write dependencies [String] => ()
+      write dependencies deps
+        | not (file "build.rg" exists) = write file "build.rg" ('fn :: dependencies => [String]\n      dependencies =  [' + (format dep items deps) + ']\n') -> ()
+        | str contains (read file "build.rg") "fn :: dependencies" =
+          write file "build.rg" (str join (replace dep line (str split (read file "build.rg") "\n") with ('      dependencies =  [' + (format dep items deps) + ']')) "\n") -> ()
+        | otherwise = write file "build.rg" ((read file "build.rg") + '\nfn :: dependencies => [String]\n      dependencies =  [' + (format dep items deps) + ']\n') -> ()
+
+op :: add dep unique [String] String => [String]
+      add dep unique deps new_dep
+        | has dep deps new_dep = deps
+        | otherwise = deps :: [new_dep]
+
+op :: has dep [String] String => Bool
+      has dep []     _ =  False
+      has dep (d:ds) x =  (d == x) or (has dep ds x)
+
+-- build.rg gets the name only once it is synchronized, so a failed `stable add` leaves build.rg as it was.
+op :: finish task add String Int => Int
+      finish task add new_dep 0 =
+        write dependencies (add dep unique (load dependencies from "build.rg") new_dep)
+        log success "Added dependency '{new_dep}'."
+        0
+      finish task add _ st =  st
 
 op :: run task add args [String]    => Int
       run task add args []          =
-        log error "Usage: stable add <git_url_or_path>"
+        log error "Usage: stable add <package>[@<version>]"
         1
-      run task add args (new_dep:_) =
-        cur_deps = load dependencies from "build.rg"
-        all_deps = cur_deps :: [new_dep]
-        dep_block = '\nfn :: dependencies => [String]\n      dependencies =  [' + (format dep items all_deps) + ']\n'
-        append dep block if needed dep_block
-        sync single dependency new_dep
-        log success "Added dependency '{new_dep}'."
-        0
+      run task add args (new_dep:_) =  finish task add new_dep (sync single dependency new_dep)
 
 op :: install built binaries Int from String  => Int
       install built binaries 0   from out_dir =
@@ -1197,8 +1275,8 @@ op :: run task help => Int
         echo "Available `stable` commands:"
         echo "  new [--lib] <name>          Create a new Ridgun project (or library with --lib)"
         echo "  init [--lib]                Initialize build.rg and src/ in the current directory"
-        echo "  deps                        Synchronize dependencies from build.rg into .stable/deps/"
-        echo "  add <dep>                   Add a Git URL or path dependency to build.rg and sync .stable/deps/"
+        echo "  deps                        Synchronize the omni-installed packages build.rg lists into .stable/deps/"
+        echo "  add <package>               Add a package installed by omni to build.rg and sync .stable/deps/"
         echo "  install [target]            Build and install native ELF64 executable(s) into ~/.local/bin/ and bin/"
         echo "  build | built [target]      Compile all executables (or [target]) into target/<target>"
         echo "  build lib | built lib       Compile reusable library (.rglib and native ELF64 .so) into target/"
@@ -1278,7 +1356,7 @@ op :: dispatch command StableCommand on StableConfig => Bool StableConfig Int
       dispatch command CmdExit on cfg = (False, cfg, 0)
       dispatch command CmdHelp on cfg = (True, cfg, run task help)
       dispatch command CmdVersion on cfg =
-        echo "stable 0.9.52 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
+        echo "stable 0.9.53 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
         (True, cfg, 0)
       dispatch command CmdInfo on cfg = (True, cfg, run task info on cfg)
       dispatch command CmdReload on _ =
@@ -1360,12 +1438,12 @@ op :: report reload config StableConfig name String => Bool StableConfig Int
 
 op :: start interactive shell for StableConfig => ()
       start interactive shell for (ProjectConfig "" ver main_ep sdir tdir out_dir) =
-        log info "Welcome to stable 0.9.52 (Ridgun Build Tool — 100% Ridgun)"
+        log info "Welcome to stable 0.9.53 (Ridgun Build Tool — 100% Ridgun)"
         log info "No build.rg found in current directory. Run 'init' or 'new <name>' to create a project."
         log info "Commands: 'new', 'init', 'help', 'exit'"
         repl loop for (ProjectConfig "" ver main_ep sdir tdir out_dir)
       start interactive shell for (ProjectConfig name_str ver main_ep sdir tdir out_dir) =
-        log info "Welcome to stable 0.9.52 (Ridgun Build Tool — 100% Ridgun)"
+        log info "Welcome to stable 0.9.53 (Ridgun Build Tool — 100% Ridgun)"
         log info "Loading project definition from build.rg ..."
         log info "Set current project to '{name_str}' v{ver} (main: {main_ep})"
         log info "Commands: 'built' (or 'build'), 'run', 'test', 'check', 'compile', 'clean', 'info', 'exit'"

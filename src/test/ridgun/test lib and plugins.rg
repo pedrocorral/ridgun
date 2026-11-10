@@ -196,9 +196,14 @@ fn :: main => ()
         mathkit_so = tensor to list (read bytes "target/test_lib_work/mathkit/target/libmathkit.so")
         assert int equals (byte at mathkit_so 0) 127 "ELF64 magic byte 0"
         assert int equals (byte at mathkit_so 16) 3 "ELF64 ET_DYN e_type"
-        -- Add `mathkit` as a local dependency of `hello_app` via `stable add` & `stable deps`
-        st_add_dep = shell exec ("cd target/test_lib_work/hello_app && \"" + stable_bin + "\" add ../mathkit > add_dep.txt")
-        assert int equals st_add_dep 0 "stable add ../mathkit"
+        -- Add `mathkit` to `hello_app` by package name via `stable add` & `stable deps`; an omni.lock entry stands in for `omni install mathkit` (ADR-0003)
+        write file "target/test_lib_work/hello_app/omni.lock" "fn :: locked packages => [String]\n      locked packages =  [\"mathkit|mathkit||0.1.0||../mathkit\"]\n"
+        st_add_path = shell exec ("cd target/test_lib_work/hello_app && \"" + stable_bin + "\" add ../mathkit > add_path.txt 2>&1")
+        assert ok (st_add_path != 0)
+        assert ok (not (str contains (read file "target/test_lib_work/hello_app/build.rg") "../mathkit"))
+        st_add_dep = shell exec ("cd target/test_lib_work/hello_app && \"" + stable_bin + "\" add mathkit > add_dep.txt")
+        assert int equals st_add_dep 0 "stable add mathkit"
+        assert ok (str contains (read file "target/test_lib_work/hello_app/build.rg") "dependencies =  [\"mathkit\"]")
         assert ok (str contains (read file "target/test_lib_work/hello_app/add_dep.txt") (col tag "dep" "36"))
         assert ok (is file "target/test_lib_work/hello_app/.stable/deps/mathkit.rglib")
         st_deps_sync = shell exec ("cd target/test_lib_work/hello_app && \"" + stable_bin + "\" deps > deps.txt")

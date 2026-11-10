@@ -12,7 +12,7 @@ fn :: strict mode => Bool
       strict mode =  True
 
 fn :: project version => String
-      project version =  "0.9.52"
+      project version =  "0.9.53"
 
 fn :: main entry => String
       main entry =  "src/main/ridgun/ridgunc/main.rg"
@@ -27,7 +27,7 @@ fn :: target dir => String
       target dir =  "target"
 
 fn :: dependencies => [String]
-      dependencies =  ["/home/boogie/ridgun/libs"]
+      dependencies =  ["libs"]
 
 fn :: task check all => String
       task check all =  "./bin/stable check"

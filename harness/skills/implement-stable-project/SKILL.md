@@ -30,7 +30,7 @@ Every setting in `build.rg` is a zero-argument Ridgun function (`fn :: <setting 
 | `fn :: source dir => String` | `"src/main/ridgun"` | Root directory for source modules and targets |
 | `fn :: test dir => String` | `"src/test/ridgun"` | Directory containing `test*.rg` test suites |
 | `fn :: target dir => String` | `"target"` | Output directory for compiled ELF64 binaries, `.rglib` bundles, and `.so` libraries |
-| `fn :: dependencies => [String]` | `[]` | List of Git URLs or local paths synchronized by `stable deps` into `.stable/deps/` |
+| `fn :: dependencies => [String]` | `[]` | Package names (`json`, `solstice@0.1.0`) installed by omni (`omni install <name>`, locked in `omni.lock`) and synchronized by `stable deps` into `.stable/deps/`; paths and URLs are rejected (ADR-0003) |
 | `fn :: plugins => [String]` | `[]` | List of plugin names or `.rg` paths loaded by `stable` |
 | `fn :: task <words...> => String` | *(none)* | Custom `stable <words...>` command returning the shell/ridgunc command to run |
 
@@ -52,8 +52,8 @@ Every setting in `build.rg` is a zero-argument Ridgun function (`fn :: <setting 
 | `stable built lib` | Explicitly build library artifacts (`target/<name>.rglib` and `target/lib<name>.so`) (`FR-COMP-006`) |
 | `stable run [args...]` | Compile and execute `main entry`, forwarding `[args...]` |
 | `stable install [target]` | Build and install ELF64 executables into `~/.local/bin/` and `./bin/` |
-| `stable deps` | Fetch/copy all entries from `fn :: dependencies => [String]` into `.stable/deps/` |
-| `stable add <url_or_path>` | Append a dependency to `build.rg` and synchronize `.stable/deps/` |
+| `stable deps` | Copy each package that `fn :: dependencies => [String]` names, from where `omni.lock` says omni installed it, into `.stable/deps/` |
+| `stable add <package>[@<version>]` | Synchronize a package omni installed into `.stable/deps/`, then append its name to `build.rg` |
 | `stable tasks` | List all custom `fn :: task <name> => String` commands from `build.rg` and loaded plugins |
 | `stable plugins` | List all active plugin `.rg` modules |
 | `stable <custom_task> [args...]` | Execute a custom single-word or multi-word task or plugin command |
