@@ -25,3 +25,4 @@
 | `FR-COMP-021-native-sort-by-keys.md` | Native stable `sort by ints` and `sort by texts` of a list by a list of keys | Adding or changing sorting builtins |
 | `FR-COMP-022-bytes-are-a-packed-tensor-u8.md` | Binary data is a packed one-dimensional `Tensor[U8]`: storage, String conversions, file and descriptor I/O, `sys call` buffers, SHA-256, `crc32 range` | Adding or changing byte, binary I/O, hash or checksum builtins |
 | `FR-COMP-023-fast-clocks-through-the-vdso.md` | `sys time ms`, `sys time ns` and `sys wall time ms` read the clock through the vDSO, found once at start | Adding or changing clock builtins |
+| `FR-COMP-024-the-prelude.md` | Generic list and string helpers (`list reverse`, `list take`, `str join`…) every program calls without `import`, at the lowest lookup priority | Adding or changing a prelude helper, or module name lookup |

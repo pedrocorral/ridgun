@@ -4100,6 +4100,7 @@ fn :: is core compiler mod String      => Bool
       is core compiler mod "macho64"   =  True
       is core compiler mod "pe64"      =  True
       is core compiler mod "formatter" =  True
+      is core compiler mod "prelude"   =  True
       is core compiler mod _           =  False
 
 fn :: try read candidate paths [String] => String
@@ -4572,7 +4573,68 @@ fn :: load rg with libs String     => String
         base_src = load rg own source input_path
         pdir = rglib dir of input_path 0 (str len input_path) (0 - 1)
         lib_prefix = scan rglib imports pdir base_src 0 (str len base_src) 0 "" []
-        join lib and base lib_prefix base_src
+        join lib and base (lib_prefix + (prelude module text)) base_src
+
+-- The prelude (FR-COMP-024, ADR-0004): module `prelude`, added to every program after its imports. A name is
+-- looked up here last, after the own module and every direct and transitive import (`prelude tier`), so any
+-- other definition of the name wins. `ridgunc prelude` prints it.
+fn :: prelude module text => String
+      prelude module text =  "\n@__rg_mod_enter__ prelude\n" + prelude source + "\n@__rg_mod_exit__\n"
+
+fn :: prelude source => String
+      prelude source =  '-- prelude: generic helpers every Ridgun program calls without `import` (FR-COMP-024).
+
+fn :: list reverse [A] => [A]
+      list reverse xs =  prelude reverse onto xs []
+
+fn :: prelude reverse onto [A] [A] => [A]
+      prelude reverse onto []     acc =  acc
+      prelude reverse onto (x:xs) acc =  prelude reverse onto xs ([x] :: acc)
+
+fn :: list len [A] => Int
+      list len xs =  prelude count onto xs 0
+
+fn :: prelude count onto [A] Int => Int
+      prelude count onto []     n =  n
+      prelude count onto (_:xs) n =  prelude count onto xs (n + 1)
+
+fn :: list take [A] Int => [A]
+      list take []     _ =  []
+      list take (x:xs) n
+        | n <= 0 = []
+        | otherwise = [x] :: (list take xs (n - 1))
+
+fn :: list drop [A] Int => [A]
+      list drop xs n
+        | n <= 0 = xs
+      list drop []     _ =  []
+      list drop (_:xs) n =  list drop xs (n - 1)
+
+fn :: list nth or [A] Int A => A
+      list nth or []     _ d =  d
+      list nth or (x:xs) i d
+        | i == 0 = x
+        | otherwise = list nth or xs (i - 1) d
+
+fn :: list last or [A] A => A
+      list last or []     d =  d
+      list last or (x:[]) _ =  x
+      list last or (_:xs) d =  list last or xs d
+
+fn :: list contains [A] A => Bool
+      list contains []     _ =  False
+      list contains (x:xs) y
+        | x == y = True
+        | otherwise = list contains xs y
+
+fn :: str join [String] String => String
+      str join []     _   =  ""
+      str join (s:ss) sep =  prelude join onto ss sep s
+
+fn :: prelude join onto [String] String String => String
+      prelude join onto []     _   acc =  acc
+      prelude join onto (s:ss) sep acc =  prelude join onto ss sep (acc + sep + s)
+'
 
 -- ── Scoped Module Namespace Resolution ──────────────────────
 
@@ -4828,6 +4890,11 @@ fn :: lookup all mod keys step [String] String [RModAlias] [String] String => [S
       lookup all mod keys step ms ident map acc found =
         lookup all mod keys ms ident map (add unique seen end found acc)
 
+-- The last tier (FR-COMP-024): the prelude's definition, when no module in scope defines the name.
+fn :: prelude tier String String => String
+      prelude tier "" in_prelude =  in_prelude
+      prelude tier hit _          =  hit
+
 fn :: select tier hits [String] String => String
       select tier hits [] _ = ""
       select tier hits (h:[]) _ = h
@@ -4850,7 +4917,7 @@ fn :: lookup in mod scope tier2 String String [String] [RModAlias] [RModAlias] S
       lookup in mod scope tier2 cur_mod ident direct_imps aliases map "" =
         trans_imps = trans imports of cur_mod direct_imps aliases
         trans_hits = lookup all mod keys trans_imps ident map []
-        select tier hits trans_hits ident
+        prelude tier (select tier hits trans_hits ident) (lookup str map map ("prelude." + ident))
       lookup in mod scope tier2 _ _ _ _ _ hit = hit
 
 fn :: key has base ident String String => Bool
@@ -5388,7 +5455,7 @@ fn :: lookup in ctx scope tier1 RModCtx String RStrMap [String] => String
 fn :: lookup in ctx scope tier2 RModCtx String RStrMap String => String
       lookup in ctx scope tier2 ctx ident map_bst "" =
         trans_hits = lookup all mod keys bst (ctx trans ctx) ident map_bst []
-        select tier hits trans_hits ident
+        prelude tier (select tier hits trans_hits ident) (str map get map_bst ("prelude." + ident))
       lookup in ctx scope tier2 _ _ _ hit = hit
 
 fn :: resolve one type single dispatch String String RModCtx => String
@@ -5517,7 +5584,7 @@ fn :: lookup scoped ff ctx t1 String RModCtx [String] => String
 fn :: lookup scoped ff ctx t2 String RModCtx String => String
       lookup scoped ff ctx t2 base ctx "" =
         trans_hits = lookup all mod fn or field ctx (ctx trans ctx) base ctx []
-        lookup scoped ff t3 base (select tier hits trans_hits base)
+        lookup scoped ff t3 base (prelude tier (select tier hits trans_hits base) (lookup mod fn or field ctx "prelude" base ctx))
       lookup scoped ff ctx t2 _ _ hit = hit
 
 fn :: lookup scoped ff t3 String String => String
@@ -5547,7 +5614,7 @@ fn :: scope has word part dispatch RModCtx String String [RModAlias] => Bool
       scope has word part dispatch _ _ "__builtin__" _ = True
       scope has word part dispatch ctx word "__multi__" _ =
         wm_map = ctx word mod ctx
-        (mod list has word part (ctx own ctx) word wm_map) or (mod list has word part (ctx direct ctx) word wm_map) or (mod list has word part (ctx trans ctx) word wm_map)
+        (mod list has word part (ctx own ctx) word wm_map) or (mod list has word part (ctx direct ctx) word wm_map) or (mod list has word part (ctx trans ctx) word wm_map) or (mod list has word part ["prelude"] word wm_map)
       scope has word part dispatch ctx _ wm _ =
         str set has (ctx vis set ctx) wm
 
@@ -5583,7 +5650,7 @@ fn :: compute mod ctx String [RModAlias] RModCtx => RModCtx
         own = own mods of cur_mod aliases
         direct_imps = direct imports of cur_mod aliases
         trans_imps = trans imports of cur_mod direct_imps aliases
-        vis_set = str list to set (own :: direct_imps :: trans_imps) StrSetEmpty
+        vis_set = str list to set (own :: direct_imps :: trans_imps :: ["prelude"]) StrSetEmpty
         ModCtx own direct_imps trans_imps vis_set tb ts cb cs fb flb fls ffs wm
 
 fn :: lookup mod ctx cache String [RModCtxEntry] => Bool RModCtx
@@ -6808,8 +6875,7 @@ fn :: parse items loop [RToken] [RScopedFn] [RScopedType] [RModAlias] [String] B
 
 fn :: skip to user src marker [RToken] => [RToken]
       skip to user src marker [] = []
-      skip to user src marker (TokAt:(TokIdent "__rg_user_src__"):rest) =
-        skip to user src marker (skip to newline rest)
+      skip to user src marker (TokAt:(TokIdent "__rg_user_src__"):rest) =  skip to newline rest
       skip to user src marker (_:rest) =
         skip to user src marker rest
 

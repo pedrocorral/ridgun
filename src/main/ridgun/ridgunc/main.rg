@@ -1,6 +1,6 @@
 -- ============================================================
 -- src/main/ridgun/ridgunc/main.rg
--- Self-Hosted Ridgun Compiler CLI Driver (ridgunc v0.9.53)
+-- Self-Hosted Ridgun Compiler CLI Driver (ridgunc v0.9.54)
 -- Shared Library (`src/main/ridgun/lib/`): ast.rg, lexer.rg,
 -- parser.rg, analyzer.rg, typecheck.rg, compiler.rg, vm.rg,
 -- elf64.rg, x86_64.rg, arm64.rg, llvm.rg, macho64.rg, pe64.rg
@@ -234,7 +234,7 @@ fn :: run self hosted pipeline demo => ()
 
 fn :: run cli version => ()
       run cli version =
-        echo "ridgunc 0.9.53 (self-hosted Ridgun compiler, x86_64-unknown-linux-gnu)"
+        echo "ridgunc 0.9.54 (self-hosted Ridgun compiler, x86_64-unknown-linux-gnu)"
 
 fn :: run cli help => ()
       run cli help =
@@ -247,11 +247,13 @@ fn :: run cli help => ()
         echo "  build   <file.rg> [-o binary] [--target arch]  Build standalone native executable (ELF64, Mach-O 64, PE32+)"
         echo "  build   --lib <file.rg> [-o out.rglib]         Build reusable Ridgun library (.rglib & .so/.dylib/.dll)"
         echo "  build   --so  <file.rg> [-o out.so]            Build native shared library (.so, .dylib, .dll)"
+        echo "  prelude                                        Print the prelude: helpers every program calls without import"
         echo "  version | -v | --version                       Show compiler version"
         echo "  help    | -h | --help                          Show this help message"
 
 fn :: dispatch cli Bool        [String]        => ()
       dispatch cli _           []              =  run self hosted pipeline demo
+      dispatch cli _           ("prelude":_)   =  echo (prelude source)
       dispatch cli _           ("version":_)   =  run cli version
       dispatch cli _           ("-v":_)        =  run cli version
       dispatch cli _           ("--version":_) =  run cli version
