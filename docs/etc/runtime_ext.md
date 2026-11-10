@@ -67,7 +67,7 @@ ld.lld -T rtx.ld -o rtx.elf rtx.o
 llvm-objcopy -O binary --only-section=.rtx rtx.elf rtx.bin
 ```
 
-Then check that the object has only PC-relative relocations (`llvm-readobj -r rtx.o`: `R_X86_64_PC32` and `R_X86_64_PLT32`), and that `llvm-nm rtx.elf` lists no undefined symbol. Replace the list in `x86 rt ext` with the bytes of `rtx.bin` (`od -An -tu1 -v rtx.bin`), writing the trailing zero bytes as `zero bytes n`. Built with clang 19.1.7: 11 504 bytes, of which the last 4 096 are zero.
+Then check that the object has only PC-relative relocations (`llvm-readobj -r rtx.o`: `R_X86_64_PC32` and `R_X86_64_PLT32`), and that `llvm-nm rtx.elf` lists no undefined symbol. Replace the list in `x86 rt ext` with the bytes of `rtx.bin` (`od -An -tu1 -v rtx.bin`), writing the trailing zero bytes as `zero bytes n`. Built with clang 19.1.7: 11 568 bytes, of which the last 4 096 are zero.
 
 **LLVM runtime cache.** The LLVM backend keeps the assembled runtime and its linker script in `/tmp/__rg_llvm_cache_<runtime fingerprint>_<script fingerprint>.rt` / `.lds` (`llvm rt cache base` in `llvm.rg`). Any change to the runtime gives a new name, so no build links a stale copy. Until 0.9.49 the name held only the version: a runtime changed without a version bump was linked stale, and a builtin missing from it crashed or did nothing in LLVM builds while x86-64 builds worked.
 
@@ -411,6 +411,30 @@ static i64 read_all(i64 fd, u8 *dst, i64 cap) {
   return got;
 }
 
+/* Files without a size (pipes, procfs, terminals): one pass into an
+ * anonymous mapping that doubles with mremap. A pipe cannot be read
+ * twice, so the bytes are never counted first and read again. */
+static i64 read_unsized(i64 fd) {
+  i64 cap = 65536, got = 0, empty = 0;
+  i64 m = sc6(9, 0, cap, 3, 0x22, -1, 0); /* mmap RW, MAP_PRIVATE|MAP_ANONYMOUS */
+  if (m < 0 && m > -4096) return u8_new(1, &empty, 0);
+  for (;;) {
+    if (got == cap) {
+      i64 nm = sc6(25, m, cap, cap * 2, 1, 0, 0); /* mremap MREMAP_MAYMOVE */
+      if (nm < 0 && nm > -4096) break;
+      m = nm;
+      cap *= 2;
+    }
+    i64 r = sc3(0, fd, m + got, cap - got);
+    if (r == -4) continue; /* EINTR */
+    if (r <= 0) break;
+    got += r;
+  }
+  i64 t = u8_from_bytes((const u8 *)m, got);
+  sc3(11, m, cap, 0); /* munmap */
+  return t;
+}
+
 static i64 read_bytes(i64 path) {
   char p[4096];
   i64 empty = 0;
@@ -420,17 +444,9 @@ static i64 read_bytes(i64 path) {
   i64 st[18];
   i64 size = sc3(5, fd, (i64)st, 0) == 0 ? st[6] : 0; /* fstat: st_size */
   if (size <= 0) {
-    /* Files without a size (procfs, pipes): count, then read again. */
-    u8 tmp[4096];
-    size = 0;
-    for (;;) {
-      i64 r = sc3(0, fd, (i64)tmp, sizeof tmp);
-      if (r <= 0) break;
-      size += r;
-    }
+    i64 u = read_unsized(fd);
     sc3(3, fd, 0, 0);
-    fd = sc3(2, (i64)p, 0, 0);
-    if (fd < 0) return u8_new(1, &empty, 0);
+    return u;
   }
   i64 t = u8_new(1, &size, 0);
   i64 got = read_all(fd, u8_data(t), size);

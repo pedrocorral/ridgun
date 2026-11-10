@@ -525,6 +525,11 @@ fn :: build tc10 result (Int, String, Int, Int) => CaseResult
         ok10 = c10 == 0 and (trim ws o10) == "[7] [a] [2, 1] 5 5\nPRELUDE_OK"
         Result "toolchain: a prelude name defined by an imported module means the module's function, with no ambiguity error, also when the name holds an operator word (`list nth or`, as in libs); a module that imports nothing gets the prelude's; `ridgunc prelude` prints the prelude (FR-COMP-024)" ok10 False ("exit " + (int to str c10) + "; output: " + (trim ws o10))
 
+fn :: build tc11 result (Int, String, Int, Int) => CaseResult
+      build tc11 result (c11, o11, _, _) =
+        ok11 = c11 == 0 and (trim ws o11) == "200000 120 10"
+        Result "toolchain: read bytes \"/dev/stdin\" reads every byte when stdin is a pipe, also past the first 64 KiB (FR-COMP-022; libs report tensor-u8 2026-11-09, item 6)" ok11 False ("exit " + (int to str c11) + "; output: " + (trim ws o11))
+
 fn :: resolve stable path String => String
       resolve stable path repo =
         absolute from repo (pick non empty (sys getenv "STABLE") (repo + "/bin/stable"))
@@ -565,7 +570,10 @@ fn :: run toolchain checks String String String String => [CaseResult]
         write file (d + "/prelude_main.rg") "import intlist\nimport other\n\nfn :: main => ()\n      main =  echo (list take [1, 2] 1) (other take) (list reverse [1, 2]) (list nth or [1] 0 0) (list nth [1] 0)\n"
         write file (d + "/tc10.sh") ("set -e; \"" + ridgunc + "\" build prelude_main.rg -o prelude_main >/dev/null; ./prelude_main; \"" + ridgunc + "\" prelude | grep -q '^fn :: list reverse' && echo PRELUDE_OK")
         r10 = build tc10 result (run sh capture "bash tc10.sh" d 600)
-        [r1, r2, r3, r4, r5, r6, r7, r8, r9, r10]
+        write file (d + "/stdin_bytes.rg") "fn :: size of Tensor[U8] => Int\n      size of (Tensor[U8 * n] _) = n\n\nfn :: main => ()\n      main =\n        t = read bytes \"/dev/stdin\"\n        echo (size of t) (t_(0)) (t_(199999))\n"
+        write file (d + "/tc11.sh") ("set -e; \"" + ridgunc + "\" build stdin_bytes.rg -o stdin_bytes >/dev/null; yes x | head -c 200000 | ./stdin_bytes")
+        r11 = build tc11 result (run sh capture "bash tc11.sh" d 600)
+        [r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11]
 
 fn :: print case result CaseResult => ()
       print case result (Result name True _ _) =
