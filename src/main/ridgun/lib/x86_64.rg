@@ -1130,7 +1130,7 @@ fn :: build x8664 rt kernel => [Int]
         phase4 = x86 build rt phase4 bytes
         base = jt :: pre :: phase1 :: phase2 :: phase3 :: phase4
         -- The extension starts at a fixed address (`x86 rt ext addr`).
-        pad = zero bytes ((x86 rt ext addr) - 4198400 - (byte list len base))
+        pad = zero bytes ((x86 rt ext addr) - 4198400 - (list len base))
         base :: pad :: x86 rt ext
 
 -- ── Public x86_64 ELF64 Image Builder ────────────────────────
@@ -1138,7 +1138,7 @@ fn :: build x8664 rt kernel => [Int]
 fn :: emit x8664 elf kind Int RNativeProg => [Int]
       emit x8664 elf kind e_type (NativeProg main_fid spawn_fid call2_fid binop_fid fns rodata_str) =
         rt_bytes = build x8664 rt kernel
-        rt_len = byte list len rt_bytes
+        rt_len = list len rt_bytes
         region2_vaddr = 4198400 + rt_len
         sr = x8664 scan fns fns region2_vaddr []
         -- 16 zero bytes after the code hold the channel lock (x86 chan lock).

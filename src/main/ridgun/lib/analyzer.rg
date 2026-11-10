@@ -15,34 +15,14 @@ import parser
 
 -- ── Basic List & Set Helpers ────────────────────────────────
 
-fn :: str in list String [String] => Bool
-      str in list _      []       =  False
-      str in list target (x:xs)
-        | x == target = True
-        | otherwise = str in list target xs
-
 fn :: add unique str String [String] => [String]
       add unique str s      xs
-        | str in list s xs = xs
+        | list contains xs s = xs
         | otherwise = xs :: [s]
 
 fn :: union strs [String] [String] => [String]
       union strs []       ys       =  ys
       union strs (x:xs)   ys       =  union strs xs (add unique str x ys)
-
-fn :: int in list Int    [Int]  => Bool
-      int in list _      []     =  False
-      int in list target (x:xs)
-        | x == target = True
-        | otherwise = int in list target xs
-
-fn :: int list len [Int]  => Int
-      int list len []     =  0
-      int list len (_:xs) =  1 + (int list len xs)
-
-fn :: where list len [RWhereBind] => Int
-      where list len []           =  0
-      where list len (_:xs)       =  1 + (where list len xs)
 
 -- ── Cost Tier & 4-Tier Strategy Selection ───────────────────
 
@@ -262,7 +242,7 @@ fn :: collect stmt list effects tuple [RStmt] String RSummaryMap ([String], Bool
 fn :: collect where effects [RWhereBind] String RSummaryMap [String] Bool RCostTier => [String] Bool RCostTier
       collect where effects [] _ _ muts yld cost = (muts, yld, cost)
       collect where effects ((WhereBind e target idxs):wbs) cur_fn summaries muts yld cost
-        | (int list len idxs) > 0 = collect where effects tuple wbs cur_fn summaries (collect expr effects e cur_fn summaries (add unique str target muts) yld cost)
+        | (list len idxs) > 0 = collect where effects tuple wbs cur_fn summaries (collect expr effects e cur_fn summaries (add unique str target muts) yld cost)
         | otherwise = collect where effects tuple wbs cur_fn summaries (collect expr effects e cur_fn summaries muts yld cost)
 
 fn :: collect where effects tuple [RWhereBind] String RSummaryMap ([String], Bool, RCostTier) => [String] Bool RCostTier
@@ -302,7 +282,7 @@ fn :: update param effects [RPattern] [RParamEffect] [String] => [RParamEffect]
       update param effects [] effs _ = effs
       update param effects _ [] _ = []
       update param effects ((PatVar v):ps) (e:es) muts
-        | str in list v muts = [EffMutates] :: (update param effects ps es muts)
+        | list contains muts v = [EffMutates] :: (update param effects ps es muts)
         | otherwise = [e] :: (update param effects ps es muts)
       update param effects (_:ps) (e:es) muts =
         [e] :: (update param effects ps es muts)
@@ -358,10 +338,6 @@ fn :: is nontrivial summary RFnSummary                             => Bool
       is nontrivial summary (FnSummary _ effs False TierTrivial _) =  has mut effect effs
       is nontrivial summary _                                      =  True
 
-fn :: rev fn summaries [RFnSummary] [RFnSummary] => [RFnSummary]
-      rev fn summaries [] acc = acc
-      rev fn summaries (x:xs) acc = rev fn summaries xs ([x] :: acc)
-
 fn :: add nontrivial summary map RFnSummary RSummaryMap => RSummaryMap
       add nontrivial summary map (FnSummary sname effs yld cost strat) smap
         | is nontrivial summary (FnSummary sname effs yld cost strat) =
@@ -369,7 +345,7 @@ fn :: add nontrivial summary map RFnSummary RSummaryMap => RSummaryMap
         | otherwise = smap
 
 fn :: filter nontrivial summaries acc [RFnSummary] [RFnSummary] => [RFnSummary]
-      filter nontrivial summaries acc []           acc          =  rev fn summaries acc []
+      filter nontrivial summaries acc []           acc          =  list reverse acc
       filter nontrivial summaries acc (s:ss)       acc
         | is nontrivial summary s = filter nontrivial summaries acc ss ([s] :: acc)
       filter nontrivial summaries acc (_:ss)       acc =
@@ -379,7 +355,7 @@ fn :: filter nontrivial summaries [RFnSummary] => [RFnSummary]
       filter nontrivial summaries ss           =  filter nontrivial summaries acc ss []
 
 fn :: compute summaries pass acc [RFnDef] RSummaryMap [RFnSummary] => [RFnSummary]
-      compute summaries pass acc []       _    acc = rev fn summaries acc []
+      compute summaries pass acc []       _    acc = list reverse acc
       compute summaries pass acc (f:fs)   smap acc =
         s = compute one fn summary f smap
         compute summaries pass acc fs (add nontrivial summary map s smap) ([s] :: acc)
@@ -431,7 +407,7 @@ fn :: lookup producer [RProducerEntry] String => Int
 fn :: collect producers [RWhereBind] Int [RProducerEntry] String => [RProducerEntry] [RAnalysisError]
       collect producers [] _ acc _ = (acc, [])
       collect producers ((WhereBind _ target idxs):wbs) idx acc fn_name
-        | (int list len idxs) > 0 or target == "" = collect producers wbs (idx + 1) acc fn_name
+        | (list len idxs) > 0 or target == "" = collect producers wbs (idx + 1) acc fn_name
         | (lookup producer acc target) >= 0 = add prod err (ErrWhereCycle fn_name target) (collect producers wbs (idx + 1) acc fn_name)
         | otherwise = collect producers wbs (idx + 1) (acc :: [ProducerEntry target idx]) fn_name
 
@@ -473,7 +449,7 @@ fn :: dag reachable dfs [Int] Int [RDagEdge] [Int] => Bool
       dag reachable dfs [] _ _ _ = False
       dag reachable dfs (curr:stack) dst edges visited
         | curr == dst = True
-        | int in list curr visited = dag reachable dfs stack dst edges visited
+        | list contains visited curr = dag reachable dfs stack dst edges visited
         | otherwise = dag reachable dfs ((dag neighbors curr edges) :: stack) dst edges (visited :: [curr])
 
 fn :: has dag cycle Int Int [RDagEdge] => Bool
@@ -514,7 +490,7 @@ fn :: extract reads and muts [String] ([String], Bool, RCostTier) => [String] [S
 fn :: check vars conflict [String] String RWhereBind RWhereBind [String] [String] [String] [String] => [RAnalysisError]
       check vars conflict [] _ _ _ _ _ _ _ = []
       check vars conflict (v:vs) fn_name b1 b2 r1 m1 r2 m2
-        | ((str in list v r1) or (str in list v m1)) and ((str in list v r2) or (str in list v m2)) and (not (are disjoint slices v b1 b2)) = [ErrParallelMutation fn_name v] :: (check vars conflict vs fn_name b1 b2 r1 m1 r2 m2)
+        | ((list contains r1 v) or (list contains m1 v)) and ((list contains r2 v) or (list contains m2 v)) and (not (are disjoint slices v b1 b2)) = [ErrParallelMutation fn_name v] :: (check vars conflict vs fn_name b1 b2 r1 m1 r2 m2)
         | otherwise = check vars conflict vs fn_name b1 b2 r1 m1 r2 m2
 
 fn :: check pair conflict String RWhereBind RWhereBind [RFnSummary] => [RAnalysisError]
@@ -546,7 +522,7 @@ fn :: check where pairs i String [RWhereBind] Int Int [RDagEdge] [RFnSummary] =>
 
 fn :: check where block safety String RExpr [RWhereBind] [String] [RFnSummary] [String] => [String] [RAnalysisError]
       check where block safety fn_name body binds mut_vars summaries moved =
-        n = where list len binds
+        n = list len binds
         prod_res = collect producers binds 0 [] fn_name
         check where dag step fn_name body binds n mut_vars summaries moved prod_res
 
@@ -589,8 +565,8 @@ fn :: is channel send call String => Bool
 
 fn :: mark sent expr vars RExpr [String] [String] => [String]
       mark sent expr vars (EVar sent_var) mut_vars moved
-        | str in list ("chan:" + sent_var) mut_vars = moved
-        | str in list sent_var mut_vars = add unique str sent_var moved
+        | list contains mut_vars ("chan:" + sent_var) = moved
+        | list contains mut_vars sent_var = add unique str sent_var moved
         | otherwise = moved
       mark sent expr vars (ETuple es) mut_vars moved = mark sent expr list vars es mut_vars moved
       mark sent expr vars _ _ moved = moved
@@ -609,7 +585,7 @@ fn :: mark channel sent String [RExpr] [String] [String] => [String]
 
 fn :: check expr safety RExpr String [String] [RFnSummary] [String] => [String] [RAnalysisError]
       check expr safety (EVar name) fn_name _ _ moved
-        | str in list name moved = (moved, [ErrUseAfterSend fn_name name])
+        | list contains moved name = (moved, [ErrUseAfterSend fn_name name])
         | otherwise = (moved, [])
       check expr safety (ECall callee args) fn_name mut_vars summaries moved =
         r_args = check expr list safety args fn_name mut_vars summaries moved
@@ -694,7 +670,7 @@ fn :: is channel or agent expr RExpr [String] => Bool
       is channel or agent expr (EVar "channel") _ = True
       is channel or agent expr (EVar "new_mailbox") _ = True
       is channel or agent expr (EVar "mailbox") _ = True
-      is channel or agent expr (EVar v) mut_vars = str in list ("chan:" + v) mut_vars
+      is channel or agent expr (EVar v) mut_vars = list contains mut_vars ("chan:" + v)
       is channel or agent expr _ _ = False
 
 fn :: check guards safety [RGuard] String [String] [RFnSummary] [String] => [String] [RAnalysisError]

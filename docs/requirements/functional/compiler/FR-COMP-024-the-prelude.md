@@ -50,4 +50,7 @@ fn :: str join [String] String => String   -- the strings with the separator bet
 Implemented in 0.9.54 (TASK-0070).
 - The source is `prelude source` in `src/main/ridgun/lib/parser.rg`. `load rg with libs` appends it after the imports, between module markers.
 - The lowest-priority lookup is in the module resolver: the `prelude tier` functions after the transitive imports.
+- A prelude function never counts as a name collision. When another module defines the same name, that module keeps the plain name and the prelude's function is renamed `prelude.<name>`, found only in the last tier.
+- In 0.9.54 it counted as a collision, so `import list` from libs broke `list nth or`: the operator word `or` inside the name is matched against the plain name. Fixed in 0.9.55.
+- 0.9.55 (TASK-0070, phase B): the compiler uses the prelude in place of 36 per-type copies.
 - Test: `tests/cases/modules/prelude_*.rg`.

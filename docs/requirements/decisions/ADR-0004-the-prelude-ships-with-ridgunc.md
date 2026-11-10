@@ -29,6 +29,7 @@ Adopt **Option 3**.
 - **Names that already exist:**
   - A name that libs, a program or a library already defines keeps its meaning, so nothing existing changes and nothing becomes ambiguous.
   - `import prelude` is accepted and does nothing.
+  - A prelude function never counts as a collision: another module's function keeps the plain name, and the prelude's becomes `prelude.<name>`.
 - **Size:** unused prelude functions are not emitted, so a program that calls none of them keeps its size.
 - **What goes in:** only helpers that every program needs and that work the same for any element type. Domain helpers stay in libs.
 

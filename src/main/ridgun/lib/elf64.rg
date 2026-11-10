@@ -110,13 +110,6 @@ fn :: zero bytes loop Int   [Int] => [Int]
 fn :: zero bytes Int   => [Int]
       zero bytes count =  zero bytes loop count []
 
-fn :: byte list len loop [Int] Int => Int
-      byte list len loop [] acc = acc
-      byte list len loop (_:xs) acc = byte list len loop xs (acc + 1)
-
-fn :: byte list len [Int] => Int
-      byte list len xs    =  byte list len loop xs 0
-
 -- ── ELF64 Header (64B) + Program Header (56B) + Page 0 ───────
 
 fn :: build elf64 ehdr kind Int Int Int => [Int]

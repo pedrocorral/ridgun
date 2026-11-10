@@ -22,10 +22,6 @@ fn :: fmt max Int Int => Int
         | a >= b = a
         | otherwise = b
 
-fn :: fmt str list len [String] => Int
-      fmt str list len []       =  0
-      fmt str list len (_:xs)   =  1 + (fmt str list len xs)
-
 fn :: fmt str head [String] => String
       fmt str head []       =  ""
       fmt str head (x:_)    =  x
@@ -299,13 +295,13 @@ fn :: fmt sig base col from FmtSig => Int
 fn :: fmt clause matches sig String [String] [String] => Bool
       fmt clause matches sig _ _ [] = False
       fmt clause matches sig "fn" sig_lhs clause_lhs =
-        (fmt str list len clause_lhs) == (fmt str list len sig_lhs) and (fmt str head clause_lhs) == (fmt str head sig_lhs)
+        (list str len clause_lhs) == (list str len sig_lhs) and (fmt str head clause_lhs) == (fmt str head sig_lhs)
       fmt clause matches sig "bare_fn" sig_lhs clause_lhs =
-        (fmt str list len clause_lhs) == (fmt str list len sig_lhs) and (fmt str head clause_lhs) == (fmt str head sig_lhs)
+        (list str len clause_lhs) == (list str len sig_lhs) and (fmt str head clause_lhs) == (fmt str head sig_lhs)
       fmt clause matches sig "op" sig_lhs clause_lhs =
-        (fmt str list len clause_lhs) == (fmt str list len sig_lhs) and (fmt op tokens match sig_lhs clause_lhs)
+        (list str len clause_lhs) == (list str len sig_lhs) and (fmt op tokens match sig_lhs clause_lhs)
       fmt clause matches sig "bare_op" sig_lhs clause_lhs =
-        (fmt str list len clause_lhs) == (fmt str list len sig_lhs) and (fmt op tokens match sig_lhs clause_lhs)
+        (list str len clause_lhs) == (list str len sig_lhs) and (fmt op tokens match sig_lhs clause_lhs)
       fmt clause matches sig _ _ _ = False
 
 fn :: fmt split clause eq [FmtToken] [String] => [String] Bool Int
@@ -436,8 +432,8 @@ fn :: fmt count op params [String]   => Int
         | otherwise = fmt count op params rest
 
 fn :: fmt count sig params String [String] => Int
-      fmt count sig params "fn" lhs_strs = (fmt str list len lhs_strs) - 1
-      fmt count sig params "bare_fn" lhs_strs = (fmt str list len lhs_strs) - 1
+      fmt count sig params "fn" lhs_strs = (list str len lhs_strs) - 1
+      fmt count sig params "bare_fn" lhs_strs = (list str len lhs_strs) - 1
       fmt count sig params _ lhs_strs = fmt count op params lhs_strs
 
 fn :: fmt finish group geometry String [String] String String ([Int], Int) => FmtSig

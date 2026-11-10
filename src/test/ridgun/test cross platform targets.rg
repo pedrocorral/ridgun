@@ -49,8 +49,8 @@ fn :: test macho64 x8664 and arm64 headers => ()
         assert equals (byte at idx m_arm 0) 207
         assert equals (byte at idx m_arm 4) 12
         assert equals (byte at idx m_arm 7) 1
-        assert true ((byte list len m_x86) > 8192)
-        assert true ((byte list len m_arm) > 8192)
+        assert true ((list len m_x86) > 8192)
+        assert true ((list len m_arm) > 8192)
 
 fn :: test pe64 x8664 and arm64 headers => ()
       test pe64 x8664 and arm64 headers =
@@ -79,8 +79,8 @@ fn :: test pe64 x8664 and arm64 headers => ()
         assert equals (byte at idx pe_x86 280) 11
         assert equals (byte at idx pe_x86 281) 2
         assert equals (byte at idx pe_dll 280) 11
-        assert true ((byte list len pe_x86) > 8192)
-        assert true ((byte list len pe_arm) > 8192)
+        assert true ((list len pe_x86) > 8192)
+        assert true ((list len pe_arm) > 8192)
 
 fn :: test llvm triples and disk target builds => ()
       test llvm triples and disk target builds =

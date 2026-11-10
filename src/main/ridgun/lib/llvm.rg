@@ -17,13 +17,9 @@ import x86_64
 
 -- ── Tree-Based O(N log N) String Concatenation ──────────────
 
-fn :: llvm rev strs [String] [String] => [String]
-      llvm rev strs [] acc = acc
-      llvm rev strs (x:xs) acc = llvm rev strs xs ([x] :: acc)
-
 fn :: join str pairs [String] [String] => [String]
-      join str pairs [] acc = llvm rev strs acc []
-      join str pairs (a:[]) acc = llvm rev strs ([a] :: acc) []
+      join str pairs [] acc = list reverse acc
+      join str pairs (a:[]) acc = list reverse ([a] :: acc)
       join str pairs (a:b:rest) acc = join str pairs rest ([a + b] :: acc)
 
 fn :: join str tree [String] => String
@@ -136,14 +132,9 @@ fn :: llvm bool tag Int => Int
       llvm bool tag 0   =  2
       llvm bool tag _   =  6
 
-fn :: llvm join comma [String] => String
-      llvm join comma []       =  ""
-      llvm join comma (s:[])   =  s
-      llvm join comma (s:ss)   =  s + ", " + (llvm join comma ss)
-
 fn :: llvm reg param list Int Int [String] => String
       llvm reg param list cur arity acc
-        | cur >= arity = llvm join comma acc
+        | cur >= arity = str join acc ", "
         | otherwise =
           llvm reg param list (cur + 1) arity (acc :: ["i64 %arg_{cur}"])
 
@@ -190,7 +181,7 @@ fn :: llvm load wrapper args Int Int [String] => String
 
 fn :: llvm wrapper arg list Int Int [String] => String
       llvm wrapper arg list cur arity acc
-        | cur >= arity = llvm join comma acc
+        | cur >= arity = str join acc ", "
         | otherwise =
           llvm wrapper arg list (cur + 1) arity (acc :: ["i64 %av_{cur}"])
 
@@ -204,7 +195,7 @@ fn :: llvm load call args Int Int Int Int [String] => String
 
 fn :: llvm call arg list Int Int Int [String] => String
       llvm call arg list idx count step acc
-        | idx >= count = llvm join comma acc
+        | idx >= count = str join acc ", "
         | otherwise =
           llvm call arg list (idx + 1) count step (acc :: ["i64 %cav_{step}_{idx}"])
 
@@ -511,7 +502,7 @@ fn :: emit llvm instr RNativeInstr Int Int Int => String
         "  br label %epilogue_exit\ndead_{step}:\n"
 
 fn :: emit llvm instr list [RNativeInstr] Int Int Int [String] => [String]
-      emit llvm instr list [] _ _ _ acc = llvm rev strs acc []
+      emit llvm instr list [] _ _ _ acc = list reverse acc
       emit llvm instr list (ins:rest) step num_slots rodata_len acc =
         line = emit llvm instr ins step num_slots rodata_len
         emit llvm instr list rest (step + 1) num_slots rodata_len ([line] :: acc)
@@ -589,7 +580,7 @@ fn :: emit llvm fn list [RNativeFn] Int [String] => [String]
 -- `targets`: the sorted fids of `NTailCallFn` targets. The functions come in
 -- increasing fid order, so one pass drops the targets below the current fid.
 fn :: emit llvm fn list linked [RNativeFn] Int [Int] [String] => [String]
-      emit llvm fn list linked [] _ _ acc = llvm rev strs acc []
+      emit llvm fn list linked [] _ _ acc = list reverse acc
       emit llvm fn list linked ((NativeFn fid nm ar ns ins):fs) rodata_len targets acc =
         rest_t = llvm drop targets below targets fid
         fn_ir = emit llvm fn linked (NativeFn fid nm ar ns ins) rodata_len (llvm target linkage rest_t fid)

@@ -268,10 +268,6 @@ fn :: lex one tok String Int Int Int Int => RToken Int
         | is alpha c = tok ident src pos len
         | otherwise = (TokNewline, pos + 1)
 
-fn :: rev tok list [RToken] [RToken] => [RToken]
-      rev tok list []       acc      =  acc
-      rev tok list (x:xs)   acc      =  rev tok list xs ([x] :: acc)
-
 fn :: lex step (RToken, Int) String Int [RToken] => [RToken]
       lex step (tok, next_p) src len rev_acc =
         lex loop at src (skip ws src next_p len) len ([tok] :: rev_acc)
@@ -283,7 +279,7 @@ fn :: lex loop String Int Int [RToken] => [RToken]
 
 fn :: lex loop at String Int Int [RToken] => [RToken]
       lex loop at src p len rev_acc
-        | p >= len = rev tok list ([TokEof] :: rev_acc) []
+        | p >= len = list reverse ([TokEof] :: rev_acc)
         | otherwise = lex step (lex one tok src p len (str char at src p) (str char at src (p + 1))) src len rev_acc
 
 fn :: tokenize src String => [RToken]

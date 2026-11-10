@@ -1,6 +1,6 @@
 -- ============================================================
 -- src/main/ridgun/stable/main.rg
--- `stable` v0.9.54 — The Interactive Build Tool for Ridgun (100% Ridgun)
+-- `stable` v0.9.55 — The Interactive Build Tool for Ridgun (100% Ridgun)
 -- Written in Ridgun's natural-language mixfix operator style (`op :: ...`).
 -- Decoupled from `ridgunc` internals per ADR-0001: delegates `check`,
 -- `compile`, `build`, `build lib`, and test/plugin compilation to the
@@ -932,16 +932,10 @@ op :: dep version of String => String
         | (str index of dep "@") < 0 = ""
         | otherwise = str slice dep ((str index of dep "@") + 1) (str len dep)
 
-op :: lock field [String] Int => String
-      lock field []     _ =  ""
-      lock field (x:xs) i
-        | i == 0 = x
-        | otherwise = lock field xs (i - 1)
-
 op :: find locked String in [String] => [String]
       find locked _    in []     =  []
       find locked name in (e:es)
-        | (lock field (str split e "|") 0) == name = str split e "|"
+        | (list str nth or (str split e "|") 0 "") == name = str split e "|"
         | otherwise = find locked name in es
 
 op :: omni lock entries => [String]
@@ -957,12 +951,12 @@ op :: not installed String => Int
 op :: sync locked dependency String String String [String] => Int
       sync locked dependency dep _    _    []    =  not installed dep
       sync locked dependency dep name want entry
-        | (lock field entry 3) == "local" =
+        | (list str nth or entry 3 "") == "local" =
           log error "Dependency '{name}' is a local path in omni.lock; install it from ridgun.com: `omni install {dep}`."
           1
-        | (want != "") and (want != (lock field entry 3)) = version mismatch dep name (lock field entry 3)
-        | str ends with (lock field entry 5) ".rglib" = sync locked library dep name (lock field entry 5)
-        | otherwise = sync locked package dep name (lock field entry 5)
+        | (want != "") and (want != (list str nth or entry 3 "")) = version mismatch dep name (list str nth or entry 3 "")
+        | str ends with (list str nth or entry 5 "") ".rglib" = sync locked library dep name (list str nth or entry 5 "")
+        | otherwise = sync locked package dep name (list str nth or entry 5 "")
 
 op :: version mismatch String String String => Int
       version mismatch dep name locked =
@@ -1049,12 +1043,9 @@ op :: write dependencies [String] => ()
 
 op :: add dep unique [String] String => [String]
       add dep unique deps new_dep
-        | has dep deps new_dep = deps
+        | list str contains deps new_dep = deps
         | otherwise = deps :: [new_dep]
 
-op :: has dep [String] String => Bool
-      has dep []     _ =  False
-      has dep (d:ds) x =  (d == x) or (has dep ds x)
 
 -- build.rg gets the name only once it is synchronized, so a failed `stable add` leaves build.rg as it was.
 op :: finish task add String Int => Int
@@ -1356,7 +1347,7 @@ op :: dispatch command StableCommand on StableConfig => Bool StableConfig Int
       dispatch command CmdExit on cfg = (False, cfg, 0)
       dispatch command CmdHelp on cfg = (True, cfg, run task help)
       dispatch command CmdVersion on cfg =
-        echo "stable 0.9.54 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
+        echo "stable 0.9.55 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
         (True, cfg, 0)
       dispatch command CmdInfo on cfg = (True, cfg, run task info on cfg)
       dispatch command CmdReload on _ =
@@ -1438,12 +1429,12 @@ op :: report reload config StableConfig name String => Bool StableConfig Int
 
 op :: start interactive shell for StableConfig => ()
       start interactive shell for (ProjectConfig "" ver main_ep sdir tdir out_dir) =
-        log info "Welcome to stable 0.9.54 (Ridgun Build Tool — 100% Ridgun)"
+        log info "Welcome to stable 0.9.55 (Ridgun Build Tool — 100% Ridgun)"
         log info "No build.rg found in current directory. Run 'init' or 'new <name>' to create a project."
         log info "Commands: 'new', 'init', 'help', 'exit'"
         repl loop for (ProjectConfig "" ver main_ep sdir tdir out_dir)
       start interactive shell for (ProjectConfig name_str ver main_ep sdir tdir out_dir) =
-        log info "Welcome to stable 0.9.54 (Ridgun Build Tool — 100% Ridgun)"
+        log info "Welcome to stable 0.9.55 (Ridgun Build Tool — 100% Ridgun)"
         log info "Loading project definition from build.rg ..."
         log info "Set current project to '{name_str}' v{ver} (main: {main_ep})"
         log info "Commands: 'built' (or 'build'), 'run', 'test', 'check', 'compile', 'clean', 'info', 'exit'"

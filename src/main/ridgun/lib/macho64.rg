@@ -153,7 +153,7 @@ fn :: build macho64 image kind Int Int Int Int Int Int Int [Int] Int [Int] Int S
         text_seg_filesz = align up raw_filesz 4096
         pad_tail = zero bytes (text_seg_filesz - raw_filesz)
         codesig = build macho64 adhoc codesig text_seg_filesz
-        codesig_len = byte list len codesig
+        codesig_len = list len codesig
         page0 = build macho64 page0 filetype cpu_type cpu_subtyp text_seg_filesz codesig_len main_vaddr spawn_vaddr call2_vaddr binop_vaddr
         page0 :: rt_bytes :: code_bytes :: rodata_bytes :: pad_tail :: codesig
 
@@ -162,7 +162,7 @@ fn :: build macho64 image kind Int Int Int Int Int Int Int [Int] Int [Int] Int S
 fn :: emit x8664 macho64 spec Int RNativeProg => [Int]
       emit x8664 macho64 spec filetype (NativeProg main_fid spawn_fid call2_fid binop_fid fns rodata_str) =
         rt_bytes = build x8664 rt kernel
-        rt_len = byte list len rt_bytes
+        rt_len = list len rt_bytes
         region2_vaddr = 4198400 + rt_len
         sr = x8664 scan fns fns region2_vaddr []
         rodata_vaddr = scan offset sr
@@ -189,7 +189,7 @@ fn :: emit x8664 dylib macho64 RNativeProg => [Int]
 fn :: emit arm64 macho64 spec Int RNativeProg => [Int]
       emit arm64 macho64 spec filetype (NativeProg main_fid spawn_fid call2_fid binop_fid fns rodata_str) =
         rt_bytes = build arm64 rt kernel
-        rt_len = byte list len rt_bytes
+        rt_len = list len rt_bytes
         region2_vaddr = 4198400 + rt_len
         sr = arm64 scan fns fns region2_vaddr []
         rodata_vaddr = scan offset sr

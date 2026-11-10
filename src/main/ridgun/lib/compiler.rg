@@ -36,10 +36,6 @@ fn :: list str len [String] => Int
       list str len []       =  0
       list str len (_:xs)   =  1 + (list str len xs)
 
-fn :: pat list len [RPattern] => Int
-      pat list len []         =  0
-      pat list len (_:xs)     =  1 + (pat list len xs)
-
 fn :: find local idx [String] String Int => Int
       find local idx [] _ _ = -1
       find local idx (x:xs) target idx
@@ -58,10 +54,6 @@ fn :: ensure local branch [String] String Int => [String] Int
       ensure local branch locals name existing
         | existing >= 0 = (locals, existing)
         | otherwise = (locals :: [name], list str len locals)
-
-fn :: rinstr len [RInstr] => Int
-      rinstr len []       =  0
-      rinstr len (_:xs)   =  1 + (rinstr len xs)
 
 -- ── Pattern Binding & Match Emission (Bytecode) ─────────────
 
@@ -120,7 +112,7 @@ fn :: compile rexpr RExpr              [String] => [RInstr] [String]
       compile rexpr (EStr s)           locals   =  ([BPushStr s], locals)
       compile rexpr (EStrInterp parts) locals   =
         p_res = compile rexpr list parts locals
-        append instr (BStrInterp (rexpr list len parts)) p_res
+        append instr (BStrInterp (list len parts)) p_res
       compile rexpr (EBool b)          locals   =  ([BPushBool b], locals)
       compile rexpr EUnit              locals   =  ([BPushUnit], locals)
       compile rexpr (EVar name)        locals   =
@@ -137,19 +129,19 @@ fn :: compile rexpr RExpr              [String] => [RInstr] [String]
         compile bin rhs bop r r1
       compile rexpr (ECall fname args) locals   =
         args_res = compile rexpr list args locals
-        append instr (BCall fname (rexpr list len args)) args_res
+        append instr (BCall fname (list len args)) args_res
       compile rexpr (EEcho args)       locals   =
         args_res = compile rexpr list args locals
-        append instr (BEcho (rexpr list len args)) args_res
+        append instr (BEcho (list len args)) args_res
       compile rexpr (EList elems)      locals   =
         elems_res = compile rexpr list elems locals
-        append instr (BListConcat (rexpr list len elems)) elems_res
+        append instr (BListConcat (list len elems)) elems_res
       compile rexpr (ETuple elems)     locals   =
         elems_res = compile rexpr list elems locals
-        append instr (BMakeTuple (rexpr list len elems)) elems_res
+        append instr (BMakeTuple (list len elems)) elems_res
       compile rexpr (ETensor elems)    locals   =
         elems_res = compile rexpr list elems locals
-        append instr (BMakeTensor (rexpr list len elems)) elems_res
+        append instr (BMakeTensor (list len elems)) elems_res
       compile rexpr (EEinsum es subs)  locals   =
         es_res = compile rexpr list es locals
         append instr (BTensorEinsum subs) es_res
@@ -160,7 +152,7 @@ fn :: compile rexpr RExpr              [String] => [RInstr] [String]
       compile rexpr (EIndex base idxs) locals   =
         b_res = compile rexpr base locals
         i_res = compile rexpr list after idxs b_res
-        append instr (BTensorGet (rexpr list len idxs)) i_res
+        append instr (BTensorGet (list len idxs)) i_res
       compile rexpr (EIndexAssign target idxs val_e) locals =
         slot_res = ensure local locals target
         compile index assign bc slot_res idxs val_e
@@ -176,7 +168,7 @@ fn :: compile rexpr RExpr              [String] => [RInstr] [String]
         compile where body body w_res
       compile rexpr (EParPipe branches) locals  =
         b_res = compile rexpr list branches locals
-        append instr (BMakeTuple (rexpr list len branches)) b_res
+        append instr (BMakeTuple (list len branches)) b_res
       compile rexpr (EWithCtx ctx_name val_e body) locals =
         v_res = compile rexpr val_e locals
         v_push = append instr (BPushCtx ctx_name) v_res
@@ -200,7 +192,7 @@ fn :: compile index assign bc ([String], Int) [RExpr] RExpr => [RInstr] [String]
       compile index assign bc (locals1, slot) idxs val_e =
         i_res = compile rexpr list idxs locals1
         v_res = compile rexpr after val_e i_res
-        finish index assign bc slot (rexpr list len idxs) v_res
+        finish index assign bc slot (list len idxs) v_res
 
 fn :: finish index assign bc Int Int ([RInstr], [String]) => [RInstr] [String]
       finish index assign bc slot ndim (code, locals2) =
@@ -226,10 +218,6 @@ fn :: compile bin rhs RBinOp RExpr ([RInstr], [String]) => [RInstr] [String]
 fn :: merge bin code RInstr [RInstr] ([RInstr], [String]) => [RInstr] [String]
       merge bin code ins l_code (r_code, locals2) =
         (l_code :: r_code :: [ins], locals2)
-
-fn :: rexpr list len [RExpr] => Int
-      rexpr list len []      =  0
-      rexpr list len (_:xs)  =  1 + (rexpr list len xs)
 
 fn :: compile rexpr list [RExpr] [String] => [RInstr] [String]
       compile rexpr list []      locals   =  ([], locals)
@@ -318,7 +306,7 @@ fn :: compile guards [RGuard] [String] Int     => [RInstr]
 
 fn :: emit guard branch [RGuard] [String] Int ([RInstr], [String]) ([RInstr], [String]) => [RInstr]
       emit guard branch gs locals base_ip (c_code, _) (b_code, _) =
-        next_guard_ip = base_ip + (rinstr len c_code) + 1 + (rinstr len b_code) + 1
+        next_guard_ip = base_ip + (list len c_code) + 1 + (list len b_code) + 1
         this_guard = c_code :: [BJumpIfFalse next_guard_ip] :: b_code :: [BReturn]
         this_guard :: (compile guards gs locals next_guard_ip)
 
@@ -333,15 +321,15 @@ fn :: compile case inner [RPattern] [RGuard] RExpr [String] Int => [RInstr]
         finish case with body pats base_ip b_res
       compile case inner pats guards _ locals base_ip =
         p_pre = emit pat checks pats 0 0
-        g_code = compile guards guards locals (base_ip + (rinstr len p_pre))
-        fail_ip = base_ip + (rinstr len p_pre) + (rinstr len g_code)
+        g_code = compile guards guards locals (base_ip + (list len p_pre))
+        fail_ip = base_ip + (list len p_pre) + (list len g_code)
         p_checks = emit pat checks pats 0 fail_ip
         p_checks :: g_code
 
 fn :: finish case with body [RPattern] Int ([RInstr], [String]) => [RInstr]
       finish case with body pats base_ip (b_code, _) =
         p_pre = emit pat checks pats 0 0
-        fail_ip = base_ip + (rinstr len p_pre) + (rinstr len b_code) + 1
+        fail_ip = base_ip + (list len p_pre) + (list len b_code) + 1
         p_checks = emit pat checks pats 0 fail_ip
         p_checks :: b_code :: [BReturn]
 
@@ -349,7 +337,7 @@ fn :: compile cases seq [RFnCase] Int     => [RInstr]
       compile cases seq []        _       =  []
       compile cases seq (c:cs)    base_ip =
         c_code = compile single case c base_ip
-        next_ip = base_ip + (rinstr len c_code)
+        next_ip = base_ip + (list len c_code)
         c_code :: (compile cases seq cs next_ip)
 
 fn :: compile rfndef RFnDef => RCompiledFn
@@ -413,15 +401,11 @@ fn :: params has variadic [String] => Bool
 
 fn :: infer fndef arity [String] [RFnCase] => Int
       infer fndef arity params   ((FnCase ((PatSeqBind _):[]) _ _):_) = list str len params
-      infer fndef arity _        ((FnCase pats _ _):_) = pat list len pats
+      infer fndef arity _        ((FnCase pats _ _):_) = list len pats
       infer fndef arity params   []        =  list str len params
 
-fn :: rev cg sigs [RCgSig] [RCgSig] => [RCgSig]
-      rev cg sigs [] acc = acc
-      rev cg sigs (x:xs) acc = rev cg sigs xs ([x] :: acc)
-
 fn :: build cg sigs acc [RFnDef] [RCgSig] => [RCgSig]
-      build cg sigs acc []       acc      =  rev cg sigs acc []
+      build cg sigs acc []       acc      =  list reverse acc
       build cg sigs acc ((FnDef name params _ cases):fs) acc =
         build cg sigs acc fs ([CgSig name (infer fndef arity params cases) (params has variadic params)] :: acc)
 
@@ -498,7 +482,7 @@ fn :: is non tuple expr RExpr              => Bool
 fn :: prep call String [RExpr]         (Bool, Int, Bool) => RExpr
       prep call fname  args            (True, arity, True)
         | arity <= 1 = ECall fname [EList args]
-        | otherwise = ECall fname ((take exprs args (arity - 1)) :: [EList (drop exprs args (arity - 1))])
+        | otherwise = ECall fname ((list take args (arity - 1)) :: [EList (list drop args (arity - 1))])
       prep call fname  (single_arg:[]) (True, 2, False)
         | (not (is non tuple expr single_arg)) and (not (str starts with fname "__rg_lambda_")) =
           ECall "__unpack2__" [EVar fname, single_arg]
@@ -535,7 +519,7 @@ fn :: prep case list [RFnCase] RCgSigMap => [RFnCase]
         [FnCase pats (prep guard list guards case_sigs) (prep expr body case_sigs)] :: (prep case list cs sigs)
 
 fn :: prep fndef list acc [RFnDef] RCgSigMap [RFnDef] => [RFnDef]
-      prep fndef list acc []       _        acc      =  rev fndef list acc []
+      prep fndef list acc []       _        acc      =  list reverse acc
       prep fndef list acc ((FnDef name params ret_ty cases):fs) sigs acc =
         prep fndef list acc fs sigs ([FnDef name params ret_ty (prep case list cases sigs)] :: acc)
 
@@ -636,7 +620,7 @@ fn :: inline leaf call String [RExpr] (Bool, [String], RExpr) => RExpr
 fn :: inline leaf call check String [RExpr] [RInlineExprEntry] => RExpr
       inline leaf call check fname args1 tbl
         | all simple inline args args1 =
-          inline leaf call fname args1 (lookup inline expr tbl fname (rexpr list len args1))
+          inline leaf call fname args1 (lookup inline expr tbl fname (list len args1))
         | otherwise = ECall fname args1
 
 fn :: inline leaf expr RExpr              [RInlineExprEntry] => RExpr
@@ -744,7 +728,7 @@ fn :: collect inline local vars [RStmt] [String] => [String]
 
 fn :: rename inline expr RExpr [String] String => RExpr
       rename inline expr (EVar v) local_vars prefix
-        | str in list v local_vars = EVar (prefix + v)
+        | list contains local_vars v = EVar (prefix + v)
         | otherwise = EVar v
       rename inline expr (ENot a) local_vars prefix =
         ENot (rename inline expr a local_vars prefix)
@@ -779,7 +763,7 @@ fn :: build inline unpack assigns [RStmt] [RExpr] [String] String => [RStmt]
 
 fn :: try expand inline tuple String String [RExpr] [RStmt] (Bool, [String], [RStmt], [RExpr]) [RInlineTupleEntry] => [RStmt]
       try expand inline tuple tmp_name fname args rest (True, pnames, init_stmts, ret_es) tbl =
-        finish expand inline tuple tmp_name fname args rest pnames init_stmts ret_es (match tup unpack stmts rest tmp_name 0 (rexpr list len ret_es) []) tbl
+        finish expand inline tuple tmp_name fname args rest pnames init_stmts ret_es (match tup unpack stmts rest tmp_name 0 (list len ret_es) []) tbl
       try expand inline tuple tmp_name fname args rest _ tbl =
         [StmtMut tmp_name (ECall fname args)] :: (inline tuple stmt list rest tbl)
 
@@ -806,7 +790,7 @@ fn :: inline tuple stmt list [RStmt] [RInlineTupleEntry] => [RStmt]
       inline tuple stmt list [] _ = []
       inline tuple stmt list ((StmtMut tmp_name (ECall fname args)):rest) tbl
         | (str starts with tmp_name ":tup-") or (str starts with tmp_name ":idx-tup-") =
-          try expand inline tuple tmp_name fname args rest (lookup inline tuple tbl fname (rexpr list len args)) tbl
+          try expand inline tuple tmp_name fname args rest (lookup inline tuple tbl fname (list len args)) tbl
       inline tuple stmt list ((StmtLet v e):ss) tbl =
         [StmtLet v (inline tuple expr e tbl)] :: (inline tuple stmt list ss tbl)
       inline tuple stmt list ((StmtMut v e):ss) tbl =
@@ -884,11 +868,6 @@ fn :: nc emit list RNativeCode [RNativeInstr] Int => RNativeCode
 
 -- ── String Pool (.rodata) Collection & Interning ─────────────
 
-fn :: join comma [String] => String
-      join comma []       =  ""
-      join comma (s:[])   =  s
-      join comma (s:ss)   =  s + "," + (join comma ss)
-
 fn :: pool add str String RStrPoolAcc => RStrPoolAcc
       pool add str s (StrPoolAcc seen rev_list)
         | str set has seen s = StrPoolAcc seen rev_list
@@ -928,7 +907,7 @@ fn :: collect expr strs RExpr              RStrPoolAcc => RStrPoolAcc
       collect expr strs (EList elems)      acc      =  collect expr list strs elems acc
       collect expr strs (ETuple elems)     acc      =  collect expr list strs elems acc
       collect expr strs (ETensor elems)    acc      =  collect expr list strs elems acc
-      collect expr strs (EEinsum es subs)  acc      =  collect expr list strs es (pool add str (join comma subs) acc)
+      collect expr strs (EEinsum es subs)  acc      =  collect expr list strs es (pool add str (str join subs ",") acc)
       collect expr strs (EHadamard _ l s1 r s2) acc =  collect expr strs r (collect expr strs l (pool add str (s1 + "," + s2) acc))
       collect expr strs (EIndex base idxs) acc      =  collect expr list strs idxs (collect expr strs base acc)
       collect expr strs (EIndexAssign _ idxs v) acc =  collect expr strs v (collect expr list strs idxs acc)
@@ -1047,18 +1026,14 @@ fn :: build field cg sigs [RFieldEntry] RStrSet => [RCgSig]
         | str set has fn_name_set fname = build field cg sigs rest fn_name_set
         | otherwise = [CgSig fname 1 False] :: (build field cg sigs rest fn_name_set)
 
-fn :: rev fn entries [RFnEntry] [RFnEntry] => [RFnEntry]
-      rev fn entries [] acc = acc
-      rev fn entries (x:xs) acc = rev fn entries xs ([x] :: acc)
-
 fn :: build fn table fndefs [RFnDef] Int [RFnEntry] => [RFnEntry]
-      build fn table fndefs [] _ acc = rev fn entries acc []
+      build fn table fndefs [] _ acc = list reverse acc
       build fn table fndefs ((FnDef name params _ cases):fs) next_fid acc =
         arity = infer fndef arity params cases
         build fn table fndefs fs (next_fid + 1) ([FnEntry name next_fid arity] :: acc)
 
 fn :: build fn table fields [RFieldEntry] RStrSet Int [RFnEntry] => [RFnEntry]
-      build fn table fields [] _ _ acc = rev fn entries acc []
+      build fn table fields [] _ _ acc = list reverse acc
       build fn table fields ((FieldEntry fname _):rest) fn_name_set next_fid acc
         | str set has fn_name_set fname = build fn table fields rest fn_name_set next_fid acc
         | otherwise = build fn table fields rest fn_name_set (next_fid + 1) ([FnEntry fname next_fid 1] :: acc)
@@ -1337,13 +1312,13 @@ fn :: cmm where vars [RWhereBind] RExpr [String] => [String]
 fn :: cmm filter in list [String] [String] => [String]
       cmm filter in list [] _ = []
       cmm filter in list (x:xs) allowed
-        | x != "_" and (str in list x allowed) = [x] :: (cmm filter in list xs allowed)
+        | x != "_" and (list contains allowed x) = [x] :: (cmm filter in list xs allowed)
         | otherwise = cmm filter in list xs allowed
 
 fn :: cmm filter not in list [String] [String] => [String]
       cmm filter not in list [] _ = []
       cmm filter not in list (x:xs) excluded
-        | x != "_" and (not (str in list x excluded)) = [x] :: (cmm filter not in list xs excluded)
+        | x != "_" and (not (list contains excluded x)) = [x] :: (cmm filter not in list xs excluded)
         | otherwise = cmm filter not in list xs excluded
 
 fn :: cmm remove str String [String] => [String]
@@ -1554,7 +1529,7 @@ fn :: lower cmm drops RNativeEnv [String] Int RNativeCode => RNativeCode
 
 fn :: lower unused let drop RNativeEnv String [String] Int RNativeCode => RNativeCode
       lower unused let drop env v live_after used_sp st
-        | str in list v live_after = st
+        | list contains live_after v = st
         | otherwise = nc emit st (NCmmDropSlot (env var slot env v)) used_sp
 
 fn :: lower let var store RNativeEnv String [String] Int RNativeCode => RNativeCode
@@ -1679,7 +1654,7 @@ fn :: prim type tag id String       => Int
       prim type tag id _            =  0
 
 fn :: is gt pseudo name String => Bool
-      is gt pseudo name n =  str in list n ["__rg_gt_is_gen", "__rg_gt_is_list", "__rg_gt_len", "__rg_gt_tlen", "__rg_gt_real_bits", "__rg_gt_list_copy", "__rg_gt_list_tensor", "__rg_gt_tensor_ints", "__rg_gt_tensor_reals", "__rg_gt_repeat", ":gt-new:", ":tensor-with:", ":msg-copy:", "tensor_from_list", "tensor_to_list", "sort_by_ints", "sort_by_texts"]
+      is gt pseudo name n =  list contains ["__rg_gt_is_gen", "__rg_gt_is_list", "__rg_gt_len", "__rg_gt_tlen", "__rg_gt_real_bits", "__rg_gt_list_copy", "__rg_gt_list_tensor", "__rg_gt_tensor_ints", "__rg_gt_tensor_reals", "__rg_gt_repeat", ":gt-new:", ":tensor-with:", ":msg-copy:", "tensor_from_list", "tensor_to_list", "sort_by_ints", "sort_by_texts"] n
 
 fn :: is tensor helper name String             => Bool
       is tensor helper name ":tensor-zeros:"   =  True
@@ -1769,7 +1744,7 @@ fn :: store back mutated tensor RNativeEnv RExpr [String] Int Int RNativeCode =>
 fn :: lower tensor helper RNativeEnv String [RExpr] [String] Int RNativeCode => RNativeCode
       lower tensor helper env ":typed-tensor:" ((EStr ty):(ECall f args):_) boundLocals sp st
         | (is u8 elem name ty) and (f == ":tensor-zeros:" or f == ":tensor-with:") =
-          count = rexpr list len args
+          count = list len args
           st1 = lower expr list to slots env args boundLocals sp 0 st
           nc emit st1 (NCallBuiltin 104 sp count) (sp + count + 1)
       lower tensor helper env ":typed-tensor:" (_:inner:_) boundLocals sp st =
@@ -2156,7 +2131,7 @@ fn :: lower plain indirect call RNativeEnv Int [RExpr] [String] Int RNativeCode 
         st1 = lower expr list to slots env [a1, a2] bound_locals sp 0 st
         nc emit st1 (NCallIndirect2 fn_slot sp) (sp + 2)
       lower plain indirect call env fn_slot (a1:rest) bound_locals sp st =
-        rem_count = rexpr list len rest
+        rem_count = list len rest
         st1 = lower expr env a1 bound_locals sp st
         st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
         st3 = lower expr list to slots env rest bound_locals (sp + 1) 0 st2
@@ -2167,7 +2142,7 @@ fn :: lower indirect call slots RNativeEnv Int [RExpr] [String] Int RNativeCode 
       lower indirect call slots _ fn_slot [] _ sp st =
         nc emit st (NCloneSlot fn_slot) sp
       lower indirect call slots env fn_slot args bound_locals sp st =
-        count = rexpr list len args
+        count = list len args
         plain_lbl = nc lbl st
         done_lbl = plain_lbl + 1
         st0 = nc set lbl st (plain_lbl + 2)
@@ -2210,7 +2185,7 @@ fn :: lower map or closure map RNativeEnv String [RExpr] [String] Int RNativeCod
         ins_clos = [NMatchTuple sp 2, NJumpIfZero plain_lbl, NMakeList (sp + 2) 0, NStoreSlot (sp + 2), NLabel loop_lbl, NMatchNonEmpty (sp + 1), NJumpIfZero done_lbl, NTupleGet sp 0, NStoreSlot (sp + 3), NTupleGet sp 1, NStoreSlot (sp + 4), NListHead (sp + 1), NStoreSlot (sp + 5), NMakeList (sp + 5) 1, NBinOp 14 (sp + 4), NStoreSlot (sp + 4), NListHead (sp + 4), NStoreSlot (sp + 5), NListTail (sp + 4), NStoreSlot (sp + 6), NMoveSlot (sp + 5), NStoreSlot (sp + 4), NMoveSlot (sp + 6), NStoreSlot (sp + 5), NCallIndirect2 (sp + 3) (sp + 4), NStoreSlot (sp + 5), NMakeList (sp + 5) 1, NBinOp 14 (sp + 2), NStoreSlot (sp + 2), NListTail (sp + 1), NStoreSlot (sp + 1), NJump loop_lbl, NLabel done_lbl, NClearLocals sp (sp + 2), NClearLocals (sp + 3) (sp + 7), NMoveSlot (sp + 2), NJump after_lbl, NLabel plain_lbl, NCallBuiltin bid sp 2, NLabel after_lbl]
         nc emit list st1 ins_clos (sp + 7)
       lower map or closure map env fname args bound_locals sp st =
-        count = rexpr list len args
+        count = list len args
         bid = select par collection builtin env fname args bound_locals
         st1 = lower expr list to slots env args bound_locals sp 0 st
         nc emit st1 (NCallBuiltin bid sp count) (sp + count + 1)
@@ -2252,7 +2227,7 @@ fn :: lower filter or closure filter RNativeEnv String [RExpr] [String] Int RNat
         ins_clos = [NMatchTuple sp 2, NJumpIfZero plain_lbl, NMakeList (sp + 2) 0, NStoreSlot (sp + 2), NLabel loop_lbl, NMatchNonEmpty (sp + 1), NJumpIfZero done_lbl, NTupleGet sp 0, NStoreSlot (sp + 3), NTupleGet sp 1, NStoreSlot (sp + 4), NListHead (sp + 1), NStoreSlot (sp + 5), NMakeList (sp + 5) 1, NBinOp 14 (sp + 4), NStoreSlot (sp + 4), NListHead (sp + 4), NStoreSlot (sp + 5), NListTail (sp + 4), NStoreSlot (sp + 6), NMoveSlot (sp + 5), NStoreSlot (sp + 4), NMoveSlot (sp + 6), NStoreSlot (sp + 5), NCallIndirect2 (sp + 3) (sp + 4), NAsBool, NJumpIfZero skip_lbl, NListHead (sp + 1), NStoreSlot (sp + 5), NMakeList (sp + 5) 1, NBinOp 14 (sp + 2), NStoreSlot (sp + 2), NLabel skip_lbl, NListTail (sp + 1), NStoreSlot (sp + 1), NJump loop_lbl, NLabel done_lbl, NClearLocals sp (sp + 2), NClearLocals (sp + 3) (sp + 7), NMoveSlot (sp + 2), NJump after_lbl, NLabel plain_lbl, NCallBuiltin bid sp 2, NLabel after_lbl]
         nc emit list st1 ins_clos (sp + 7)
       lower filter or closure filter env fname args bound_locals sp st =
-        count = rexpr list len args
+        count = list len args
         bid = select par collection builtin env fname args bound_locals
         st1 = lower expr list to slots env args bound_locals sp 0 st
         nc emit st1 (NCallBuiltin bid sp count) (sp + count + 1)
@@ -2277,7 +2252,7 @@ fn :: lower fold or closure fold RNativeEnv [RExpr] [String] Int RNativeCode => 
         ins_clos = [NMatchTuple sp 2, NJumpIfZero plain_lbl, NLabel loop_lbl, NMatchNonEmpty (sp + 2), NJumpIfZero done_lbl, NTupleGet sp 0, NStoreSlot (sp + 3), NTupleGet sp 1, NStoreSlot (sp + 4), NMoveSlot (sp + 1), NStoreSlot (sp + 5), NListHead (sp + 2), NStoreSlot (sp + 6), NMakeList (sp + 5) 2, NBinOp 14 (sp + 4), NStoreSlot (sp + 4), NListHead (sp + 4), NStoreSlot (sp + 5), NListTail (sp + 4), NStoreSlot (sp + 6), NMoveSlot (sp + 5), NStoreSlot (sp + 4), NMoveSlot (sp + 6), NStoreSlot (sp + 5), NCallIndirect2 (sp + 3) (sp + 4), NStoreSlot (sp + 1), NListTail (sp + 2), NStoreSlot (sp + 2), NJump loop_lbl, NLabel done_lbl, NCmmDropSlot sp, NClearLocals (sp + 2) (sp + 7), NMoveSlot (sp + 1), NJump after_lbl, NLabel plain_lbl, NCallBuiltin 61 sp 3, NLabel after_lbl]
         nc emit list st1 ins_clos (sp + 7)
       lower fold or closure fold env args bound_locals sp st =
-        count = rexpr list len args
+        count = list len args
         st1 = lower expr list to slots env args bound_locals sp 0 st
         nc emit st1 (NCallBuiltin 61 sp count) (sp + count + 1)
 
@@ -2392,16 +2367,12 @@ fn :: borrow param ok [RFnCase] Int => Bool
 
 fn :: borrow cases shape ok [RFnCase] Int => Bool
       borrow cases shape ok [] _ = True
-      borrow cases shape ok ((FnCase pats _ _):cs) arity = ((rpat list len pats) == arity) and (not (borrow has seq bind pats)) and (borrow cases shape ok cs arity)
+      borrow cases shape ok ((FnCase pats _ _):cs) arity = ((list len pats) == arity) and (not (borrow has seq bind pats)) and (borrow cases shape ok cs arity)
 
 fn :: borrow has seq bind [RPattern] => Bool
       borrow has seq bind [] = False
       borrow has seq bind ((PatSeqBind _):_) = True
       borrow has seq bind (_:ps) = borrow has seq bind ps
-
-fn :: rpat list len [RPattern] => Int
-      rpat list len [] = 0
-      rpat list len (_:ps) = 1 + (rpat list len ps)
 
 fn :: borrow mask of [RFnCase] Int Int Int => Int
       borrow mask of cases i arity acc
@@ -2416,7 +2387,7 @@ fn :: fn borrow mask String [RFnCase] RStrSet RStrIntMap => Int
         | is overloadable binop name name = 0
         | (str int map lookup ar_map name) < 1 or (str int map lookup ar_map name) > 20 = 0
         | not (borrow cases shape ok cases (str int map lookup ar_map name)) = 0
-        | str in list name (collect refs cases cases []) = 0
+        | list contains (collect refs cases cases []) name = 0
         | otherwise = borrow mask of cases 0 (str int map lookup ar_map name) 0
 
 fn :: put borrow mask RStrIntMap String Int => RStrIntMap
@@ -2497,16 +2468,16 @@ fn :: lower call expr RNativeEnv String [RExpr] [String] Int RNativeCode => RNat
         | (prim type tag id fname) > 0 =
           lower expr env a1 bound_locals sp st
       lower call expr env fname (rec_e:call_args) bound_locals sp st
-        | (env has field env fname) and (env fn arity env fname) == 1 and (rexpr list len call_args) >= 1 =
+        | (env has field env fname) and (env fn arity env fname) == 1 and (list len call_args) >= 1 =
           fidx = env field idx env fname
           st1 = lower expr env rec_e bound_locals sp st
           st2 = nc emit list st1 [NStoreSlot sp, NAdtField sp fidx, NStoreSlot sp] (sp + 1)
           lower indirect call slots env sp call_args bound_locals (sp + 1) st2
-        | (env has field env fname) and (env is getter env fname) and (rexpr list len call_args) == 0 =
+        | (env has field env fname) and (env is getter env fname) and (list len call_args) == 0 =
           lower field read env (env field idx env fname) rec_e bound_locals sp st
       lower call expr env fname args bound_locals sp st
         | is upper ident fname =
-          count = rexpr list len args
+          count = list len args
           c_tag = ident base name fname
           off = env str off env c_tag
           slen = str len c_tag
@@ -2542,19 +2513,19 @@ fn :: lower call expr RNativeEnv String [RExpr] [String] Int RNativeCode => RNat
           pargs = pad syscall args args
           st1 = lower expr list to slots env pargs bound_locals sp 0 st
           nc emit st1 (NCallBuiltin 116 sp 7) (sp + 8)
-        | (builtin call id fname) >= 0 and (not ((is wrapable builtin fn fname) and (rexpr list len args) > 0 and (rexpr list len args) < (std builtin arity fname))) =
-          count = rexpr list len args
+        | (builtin call id fname) >= 0 and (not ((is wrapable builtin fn fname) and (list len args) > 0 and (list len args) < (std builtin arity fname))) =
+          count = list len args
           bid = select par collection builtin env fname args bound_locals
           st1 = lower expr list to slots env args bound_locals sp 0 st
           nc emit st1 (NCallBuiltin bid sp count) (sp + count + 1)
         | otherwise =
-          count = rexpr list len args
+          count = list len args
           fn_ar = env fn arity env fname
           lower direct or partial call env fname args count fn_ar bound_locals sp st
 
 fn :: pad syscall args [RExpr] => [RExpr]
       pad syscall args args
-        | (rexpr list len args) >= 7 = args
+        | (list len args) >= 7 = args
         | otherwise = pad syscall args (args :: [EInt 0])
 
 fn :: build tuple unpack instrs Int Int Int => [RNativeInstr]
@@ -2581,7 +2552,7 @@ fn :: lower expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
         nc emit st (NLoadStrLit off (str len s)) sp
       lower expr env (EStrInterp raw_parts) bound_locals sp st =
         parts = show tensor expr list env raw_parts
-        count = rexpr list len parts
+        count = list len parts
         st1 = lower expr list to slots env parts bound_locals sp 0 st
         nc emit st1 (NStrInterp sp count) (sp + count + 1)
       lower expr _ (EBool True) _ sp st =
@@ -2673,27 +2644,27 @@ fn :: lower expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
         lower call expr env fname args bound_locals sp st
       lower expr env (EEcho raw_args) bound_locals sp st =
         args = show tensor expr list env raw_args
-        count = rexpr list len args
+        count = list len args
         st1 = lower expr list to slots env args bound_locals sp 0 st
         nc emit st1 (NEcho sp count) (sp + count + 1)
       lower expr env (EList elems) bound_locals sp st =
-        count = rexpr list len elems
+        count = list len elems
         st1 = lower expr list to slots env elems bound_locals sp 0 st
         nc emit st1 (NMakeList sp count) (sp + count + 1)
       lower expr env (ETuple elems) bound_locals sp st =
-        count = rexpr list len elems
+        count = list len elems
         st1 = lower expr list to slots env elems bound_locals sp 0 st
         nc emit st1 (NMakeTuple sp count) (sp + count + 1)
       lower expr env (ETensor raw_elems) bound_locals sp st =
         elems = real bits leaves raw_elems
-        count = rexpr list len elems
+        count = list len elems
         st1 = lower expr list to slots env elems bound_locals sp 0 st
         nc emit st1 (NMakeTensor sp count) (sp + count + 1)
       lower expr env (EEinsum es subs) bound_locals sp st
         | all real operands env es = lower real einsum env es subs bound_locals sp st
         | otherwise =
-          count = rexpr list len es
-          spec = join comma subs
+          count = list len es
+          spec = str join subs ","
           off = env str off env spec
           st1 = lower expr list to slots env es bound_locals sp 0 st
           nc emit st1 (NEinsum sp count off (str len spec)) (sp + count + 1)
@@ -2715,7 +2686,7 @@ fn :: lower expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
       lower expr env (EIndex base idxs) bound_locals sp st =
         lower base index read env base idxs bound_locals sp st
       lower expr env (EIndexAssign target idxs val_e) bound_locals sp st =
-        count = rexpr list len idxs
+        count = list len idxs
         tslot = env var slot env target
         st1 = lower expr list to slots env idxs bound_locals sp 0 st
         st2 = lower expr env val_e bound_locals (sp + count) st1
@@ -2733,15 +2704,15 @@ fn :: lower expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
       lower expr env (EWhere body binds) bound_locals sp st =
         lower where cmm env binds body bound_locals [] sp st
       lower expr env (EParPipe branches) bound_locals sp st
-        | (rexpr list len branches) >= 2 and (all exprs par eval env branches bound_locals) =
-          count = rexpr list len branches
+        | (list len branches) >= 2 and (all exprs par eval env branches bound_locals) =
+          count = list len branches
           par_off = env str off env "__rg_par_eval__"
           st1 = lower par eval list env branches bound_locals sp 0 st
           st2 = nc emit list st1 [NMakeList sp count, NStoreSlot (sp + 1), NLoadStrLit par_off 15, NStoreSlot sp, NCallBuiltin 54 sp 2, NStoreSlot sp] (sp + count + 2)
           st3 = unpack par list to slots sp count 0 st2
           nc emit list st3 [NClearLocals sp (sp + 1), NMakeTuple (sp + 1) count] (sp + count + 2)
         | otherwise =
-          count = rexpr list len branches
+          count = list len branches
           st1 = lower expr list to slots env branches bound_locals sp 0 st
           nc emit st1 (NMakeTuple sp count) (sp + count + 1)
       lower expr env (EWithCtx _ val_e body) bound_locals sp st =
@@ -2797,7 +2768,7 @@ fn :: lower stmts cmm RNativeEnv [RStmt] [String] [String] Int RNativeCode => RN
         used = cmm filter in list (cmm expr vars e []) scope_vars
         lower final block expr env e bound_locals used sp st
       lower stmts cmm env ((StmtIndexAssign t idxs e):[]) bound_locals scope_vars sp st =
-        count = rexpr list len idxs
+        count = list len idxs
         tslot = env var slot env t
         st1 = lower expr list to slots env idxs bound_locals sp 0 st
         st2 = lower expr env e bound_locals (sp + count) st1
@@ -2836,7 +2807,7 @@ fn :: lower stmts cmm RNativeEnv [RStmt] [String] [String] Int RNativeCode => RN
         used_in_e = cmm filter in list (cmm expr vars e (cmm expr list vars idxs [])) scope_vars
         live_after = add unique str t (cmm stmts vars rest [])
         dead_now = cmm filter not in list used_in_e live_after
-        count = rexpr list len idxs
+        count = list len idxs
         tslot = env var slot env t
         st1 = lower expr list to slots env idxs bound_locals sp 0 st
         st2 = lower expr env e bound_locals (sp + count) st1
@@ -2855,7 +2826,7 @@ fn :: lower stmts cmm RNativeEnv [RStmt] [String] [String] Int RNativeCode => RN
 fn :: can par eval expr RNativeEnv RExpr [String] => Bool
       can par eval expr env (ECall fname args) bound_locals =
         arity = env fn arity env fname
-        nargs = rexpr list len args
+        nargs = list len args
         (lookup local bound_locals fname) < 0 and (not (is upper ident fname)) and (builtin call id fname) < 0 and (not (is agent call name fname)) and fname != "sys_os" and fname != "sys_arch" and fname != "__record_update__" and fname != "__unpack2__" and arity >= 0 and arity <= 3 and nargs == arity and (env fn is heavy env fname)
       can par eval expr _ _ _ = False
 
@@ -2872,7 +2843,7 @@ fn :: lower par eval arg RNativeEnv [RExpr] [String] Int RNativeCode => RNativeC
         st1 = lower expr env a1 bound_locals slot st
         nc emit st1 (NStoreSlot slot) (slot + 1)
       lower par eval arg env args bound_locals slot st =
-        count = rexpr list len args
+        count = list len args
         st1 = lower expr list to slots env args bound_locals slot 0 st
         nc emit list st1 [NMakeTuple slot count, NStoreSlot slot] (slot + count + 1)
 
@@ -2900,7 +2871,7 @@ fn :: unpack par list to slots Int Int Int RNativeCode => RNativeCode
 
 fn :: can par where pair RNativeEnv RExpr String RExpr String [String] => Bool
       can par where pair env e1 v1 e2 v2 bound_locals =
-        v1 != "_" and v2 != "_" and v1 != v2 and (can par eval expr env e1 bound_locals) and (can par eval expr env e2 bound_locals) and (not (str in list v1 (cmm expr vars e2 [])))
+        v1 != "_" and v2 != "_" and v1 != v2 and (can par eval expr env e1 bound_locals) and (can par eval expr env e2 bound_locals) and (not (list contains (cmm expr vars e2 []) v1))
 
 fn :: emit par where pair RNativeEnv RExpr String RExpr String [RWhereBind] RExpr [String] [String] Int RNativeCode => RNativeCode
       emit par where pair env e1 v1 e2 v2 wbs body bound_locals scope_vars sp st =
@@ -2941,7 +2912,7 @@ fn :: lower where cmm RNativeEnv [RWhereBind] RExpr [String] [String] Int RNativ
         st4 = lower unused let drop env v live_after sp st3
         lower where cmm env wbs body (add unique str v bound_locals) (add unique str v scope_vars) sp st4
       lower where cmm env ((WhereBind e v idxs):wbs) body bound_locals scope_vars sp st =
-        count = int list len idxs
+        count = list len idxs
         tslot = env var slot env v
         st1 = lower int list to slots idxs sp 0 st
         st2 = lower expr env e bound_locals (sp + count) st1
@@ -2990,7 +2961,7 @@ fn :: guards have direct tail call RNativeEnv [RGuard] [String] => Bool
 
 fn :: can move param var String [String] [String] [String] => Bool
       can move param var v locals scope_vars later_vars =
-        ((lookup local locals v) >= 0) and (not (str in list v scope_vars)) and (not (str in list v later_vars))
+        ((lookup local locals v) >= 0) and (not (list contains scope_vars v)) and (not (list contains later_vars v))
 
 -- A call to a user function with all its arguments (no builtin, constructor,
 -- agent, tensor helper, record getter with extra arguments, local function
@@ -2998,7 +2969,7 @@ fn :: can move param var String [String] [String] [String] => Bool
 -- position as `NTailCallFn` (OPT-019).
 fn :: is plain call target RNativeEnv String [RExpr] [String] => Bool
       is plain call target env fname args bound_locals =
-        (lookup local bound_locals fname) < 0 and (not (is upper ident fname)) and (builtin call id fname) < 0 and (not (is agent call name fname)) and (not (is tensor helper name fname)) and (not (is gt pseudo name fname)) and fname != "sys_os" and fname != "sys_arch" and fname != "__record_update__" and fname != "__unpack2__" and fname != "__chain__" and (rexpr list len args) == (env fn arity env fname) and (not ((env has field env fname) and (env fn arity env fname) == 1 and (rexpr list len args) > 1))
+        (lookup local bound_locals fname) < 0 and (not (is upper ident fname)) and (builtin call id fname) < 0 and (not (is agent call name fname)) and (not (is tensor helper name fname)) and (not (is gt pseudo name fname)) and fname != "sys_os" and fname != "sys_arch" and fname != "__record_update__" and fname != "__unpack2__" and fname != "__chain__" and (list len args) == (env fn arity env fname) and (not ((env has field env fname) and (env fn arity env fname) == 1 and (list len args) > 1))
 
 fn :: is direct call target RNativeEnv String [RExpr] [String] => Bool
       is direct call target env fname args bound_locals =
@@ -3027,12 +2998,12 @@ fn :: lower tco arg expr RNativeEnv RExpr [RExpr] [String] [String] Int RNativeC
           st4 = nc set lbl st3 (done_lbl + 1)
           nc emit list st4 [NStoreSlot (sp + 1), NCallBuiltin 121 sp 2, NJumpIfNonZero done_lbl, NMoveSlot (sp + 1), NBinOp (binop id OpAdd) sp, NLabel done_lbl] (sp + 2)
       lower tco arg expr env (ETuple elems) es bound_locals scope_vars sp st =
-        count = rexpr list len elems
+        count = list len elems
         st1 = lower tco arg list to slots env elems es bound_locals scope_vars sp 0 st
         nc emit st1 (NMakeTuple sp count) (sp + count + 1)
       lower tco arg expr env (ECall fname args) es bound_locals scope_vars sp st
         | is direct call target env fname args bound_locals =
-          count = rexpr list len args
+          count = list len args
           st1 = lower tco arg list to slots env args es bound_locals scope_vars sp 0 st
           nc emit st1 (NCallFn (env fn id env fname) sp count) (sp + count + 1)
         | is borrow call target env fname args bound_locals =
@@ -3060,7 +3031,7 @@ fn :: str add chain RNativeEnv RExpr => Bool
 -- a later use and is never moved by them.
 fn :: lower tco borrow call RNativeEnv String [RExpr] [RExpr] [String] [String] Int RNativeCode => RNativeCode
       lower tco borrow call env fname args after bound_locals scope_vars sp st =
-        count = rexpr list len args
+        count = list len args
         mask = env borrow mask env fname
         top = sp + (2 * count) + 1
         peeked = borrow peeked args args mask bound_locals 0 []
@@ -3108,14 +3079,14 @@ fn :: env is param RNativeEnv String => Bool
 fn :: tco deferred vars RNativeEnv [RExpr] [String] [String] [String] => [String]
       tco deferred vars _ [] _ _ acc = acc
       tco deferred vars env ((EVar v):es) locals scope_vars acc
-        | (lookup local locals v) >= 0 and (env is param env v) and (not (str in list v scope_vars)) and (not (str in list v acc)) and (str in list v (cmm expr list vars es [])) =
+        | (lookup local locals v) >= 0 and (env is param env v) and (not (list contains scope_vars v)) and (not (list contains acc v)) and (list contains (cmm expr list vars es []) v) =
           tco deferred vars env es locals scope_vars (acc :: [v])
       tco deferred vars env (_:es) locals scope_vars acc =
         tco deferred vars env es locals scope_vars acc
 
 fn :: tco deferred arg RExpr [String] [String] => String
       tco deferred arg (EVar v) deferred seen
-        | (str in list v deferred) and (not (str in list v seen)) = v
+        | (list contains deferred v) and (not (list contains seen v)) = v
       tco deferred arg _ _ _ = ""
 
 fn :: lower tco args deferred RNativeEnv [RExpr] [String] [String] [String] [String] Int Int RNativeCode => RNativeCode
@@ -3145,7 +3116,7 @@ fn :: lower tail return RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
 
 fn :: lower tail return cmm RNativeEnv RExpr [String] [String] Int RNativeCode => RNativeCode
       lower tail return cmm env (ECall fname args) bound_locals scope_vars sp st
-        | (builtin call id fname) < 0 and fname == (env fn name env) and (rexpr list len args) == (env arity env) and (lookup local bound_locals fname) < 0 =
+        | (builtin call id fname) < 0 and fname == (env fn name env) and (list len args) == (env arity env) and (lookup local bound_locals fname) < 0 =
           arity = env arity env
           deferred = tco deferred vars env args bound_locals scope_vars []
           st0 = lower tco args deferred env args deferred [] bound_locals scope_vars sp 0 st
@@ -3169,7 +3140,7 @@ fn :: lower tail return cmm RNativeEnv RExpr [String] [String] Int RNativeCode =
 fn :: lower tail return expr RNativeEnv RExpr [String] [String] [String] Int RNativeCode => RNativeCode
       lower tail return expr env (ECall fname args) bound_locals scope_vars used sp st
         | is direct call target env fname args bound_locals =
-          count = rexpr list len args
+          count = list len args
           st1 = lower tco arg list to slots env args [] bound_locals scope_vars sp 0 st
           st2 = lower cmm drops env used (sp + count + 1) st1
           nc emit st2 (NTailCallFn (env fn id env fname) sp count 0) (sp + count + 1)
@@ -3226,7 +3197,7 @@ fn :: lower tail stmts cmm RNativeEnv [RStmt] [String] [String] Int RNativeCode 
       lower tail stmts cmm env ((StmtMut v e):rest) bound_locals scope_vars sp st =
         lower tail let stmt env v e bound_locals scope_vars rest sp st
       lower tail stmts cmm env ((StmtIndexAssign t idxs e):[]) bound_locals scope_vars sp st =
-        count = rexpr list len idxs
+        count = list len idxs
         tslot = env var slot env t
         st1 = lower expr list to slots env idxs bound_locals sp 0 st
         st2 = lower expr env e bound_locals (sp + count) st1
@@ -3237,7 +3208,7 @@ fn :: lower tail stmts cmm RNativeEnv [RStmt] [String] [String] Int RNativeCode 
         used_in_e = cmm filter in list (cmm expr vars e (cmm expr list vars idxs [])) scope_vars
         live_after = add unique str t (cmm stmts vars rest [])
         dead_now = cmm filter not in list used_in_e live_after
-        count = rexpr list len idxs
+        count = list len idxs
         tslot = env var slot env t
         st1 = lower expr list to slots env idxs bound_locals sp 0 st
         st2 = lower expr env e bound_locals (sp + count) st1
@@ -3273,7 +3244,7 @@ fn :: lower tail where cmm RNativeEnv [RWhereBind] RExpr [String] [String] Int R
         st4 = lower unused let drop env v live_after sp st3
         lower tail where cmm env wbs body (add unique str v bound_locals) (add unique str v scope_vars) sp st4
       lower tail where cmm env ((WhereBind e v idxs):wbs) body bound_locals scope_vars sp st =
-        count = int list len idxs
+        count = list len idxs
         tslot = env var slot env v
         st1 = lower int list to slots idxs sp 0 st
         st2 = lower expr env e bound_locals (sp + count) st1
@@ -3330,7 +3301,7 @@ fn :: lower pat cond RNativeEnv RPattern Int Int Int RNativeCode => RNativeCode
         st2 = lower pat cons sub env h slot True fail_lbl sp st1
         lower pat cons sub env t slot False fail_lbl sp st2
       lower pat cond env (PatTuple ps) slot fail_lbl sp st =
-        arity = pat list len ps
+        arity = list len ps
         st1 = nc emit list st [NMatchTuple slot arity, NJumpIfZero fail_lbl] sp
         lower tuple pat conds env ps slot 0 fail_lbl sp st1
       lower pat cond env (PatCtor ":tensor-pat:" (t_pat:rank_pat:dim_pats)) slot fail_lbl sp st =
@@ -3340,7 +3311,7 @@ fn :: lower pat cond RNativeEnv RPattern Int Int Int RNativeCode => RNativeCode
           st1 = nc emit list st [NMatchAdt slot 0 0 (0 - (prim type tag id c)), NJumpIfZero fail_lbl] sp
           lower pat cond env sub_p slot fail_lbl sp st1
       lower pat cond env (PatCtor c args) slot fail_lbl sp st =
-        arity = pat list len args
+        arity = list len args
         c_tag = ident base name c
         off = env str off env c_tag
         st1 = nc emit list st [NMatchAdt slot off (str len c_tag) arity, NJumpIfZero fail_lbl] sp
@@ -3663,7 +3634,7 @@ fn :: wrap unit return guards String RStrIntMap [RGuard] => [RGuard]
 fn :: unit tail call ok String RStrIntMap RExpr => Bool
       unit tail call ok name units (ECall fname args)
         | fname == name = True
-        | otherwise = (str int map lookup units ("#u " + fname)) == 1 and (str int map lookup units fname) == (rexpr list len args) and (not (is agent call name fname))
+        | otherwise = (str int map lookup units ("#u " + fname)) == 1 and (str int map lookup units fname) == (list len args) and (not (is agent call name fname))
       unit tail call ok name _ e = expr has self tail call name e
 
 fn :: wrap unit return expr String RStrIntMap RExpr => RExpr
@@ -3761,18 +3732,14 @@ fn :: lower no match tail RNativeEnv String [RFnCase] Int RNativeCode => RNative
           nc emit list st3 [NLoadImmRaw 0, NReturn] (sp + 1)
         | otherwise = nc emit list st [NLoadImmRaw 0, NReturn] (sp + 1)
 
-fn :: rev native fns [RNativeFn] [RNativeFn] => [RNativeFn]
-      rev native fns [] acc = acc
-      rev native fns (x:xs) acc = rev native fns xs ([x] :: acc)
-
 fn :: lower fndef list acc [RFnDef] RStrIntMap RStrIntMap RStrIntMap RStrSet RStrIntMap [String] [RNativeFn] => [RNativeFn]
-      lower fndef list acc [] _ _ _ _ _ _ acc = rev native fns acc []
+      lower fndef list acc [] _ _ _ _ _ _ acc = list reverse acc
       lower fndef list acc (f:fs) str_map fn_id_map fn_arity_map heavy_set field_map real_fns acc =
         nf = lower fndef f str_map fn_id_map fn_arity_map heavy_set field_map real_fns
         lower fndef list acc fs str_map fn_id_map fn_arity_map heavy_set field_map real_fns ([nf] :: acc)
 
 fn :: lower field getter fns [RFieldEntry] RStrSet RStrIntMap [RNativeFn] => [RNativeFn]
-      lower field getter fns [] _ _ acc = rev native fns acc []
+      lower field getter fns [] _ _ acc = list reverse acc
       lower field getter fns ((FieldEntry fname idx):rest) fn_name_set fn_id_map acc
         | str set has fn_name_set fname = lower field getter fns rest fn_name_set fn_id_map acc
         | otherwise =
@@ -3865,7 +3832,7 @@ fn :: expand reachable worklist [String] RFnRefsMap RStrSet => RStrSet
           expand reachable worklist (rev str list refs ws) refs_map (str set add visited w)
 
 fn :: filter reachable fndefs [RFnDef] RStrSet [RFnDef] => [RFnDef]
-      filter reachable fndefs [] _ acc = rev fndef list acc []
+      filter reachable fndefs [] _ acc = list reverse acc
       filter reachable fndefs ((FnDef name params ret cases):fs) reachable acc
         | str set has reachable name = filter reachable fndefs fs reachable ([FnDef name params ret cases] :: acc)
         | otherwise = filter reachable fndefs fs reachable acc
@@ -3900,7 +3867,7 @@ fn :: collect disp expr RExpr RStrIntMap RStrSet => RStrSet
       collect disp expr (ECall "__unpack2__" ((EVar fn_target):args)) ar_map acc =
         collect disp expr list args ar_map (str set add acc fn_target)
       collect disp expr (ECall fname args) ar_map acc
-        | (rexpr list len args) > 0 and (str int map lookup ar_map fname) > (rexpr list len args) =
+        | (list len args) > 0 and (str int map lookup ar_map fname) > (list len args) =
           collect disp expr list args ar_map (str set add acc fname)
         | otherwise = collect disp expr list args ar_map acc
       collect disp expr (EEcho args) ar_map acc = collect disp expr list args ar_map acc
@@ -4070,7 +4037,7 @@ fn :: collect builtin val expr RExpr [String] => [String]
       collect builtin val expr (EOut inner) acc = collect builtin val expr inner acc
       collect builtin val expr (EBin _ l r) acc = collect builtin val expr r (collect builtin val expr l acc)
       collect builtin val expr (ECall fname args) acc
-        | (is wrapable builtin fn fname) and (rexpr list len args) > 0 and (rexpr list len args) < (std builtin arity fname) =
+        | (is wrapable builtin fn fname) and (list len args) > 0 and (list len args) < (std builtin arity fname) =
           collect builtin val expr list args (add unique str fname acc)
         | otherwise = collect builtin val expr list args acc
       collect builtin val expr (EEcho args) acc = collect builtin val expr list args acc
@@ -4248,7 +4215,7 @@ fn :: add s2i ref RFnRefsMap => RFnRefsMap
 fn :: fndefs call s2i [RFnDef] => Bool
       fndefs call s2i [] =  False
       fndefs call s2i ((FnDef _ _ _ cases):fs)
-        | str in list "str_to_int" (collect refs cases cases []) = True
+        | list contains (collect refs cases cases []) "str_to_int" = True
         | otherwise = fndefs call s2i fs
 
 fn :: lib with s2i helper [RFnDef] => [RFnDef]
@@ -4283,7 +4250,7 @@ fn :: lower program to native RProgram [String] => RNativeProg
         rodata_str = pool rodata str_pool
         str_map = pool str map str_pool
         fn_tbl1 = build fn table fndefs fns 5 []
-        fn_tbl = build fn table fields field_tbl fn_name_set (5 + (list str len fn_names)) (rev fn entries fn_tbl1 [])
+        fn_tbl = build fn table fields field_tbl fn_name_set (5 + (list str len fn_names)) (list reverse fn_tbl1)
         fn_id_map = build fn id map fn_tbl StrIntEmpty
         fn_arity_map = build fn arity map fn_tbl StrIntEmpty
         heavy_set = compute heavy fn set fns
@@ -4322,7 +4289,7 @@ fn :: fill tail call instrs [RNativeInstr] RStrIntMap [RNativeInstr] => [RNative
       fill tail call instrs (i:rest) m acc = fill tail call instrs rest m ([i] :: acc)
 
 fn :: fill tail call fns [RNativeFn] RStrIntMap [RNativeFn] => [RNativeFn]
-      fill tail call fns [] _ acc = rev native fns acc []
+      fill tail call fns [] _ acc = list reverse acc
       fill tail call fns ((NativeFn fid nm ar ns ins):fs) m acc
         | instrs have tail call fn ins = fill tail call fns fs m ([NativeFn fid nm ar ns (fill tail call instrs ins m [])] :: acc)
         | otherwise = fill tail call fns fs m ([NativeFn fid nm ar ns ins] :: acc)
@@ -4349,7 +4316,7 @@ fn :: lower library to native RProgram [String] => RNativeProg
         rodata_str = pool rodata str_pool
         str_map = pool str map str_pool
         fn_tbl1 = build fn table fndefs fns 5 []
-        fn_tbl = build fn table fields field_tbl fn_name_set (5 + (list str len fn_names)) (rev fn entries fn_tbl1 [])
+        fn_tbl = build fn table fields field_tbl fn_name_set (5 + (list str len fn_names)) (list reverse fn_tbl1)
         fn_id_map = build fn id map fn_tbl StrIntEmpty
         fn_arity_map = build fn arity map fn_tbl StrIntEmpty
         heavy_set = compute heavy fn set fns
@@ -4570,13 +4537,13 @@ fn :: build native fast executable String String => Int
 
 fn :: lower tensor read RNativeEnv RExpr [RExpr] [String] Int RNativeCode => RNativeCode
       lower tensor read env (EVar v) idxs bound_locals sp st
-        | (lookup local bound_locals v) >= 0 and ((rexpr list len idxs) == 1 or (rexpr list len idxs) == 2) =
-          count = rexpr list len idxs
+        | (lookup local bound_locals v) >= 0 and ((list len idxs) == 1 or (list len idxs) == 2) =
+          count = list len idxs
           vslot = env var slot env v
           st1 = lower expr list to slots env idxs bound_locals sp 0 st
           nc emit st1 (NIndex vslot sp (0 - count)) (sp + count + 1)
       lower tensor read env base idxs bound_locals sp st =
-        count = rexpr list len idxs
+        count = list len idxs
         st1 = lower expr env base bound_locals sp st
         st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
         st3 = lower expr list to slots env idxs bound_locals (sp + 1) 0 st2
@@ -4635,11 +4602,11 @@ fn :: expr tensor kind RNativeEnv RExpr => String
 fn :: lower u8 read RNativeEnv RExpr [RExpr] [String] Int RNativeCode => RNativeCode
       lower u8 read env (EVar v) idxs bound_locals sp st
         | (lookup local bound_locals v) >= 0 =
-          k = rexpr list len idxs
+          k = list len idxs
           st1 = lower expr list to slots env idxs bound_locals sp 0 st
           nc emit list st1 [NPeekSlot (env var slot env v), NStoreSlot (sp + k), NCallBuiltin 105 sp (k + 1)] (sp + k + 1)
       lower u8 read env base idxs bound_locals sp st =
-        k = rexpr list len idxs
+        k = list len idxs
         st1 = lower expr env base bound_locals sp st
         st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
         st3 = lower expr list to slots env idxs bound_locals (sp + 1) 0 st2
@@ -4711,8 +4678,8 @@ fn :: lower var index read RNativeEnv String [RExpr] [String] Int RNativeCode =>
           st1 = lower tensor read env (EVar v) idxs bound_locals sp st
           nc emit st1 NRealFromBits sp
         | (env tensor kind env v) == "N" = lower tensor read env (EVar v) idxs bound_locals sp st
-        | (lookup local bound_locals v) >= 0 and ((rexpr list len idxs) == 1 or (rexpr list len idxs) == 2) =
-          count = rexpr list len idxs
+        | (lookup local bound_locals v) >= 0 and ((list len idxs) == 1 or (list len idxs) == 2) =
+          count = list len idxs
           st1 = lower expr list to slots env idxs bound_locals sp 0 st
           lower slot index read env (env tensor kind env v) (env var slot env v) sp count st1
         | otherwise = lower base index read env (EVar v) idxs bound_locals sp st
@@ -4721,8 +4688,8 @@ fn :: lower var index read RNativeEnv String [RExpr] [String] Int RNativeCode =>
 fn :: lower base index read RNativeEnv RExpr [RExpr] [String] Int RNativeCode => RNativeCode
       lower base index read env base idxs bound_locals sp st
         | (expr tensor kind env base) == "B" = lower u8 read env base idxs bound_locals sp st
-        | (rexpr list len idxs) == 1 or (rexpr list len idxs) == 2 =
-          count = rexpr list len idxs
+        | (list len idxs) == 1 or (list len idxs) == 2 =
+          count = list len idxs
           st1 = lower expr env base bound_locals sp st
           st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
           st3 = lower expr list to slots env idxs bound_locals (sp + 1) 0 st2
@@ -4820,12 +4787,6 @@ fn :: ein src op [String] String Int => Int
         | str contains s l = k
         | otherwise = ein src op ss l (k + 1)
 
-fn :: ein nth [String] Int => String
-      ein nth [] _ =  ""
-      ein nth (s:ss) k
-        | k == 0 = s
-        | otherwise = ein nth ss (k - 1)
-
 fn :: ein dslot Int Int String String => Int
       ein dslot sp n lets l =  sp + n + (ein pos lets l 0)
 
@@ -4834,12 +4795,12 @@ fn :: ein islot Int Int String String => Int
 
 fn :: lower real einsum RNativeEnv [RExpr] [String] [String] Int RNativeCode => RNativeCode
       lower real einsum env es subs bound_locals sp st =
-        n = rexpr list len es
+        n = list len es
         lets = ein uniq subs ""
         outs = ein pick lets subs True 0 ""
         sums = ein pick lets subs False 0 ""
         r = sp + n + 2 * (str len lets)
-        spec = join comma subs
+        spec = str join subs ","
         st0 = lower expr list to slots env es bound_locals sp 0 st
         fast = nc lbl st0
         st1 = nc emit list (nc set lbl st0 (fast + 2)) [NEinsumReal sp n (env str off env spec) (str len spec), NJumpIfNonZero fast] (r + 14)
@@ -4854,7 +4815,7 @@ fn :: ein dim ins [String] Int Int String Int => [RNativeInstr]
         | otherwise =
           l = str slice lets i (i + 1)
           k = ein src op subs l 0
-          p = ein pos (ein nth subs k) l 0
+          p = ein pos (list nth or subs k "") l 0
           [NAdtField (sp + k) (0 - 10 - p), NStoreSlot (sp + n + i)] :: (ein dim ins subs sp n lets (i + 1))
 
 -- The zero result tensor: `NGtConv` mode 4 on [0, d1, ..., dn].
@@ -5083,7 +5044,7 @@ fn :: fndefs call gt [RFnDef] => Bool
 
 fn :: any str in list [String] [String] => Bool
       any str in list [] _ =  False
-      any str in list (x:xs) ys =  (str in list x ys) or (any str in list xs ys)
+      any str in list (x:xs) ys =  (list contains ys x) or (any str in list xs ys)
 
 fn :: add gt refs RFnRefsMap => RFnRefsMap
       add gt refs mp =

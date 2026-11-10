@@ -118,7 +118,7 @@ fn :: rtype to str RType              => String
       rtype to str (TyList inner)     =  "[" + (rtype to str inner) + "]"
       rtype to str (TyTuple elems)    =  "(" + (rtype list to str elems) + ")"
       rtype to str (TyTensor e [])    =  "Tensor" + (tensor elem suffix e)
-      rtype to str (TyTensor e dims)  =  "Tensor" + (tensor elem suffix e) + "(" + (join comma strs dims) + ")"
+      rtype to str (TyTensor e dims)  =  "Tensor" + (tensor elem suffix e) + "(" + (str join dims ", ") + ")"
       rtype to str (TyVariadic inner) =  (rtype to str inner) + "..."
       rtype to str (TyFun (TyUnit:[]) ret) = "(=> " + (rtype to str ret) + ")"
       rtype to str (TyFun [] ret)     =  "(=> " + (rtype to str ret) + ")"
@@ -136,16 +136,7 @@ fn :: rtype list to str [RType] => String
       rtype list to str (t:[])  =  rtype to str t
       rtype list to str (t:ts)  =  (rtype to str t) + ", " + (rtype list to str ts)
 
-fn :: join comma strs [String] => String
-      join comma strs []       =  ""
-      join comma strs (s:[])   =  s
-      join comma strs (s:ss)   =  s + ", " + (join comma strs ss)
-
 -- ── Type Unification & Compatibility ────────────────────────
-
-fn :: rtype list len [RType] => Int
-      rtype list len []      =  0
-      rtype list len (_:xs)  =  1 + (rtype list len xs)
 
 fn :: dims compatible [String] [String] => Bool
       dims compatible []       []       =  True
@@ -239,10 +230,10 @@ fn :: types compatible RType              RType              => Bool
         | otherwise = False
       types compatible (TyList a)         (TyList b)         =  types compatible a b
       types compatible (TyTuple as)       (TyTuple bs)
-        | (rtype list len as) == (rtype list len bs) = types list compatible as bs
+        | (list len as) == (list len bs) = types list compatible as bs
         | otherwise = False
       types compatible (TyFun p1 r1)      (TyFun p2 r2)
-        | (rtype list len p1) == (rtype list len p2) and (types list compatible p1 p2) = types compatible r1 r2
+        | (list len p1) == (list len p2) and (types list compatible p1 p2) = types compatible r1 r2
         | otherwise = False
       types compatible _                  _                  =  False
 
@@ -457,7 +448,7 @@ fn :: pat list arity [RPattern] => Int
 fn :: lookup ctor for type [RTypeBind] String RType Int => Bool [RType]
       lookup ctor for type [] _ _ _ = (False, [])
       lookup ctor for type ((TypeBind k (TyFun params ret_ty)):rest) target expected arity
-        | k == target and (rtype list len params) == arity and (types compatible ret_ty expected) = (True, params)
+        | k == target and (list len params) == arity and (types compatible ret_ty expected) = (True, params)
         | otherwise = lookup ctor for type rest target expected arity
       lookup ctor for type (_:rest) target expected arity =
         lookup ctor for type rest target expected arity
@@ -465,7 +456,7 @@ fn :: lookup ctor for type [RTypeBind] String RType Int => Bool [RType]
 fn :: lookup ctor by arity [RTypeBind] String Int => Bool [RType]
       lookup ctor by arity [] _ _ = (False, [])
       lookup ctor by arity ((TypeBind k (TyFun params _)):rest) target arity
-        | k == target and (rtype list len params) == arity = (True, params)
+        | k == target and (list len params) == arity = (True, params)
         | otherwise = lookup ctor by arity rest target arity
       lookup ctor by arity (_:rest) target arity =
         lookup ctor by arity rest target arity
@@ -787,11 +778,11 @@ fn :: check tuple pos mask [RType] String Int Int [RTypeError] String => RType [
 fn :: check tuple seq mask [RType] String [RTypeError] String => RType [RTypeError]
       check tuple seq mask elem_tys mask b_errs fn_name
         | (str len mask) >= 2 and (str slice mask ((str len mask) - 2) (str len mask)) == " +" =
-          check tuple spread mask elem_tys mask ((str len mask) - 2) (rtype list len elem_tys) b_errs fn_name
+          check tuple spread mask elem_tys mask ((str len mask) - 2) (list len elem_tys) b_errs fn_name
         | not (str contains mask " ") =
-          check tuple pos mask elem_tys mask (str len mask) (rtype list len elem_tys) b_errs fn_name
+          check tuple pos mask elem_tys mask (str len mask) (list len elem_tys) b_errs fn_name
         | otherwise =
-          scan index mask tys elem_tys mask 0 0 (str len mask) (rtype list len elem_tys) fn_name [] b_errs
+          scan index mask tys elem_tys mask 0 0 (str len mask) (list len elem_tys) fn_name [] b_errs
 
 fn :: check seq select (RType, [RTypeError]) String String => RType [RTypeError]
       check seq select ((TyTuple elem_tys), b_errs) mask fn_name =
@@ -839,9 +830,9 @@ fn :: last variadic inner [RType] => RType
 
 fn :: lambda tuple arity hint RType RType => String
       lambda tuple arity hint (TyFun p1 _) (TyFun p2 _)
-        | (rtype list len p1) > 1 and (rtype list len p2) == 1 =
+        | (list len p1) > 1 and (list len p2) == 1 =
           "; note: '(a b => ...)' has multiple parameters — use '((a b) => ...)' to destructure a tuple"
-        | (rtype list len p1) == 1 and (rtype list len p2) > 1 =
+        | (list len p1) == 1 and (list len p2) > 1 =
           "; note: '((a b) => ...)' takes 1 tuple parameter — use '(a b => ...)' for multiple parameters"
         | otherwise = ""
       lambda tuple arity hint _ _ = ""
@@ -868,16 +859,6 @@ fn :: check variadic args [RType] RType String String Int => [RTypeError]
       check variadic args (arg:args) var_ty callee fn_name idx
         | (types compatible arg var_ty) or (types compatible arg (TyList var_ty)) = check variadic args args var_ty callee fn_name (idx + 1)
         | otherwise = [TypeError fn_name ("function '" + callee + "' variadic arg #" + (int to str idx) + " has type " + (rtype to str arg) + ", expected " + (rtype to str var_ty))] :: (check variadic args args var_ty callee fn_name (idx + 1))
-
-fn :: take rtypes [RType] Int => [RType]
-      take rtypes _       0   =  []
-      take rtypes []      _   =  []
-      take rtypes (x:xs)  n   =  [x] :: (take rtypes xs (n - 1))
-
-fn :: drop rtypes [RType] Int => [RType]
-      drop rtypes xs      0   =  xs
-      drop rtypes []      _   =  []
-      drop rtypes (_:xs)  n   =  drop rtypes xs (n - 1)
 
 fn :: is single poly var String => Bool
       is single poly var s
@@ -953,41 +934,41 @@ fn :: finish poly call RType [RTypeError] ([RTypeBind], [RTypeError]) => RType [
 
 fn :: check call sig String [RType] [RType] RType String => RType [RTypeError]
       check call sig callee (first_arg:rest_args) (rec_param:[]) (TyFun inner_params inner_ret) fn_name
-        | (rtype list len rest_args) >= 1 and (types compatible first_arg rec_param) =
+        | (list len rest_args) >= 1 and (types compatible first_arg rec_param) =
           check call sig callee rest_args inner_params inner_ret fn_name
       check call sig callee arg_tys param_tys ret_ty fn_name
         | is last variadic param_tys = check variadic call callee arg_tys param_tys ret_ty fn_name
-        | (rtype list len arg_tys) == 1 and (rtype list len param_tys) > 1 = check tuple chain call callee (rtype at arg_tys 0) arg_tys param_tys ret_ty fn_name
-        | (rtype list len arg_tys) > 1 and (rtype list len arg_tys) < (rtype list len param_tys) =
-          k = rtype list len arg_tys
-          taken_params = take rtypes param_tys k
-          rem_params = drop rtypes param_tys k
+        | (list len arg_tys) == 1 and (list len param_tys) > 1 = check tuple chain call callee (rtype at arg_tys 0) arg_tys param_tys ret_ty fn_name
+        | (list len arg_tys) > 1 and (list len arg_tys) < (list len param_tys) =
+          k = list len arg_tys
+          taken_params = list take param_tys k
+          rem_params = list drop param_tys k
           finish poly call (TyFun rem_params ret_ty) (check fixed args arg_tys taken_params callee fn_name 0 []) (collect poly binds list arg_tys taken_params callee fn_name [])
-        | (rtype list len arg_tys) != (rtype list len param_tys) = (ret_ty, [TypeError fn_name ("function '" + callee + "' called with " + (int to str (rtype list len arg_tys)) + " argument(s), expected " + (int to str (rtype list len param_tys)))])
+        | (list len arg_tys) != (list len param_tys) = (ret_ty, [TypeError fn_name ("function '" + callee + "' called with " + (int to str (list len arg_tys)) + " argument(s), expected " + (int to str (list len param_tys)))])
         | otherwise = finish poly call ret_ty (check fixed args arg_tys param_tys callee fn_name 0 []) (collect poly binds list arg_tys param_tys callee fn_name [])
 
 fn :: check variadic call String [RType] [RType] RType String => RType [RTypeError]
       check variadic call callee arg_tys param_tys ret_ty fn_name =
-        fixed = (rtype list len param_tys) - 1
+        fixed = (list len param_tys) - 1
         var_ty = last variadic inner param_tys
         check variadic call counts callee arg_tys param_tys ret_ty fn_name fixed var_ty
 
 fn :: check variadic call counts String [RType] [RType] RType String Int RType => RType [RTypeError]
       check variadic call counts callee arg_tys param_tys ret_ty fn_name fixed var_ty
-        | (rtype list len arg_tys) < fixed = (ret_ty, [TypeError fn_name ("function '" + callee + "' called with " + (int to str (rtype list len arg_tys)) + " argument(s), expected at least " + (int to str fixed))])
-        | otherwise = (ret_ty, (check fixed args (take rtypes arg_tys fixed) (take rtypes param_tys fixed) callee fn_name 0 []) :: (check variadic args (drop rtypes arg_tys fixed) var_ty callee fn_name fixed))
+        | (list len arg_tys) < fixed = (ret_ty, [TypeError fn_name ("function '" + callee + "' called with " + (int to str (list len arg_tys)) + " argument(s), expected at least " + (int to str fixed))])
+        | otherwise = (ret_ty, (check fixed args (list take arg_tys fixed) (list take param_tys fixed) callee fn_name 0 []) :: (check variadic args (list drop arg_tys fixed) var_ty callee fn_name fixed))
 
 fn :: check tuple chain call String RType [RType] [RType] RType String => RType [RTypeError]
       check tuple chain call callee (TyTuple elems) _ param_tys ret_ty fn_name
-        | (rtype list len elems) == (rtype list len param_tys) = finish poly call ret_ty (check fixed args elems param_tys callee fn_name 0 []) (collect poly binds list elems param_tys callee fn_name [])
+        | (list len elems) == (list len param_tys) = finish poly call ret_ty (check fixed args elems param_tys callee fn_name 0 []) (collect poly binds list elems param_tys callee fn_name [])
       check tuple chain call _ (TyVar "_seq") _ _ ret_ty _ = (ret_ty, [])
       check tuple chain call callee first_arg arg_tys param_tys ret_ty fn_name
         | types compatible first_arg (rtype at param_tys 0) =
-          taken_params = take rtypes param_tys 1
-          rem_params = drop rtypes param_tys 1
+          taken_params = list take param_tys 1
+          rem_params = list drop param_tys 1
           finish poly call (TyFun rem_params ret_ty) (check fixed args arg_tys taken_params callee fn_name 0 []) (collect poly binds list arg_tys taken_params callee fn_name [])
         | otherwise =
-          (ret_ty, [TypeError fn_name ("function '" + callee + "' called with " + (int to str (rtype list len arg_tys)) + " argument(s), expected " + (int to str (rtype list len param_tys)))])
+          (ret_ty, [TypeError fn_name ("function '" + callee + "' called with " + (int to str (list len arg_tys)) + " argument(s), expected " + (int to str (list len param_tys)))])
 
 fn :: check call target String [RType] [RTypeError] (Bool, RType) String => RType [RTypeError]
       check call target callee arg_tys arg_errs (True, (TyFun param_tys ret_ty)) fn_name =
@@ -1199,15 +1180,10 @@ fn :: tc str count [String] => Int
       tc str count []     =  0
       tc str count (_:xs) =  1 + (tc str count xs)
 
-fn :: tc str drop [String] Int => [String]
-      tc str drop xs 0      =  xs
-      tc str drop [] _      =  []
-      tc str drop (_:xs) n  =  tc str drop xs (n - 1)
-
 fn :: tensor index ty RType [String] Int => RType
       tensor index ty e [] _ =  tensor elem read ty e
       tensor index ty e dims n
-        | n < (tc str count dims) = TyTensor e (tc str drop dims n)
+        | n < (tc str count dims) = TyTensor e (list drop dims n)
         | otherwise = tensor elem read ty e
 
 -- `Tensor:E` or `Tensor:E@d1,d2` from the parser, without "Tensor:".
@@ -1362,8 +1338,8 @@ fn :: args match params [RType] [RType] => Bool
 fn :: collect matching sigs [RTypeBind] String [RType] => [RType]
       collect matching sigs [] _ _ = []
       collect matching sigs ((TypeBind k (TyFun param_tys ret_ty)):rest) target arg_tys
-        | k == target and (rtype list len param_tys) == (rtype list len arg_tys) and (args match params arg_tys param_tys) and (is upper ident target) = [TyFun param_tys ret_ty] :: (collect matching sigs rest target arg_tys)
-        | k == target and (rtype list len param_tys) == (rtype list len arg_tys) and (args match params arg_tys param_tys) = [TyFun param_tys ret_ty]
+        | k == target and (list len param_tys) == (list len arg_tys) and (args match params arg_tys param_tys) and (is upper ident target) = [TyFun param_tys ret_ty] :: (collect matching sigs rest target arg_tys)
+        | k == target and (list len param_tys) == (list len arg_tys) and (args match params arg_tys param_tys) = [TyFun param_tys ret_ty]
         | otherwise = collect matching sigs rest target arg_tys
       collect matching sigs (_:rest) target arg_tys =
         collect matching sigs rest target arg_tys
@@ -1613,8 +1589,8 @@ fn :: check block after mut String [RStmt] String [RTypeBind] [RTypeBind] [Strin
 fn :: check immut reassign String String [String] [String] => [RTypeError]
       check immut reassign "_" _ _ _ = []
       check immut reassign name fn_name immuts muts
-        | str in list name muts = []
-        | str in list name immuts = [TypeError fn_name ("cannot reassign immutable variable '" + name + "'; declare it with 'mut " + name + " = ...' first")]
+        | list contains muts name = []
+        | list contains immuts name = [TypeError fn_name ("cannot reassign immutable variable '" + name + "'; declare it with 'mut " + name + " = ...' first")]
         | otherwise = []
 
 fn :: check block after let String [RStmt] String [RTypeBind] [RTypeBind] [String] [String] (RType, [RTypeError]) => RType [RTypeError]
@@ -1714,7 +1690,7 @@ fn :: check one case after pats [RTypeError] [RPattern] [RGuard] RExpr String [R
 
 fn :: check one case RFnCase String [RType] RType Int [RTypeBind] [RTypeBind] => [RTypeError]
       check one case (FnCase pats guards body) fn_name param_tys ret_ty case_idx locals fns
-        | (pat count pats) != (rtype list len param_tys) and (not (has seq bind pat pats)) = [TypeError fn_name ("case #" + (int to str case_idx) + " has " + (int to str (pat count pats)) + " pattern(s), expected " + (int to str (rtype list len param_tys)))]
+        | (pat count pats) != (list len param_tys) and (not (has seq bind pat pats)) = [TypeError fn_name ("case #" + (int to str case_idx) + " has " + (int to str (pat count pats)) + " pattern(s), expected " + (int to str (list len param_tys)))]
         | otherwise =
           pat_errs = check pat list ctors pats fn_name locals fns
           check one case after pats pat_errs pats guards body fn_name param_tys ret_ty locals fns
@@ -2292,7 +2268,7 @@ fn :: ty has tensor RType [RTypeBind] [String] => Bool
       ty has tensor (TyList t) fns seen =  ty has tensor t fns seen
       ty has tensor (TyTuple ts) fns seen =  tys have tensor ts fns seen
       ty has tensor (TyVar n) fns seen
-        | str in seen list n seen = False
+        | list contains seen n = False
         | otherwise = adt has tensor fns n fns ([n] :: seen)
       ty has tensor _ _ _ =  False
 

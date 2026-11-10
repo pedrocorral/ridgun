@@ -522,8 +522,8 @@ fn :: build tc9 result (Int, String, Int, Int) => CaseResult
 
 fn :: build tc10 result (Int, String, Int, Int) => CaseResult
       build tc10 result (c10, o10, _, _) =
-        ok10 = c10 == 0 and (trim ws o10) == "[7] [a] [2, 1]\nPRELUDE_OK"
-        Result "toolchain: a prelude name defined by an imported module means the module's function, with no ambiguity error; a module that imports nothing gets the prelude's; `ridgunc prelude` prints the prelude (FR-COMP-024)" ok10 False ("exit " + (int to str c10) + "; output: " + (trim ws o10))
+        ok10 = c10 == 0 and (trim ws o10) == "[7] [a] [2, 1] 5 5\nPRELUDE_OK"
+        Result "toolchain: a prelude name defined by an imported module means the module's function, with no ambiguity error, also when the name holds an operator word (`list nth or`, as in libs); a module that imports nothing gets the prelude's; `ridgunc prelude` prints the prelude (FR-COMP-024)" ok10 False ("exit " + (int to str c10) + "; output: " + (trim ws o10))
 
 fn :: resolve stable path String => String
       resolve stable path repo =
@@ -560,9 +560,9 @@ fn :: run toolchain checks String String String String => [CaseResult]
         write file (d + "/errmod.rg") "type K = KNone | KBad\ntype E = kind: K, msg: String\n\nfn :: err kind eq K K => Bool\n      err kind eq KNone KNone =  True\n      err kind eq KBad  KBad  =  True\n      err kind eq _     _     =  False\n\nfn :: is ok E => Bool\n      is ok err =  err kind eq (kind err) KNone\n"
         write file (d + "/local_head_main.rg") "import errmod\n\nfn :: kind String => String\n      kind s =  \"k:\" + s\n\nfn :: main => ()\n      main =\n        echo (is ok (E KNone \"x\")) (kind \"a\")\n"
         r9 = build tc9 result (run sh capture ("\"" + ridgunc + "\" build local_head_main.rg -o local_head_main >/dev/null && ./local_head_main") d 600)
-        write file (d + "/intlist.rg") "fn :: list take [Int] Int => [Int]\n      list take _ _ =  [7]\n"
+        write file (d + "/intlist.rg") "fn :: list take [Int] Int => [Int]\n      list take _ _ =  [7]\n\nfn :: list nth [Int] Int => Int\n      list nth xs i =  list nth or xs i 0\n\nfn :: list nth or [Int] Int Int => Int\n      list nth or _ _ _ =  5\n"
         write file (d + "/other.rg") "fn :: other take => [String]\n      other take =  list take [\"a\", \"b\"] 1\n"
-        write file (d + "/prelude_main.rg") "import intlist\nimport other\n\nfn :: main => ()\n      main =  echo (list take [1, 2] 1) (other take) (list reverse [1, 2])\n"
+        write file (d + "/prelude_main.rg") "import intlist\nimport other\n\nfn :: main => ()\n      main =  echo (list take [1, 2] 1) (other take) (list reverse [1, 2]) (list nth or [1] 0 0) (list nth [1] 0)\n"
         write file (d + "/tc10.sh") ("set -e; \"" + ridgunc + "\" build prelude_main.rg -o prelude_main >/dev/null; ./prelude_main; \"" + ridgunc + "\" prelude | grep -q '^fn :: list reverse' && echo PRELUDE_OK")
         r10 = build tc10 result (run sh capture "bash tc10.sh" d 600)
         [r1, r2, r3, r4, r5, r6, r7, r8, r9, r10]

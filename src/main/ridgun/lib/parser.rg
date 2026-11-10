@@ -1259,11 +1259,6 @@ fn :: is paren type arrow [RToken] Bool => Bool
       is paren type arrow (TokComma:rest) has_t = is paren type arrow rest has_t
       is paren type arrow _ _ = False
 
-fn :: join raw comma strs [String] => String
-      join raw comma strs [] = ""
-      join raw comma strs (s:[]) = s
-      join raw comma strs (s:ss) = s + "," + (join raw comma strs ss)
-
 fn :: parse lambda expr [RToken] [RExpr] => RExpr [RToken]
       parse lambda expr (TokFatArrow:rest) params =
         parse lambda body params rest
@@ -1280,7 +1275,7 @@ fn :: parse lambda expr [RToken] [RExpr] => RExpr [RToken]
 
 fn :: parse lambda tup step [RExpr] (Bool, [String], [RToken]) => RExpr [RToken]
       parse lambda tup step params (True, tup_vars, after_tup) =
-        parse lambda expr after_tup (params :: [EStr ("(" + (join raw comma strs tup_vars) + ")")])
+        parse lambda expr after_tup (params :: [EStr ("(" + (str join tup_vars ",") + ")")])
       parse lambda tup step params (False, _, after_tup) =
         parse lambda body params after_tup
 
@@ -2560,16 +2555,6 @@ fn :: str list count [String] => Int
       str list count []       =  0
       str list count (_:xs)   =  1 + (str list count xs)
 
-fn :: take exprs [RExpr] Int => [RExpr]
-      take exprs _       0   =  []
-      take exprs []      _   =  []
-      take exprs (x:xs)  n   =  [x] :: (take exprs xs (n - 1))
-
-fn :: drop exprs [RExpr] Int => [RExpr]
-      drop exprs xs      0   =  xs
-      drop exprs []      _   =  []
-      drop exprs (_:xs)  n   =  drop exprs xs (n - 1)
-
 fn :: fold echo args [RExpr]  [RArityEntry] => [RExpr]
       fold echo args []       _             =  []
       fold echo args ((EVar fn_name):rest) arities =
@@ -2580,7 +2565,7 @@ fn :: fold echo args [RExpr]  [RArityEntry] => [RExpr]
 
 fn :: fold echo var String Int [RExpr] [RArityEntry] => [RExpr]
       fold echo var fn_name ar rest arities
-        | ar > 0 and (expr list count rest) >= ar = [ECall fn_name (norm expr list (take exprs rest ar) arities)] :: (fold echo args (drop exprs rest ar) arities)
+        | ar > 0 and (expr list count rest) >= ar = [ECall fn_name (norm expr list (list take rest ar) arities)] :: (fold echo args (list drop rest ar) arities)
         | ar == 0 = [ECall fn_name []] :: (fold echo args rest arities)
         | otherwise = [EVar fn_name] :: (fold echo args rest arities)
 
@@ -2987,8 +2972,8 @@ fn :: reduce infix fold step2 RExpr RExpr (RExpr, [RExpr]) [RArityEntry] => Bool
 fn :: reduce infix op take RExpr String [RExpr] Int [RArityEntry] => Bool RExpr
       reduce infix op take acc mangled c_after need arities
         | (expr list count c_after) >= need =
-          stage_args = norm expr list (take exprs c_after need) arities
-          rem = drop exprs c_after need
+          stage_args = norm expr list (list take c_after need) arities
+          rem = list drop c_after need
           reduce infix steps (ECall mangled ([acc] :: stage_args)) rem arities
         | otherwise = (False, EUnit)
 
@@ -3575,7 +3560,7 @@ fn :: norm case list [RFnCase] [RArityEntry] => [RFnCase]
         [FnCase pats (norm guard list guards case_arities) (norm case body body case_arities)] :: (norm case list cs fn_arities)
 
 fn :: norm fndef list acc [RFnDef] RPrepArityMap [RFnDef] => [RFnDef]
-      norm fndef list acc [] _ rev_acc = rev fndef list rev_acc []
+      norm fndef list acc [] _ rev_acc = list reverse rev_acc
       norm fndef list acc ((FnDef name params ret_ty cases):fs) pmap rev_acc =
         wset = collect cases words set cases StrSetEmpty
         fn_arities = arities for wset wset pmap
@@ -3597,7 +3582,7 @@ fn :: prepend str expr String ([String], RExpr) => [String] RExpr
 
 fn :: collect expr free locals RExpr [String] [String] [String] => [String]
       collect expr free locals (EVar v) outer_locals shadowed acc
-        | (str in seen list v outer_locals) and (not (str in seen list v shadowed)) and (not (str in seen list v acc)) = acc :: [v]
+        | (list contains outer_locals v) and (not (list contains shadowed v)) and (not (list contains acc v)) = acc :: [v]
         | otherwise = acc
       collect expr free locals (ENot e) outer_locals shadowed acc =
         collect expr free locals e outer_locals shadowed acc
@@ -3712,7 +3697,7 @@ fn :: make lambda param ty vars [String] Int => [String] Int
         | str starts with p "(" =
           tvs = split raw comma strs (str slice p 1 ((str len p) - 1))
           k = str list count tvs
-          tup_ty = "(" + (join comma ty strs (make poly type vars idx (idx + k))) + ")"
+          tup_ty = "(" + (str join (make poly type vars idx (idx + k)) ", ") + ")"
           prepend ty var idx tup_ty (make lambda param ty vars ps (idx + k))
         | otherwise =
           v = char from code (65 + (idx % 26))
@@ -3975,12 +3960,8 @@ fn :: lift case step2 [RPattern] [RGuard] (RExpr, Int, [RFnDef]) [RFnCase] => [R
 fn :: finish lift case RFnCase ([RFnCase], Int, [RFnDef]) => [RFnCase] Int [RFnDef]
       finish lift case fc1 (cs1, c3, l3) = ([fc1] :: cs1, c3, l3)
 
-fn :: rev fndef list [RFnDef] [RFnDef] => [RFnDef]
-      rev fndef list [] acc = acc
-      rev fndef list (f:fs) acc = rev fndef list fs ([f] :: acc)
-
 fn :: lift fndef list lambdas [RFnDef] Int [RFnDef] [RFnDef] => [RFnDef]
-      lift fndef list lambdas [] _ lifted rev_acc = (rev fndef list rev_acc []) :: lifted
+      lift fndef list lambdas [] _ lifted rev_acc = (list reverse rev_acc) :: lifted
       lift fndef list lambdas ((FnDef name params ret_ty cases):fs) cnt lifted rev_acc =
         lift fndef step name params ret_ty (lift case list lambdas cases cnt lifted) fs rev_acc
 
@@ -4000,7 +3981,7 @@ fn :: collect poly vars in str String [String] => [String]
 
 fn :: collect poly var base String [String] => [String]
       collect poly var base b acc
-        | (str len b) == 1 and (is upper ident b) and (not (str in seen list b acc)) = acc :: [b]
+        | (str len b) == 1 and (is upper ident b) and (not (list contains acc b)) = acc :: [b]
         | otherwise = acc
 
 fn :: collect poly vars in strs [String] [String] => [String]
@@ -4031,21 +4012,6 @@ fn :: prepend poly arity String Int [RArityEntry] => [RArityEntry]
         | str contains name "." = [ArityEntry name n, ArityEntry (ident base name name) n] :: rest
         | otherwise = [ArityEntry name n] :: rest
 
-fn :: take ty strs [String] Int => [String]
-      take ty strs _ 0 = []
-      take ty strs [] _ = []
-      take ty strs (x:xs) n = [x] :: (take ty strs xs (n - 1))
-
-fn :: drop ty strs [String] Int => [String]
-      drop ty strs xs 0 = xs
-      drop ty strs [] _ = []
-      drop ty strs (_:xs) n = drop ty strs xs (n - 1)
-
-fn :: join comma ty strs [String] => String
-      join comma ty strs [] = ""
-      join comma ty strs (s:[]) = s
-      join comma ty strs (s:ss) = s + ", " + (join comma ty strs ss)
-
 fn :: collapse poly param list [String] Int [RArityEntry] => [String]
       collapse poly param list [] _ _ = []
       collapse poly param list (p:ps) target_arity poly_arities
@@ -4057,8 +4023,8 @@ fn :: collapse poly param list [String] Int [RArityEntry] => [String]
 fn :: collapse poly param step String [String] Int Int [RArityEntry] => [String]
       collapse poly param step p ps k target_arity poly_arities
         | k > 0 and (str list count ps) >= k =
-          app_s = "(" + p + ", " + (join comma ty strs (take ty strs ps k)) + ")"
-          [app_s] :: (collapse poly param list (drop ty strs ps k) (target_arity - 1) poly_arities)
+          app_s = "(" + p + ", " + (str join (list take ps k) ", ") + ")"
+          [app_s] :: (collapse poly param list (list drop ps k) (target_arity - 1) poly_arities)
         | otherwise =
           [p] :: (collapse poly param list ps (target_arity - 1) poly_arities)
 
@@ -4067,7 +4033,7 @@ fn :: first case pat arity [RFnCase] => Int
       first case pat arity [] = 0
 
 fn :: collapse fndef poly params [RFnDef] [RArityEntry] [RFnDef] => [RFnDef]
-      collapse fndef poly params [] _ rev_acc = rev fndef list rev_acc []
+      collapse fndef poly params [] _ rev_acc = list reverse rev_acc
       collapse fndef poly params ((FnDef name params ret_ty cases):fs) poly_arities rev_acc =
         pat_ar = first case pat arity cases
         params1 = collapse poly param list params pat_ar poly_arities
@@ -4351,12 +4317,6 @@ fn :: append rglib resolved String String String => String
         | is core compiler mod mname = acc + (strip rgc magic lib_src) + "\n"
         | otherwise = acc + "\n@__rg_mod_enter__ " + mname + "\n" + (strip rgc magic lib_src) + "\n@__rg_mod_exit__\n"
 
-fn :: str in seen list String [String] => Bool
-      str in seen list _ [] = False
-      str in seen list target (s:ss)
-        | s == target = True
-        | otherwise = str in seen list target ss
-
 fn :: append rglib from pair String (String, String) String [String] => String [String]
       append rglib from pair pdir (clean_spec, alias) acc seen =
         mname = mod name of spec clean_spec
@@ -4404,7 +4364,7 @@ fn :: append rglib local or ext String String String String [String] => String [
 
 fn :: append rglib if unseen String String String [String] => String [String]
       append rglib if unseen pdir clean_spec acc seen
-        | (is core compiler mod clean_spec) or (str in seen list clean_spec seen) = (acc, seen)
+        | (is core compiler mod clean_spec) or (list contains seen clean_spec) = (acc, seen)
         | has same dir rglib pdir clean_spec =
           seen1 = [clean_spec] :: seen
           append rglib resolved mod pdir clean_spec (resolve rglib bundle pdir clean_spec) acc seen1
@@ -4517,7 +4477,7 @@ fn :: append own rg local String String String String String [String] => String 
 
 fn :: append own rg import pair String String (String, String) String [String] => String [String]
       append own rg import pair pdir _ (clean_spec, alias) acc seen
-        | str in seen list clean_spec seen =
+        | list contains seen clean_spec =
           mname = mod name of spec clean_spec
           (acc + (mod import marker mname) + (mod alias marker alias mname), seen)
         | has same dir rglib pdir clean_spec = (acc + (format deferred import clean_spec alias), [clean_spec] :: seen)
@@ -4817,12 +4777,12 @@ fn :: has any scoped mod [RScopedFn] [RScopedType] [RModAlias] => Bool
 
 fn :: add unique seen String [String] => [String]
       add unique seen s seen
-        | str in seen list s seen = seen
+        | list contains seen s = seen
         | otherwise = [s] :: seen
 
 fn :: add unique seen end String [String] => [String]
       add unique seen end s seen
-        | str in seen list s seen = seen
+        | list contains seen s = seen
         | otherwise = seen :: [s]
 
 fn :: add all unique end [String] [String] => [String]
@@ -4855,7 +4815,7 @@ fn :: collect imps for mods [String] [RModAlias] [String] => [String]
 fn :: filter out mods [String] [String] => [String]
       filter out mods [] _ = []
       filter out mods (m:ms) excl
-        | str in seen list m excl = filter out mods ms excl
+        | list contains excl m = filter out mods ms excl
         | otherwise = [m] :: (filter out mods ms excl)
 
 fn :: direct imports of String [RModAlias] => [String]
@@ -5018,6 +4978,7 @@ fn :: collect collided fns fast [RScopedFn] RStrMap RStrSet [String] => [String]
       collect collided fns fast [] _ _ acc = acc
       collect collided fns fast ((ScopedFn m _ (FnDef fname _ _ _)):fs) seen_map col_set acc
         | is special top fn fname = collect collided fns fast fs seen_map col_set acc
+        | (mod key of m) == "prelude" = collect collided fns fast fs seen_map col_set acc
         | otherwise =
           prev = str map get seen_map fname
           mk = ":" + m
@@ -5032,9 +4993,24 @@ fn :: collect collided fns step [RScopedFn] String String String RStrMap RStrSet
         | otherwise =
           collect collided fns fast fs seen_map col_set acc
 
+-- A prelude function never collides (FR-COMP-024): another module's function keeps its plain name, and the
+-- prelude's is renamed `prelude.<name>` (marked `prelude:<name>` here) and found only in the last tier.
 fn :: collect collided fns [RScopedFn] [RScopedFn] [String] => [String]
       collect collided fns fs _ acc =
-        collect collided fns fast fs StrMapEmpty StrSetEmpty acc
+        base = collect collided fns fast fs StrMapEmpty StrSetEmpty acc
+        prelude shadowed fns fs (non prelude fn names fs StrSetEmpty) base
+
+fn :: non prelude fn names [RScopedFn] RStrSet => RStrSet
+      non prelude fn names [] acc = acc
+      non prelude fn names ((ScopedFn m _ (FnDef fname _ _ _)):fs) acc
+        | (mod key of m) == "prelude" = non prelude fn names fs acc
+        | otherwise = non prelude fn names fs (str set add acc fname)
+
+fn :: prelude shadowed fns [RScopedFn] RStrSet [String] => [String]
+      prelude shadowed fns [] _ acc = acc
+      prelude shadowed fns ((ScopedFn m _ (FnDef fname _ _ _)):fs) names acc
+        | ((mod key of m) == "prelude") and (str set has names fname) = prelude shadowed fns fs names (["prelude:" + fname] :: acc)
+        | otherwise = prelude shadowed fns fs names acc
 
 fn :: variants have ctor [RVariant] String => Bool
       variants have ctor [] _ = False
@@ -5075,7 +5051,8 @@ fn :: canon scoped name String String [String] => String
       canon scoped name _ "__syntax_error__" _ = "__syntax_error__"
       canon scoped name _ "__unresolved_import__" _ = "__unresolved_import__"
       canon scoped name m name collided
-        | str in seen list name collided = (mod key of m) + "." + name
+        | ((mod key of m) == "prelude") and (list contains collided ("prelude:" + name)) = "prelude." + name
+        | list contains collided name = (mod key of m) + "." + name
         | otherwise = name
 
 fn :: build base type map [RScopedType] [RScopedType] [String] => [RModAlias]
@@ -5126,7 +5103,7 @@ fn :: build variant ctor entries String String String [RVariant] [RScopedType] [
 
 fn :: canon variant ctor String String [String] => String
       canon variant ctor c canon_t collided_ctors
-        | str in seen list c collided_ctors = canon_t + "." + c
+        | list contains collided_ctors c = canon_t + "." + c
         | otherwise = c
 
 fn :: build variant mod entries String String String String String Int [RModAlias] => [RModAlias]
@@ -5335,7 +5312,7 @@ fn :: add ctor single variants String Bool [RVariant] [String] RStrMap => RStrMa
       add ctor single variants mk True ((TypeVariant c _):vs) collided_ctors acc =
         add ctor single variants mk True vs collided_ctors (str map set acc c "__multi__")
       add ctor single variants mk False ((TypeVariant c _):vs) collided_ctors acc
-        | str in seen list c collided_ctors =
+        | list contains collided_ctors c =
           add ctor single variants mk False vs collided_ctors (str map set acc c "__multi__")
         | otherwise =
           add ctor single variants mk False vs collided_ctors (add single mod entry mk c c acc)
@@ -5689,7 +5666,7 @@ fn :: call candidates in special set String [RExpr] RModCtx => Bool
 
 fn :: resolve lower ident String String [String] RModCtx [RModAlias] [RModAlias] [RModAlias] => String
       resolve lower ident v cur_mod locals special_ff aliases fn_map _
-        | str in seen list v locals = v
+        | list contains locals v = v
         | (not (str contains v ".")) and (not (is in ctx sp set v special_ff)) = v
         | otherwise =
           v1 = expand mod alias v cur_mod aliases
@@ -5812,7 +5789,7 @@ fn :: unpack rewritten infix call String [RExpr] RExpr => [RExpr]
 
 fn :: rewrite local call args [RExpr] String [String] RModCtx [RModAlias] [RModAlias] [RModAlias] [RModAlias] => [RExpr]
       rewrite local call args ((EVar w):rest) cur_mod locals special_ff aliases ctor_map fn_map field_map
-        | (not (str in seen list w locals)) and (not (is upper ident w)) and (w != "with") and (w != "and") and (w != "or") =
+        | (not (list contains locals w)) and (not (is upper ident w)) and (w != "with") and (w != "and") and (w != "or") =
           unpack rewritten infix call w rest (rewrite call expr w rest cur_mod locals special_ff aliases ctor_map fn_map field_map)
       rewrite local call args args cur_mod locals special_ff aliases ctor_map fn_map field_map =
         rewrite expr list args cur_mod locals special_ff aliases ctor_map fn_map field_map
@@ -5827,7 +5804,7 @@ fn :: rewrite call expr String [RExpr] String [String] RModCtx [RModAlias] [RMod
       rewrite call expr fn_name args cur_mod locals special_ff aliases ctor_map fn_map field_map
         | is upper ident fn_name =
           ECall (resolve ctor ident ctx fn_name cur_mod special_ff aliases) (rewrite expr list args cur_mod locals special_ff aliases ctor_map fn_map field_map)
-        | str in seen list fn_name locals =
+        | list contains locals fn_name =
           local head call fn_name args cur_mod locals special_ff aliases ctor_map fn_map field_map (try consume scoped words fn_name [] args special_ff)
         | otherwise =
           fn1 = expand mod alias fn_name cur_mod aliases
@@ -5935,7 +5912,7 @@ fn :: rewrite expr list [RExpr] String [String] RModCtx [RModAlias] [RModAlias] 
 
 fn :: is scoped pipe var target String [RStmt] [String] RModCtx => Bool
       is scoped pipe var target v ss locals ctx
-        | str in seen list v locals = True
+        | list contains locals v = True
         | (v == "echo") or (is upper ident v) or (str contains v ".") or (is std builtin v) = False
         | (lookup scoped fn or field ctx v ctx) == "" = True
         | otherwise = stmt list mentions var ss v
@@ -6032,7 +6009,7 @@ fn :: rewrite and merge fn step [RScopedFn] String Bool String [String] String [
         rewrite and merge fns cached fs m sp1 cache1 base_ctx collided_fns collided_fields aliases type_map ctor_map fn_map field_map acc_pair
 
 fn :: rewrite and merge fns cached [RScopedFn] String RModCtx [RModCtxEntry] RModCtx [String] [String] [RModAlias] [RModAlias] [RModAlias] [RModAlias] [RModAlias] ([RFnDef], RStrSet) => [RFnDef]
-      rewrite and merge fns cached [] _ _ _ _ _ _ _ _ _ _ _ (rev_acc, _) = rev fndef list rev_acc []
+      rewrite and merge fns cached [] _ _ _ _ _ _ _ _ _ _ _ (rev_acc, _) = list reverse rev_acc
       rewrite and merge fns cached ((ScopedFn m in_lib (FnDef fname ps ret cs)):fs) cached_m cached_sp cache base_ctx collided_fns collided_fields aliases type_map ctor_map fn_map field_map acc_state
         | m == cached_m =
           rewrite and merge fn step fs m in_lib fname ps ret cs (cached_sp, cache) base_ctx collided_fns collided_fields aliases type_map ctor_map fn_map field_map acc_state
@@ -6201,7 +6178,7 @@ fn :: merge plain scoped types [RScopedType] [RTypeDef] => [RTypeDef]
         merge plain scoped types ts (merge type def acc tdef)
 
 fn :: merge plain scoped fns fast [RScopedFn] ([RFnDef], RStrSet) => [RFnDef]
-      merge plain scoped fns fast [] (rev_acc, _) = rev fndef list rev_acc []
+      merge plain scoped fns fast [] (rev_acc, _) = list reverse rev_acc
       merge plain scoped fns fast ((ScopedFn _ in_lib fdef):fs) (rev_acc, seen_fns) =
         merge plain scoped fns fast fs (merge fn def scoped fast rev_acc seen_fns fdef in_lib)
 
@@ -6312,8 +6289,8 @@ fn :: should encode base underscores String String [String] RStrSet Bool => Bool
       should encode base underscores v base locals field_names encode_builtins
         | not (str contains base "_") = False
         | (str starts with base "__") or (str starts with base ":") = False
-        | (str in seen list v locals) or (str in seen list base locals) = False
-        | (is subscript ident v) and ((is upper ident v) or (str in seen list (extract fst str (split subscript v)) locals)) = False
+        | (list contains locals v) or (list contains locals base) = False
+        | (is subscript ident v) and ((is upper ident v) or (list contains locals (extract fst str (split subscript v)))) = False
         | str set has field_names base = False
         | (not encode_builtins) and (is compiler builtin ident base) = False
         | otherwise = True
@@ -6352,8 +6329,8 @@ fn :: encode rec update args underscores [RExpr] [String] RStrSet RStrSet Bool =
 fn :: is encode pipe var target String [RStmt] [String] RStrSet RStrSet => Bool
       is encode pipe var target v ss locals field_names fn_names
         | (v == "echo") or (is upper ident v) or (str contains v ".") or (is compiler builtin ident v) = False
-        | str in seen list v locals = True
-        | (is subscript ident v) and ((is upper ident v) or (str in seen list (extract fst str (split subscript v)) locals)) = True
+        | list contains locals v = True
+        | (is subscript ident v) and ((is upper ident v) or (list contains locals (extract fst str (split subscript v)))) = True
         | (not (str set has field_names v)) and (not (str set has fn_names (encode literal underscores v))) = True
         | otherwise = stmt list mentions var ss v
 
@@ -6526,22 +6503,10 @@ fn :: line has colon colon [RToken]          => Bool
       line has colon colon (TokColonColon:_) =  True
       line has colon colon (_:ts)            =  line has colon colon ts
 
-fn :: rev scoped fns [RScopedFn] [RScopedFn] => [RScopedFn]
-      rev scoped fns [] acc = acc
-      rev scoped fns (x:xs) acc = rev scoped fns xs ([x] :: acc)
-
-fn :: rev scoped types [RScopedType] [RScopedType] => [RScopedType]
-      rev scoped types [] acc = acc
-      rev scoped types (x:xs) acc = rev scoped types xs ([x] :: acc)
-
 fn :: add scoped fndefs [RFnDef] String Bool [RScopedFn] => [RScopedFn]
       add scoped fndefs [] _ _ acc = acc
       add scoped fndefs (f:fs) cur_mod in_lib acc =
         add scoped fndefs fs cur_mod in_lib ([ScopedFn cur_mod in_lib f] :: acc)
-
-fn :: rev decl toks [RToken] [RToken] => [RToken]
-      rev decl toks [] acc = acc
-      rev decl toks (x:xs) acc = rev decl toks xs ([x] :: acc)
 
 fn :: is top chunk boundary [RToken] => Bool
       is top chunk boundary [] = True
@@ -6552,9 +6517,9 @@ fn :: is top chunk boundary [RToken] => Bool
 
 fn :: split top decl chunk [RToken] [RToken] => [RToken] [RToken]
       split top decl chunk [] rev_acc =
-        (rev decl toks ([TokEof] :: rev_acc) [], [])
+        (list reverse ([TokEof] :: rev_acc), [])
       split top decl chunk (TokEof:_) rev_acc =
-        (rev decl toks ([TokEof] :: rev_acc) [], [])
+        (list reverse ([TokEof] :: rev_acc), [])
       split top decl chunk (TokNewline:rest) rev_acc =
         after_nl = skip newlines rest
         split top decl chunk nl after_nl ([TokNewline] :: rev_acc)
@@ -6564,7 +6529,7 @@ fn :: split top decl chunk [RToken] [RToken] => [RToken] [RToken]
 fn :: split top decl chunk nl [RToken] [RToken] => [RToken] [RToken]
       split top decl chunk nl after_nl rev_acc
         | is top chunk boundary after_nl =
-          (rev decl toks ([TokEof] :: rev_acc) [], after_nl)
+          (list reverse ([TokEof] :: rev_acc), after_nl)
         | otherwise =
           split top decl chunk after_nl rev_acc
 
@@ -6803,7 +6768,7 @@ fn :: format syntax err loc String String String String => String
 
 fn :: finish parse items mod ([RScopedFn], [RScopedType], [RModAlias]) => [RScopedFn] [RScopedType] [RModAlias]
       finish parse items mod (s_fns, s_tys, aliases) =
-        (rev scoped fns s_fns [], rev scoped types s_tys [], aliases)
+        (list reverse s_fns, list reverse s_tys, aliases)
 
 fn :: parse items mod [RToken] [RScopedFn] [RScopedType] [RModAlias] [String] Bool => [RScopedFn] [RScopedType] [RModAlias]
       parse items mod toks s_fns s_tys aliases mod_stack in_lib =
