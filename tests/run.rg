@@ -515,6 +515,11 @@ fn :: build tc8 result (Int, String, Int, Int) => CaseResult
         ok8 = c8 == 0 and (trim ws o8) == "1 []"
         Result "toolchain: inside an imported lib, a record field name means the lib's accessor even when the program defines a function with that name (FR-COMP-012; libs report 2026-11-08)" ok8 False ("exit " + (int to str c8) + "; output: " + (trim ws o8))
 
+fn :: build tc9 result (Int, String, Int, Int) => CaseResult
+      build tc9 result (c9, o9, _, _) =
+        ok9 = c9 == 0 and (trim ws o9) == "True k:a"
+        Result "toolchain: inside an imported module, a multi-word call whose first word is a parameter keeps its name even when the program defines a function named like another of its words (FR-COMP-012; Solstice report 2026-11-10)" ok9 False ("exit " + (int to str c9) + "; output: " + (trim ws o9))
+
 fn :: resolve stable path String => String
       resolve stable path repo =
         absolute from repo (pick non empty (sys getenv "STABLE") (repo + "/bin/stable"))
@@ -547,7 +552,10 @@ fn :: run toolchain checks String String String String => [CaseResult]
         write file (d + "/box.rg") "module :: box\n\ntype Box = items: [Int], size: Int\n\nfn :: box new => Box\n      box new = Box [1, 2, 3] 3\n\nfn :: box first Box => Int\n      box first b = first of (items b)\n\nfn :: first of [Int] => Int\n      first of (x:_) = x\n"
         write file (d + "/field_main.rg") "import box\n\nfn :: items Int => [Int]\n      items n = []\n\nfn :: main => ()\n      main =\n        echo \"{{box first box new}} {{items 5}}\"\n"
         r8 = build tc8 result (run sh capture ("\"" + ridgunc + "\" build field_main.rg -o field_main >/dev/null && ./field_main") d 600)
-        [r1, r2, r3, r4, r5, r6, r7, r8]
+        write file (d + "/errmod.rg") "type K = KNone | KBad\ntype E = kind: K, msg: String\n\nfn :: err kind eq K K => Bool\n      err kind eq KNone KNone =  True\n      err kind eq KBad  KBad  =  True\n      err kind eq _     _     =  False\n\nfn :: is ok E => Bool\n      is ok err =  err kind eq (kind err) KNone\n"
+        write file (d + "/local_head_main.rg") "import errmod\n\nfn :: kind String => String\n      kind s =  \"k:\" + s\n\nfn :: main => ()\n      main =\n        echo (is ok (E KNone \"x\")) (kind \"a\")\n"
+        r9 = build tc9 result (run sh capture ("\"" + ridgunc + "\" build local_head_main.rg -o local_head_main >/dev/null && ./local_head_main") d 600)
+        [r1, r2, r3, r4, r5, r6, r7, r8, r9]
 
 fn :: print case result CaseResult => ()
       print case result (Result name True _ _) =

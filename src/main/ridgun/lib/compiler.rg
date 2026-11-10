@@ -2996,9 +2996,18 @@ fn :: can move param var String [String] [String] [String] => Bool
 -- agent, tensor helper, record getter with extra arguments, local function
 -- value or borrowing callee): lowered as a direct `NCallFn`, and in tail
 -- position as `NTailCallFn` (OPT-019).
+fn :: is plain call target RNativeEnv String [RExpr] [String] => Bool
+      is plain call target env fname args bound_locals =
+        (lookup local bound_locals fname) < 0 and (not (is upper ident fname)) and (builtin call id fname) < 0 and (not (is agent call name fname)) and (not (is tensor helper name fname)) and (not (is gt pseudo name fname)) and fname != "sys_os" and fname != "sys_arch" and fname != "__record_update__" and fname != "__unpack2__" and fname != "__chain__" and (rexpr list len args) == (env fn arity env fname) and (not ((env has field env fname) and (env fn arity env fname) == 1 and (rexpr list len args) > 1))
+
 fn :: is direct call target RNativeEnv String [RExpr] [String] => Bool
       is direct call target env fname args bound_locals =
-        (lookup local bound_locals fname) < 0 and (not (is upper ident fname)) and (builtin call id fname) < 0 and (not (is agent call name fname)) and (not (is tensor helper name fname)) and (not (is gt pseudo name fname)) and fname != "sys_os" and fname != "sys_arch" and fname != "__record_update__" and fname != "__unpack2__" and fname != "__chain__" and (rexpr list len args) == (env fn arity env fname) and (not ((env has field env fname) and (env fn arity env fname) == 1 and (rexpr list len args) > 1)) and (env borrow mask env fname) <= 0
+        (is plain call target env fname args bound_locals) and (env borrow mask env fname) <= 0
+
+-- The same call to a callee that borrows some parameters (OPT-018).
+fn :: is borrow call target RNativeEnv String [RExpr] [String] => Bool
+      is borrow call target env fname args bound_locals =
+        (env borrow mask env fname) > 0 and (is plain call target env fname args bound_locals)
 
 fn :: lower tco arg expr RNativeEnv RExpr [RExpr] [String] [String] Int RNativeCode => RNativeCode
       lower tco arg expr env (EVar v) es bound_locals scope_vars sp st
@@ -3018,8 +3027,45 @@ fn :: lower tco arg expr RNativeEnv RExpr [RExpr] [String] [String] Int RNativeC
           count = rexpr list len args
           st1 = lower tco arg list to slots env args es bound_locals scope_vars sp 0 st
           nc emit st1 (NCallFn (env fn id env fname) sp count) (sp + count + 1)
+        | is borrow call target env fname args bound_locals =
+          lower tco borrow call env fname args es bound_locals scope_vars sp st
       lower tco arg expr env e _ bound_locals _ sp st =
         lower expr env e bound_locals sp st
+
+-- A call to a borrowing callee in a tail position (`loop s (emit step acc)`):
+-- its owned arguments are moved on their last use, as for any other callee,
+-- so `acc :: [h]` inside it appends in place (Solstice report 2026-11-10:
+-- cloning `acc` made the loop quadratic). A local passed to a borrowed
+-- parameter is read after the owned arguments are computed, so it counts as
+-- a later use and is never moved by them.
+fn :: lower tco borrow call RNativeEnv String [RExpr] [RExpr] [String] [String] Int RNativeCode => RNativeCode
+      lower tco borrow call env fname args after bound_locals scope_vars sp st =
+        count = rexpr list len args
+        mask = env borrow mask env fname
+        top = sp + (2 * count) + 1
+        peeked = borrow peeked args args mask bound_locals 0 []
+        st1 = lower tco borrow args env args (peeked :: after) mask bound_locals scope_vars sp 0 st
+        st2 = nc emit list st1 (borrow fixup ins env args mask bound_locals sp count 0 []) top
+        st3 = nc emit st2 (NCallFn (env fn id env fname) sp count) top
+        drops = borrow drop ins args mask bound_locals sp count 0 []
+        lower borrow cleanup drops (sp + (2 * count)) top st3
+
+fn :: borrow peeked args [RExpr] Int [String] Int [RExpr] => [RExpr]
+      borrow peeked args [] _ _ _ acc = acc
+      borrow peeked args (e:es) mask bound_locals idx acc
+        | (borrow bit mask idx) and (borrow local arg e bound_locals) = borrow peeked args es mask bound_locals (idx + 1) (acc :: [e])
+        | otherwise = borrow peeked args es mask bound_locals (idx + 1) acc
+
+fn :: lower tco borrow args RNativeEnv [RExpr] [RExpr] Int [String] [String] Int Int RNativeCode => RNativeCode
+      lower tco borrow args _ [] _ _ _ _ _ _ st = st
+      lower tco borrow args env (e:es) after mask bound_locals scope_vars sp idx st
+        | (borrow bit mask idx) and (borrow local arg e bound_locals) =
+          lower tco borrow args env es after mask bound_locals scope_vars sp (idx + 1) st
+        | otherwise =
+          cur_slot = sp + idx
+          st1 = lower tco arg expr env e (es :: after) bound_locals scope_vars cur_slot st
+          st2 = nc emit st1 (NStoreSlot cur_slot) (cur_slot + 1)
+          lower tco borrow args env es after mask bound_locals scope_vars sp (idx + 1) st2
 
 fn :: lower tco arg list to slots RNativeEnv [RExpr] [RExpr] [String] [String] Int Int RNativeCode => RNativeCode
       lower tco arg list to slots _ [] _ _ _ _ _ st = st

@@ -5761,10 +5761,20 @@ fn :: rewrite call expr String [RExpr] String [String] RModCtx [RModAlias] [RMod
         | is upper ident fn_name =
           ECall (resolve ctor ident ctx fn_name cur_mod special_ff aliases) (rewrite expr list args cur_mod locals special_ff aliases ctor_map fn_map field_map)
         | str in seen list fn_name locals =
-          ECall fn_name (rewrite local call args args cur_mod locals special_ff aliases ctor_map fn_map field_map)
+          local head call fn_name args cur_mod locals special_ff aliases ctor_map fn_map field_map (try consume scoped words fn_name [] args special_ff)
         | otherwise =
           fn1 = expand mod alias fn_name cur_mod aliases
           rewrite call lower fn1 args cur_mod locals special_ff aliases ctor_map fn_map field_map
+
+-- A local that is the first word of a multi-word function in scope starts
+-- that call (`err kind eq a b` with a parameter `err`): the following words
+-- are part of the name, not a call of `kind`, even when another module
+-- (the root program included) defines `kind` (Solstice report 2026-11-10).
+fn :: local head call String [RExpr] String [String] RModCtx [RModAlias] [RModAlias] [RModAlias] [RModAlias] (String, [RExpr], [RExpr]) => RExpr
+      local head call fn_name args cur_mod locals special_ff aliases ctor_map fn_map field_map (resolved, (c:cs), rem)
+        | resolved != "" = finish scoped mod call fn_name args cur_mod locals special_ff aliases ctor_map fn_map field_map (resolved, (c:cs), rem)
+      local head call fn_name args cur_mod locals special_ff aliases ctor_map fn_map field_map _ =
+        ECall fn_name (rewrite local call args args cur_mod locals special_ff aliases ctor_map fn_map field_map)
 
 fn :: rewrite call lower String [RExpr] String [String] RModCtx [RModAlias] [RModAlias] [RModAlias] [RModAlias] => RExpr
       rewrite call lower fn1 orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map
