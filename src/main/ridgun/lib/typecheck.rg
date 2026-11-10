@@ -1093,6 +1093,10 @@ fn :: check expr RExpr String [RTypeBind] [RTypeBind] => RType [RTypeError]
         finish hadamard check l_res r_res fn_name
       check expr (EVar name) fn_name locals fns =
         lookup var type name fn_name locals fns
+      check expr (EBin OpAdd (EVar v) r) fn_name locals fns =
+        l_res = check expr (EVar v) fn_name locals fns
+        r_res = check expr r fn_name locals fns
+        str add fact fn_name v (finish binop check OpAdd l_res r_res fns fn_name)
       check expr (EBin bop l r) fn_name locals fns =
         l_res = check expr l fn_name locals fns
         r_res = check expr r fn_name locals fns
@@ -1335,6 +1339,13 @@ fn :: finish einsum check RType ([RDimBind], [RTypeError]) => RType [RTypeError]
 fn :: finish hadamard check (RType, [RTypeError]) (RType, [RTypeError]) String => RType [RTypeError]
       finish hadamard check ((TyTensor e dims), l_errs) (r_ty, r_errs) fn_name = (TyTensor e dims, l_errs :: r_errs :: (numeric tensor errs "element-wise operator" (TyTensor e dims) r_ty fn_name))
       finish hadamard check (l_ty, l_errs) (r_ty, r_errs) fn_name = (TyTensor (tensor elem any) [], l_errs :: r_errs :: (numeric tensor errs "element-wise operator" l_ty r_ty fn_name))
+
+-- `v + r` on Strings records that `v` is a String (fact `fn|$v|S`): in a
+-- tail position lowering then appends to `v` in place when it is its last
+-- use and has one owner (OPT-020).
+fn :: str add fact String String (RType, [RTypeError]) => RType [RTypeError]
+      str add fact fn_name v (TyString, errs) =  (TyString, errs :: [TypeError ":tensor-elem:" (fn_name + "|$" + v + "|S")])
+      str add fact _ _ res =  res
 
 fn :: finish binop check RBinOp (RType, [RTypeError]) (RType, [RTypeError]) [RTypeBind] String => RType [RTypeError]
       finish binop check bop (l_ty, l_errs) (r_ty, r_errs) fns fn_name =

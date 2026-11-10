@@ -3018,6 +3018,14 @@ fn :: lower tco arg expr RNativeEnv RExpr [RExpr] [String] [String] Int RNativeC
         st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
         st3 = lower tco arg expr env r es bound_locals scope_vars (sp + 1) st2
         nc emit st3 (NBinOp 14 sp) (sp + 1)
+      lower tco arg expr env (EBin OpAdd l r) es bound_locals scope_vars sp st
+        | str add chain env l =
+          st1 = lower tco arg expr env l ([r] :: es) bound_locals scope_vars sp st
+          st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
+          st3 = lower tco arg expr env r es bound_locals scope_vars (sp + 1) st2
+          done_lbl = nc lbl st3
+          st4 = nc set lbl st3 (done_lbl + 1)
+          nc emit list st4 [NStoreSlot (sp + 1), NCallBuiltin 121 sp 2, NJumpIfNonZero done_lbl, NMoveSlot (sp + 1), NBinOp (binop id OpAdd) sp, NLabel done_lbl] (sp + 2)
       lower tco arg expr env (ETuple elems) es bound_locals scope_vars sp st =
         count = rexpr list len elems
         st1 = lower tco arg list to slots env elems es bound_locals scope_vars sp 0 st
@@ -3031,6 +3039,18 @@ fn :: lower tco arg expr RNativeEnv RExpr [RExpr] [String] [String] Int RNativeC
           lower tco borrow call env fname args es bound_locals scope_vars sp st
       lower tco arg expr env e _ bound_locals _ sp st =
         lower expr env e bound_locals sp st
+
+-- `v + r` on Strings in a tail position (OPT-020): `v` is moved on its
+-- last use, and runtime extension builtin 121 appends `r` to it in place
+-- when it has one owner, so `loop (n - 1) (acc + x)` is linear. Builtin
+-- 121 returns 0 and leaves both slots alone otherwise (shared or not two
+-- Strings); then the usual `+` makes a new String. A chain
+-- `acc + sep + x` appends twice: the inner result is a new String or `acc`
+-- itself, owned once.
+fn :: str add chain RNativeEnv RExpr => Bool
+      str add chain env (EVar v) =  (env tensor kind env ("$" + v)) == "S"
+      str add chain env (EBin OpAdd l _) =  str add chain env l
+      str add chain _ _ =  False
 
 -- A call to a borrowing callee in a tail position (`loop s (emit step acc)`):
 -- its owned arguments are moved on their last use, as for any other callee,

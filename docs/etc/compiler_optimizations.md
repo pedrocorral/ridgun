@@ -36,6 +36,7 @@ Every optimization in `ridgunc` is assigned a stable `OPT-NNN` identifier and do
 | `OPT-017` | Deferred Parameter Move in Self Tail Calls | AST -> Native IR (`compiler.rg`) | `loop r (j + 1) (acc + field r)`: a parameter passed on and read by a later argument | Moves the parameter into its argument slot after the other arguments instead of cloning it |
 | `OPT-018` | Borrowed Pattern Parameters | AST -> Native IR (`compiler.rg`, all backends) | Parameters that every clause matches with a constructor, tuple, `[]`, string or `_` pattern | The caller passes a local without a clone and the callee empties the slot without a drop (`NPeekSlot`, `NForgetSlot`) |
 | `OPT-019` | Tail Calls Between Different Functions | AST -> Native IR -> all backends (`compiler.rg`, `llvm.rg`, `x86_64.rg`) | A direct call to another function in tail position (`loop` -> `step` -> `loop`, unit functions calling unit functions) | Releases the caller's frame before the call: any number of rounds in constant stack and memory (was about 200 bytes per round, crash at 3 000 000) |
+| `OPT-020` | In-Place String Append in Tail Calls | AST -> Native IR -> runtime extension (`typecheck.rg`, `compiler.rg`, builtin 121) | `loop (n - 1) (acc + x)` and chains `acc + sep + x` in a tail position, `acc` a String | Moves `acc` on its last use and appends in place when it has one owner, with a doubling buffer: linear instead of quadratic (100 000 appends 2.3 s -> 3 ms) |
 
 ---
 
@@ -187,6 +188,16 @@ Every optimization in `ridgunc` is assigned a stable `OPT-NNN` identifier and do
   3. x86-64: `rg_tco_copy` moves the arguments to slots 0..count-1 and drops the rest; the arguments move to the base of a frame of the callee's size (`rsp = rbp - frame size`, moved downward or upward by the size difference); slots `count .. slots - 1` are zeroed (`rep stosq`); then a jump to the callee's body after its 42-byte prologue. Size: `68 + 16 * count` bytes. More than 32 arguments: a call and a return.
   4. ARM64: a call and a return (not implemented yet; FR-COMP-004 §3).
 - **Effect**: 3 000 000 rounds of `loop tuple` <-> `step tuple`: 8.6 MB on both backends (crash before). The self-built compiler's peak memory on `check compiler.rg` fell from 308 MB to 216 MB, because the lexer's and parser's mutual tail calls no longer keep frames. Regression test: `tests/cases/functions/mutual_tail_calls_3m.rg`.
+
+### `OPT-020` — In-Place String Append in Tail Calls
+- **Location**: `str add fact` in `src/main/ridgun/lib/typecheck.rg`; the `EBin OpAdd` clause of `lower tco arg expr` and `str add chain` in `src/main/ridgun/lib/compiler.rg`; `str_append` (builtin 121) in the runtime extension (`docs/etc/runtime_ext.md`).
+- **Problem Addressed**: `rep x n acc = rep x (n - 1) (acc + x)` cloned `acc` and the runtime's `+` always made a new String of the exact size, so each round copied the whole String: 100 000 rounds took 2.3 s (TASK-0068, found while fixing the Solstice report of 2026-11-10).
+- **Transformation**:
+  1. The type checker records `fn|$v|S` for every `v + r` whose result is a String (the same channel as the tensor element facts; `$` keeps the keys apart).
+  2. In a tail position (`lower tco arg expr`: an argument of a self tail call, or a tail return), `l + r` where the leftmost operand of the `+` chain `l` is such a variable is lowered as: `l` with moves (its last use is moved, `NMoveSlot`), `r`, then `NCallBuiltin 121 sp 2`; on `0` it falls back to `NMoveSlot (sp + 1)`, `NBinOp 0 sp` (the usual `+`).
+  3. Builtin 121: when both values are Strings and the left String's header (`{capacity, data, length, rc}`) has rc 1, it copies the right bytes after the left ones, growing the buffer to `max(2 * capacity, needed, 32)` when needed (the old buffer is freed by dropping a String built around it), and returns the left String. Otherwise it returns 0 and leaves both slots alone.
+- **Safety**: a String that another variable, list or record still holds has rc > 1 (a clone adds one), so it is never changed. A local that is read again after the call is cloned, not moved. Borrowed parameters (`OPT-018`) are never bound to a name, so they cannot be the left operand.
+- **Effect**: 100 000 rounds of `rep "a" n ""`: 2.3 s -> 3 ms on both backends; 200 rounds of a 1 MB String stay under 64 MB. Regression test: `tests/cases/perf/string_append_in_tail_call.rg`.
 
 ### Rule: tail calls stay last
 Applies to every new or changed optimization.

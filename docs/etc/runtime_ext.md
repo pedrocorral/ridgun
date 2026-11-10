@@ -36,6 +36,7 @@ The arguments are the values in `slots[0 .. count-1]`. The routine consumes them
 | 118 | `sha256 digest` | String or `Tensor[U8]` | `Tensor[U8 * 32]` |
 | 119 | `tensor u8 from list` | list of Int 0..255 | `Tensor[U8]` |
 | 120 | `sys execve` | path, argv (argv[0] included), envp | `-errno` (returns only on failure) |
+| 121 | `+` on Strings in a tail position (OPT-020) | left String (owned), right String | the left String with the right one appended in place when its header has rc 1; else `0`, and both slots are left as they are (the caller then does the usual `+`) |
 
 ## `Tensor[U8]` layout
 
@@ -66,7 +67,7 @@ ld.lld -T rtx.ld -o rtx.elf rtx.o
 llvm-objcopy -O binary --only-section=.rtx rtx.elf rtx.bin
 ```
 
-Then check that the object has only PC-relative relocations (`llvm-readobj -r rtx.o`: `R_X86_64_PC32` and `R_X86_64_PLT32`), and that `llvm-nm rtx.elf` lists no undefined symbol. Replace the list in `x86 rt ext` with the bytes of `rtx.bin` (`od -An -tu1 -v rtx.bin`), writing the trailing zero bytes as `zero bytes n`. Built with clang 19.1.7: 11 120 bytes, of which the last 4 096 are zero.
+Then check that the object has only PC-relative relocations (`llvm-readobj -r rtx.o`: `R_X86_64_PC32` and `R_X86_64_PLT32`), and that `llvm-nm rtx.elf` lists no undefined symbol. Replace the list in `x86 rt ext` with the bytes of `rtx.bin` (`od -An -tu1 -v rtx.bin`), writing the trailing zero bytes as `zero bytes n`. Built with clang 19.1.7: 11 504 bytes, of which the last 4 096 are zero.
 
 **LLVM runtime cache.** The LLVM backend keeps the assembled runtime and its linker script in `/tmp/__rg_llvm_cache_<runtime fingerprint>_<script fingerprint>.rt` / `.lds` (`llvm rt cache base` in `llvm.rg`). Any change to the runtime gives a new name, so no build links a stale copy. Until 0.9.49 the name held only the version: a runtime changed without a version bump was linked stale, and a builtin missing from it crashed or did nothing in LLVM builds while x86-64 builds worked.
 
@@ -619,12 +620,51 @@ static void sha256_of(i64 v, u8 *out) {
 }
 
 /* ── Entry ────────────────────────────────────────────────────── */
+/* ── In-place String append (a + b in a tail position) ─────────
+ * A String's header is {capacity, data, length, rc}. When the left
+ * String's header has rc 1 (one owner), b's bytes are appended to its
+ * buffer, which grows by doubling, so building a String in a loop is
+ * linear. The old buffer is freed by dropping a String made around it.
+ * Returns 0 and leaves both slots as they are when the operands are not
+ * two Strings or the left one is shared: the caller then does the usual
+ * `+` (a new String). */
+static i64 str_append(i64 *s) {
+  i64 a = s[0], b = s[1];
+  if (!is_ptr(a) || heap_tag(a) != 1 || !is_ptr(b) || heap_tag(b) != 1) return 0;
+  i64 *h = (i64 *)*field(a, 1);
+  if (h[3] != 1) return 0;
+  u8 *bd;
+  i64 bn;
+  bytes_of(b, &bd, &bn);
+  i64 cap = h[0], len = h[2];
+  if (cap - len < bn) {
+    i64 nc = cap * 2;
+    if (nc < len + bn) nc = len + bn;
+    if (nc < 32) nc = 32;
+    u8 *nb = (u8 *)rt_alloc_buf(nc);
+    mem_copy(nb, (const u8 *)h[1], len);
+    if (cap > 0) {
+      i64 t[3] = {cap, h[1], 0};
+      rt_drop_val(rval_new(1, rt_box_rc_vec(t), 0));
+    }
+    h[0] = nc;
+    h[1] = (i64)nb;
+  }
+  mem_copy((u8 *)h[1] + len, bd, bn);
+  h[2] = len + bn;
+  s[0] = 0;
+  s[1] = 0;
+  rt_drop_val(b);
+  return a;
+}
+
 enum {
   ID_TIME_NS = 100, ID_WALL_MS = 101, ID_TIME_MS = 102, ID_CRC = 103,
   ID_U8_NEW = 104, ID_U8_GET = 105, ID_U8_SET = 106, ID_U8_DIM = 107,
   ID_FROM_STR = 108, ID_TO_STR = 109, ID_TO_LIST = 110, ID_TO_WORDS = 111,
   ID_READ_BYTES = 112, ID_WRITE_BYTES = 113, ID_READ_INTO = 114, ID_WRITE_FROM = 115,
-  ID_SYS_CALL = 116, ID_SHA_RAW = 117, ID_SHA_DIGEST = 118, ID_FROM_LIST = 119, ID_EXECVE = 120
+  ID_SYS_CALL = 116, ID_SHA_RAW = 117, ID_SHA_DIGEST = 118, ID_FROM_LIST = 119, ID_EXECVE = 120,
+  ID_STR_APPEND = 121
 };
 
 __attribute__((used)) i64 rg_rtx(i64 id, i64 *s, i64 count) {
@@ -678,6 +718,7 @@ __attribute__((used)) i64 rg_rtx(i64 id, i64 *s, i64 count) {
   case ID_TO_LIST: r = u8_to_list(s[0]); break;
   case ID_FROM_LIST: r = list_to_u8(s[0]); break;
   case ID_EXECVE: r = tag_int(exec_full(s[0], s[1], s[2])); break;
+  case ID_STR_APPEND: return str_append(s);
   case ID_TO_WORDS: r = u8_to_words(s[0]); break;
   case ID_READ_BYTES: r = read_bytes(s[0]); break;
   case ID_WRITE_BYTES: r = write_bytes(s[0], s[1]); break;
