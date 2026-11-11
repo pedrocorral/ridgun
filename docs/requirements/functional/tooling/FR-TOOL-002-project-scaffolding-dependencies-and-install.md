@@ -34,6 +34,7 @@ The `stable` project manager (`src/main/ridgun/stable/main.rg`) SHALL support fu
      - When a dependency has a link, `stable deps` and `stable add` SHALL synchronize the linked folder as a package folder, instead of the `omni.lock` entry, and SHALL print a warning naming the folder each time.
    - `stable add <name>` SHALL append `<name>` to `dependencies` in `build.rg` and synchronize it under the same rules.
    - `load_rg_source` in `src/main/ridgun/lib/parser.rg` SHALL also search `.stable/deps/*/src/main/ridgun/lib/<mod>.rg` and `.stable/deps/*/<mod>.rg` when resolving `import <mod>`.
+   - `stable run [target]` SHALL build the target before running it unless the binary was built from exactly the current sources. It SHALL decide by content, not by file times: a stamp next to the binary (`<binary>.stamp`) holds a hash of every `.rg`, `.rglib` and `omni.lock` in the project (outside `target/`), with their paths, and of the compiler's version. It SHALL create the output folder when it is missing.
 3. **Binary Installation (`stable install [target]`)**:
    - `stable install [target]` SHALL compile the project's native ELF64 executable(s) and install them with executable permissions (`0755`) into `~/.local/bin/` (and `bin/`).
 
@@ -44,5 +45,6 @@ Providing `new`, `init`, `deps`, `add`, and `install` directly inside `stable` c
 - AC1: `stable new <dir>` creates a valid Ridgun project that passes `stable check` and `stable test`.
 - AC2: `stable deps` and `stable add` manage `.stable/deps/` from package names locked in `omni.lock`, and `import` resolution searches `.stable/deps/`.
 - AC4: `stable deps` rejects a path, a URL, a local lock entry and a name missing from `omni.lock`, and never runs git.
+- AC6: after a source changes, `stable run` builds again and runs the new program, also when the change happens in the same second as the previous build; with no change it runs the existing binary without building.
 - AC5: with a developer link, `stable deps` copies the linked folder and warns; a link whose package is not a name, whose folder holds a disallowed character, or whose `build.rg` names another project is refused; after `stable dev unlink` the name resolves through `omni.lock` again.
 - AC3: `stable install` builds and installs native ELF64 binaries into `~/.local/bin/`.

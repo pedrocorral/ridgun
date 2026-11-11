@@ -1785,8 +1785,11 @@ fn :: collect ident lhs list [RToken] [String] => Bool [String] [RToken]
 
 fn :: build tup unpack stmts [String] String Int [RStmt] => [RStmt]
       build tup unpack stmts [] _ _ tail_stmts = tail_stmts
-      build tup unpack stmts (v:vs) tmp_name idx tail_stmts =
-        [StmtMut v (EIndex (EVar tmp_name) [EInt idx])] :: (build tup unpack stmts vs tmp_name (idx + 1) tail_stmts)
+      build tup unpack stmts (v:vs) tmp_name idx tail_stmts
+        -- `_` binds nothing: that part is released with the tuple. Binding it as a variable named `_`
+        -- stored it outside its own slot and released a value other variables still held.
+        | v == "_" = build tup unpack stmts vs tmp_name (idx + 1) tail_stmts
+        | otherwise = [StmtMut v (EIndex (EVar tmp_name) [EInt idx])] :: (build tup unpack stmts vs tmp_name (idx + 1) tail_stmts)
 
 fn :: finish tup destructure String [String] (RExpr, [RToken]) => [RStmt] [RToken]
       finish tup destructure first_v vars (rhs_e, after_rhs) =
@@ -7018,7 +7021,80 @@ fn :: merge type def [RTypeDef] RTypeDef => [RTypeDef]
         | otherwise = tys :: [TypeDef name vs fs]
 
 fn :: parse tokens [RToken] => RProgram
-      parse tokens toks     =  add int lit errors (normalize program (parse items toks [] [])) (int lit errors toks TokNewline "" [])
+      parse tokens toks     =  add int lit errors (normalize program (parse items (soften name keywords toks) [] [])) (int lit errors toks TokNewline "" [])
+
+-- ── `not` and `with` inside function names ──────────────────
+-- `fn :: loaded or not ...` and `fn :: with record ...` are valid names, but the lexer makes `not` and `with`
+-- keywords, so a call read `not` as negation and `with` as a record update. Wherever the tokens spell a declared
+-- name that holds one of these words, that word becomes a plain identifier; the call then resolves like any
+-- other multi-word name. Elsewhere `not` and `with` keep their meaning.
+fn :: soften name keywords [RToken] => [RToken]
+      soften name keywords toks =  soften with names (keyword names in toks toks []) toks
+
+fn :: soften with names [[String]] [RToken] => [RToken]
+      soften with names []    toks =  toks
+      soften with names names toks =  soften scan names toks []
+
+fn :: keyword names in toks [RToken] [[String]] => [[String]]
+      keyword names in toks [] acc =  acc
+      keyword names in toks (TokFn:TokColonColon:rest) acc =  keyword names in toks rest (add keyword name (decl name words rest []) acc)
+      keyword names in toks (TokOp:TokColonColon:rest) acc =  keyword names in toks rest (add keyword name (decl name words rest []) acc)
+      keyword names in toks (_:rest) acc =  keyword names in toks rest acc
+
+fn :: add keyword name [String] [[String]] => [[String]]
+      add keyword name ws acc
+        | (list len ws) >= 2 and ((list contains ws "not") or (list contains ws "with")) = acc :: [ws]
+        | otherwise = acc
+
+-- The words of a declared name: every word token up to the first type (an upper-case identifier, `[` or `(`).
+fn :: decl name words [RToken] [String] => [String]
+      decl name words [] acc =  acc
+      decl name words (t:rest) acc
+        | (token word t) == "" = acc
+        | is upper ident (token word t) = acc
+        | otherwise = decl name words rest (acc :: [token word t])
+
+fn :: token word RToken => String
+      token word (TokIdent s) =  s
+      token word TokNot =  "not"
+      token word TokWith =  "with"
+      token word TokAnd =  "and"
+      token word TokOr =  "or"
+      token word TokXor =  "xor"
+      token word TokType =  "type"
+      token word _ =  ""
+
+fn :: soften scan [[String]] [RToken] [RToken] => [RToken]
+      soften scan _     [] acc =  list reverse acc
+      soften scan names (t:rest) acc =  soften at names (longest name match names ([t] :: rest) 0) ([t] :: rest) acc
+
+fn :: soften at [[String]] Int [RToken] [RToken] => [RToken]
+      soften at names 0 (t:rest) acc =  soften scan names rest ([t] :: acc)
+      soften at names k toks acc =  soften scan names (list drop toks k) (rev onto acc (soften window (list take toks k)))
+
+fn :: rev onto [RToken] [RToken] => [RToken]
+      rev onto acc [] =  acc
+      rev onto acc (t:ts) =  rev onto ([t] :: acc) ts
+
+fn :: soften window [RToken] => [RToken]
+      soften window [] =  []
+      soften window (TokNot:ts) =  [TokIdent "not"] :: (soften window ts)
+      soften window (TokWith:ts) =  [TokIdent "with"] :: (soften window ts)
+      soften window (t:ts) =  [t] :: (soften window ts)
+
+-- The length of the longest declared name the tokens start with, 0 for none.
+fn :: longest name match [[String]] [RToken] Int => Int
+      longest name match [] _ best =  best
+      longest name match (n:ns) toks best
+        | (list len n) > best and (tokens spell n toks) = longest name match ns toks (list len n)
+        | otherwise = longest name match ns toks best
+
+fn :: tokens spell [String] [RToken] => Bool
+      tokens spell [] _ =  True
+      tokens spell _ [] =  False
+      tokens spell (w:ws) (t:ts)
+        | (token word t) == w = tokens spell ws ts
+        | otherwise = False
 
 -- ── Out-of-range integer literals (RG-113) ──────────────────
 -- The lexer marks a decimal literal above the Int maximum as TokBadInt and the

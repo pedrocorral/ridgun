@@ -1,6 +1,6 @@
 -- ============================================================
 -- src/main/ridgun/stable/main.rg
--- `stable` v0.9.58 — The Interactive Build Tool for Ridgun (100% Ridgun)
+-- `stable` v0.9.59 — The Interactive Build Tool for Ridgun (100% Ridgun)
 -- Written in Ridgun's natural-language mixfix operator style (`op :: ...`).
 -- Decoupled from `ridgunc` internals per ADR-0001: delegates `check`,
 -- `compile`, `build`, `build lib`, and test/plugin compilation to the
@@ -673,19 +673,47 @@ op :: run task run on StableConfig args [String] => Int
 op :: run specific target String from String version String in String args [String] => Int
       run specific target tname from entry_path version ver in out_dir args extra_args =
         out_bin = out_dir + "/" + tname
-        ensure_st = ensure target built (file out_bin exists) from entry_path into out_bin version ver
+        ensure_st = ensure target built (binary is current out_bin) from entry_path into out_bin version ver
         exec binary if built ensure_st path out_bin args extra_args
 
 op :: run default target for StableConfig args [String]   => Int
       run default target for (ProjectConfig name_str ver main_ep _ _ out_dir) args extra_args =
         out_bin = out_dir + "/" + name_str
-        ensure_st = ensure target built (file out_bin exists) from main_ep into out_bin version ver
+        ensure_st = ensure target built (binary is current out_bin) from main_ep into out_bin version ver
         exec binary if built ensure_st path out_bin args extra_args
 
 op :: ensure target built Bool from String into String version String => Int
       ensure target built True from _ into _ version _ = 0
       ensure target built False from entry_path into out_bin version ver =
-        build target from entry_path into out_bin version ver
+        shell exec ('mkdir -p "$(dirname "' + out_bin + '")"') -> ()
+        st = build target from entry_path into out_bin version ver
+        record source stamp st out_bin
+
+-- `stable run` rebuilds unless the binary was built from exactly the current sources. The stamp next to the
+-- binary (<binary>.stamp) is a hash of every .rg, .rglib and omni.lock in the project (target/ aside), with
+-- their paths, and of the compiler's version. It compares contents, not file times, so a source rewritten in
+-- the same second as the last build is still seen.
+op :: source stamp command String => String
+      source stamp command dest =
+        "( find . -path ./target -prune -o -path ./.git -prune -o -type f -name \"*.rg\" -print -o -type f -name \"*.rglib\" -print -o -type f -name omni.lock -print | LC_ALL=C sort | while IFS= read -r f; do sha256sum \"$f\"; done; \"" + (resolve ridgunc binary) + "\" --version 2>/dev/null ) | sha256sum > \"" + dest + "\""
+
+op :: binary is current String => Bool
+      binary is current out_bin
+        | not (file out_bin exists) = False
+        | not (file (out_bin + ".stamp") exists) = False
+        | otherwise =
+          shell exec (source stamp command (out_bin + ".stamp.now")) -> ()
+          same = (read file (out_bin + ".stamp.now")) == (read file (out_bin + ".stamp"))
+          shell exec ("rm -f \"" + out_bin + ".stamp.now\"") -> ()
+          same
+
+op :: record source stamp Int String => Int
+      record source stamp 0 out_bin =
+        shell exec (source stamp command (out_bin + ".stamp")) -> ()
+        0
+      record source stamp st out_bin =
+        shell exec ("rm -f \"" + out_bin + ".stamp\"") -> ()
+        st
 
 op :: exec binary if built Int  path String  args [String]   => Int
       exec binary if built 0    path out_bin args extra_args =
@@ -1479,7 +1507,7 @@ op :: dispatch command StableCommand on StableConfig => Bool StableConfig Int
       dispatch command CmdExit on cfg = (False, cfg, 0)
       dispatch command CmdHelp on cfg = (True, cfg, run task help)
       dispatch command CmdVersion on cfg =
-        echo "stable 0.9.58 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
+        echo "stable 0.9.59 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
         (True, cfg, 0)
       dispatch command CmdInfo on cfg = (True, cfg, run task info on cfg)
       dispatch command CmdReload on _ =
@@ -1562,12 +1590,12 @@ op :: report reload config StableConfig name String => Bool StableConfig Int
 
 op :: start interactive shell for StableConfig => ()
       start interactive shell for (ProjectConfig "" ver main_ep sdir tdir out_dir) =
-        log info "Welcome to stable 0.9.58 (Ridgun Build Tool — 100% Ridgun)"
+        log info "Welcome to stable 0.9.59 (Ridgun Build Tool — 100% Ridgun)"
         log info "No build.rg found in current directory. Run 'init' or 'new <name>' to create a project."
         log info "Commands: 'new', 'init', 'help', 'exit'"
         repl loop for (ProjectConfig "" ver main_ep sdir tdir out_dir)
       start interactive shell for (ProjectConfig name_str ver main_ep sdir tdir out_dir) =
-        log info "Welcome to stable 0.9.58 (Ridgun Build Tool — 100% Ridgun)"
+        log info "Welcome to stable 0.9.59 (Ridgun Build Tool — 100% Ridgun)"
         log info "Loading project definition from build.rg ..."
         log info "Set current project to '{name_str}' v{ver} (main: {main_ep})"
         log info "Commands: 'built' (or 'build'), 'run', 'test', 'check', 'compile', 'clean', 'info', 'exit'"

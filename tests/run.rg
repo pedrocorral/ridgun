@@ -535,6 +535,11 @@ fn :: build tc12 result (Int, String, Int, Int) => CaseResult
         ok12 = c12 == 0 and (trim ws o12) == "LINK_OK\nREFUSE_OK\nUNLINK_OK"
         Result "toolchain: `stable dev link` builds a dependency from a local checkout with a warning, only from ~/.stable/dev-links; links to another project, a path as name or a folder with shell characters are refused; an invalid link stops `stable deps`; after `stable dev unlink` the name resolves through omni again (FR-TOOL-002 AC5, ADR-0005)" ok12 False ("exit " + (int to str c12) + "; output: " + (trim ws o12))
 
+fn :: build tc13 result (Int, String, Int, Int) => CaseResult
+      build tc13 result (c13, o13, _, _) =
+        ok13 = c13 == 0 and (trim ws o13) == "FIRST_OK\nREBUILT_OK\nCACHED_OK"
+        Result "toolchain: `stable run` creates target/, rebuilds when a source changed since the last build (also within the same second) and runs the existing binary when nothing changed (FR-TOOL-002; compiler defect report 2026-11-11, item 3)" ok13 False ("exit " + (int to str c13) + "; output: " + (trim ws o13))
+
 fn :: resolve stable path String => String
       resolve stable path repo =
         absolute from repo (pick non empty (sys getenv "STABLE") (repo + "/bin/stable"))
@@ -579,7 +584,8 @@ fn :: run toolchain checks String String String String => [CaseResult]
         write file (d + "/tc11.sh") ("set -e; \"" + ridgunc + "\" build stdin_bytes.rg -o stdin_bytes >/dev/null; yes x | head -c 200000 | ./stdin_bytes")
         r11 = build tc11 result (run sh capture "bash tc11.sh" d 600)
         r12 = build tc12 result (run sh capture ("bash \"" + repo + "/tests/toolchain/stable_dev_links.sh\" \"" + stable_bin + "\" \"" + d + "\"") d 120)
-        [r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12]
+        r13 = build tc13 result (run sh capture ("bash \"" + repo + "/tests/toolchain/stable_run_rebuilds.sh\" \"" + stable_bin + "\" \"" + d + "\"") d 600)
+        [r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13]
 
 fn :: print case result CaseResult => ()
       print case result (Result name True _ _) =
