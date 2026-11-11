@@ -1895,6 +1895,72 @@ fn :: agent fn mode RNativeEnv RExpr [String] => Int
         | otherwise = 1
       agent fn mode _ _ _ = 1
 
+-- A stateful agent's mode tells how to read its step's result (FR-COMP-009): 7 when the step returns
+-- (new state, reply), 8 when it returns the new state, which is also the reply. Both are decided from the
+-- step's signature. 2 is a step the compiler cannot see (a lambda, a function passed as a value): its
+-- result is read with the run-time rule.
+fn :: stateful step mode RNativeEnv RExpr [String] => Int
+      stateful step mode env (EVar fname) bound_locals
+        | (lookup local bound_locals fname) < 0 = known step mode (env fn arity env (":stform:0:" + fname))
+        | otherwise = 2
+      stateful step mode env (ECall fname args) bound_locals
+        | (lookup local bound_locals fname) < 0 = known step mode (env fn arity env (":stform:" + (int to str (list len args)) + ":" + fname))
+        | otherwise = 2
+      stateful step mode _ _ _ = 2
+
+fn :: known step mode Int => Int
+      known step mode 7 =  7
+      known step mode 8 =  8
+      known step mode _ =  2
+
+-- Marks ":stform:<k>:<name>" for every function that can be a stateful step once k arguments are applied:
+-- the state is parameter k and at least one message parameter follows.
+fn :: add step form marks [RFnDef] RStrIntMap => RStrIntMap
+      add step form marks [] m = m
+      add step form marks ((FnDef name params ret _):fs) m =  add step form marks fs (add step form marks for name params ret 0 m)
+
+fn :: add step form marks for String [String] String Int RStrIntMap => RStrIntMap
+      add step form marks for _    []        _   _ m =  m
+      add step form marks for _    (_:[])    _   _ m =  m
+      add step form marks for name (p:ps) ret k m =
+        add step form marks for name ps ret (k + 1) (str int map insert m (":stform:" + (int to str k) + ":" + name) (step form of p ret))
+
+-- 8 when the step returns its state type, 7 when it returns (state type, reply type), 2 otherwise.
+fn :: step form of String String => Int
+      step form of state ret
+        | (type key ret) == (type key state) = 8
+        | (str starts with ret "(") and ((str char at ret ((str len ret) - 1)) == 41) = pair form of state (top level parts (str slice ret 1 ((str len ret) - 1)) 0 0 0 [])
+        | otherwise = 2
+
+fn :: pair form of String [String] => Int
+      pair form of state (first:_:[])
+        | (type key first) == (type key state) = 7
+        | otherwise = 2
+      pair form of _ _ = 2
+
+-- Signatures are stored normalized by the parser ("(A, B)" for two return types), so trimming is enough.
+fn :: type key String => String
+      type key t =  trim str t
+
+-- The comma-separated parts of s at bracket depth 0.
+fn :: top level parts String Int Int Int [String] => [String]
+      top level parts s i start depth acc
+        | i >= (str len s) = list reverse ([trim str (str slice s start i)] :: acc)
+        | ((str char at s i) == 44) and (depth == 0) = top level parts s (i + 1) (i + 1) depth ([trim str (str slice s start i)] :: acc)
+        | ((str char at s i) == 40) or ((str char at s i) == 91) = top level parts s (i + 1) start (depth + 1) acc
+        | ((str char at s i) == 41) or ((str char at s i) == 93) = top level parts s (i + 1) start (depth - 1) acc
+        | otherwise = top level parts s (i + 1) start depth acc
+
+-- Mode checks for the stateful branch: modes 2, 7 and 8 are stateful agents.
+fn :: stateful mode check Int Int Int => [RNativeInstr]
+      stateful mode check slot fail_lbl ok_lbl =
+        [NMatchInt slot 2, NJumpIfNonZero ok_lbl, NMatchInt slot 7, NJumpIfNonZero ok_lbl, NMatchInt slot 8, NJumpIfZero fail_lbl, NLabel ok_lbl]
+
+-- Reads a step result by the agent's static form; mode 2 falls through to the run-time rule.
+fn :: step form branch Int Int Int => [RNativeInstr]
+      step form branch mode_slot same_lbl split_lbl =
+        [NMatchInt mode_slot 7, NJumpIfNonZero split_lbl, NMatchInt mode_slot 8, NJumpIfNonZero same_lbl]
+
 fn :: stateful agent mode RNativeEnv RExpr [String] => Int
       stateful agent mode env (EVar fname) bound_locals
         | (lookup local bound_locals fname) < 0 and (env fn is heavy env fname) = 1
@@ -1931,7 +1997,7 @@ fn :: emit sink flush or state Bool Int Int => [RNativeInstr]
         ins_open = [NTupleGet sp 0, NStoreSlot (sp + 1), NTupleGet sp 1, NStoreSlot (sp + 2), NCloneSlot (sp + 2), NStoreSlot (sp + 3), NCallBuiltin 32 (sp + 3) 1, NStoreSlot (sp + 3), NTupleGet (sp + 3) 0, NStoreSlot (sp + 4), NTupleGet (sp + 3) 1, NStoreSlot (sp + 5), NLoadImmRaw 0, NStoreSlot (sp + 10), NMatchInt (sp + 4) 5, NJumpIfNonZero sink_lbl, NMatchInt (sp + 4) 6, NJumpIfZero st2_lbl]
         ins_unpack = [NLabel sink_lbl, NTupleGet (sp + 5) 0, NStoreSlot (sp + 6), NTupleGet (sp + 5) 1, NStoreSlot (sp + 7), NTupleGet (sp + 5) 2, NStoreSlot (sp + 8), NTupleGet (sp + 5) 3, NStoreSlot (sp + 9)]
         ins_loop = [NLabel loop_lbl, NMatchNonEmpty (sp + 7), NJumpIfZero save_lbl, NListHead (sp + 7), NStoreSlot (sp + 12), NListTail (sp + 7), NStoreSlot (sp + 7), NMatchInt (sp + 4) 5, NJumpIfZero step6_lbl] :: (emit indirect1 call (sp + 1) (sp + 12) (sp + 13) c1_lbl) :: [NDropVal, NJump loop_lbl, NLabel step6_lbl, NMoveSlot (sp + 6), NStoreSlot (sp + 11)] :: (emit indirect2 call (sp + 1) (sp + 11) (sp + 13) c2_lbl) :: [NStoreSlot (sp + 6), NJump loop_lbl]
-        ins_save = [NLabel save_lbl] :: (emit sink state copy want_state sp) :: [NMakeTuple (sp + 6) 4, NStoreSlot (sp + 5), NMakeTuple (sp + 4) 2, NStoreSlot (sp + 3), NJump restore_lbl, NLabel st2_lbl, NMatchInt (sp + 4) 2, NJumpIfZero restore_lbl, NTupleGet (sp + 5) 0, NStoreSlot (sp + 6)] :: (emit sink state copy want_state sp) :: [NLabel restore_lbl, NMoveSlot (sp + 3), NStoreSlot (sp + 4), NCloneSlot (sp + 2), NStoreSlot (sp + 5), NCallBuiltin 50 (sp + 4) 2, NDropVal, NClearLocals sp (sp + 10), NClearLocals (sp + 11) (sp + 18), NMoveSlot (sp + 10)]
+        ins_save = [NLabel save_lbl] :: (emit sink state copy want_state sp) :: [NMakeTuple (sp + 6) 4, NStoreSlot (sp + 5), NMakeTuple (sp + 4) 2, NStoreSlot (sp + 3), NJump restore_lbl, NLabel st2_lbl] :: (stateful mode check (sp + 4) restore_lbl (base_lbl + 10)) :: [NTupleGet (sp + 5) 0, NStoreSlot (sp + 6)] :: (emit sink state copy want_state sp) :: [NLabel restore_lbl, NMoveSlot (sp + 3), NStoreSlot (sp + 4), NCloneSlot (sp + 2), NStoreSlot (sp + 5), NCallBuiltin 50 (sp + 4) 2, NDropVal, NClearLocals sp (sp + 10), NClearLocals (sp + 11) (sp + 18), NMoveSlot (sp + 10)]
         ins_open :: ins_unpack :: ins_loop :: ins_save
 
 fn :: extract gagent name RExpr => String
@@ -1947,10 +2013,11 @@ fn :: lower agent call RNativeEnv String [RExpr] [String] Int RNativeCode => RNa
         nc emit list st1 ins (sp + 5)
       lower agent call env "agent" (fn_e:init_e:[]) bound_locals sp st =
         st_flag = stateful agent mode env fn_e bound_locals
+        st_mode = stateful step mode env fn_e bound_locals
         st1 = lower expr env fn_e bound_locals sp st
         st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
         st3 = lower expr env (msg copy expr env init_e) bound_locals (sp + 4) st2
-        ins = [NStoreSlot (sp + 4), NLoadImmInt st_flag, NStoreSlot (sp + 5), NMakeTuple (sp + 4) 2, NStoreSlot (sp + 4), NCallBuiltin 1 (sp + 1) 0, NStoreSlot (sp + 1), NCallBuiltin 1 (sp + 2) 0, NStoreSlot (sp + 2), NLoadImmInt 2, NStoreSlot (sp + 3), NMakeTuple (sp + 3) 2, NStoreSlot (sp + 3), NCloneSlot (sp + 1), NStoreSlot (sp + 4), NCallBuiltin 50 (sp + 3) 2, NDropVal, NMakeTuple sp 3]
+        ins = [NStoreSlot (sp + 4), NLoadImmInt st_flag, NStoreSlot (sp + 5), NMakeTuple (sp + 4) 2, NStoreSlot (sp + 4), NCallBuiltin 1 (sp + 1) 0, NStoreSlot (sp + 1), NCallBuiltin 1 (sp + 2) 0, NStoreSlot (sp + 2), NLoadImmInt st_mode, NStoreSlot (sp + 3), NMakeTuple (sp + 3) 2, NStoreSlot (sp + 3), NCloneSlot (sp + 1), NStoreSlot (sp + 4), NCallBuiltin 50 (sp + 3) 2, NDropVal, NMakeTuple sp 3]
         nc emit list st3 ins (sp + 6)
       lower agent call env "agent_sink" (fn_e:cap_e:drain_e:[]) bound_locals sp st =
         st1 = lower expr list to slots env [fn_e, cap_e, drain_e] bound_locals sp 0 st
@@ -1978,7 +2045,7 @@ fn :: lower agent call RNativeEnv String [RExpr] [String] Int RNativeCode => RNa
         st3 = nc emit list st2 [NStoreSlot (sp + 1), NCloneSlot (sp + 1), NStoreSlot (sp + 2), NLoadImmInt k, NStoreSlot (sp + 3), NCallBuiltin 50 (sp + 2) 2, NDropVal] (sp + 4)
         st4 = lower expr env body_e bound_locals (sp + 2) st3
         flush_lbl = nc lbl st4
-        st5 = nc set lbl st4 (flush_lbl + 10)
+        st5 = nc set lbl st4 (flush_lbl + 11)
         ins_exit = [NStoreSlot (sp + 2), NLoadImmInt k, NStoreSlot (sp + 3), NCallBuiltin 32 (sp + 3) 1, NStoreSlot (sp + 3)] :: (emit sink flush or state False (sp + 3) flush_lbl) :: [NDropVal, NMoveSlot sp, NStoreSlot (sp + 3), NLoadImmInt k, NStoreSlot (sp + 4), NCallBuiltin 50 (sp + 3) 2, NDropVal, NClearLocals sp (sp + 2), NClearLocals (sp + 3) (sp + 21), NMoveSlot (sp + 2)]
         nc emit list st5 ins_exit (sp + 21)
       lower agent call env "send_to" (msg_e:ag_e:[]) bound_locals sp st =
@@ -2011,11 +2078,12 @@ fn :: lower agent call RNativeEnv String [RExpr] [String] Int RNativeCode => RNa
         call2_plain_lbl = stopped_lbl + 23
         sink1_plain_lbl = stopped_lbl + 25
         sink2_plain_lbl = stopped_lbl + 27
-        st5 = nc set lbl st4 (stopped_lbl + 29)
+        st_mode_ok_lbl = stopped_lbl + 29
+        st5 = nc set lbl st4 (stopped_lbl + 30)
         ins_unpack = [NMatchTuple (sp + 1) 3, NJumpIfZero raw_chan_lbl, NTupleGet (sp + 1) 0, NStoreSlot (sp + 2), NTupleGet (sp + 1) 1, NStoreSlot (sp + 3), NTupleGet (sp + 1) 2, NStoreSlot (sp + 4), NCloneSlot (sp + 3), NStoreSlot (sp + 5), NCallBuiltin 32 (sp + 5) 1, NStoreSlot (sp + 5), NTupleGet (sp + 5) 0, NStoreSlot (sp + 6), NTupleGet (sp + 5) 1, NStoreSlot (sp + 7)]
         ins_stateless = [NMatchInt (sp + 6) 1, NJumpIfZero stateless2_lbl, NCloneSlot sp, NStoreSlot (sp + 8)] :: (emit indirect1 call (sp + 2) (sp + 8) (sp + 13) call1_plain_lbl) :: [NStoreSlot (sp + 8), NCloneSlot (sp + 8), NStoreSlot (sp + 9), NCloneSlot (sp + 4), NStoreSlot (sp + 10), NCallBuiltin 97 (sp + 9) 2, NDropVal, NCloneSlot (sp + 5), NStoreSlot (sp + 9), NCloneSlot (sp + 3), NStoreSlot (sp + 10), NCallBuiltin 50 (sp + 9) 2, NDropVal, NJump done_lbl]
         ins_stateless2 = [NLabel stateless2_lbl, NMatchInt (sp + 6) 4, NJumpIfZero stateful_lbl, NTupleGet sp 0, NStoreSlot (sp + 8), NTupleGet sp 1, NStoreSlot (sp + 9), NCallIndirect2 (sp + 2) (sp + 8), NStoreSlot (sp + 8), NCloneSlot (sp + 8), NStoreSlot (sp + 9), NCloneSlot (sp + 4), NStoreSlot (sp + 10), NCallBuiltin 97 (sp + 9) 2, NDropVal, NCloneSlot (sp + 5), NStoreSlot (sp + 9), NCloneSlot (sp + 3), NStoreSlot (sp + 10), NCallBuiltin 50 (sp + 9) 2, NDropVal, NJump done_lbl]
-        ins_stateful = [NLabel stateful_lbl, NMatchInt (sp + 6) 2, NJumpIfZero heavy_lbl, NTupleGet (sp + 7) 0, NStoreSlot (sp + 8), NTupleGet (sp + 7) 1, NStoreSlot (sp + 9), NMatchInt (sp + 9) 0, NJumpIfZero st_async_lbl, NCloneSlot (sp + 8), NStoreSlot (sp + 9), NCloneSlot sp, NStoreSlot (sp + 10)] :: (emit indirect2 call (sp + 2) (sp + 9) (sp + 13) call2_plain_lbl) :: [NStoreSlot (sp + 10), NMatchTuple (sp + 10) 2, NJumpIfZero same_sync_lbl, NMatchTuple (sp + 8) 2, NJumpIfZero split_sync_lbl, NLabel same_sync_lbl, NCloneSlot (sp + 10), NStoreSlot (sp + 8), NCloneSlot (sp + 10), NStoreSlot (sp + 11), NJump save_sync_lbl, NLabel split_sync_lbl, NTupleGet (sp + 10) 0, NStoreSlot (sp + 8), NTupleGet (sp + 10) 1, NStoreSlot (sp + 11), NLabel save_sync_lbl, NCloneSlot (sp + 4), NStoreSlot (sp + 12), NCallBuiltin 97 (sp + 11) 2, NDropVal, NLoadImmInt 0, NStoreSlot (sp + 9), NMakeTuple (sp + 8) 2, NStoreSlot (sp + 9), NLoadImmInt 2, NStoreSlot (sp + 8), NMakeTuple (sp + 8) 2, NStoreSlot (sp + 8), NCloneSlot (sp + 3), NStoreSlot (sp + 9), NCallBuiltin 50 (sp + 8) 2, NDropVal, NJump done_lbl, NLabel st_async_lbl, NMatchInt (sp + 9) 1, NJumpIfZero flush_prev_lbl, NJump spawn_stateful_lbl, NLabel flush_prev_lbl, NTupleGet (sp + 9) 0, NStoreSlot (sp + 12), NTupleGet (sp + 9) 1, NStoreSlot (sp + 9), NCallBuiltin 59 (sp + 9) 1, NStoreSlot (sp + 10), NMatchTuple (sp + 10) 2, NJumpIfZero same_res_lbl, NMatchTuple (sp + 8) 2, NJumpIfZero split_pair_lbl, NLabel same_res_lbl, NCloneSlot (sp + 10), NStoreSlot (sp + 8), NCloneSlot (sp + 10), NStoreSlot (sp + 11), NJump store_state_lbl, NLabel split_pair_lbl, NTupleGet (sp + 10) 0, NStoreSlot (sp + 8), NTupleGet (sp + 10) 1, NStoreSlot (sp + 11), NLabel store_state_lbl, NMoveSlot (sp + 12), NStoreSlot (sp + 10), NMakeTuple (sp + 10) 2, NStoreSlot (sp + 11), NCloneSlot (sp + 4), NStoreSlot (sp + 12), NCallBuiltin 50 (sp + 11) 2, NDropVal, NLabel spawn_stateful_lbl, NCloneSlot (sp + 8), NStoreSlot (sp + 10), NCloneSlot sp, NStoreSlot (sp + 11), NMakeTuple (sp + 10) 2, NStoreSlot (sp + 10), NCloneSlot (sp + 2), NStoreSlot (sp + 9), NCallBuiltin 57 (sp + 9) 2, NStoreSlot (sp + 10), NCallBuiltin 96 0 0, NStoreSlot (sp + 9), NMakeTuple (sp + 9) 2, NStoreSlot (sp + 9), NMakeTuple (sp + 8) 2, NStoreSlot (sp + 9), NLoadImmInt 2, NStoreSlot (sp + 8), NMakeTuple (sp + 8) 2, NStoreSlot (sp + 8), NCloneSlot (sp + 3), NStoreSlot (sp + 9), NCallBuiltin 50 (sp + 8) 2, NDropVal, NJump done_lbl]
+        ins_stateful = [NLabel stateful_lbl] :: (stateful mode check (sp + 6) heavy_lbl st_mode_ok_lbl) :: [NTupleGet (sp + 7) 0, NStoreSlot (sp + 8), NTupleGet (sp + 7) 1, NStoreSlot (sp + 9), NMatchInt (sp + 9) 0, NJumpIfZero st_async_lbl, NCloneSlot (sp + 8), NStoreSlot (sp + 9), NCloneSlot sp, NStoreSlot (sp + 10)] :: (emit indirect2 call (sp + 2) (sp + 9) (sp + 13) call2_plain_lbl) :: [NStoreSlot (sp + 10)] :: (step form branch (sp + 6) same_sync_lbl split_sync_lbl) :: [NMatchTuple (sp + 10) 2, NJumpIfZero same_sync_lbl, NMatchTuple (sp + 8) 2, NJumpIfZero split_sync_lbl, NLabel same_sync_lbl, NCloneSlot (sp + 10), NStoreSlot (sp + 8), NCloneSlot (sp + 10), NStoreSlot (sp + 11), NJump save_sync_lbl, NLabel split_sync_lbl, NTupleGet (sp + 10) 0, NStoreSlot (sp + 8), NTupleGet (sp + 10) 1, NStoreSlot (sp + 11), NLabel save_sync_lbl, NCloneSlot (sp + 4), NStoreSlot (sp + 12), NCallBuiltin 97 (sp + 11) 2, NDropVal, NLoadImmInt 0, NStoreSlot (sp + 9), NMakeTuple (sp + 8) 2, NStoreSlot (sp + 9), NCloneSlot (sp + 6), NStoreSlot (sp + 8), NMakeTuple (sp + 8) 2, NStoreSlot (sp + 8), NCloneSlot (sp + 3), NStoreSlot (sp + 9), NCallBuiltin 50 (sp + 8) 2, NDropVal, NJump done_lbl, NLabel st_async_lbl, NMatchInt (sp + 9) 1, NJumpIfZero flush_prev_lbl, NJump spawn_stateful_lbl, NLabel flush_prev_lbl, NTupleGet (sp + 9) 0, NStoreSlot (sp + 12), NTupleGet (sp + 9) 1, NStoreSlot (sp + 9), NCallBuiltin 59 (sp + 9) 1, NStoreSlot (sp + 10)] :: (step form branch (sp + 6) same_res_lbl split_pair_lbl) :: [NMatchTuple (sp + 10) 2, NJumpIfZero same_res_lbl, NMatchTuple (sp + 8) 2, NJumpIfZero split_pair_lbl, NLabel same_res_lbl, NCloneSlot (sp + 10), NStoreSlot (sp + 8), NCloneSlot (sp + 10), NStoreSlot (sp + 11), NJump store_state_lbl, NLabel split_pair_lbl, NTupleGet (sp + 10) 0, NStoreSlot (sp + 8), NTupleGet (sp + 10) 1, NStoreSlot (sp + 11), NLabel store_state_lbl, NMoveSlot (sp + 12), NStoreSlot (sp + 10), NMakeTuple (sp + 10) 2, NStoreSlot (sp + 11), NCloneSlot (sp + 4), NStoreSlot (sp + 12), NCallBuiltin 50 (sp + 11) 2, NDropVal, NLabel spawn_stateful_lbl, NCloneSlot (sp + 8), NStoreSlot (sp + 10), NCloneSlot sp, NStoreSlot (sp + 11), NMakeTuple (sp + 10) 2, NStoreSlot (sp + 10), NCloneSlot (sp + 2), NStoreSlot (sp + 9), NCallBuiltin 57 (sp + 9) 2, NStoreSlot (sp + 10), NCallBuiltin 96 0 0, NStoreSlot (sp + 9), NMakeTuple (sp + 9) 2, NStoreSlot (sp + 9), NMakeTuple (sp + 8) 2, NStoreSlot (sp + 9), NCloneSlot (sp + 6), NStoreSlot (sp + 8), NMakeTuple (sp + 8) 2, NStoreSlot (sp + 8), NCloneSlot (sp + 3), NStoreSlot (sp + 9), NCallBuiltin 50 (sp + 8) 2, NDropVal, NJump done_lbl]
         ins_heavy = [NLabel heavy_lbl, NMatchInt (sp + 6) 3, NJumpIfZero sink_lbl, NCloneSlot (sp + 2), NStoreSlot (sp + 8), NCloneSlot sp, NStoreSlot (sp + 9), NCallBuiltin 57 (sp + 8) 2, NStoreSlot (sp + 10), NCallBuiltin 96 0 0, NStoreSlot (sp + 9), NMakeTuple (sp + 9) 2, NStoreSlot (sp + 9), NMoveSlot (sp + 7), NStoreSlot (sp + 8), NMakeList (sp + 9) 1, NBinOp 14 (sp + 8), NStoreSlot (sp + 9), NLoadImmInt 3, NStoreSlot (sp + 8), NMakeTuple (sp + 8) 2, NStoreSlot (sp + 9), NCloneSlot (sp + 3), NStoreSlot (sp + 10), NCallBuiltin 50 (sp + 9) 2, NDropVal, NJump done_lbl]
         ins_sink = [NLabel sink_lbl, NMatchInt (sp + 6) 5, NJumpIfNonZero sink_unpack_lbl, NMatchInt (sp + 6) 6, NJumpIfZero stopped_lbl, NLabel sink_unpack_lbl, NTupleGet (sp + 7) 0, NStoreSlot (sp + 8), NTupleGet (sp + 7) 1, NStoreSlot (sp + 9), NTupleGet (sp + 7) 2, NStoreSlot (sp + 10), NTupleGet (sp + 7) 3, NStoreSlot (sp + 11), NCloneSlot (sp + 10), NStoreSlot (sp + 12), NLoadImmInt 0, NBinOp 7 (sp + 12), NAsBool, NJumpIfZero sink_exec_lbl, NAdtField (sp + 9) (0 - 1), NStoreSlot (sp + 12), NCloneSlot (sp + 10), NBinOp 9 (sp + 12), NAsBool, NJumpIfZero sink_enq_lbl, NMoveSlot (sp + 11), NStoreSlot (sp + 12), NLoadImmInt 1, NBinOp 0 (sp + 12), NStoreSlot (sp + 11), NJump sink_save_lbl, NLabel sink_enq_lbl, NCloneSlot sp, NStoreSlot (sp + 12), NMakeList (sp + 12) 1, NBinOp 14 (sp + 9), NStoreSlot (sp + 9), NJump sink_save_lbl, NLabel sink_exec_lbl, NMatchInt (sp + 6) 5, NJumpIfZero sink_exec6_lbl, NCloneSlot sp, NStoreSlot (sp + 12)] :: (emit indirect1 call (sp + 2) (sp + 12) (sp + 14) sink1_plain_lbl) :: [NDropVal, NJump sink_save_lbl, NLabel sink_exec6_lbl, NMoveSlot (sp + 8), NStoreSlot (sp + 12), NCloneSlot sp, NStoreSlot (sp + 13)] :: (emit indirect2 call (sp + 2) (sp + 12) (sp + 14) sink2_plain_lbl) :: [NStoreSlot (sp + 8), NLabel sink_save_lbl, NMakeTuple (sp + 8) 4, NStoreSlot (sp + 9), NMoveSlot (sp + 6), NStoreSlot (sp + 8), NMakeTuple (sp + 8) 2, NStoreSlot (sp + 8), NCloneSlot (sp + 3), NStoreSlot (sp + 9), NCallBuiltin 50 (sp + 8) 2, NDropVal, NJump done_lbl]
         ins_stopped = [NLabel stopped_lbl, NCloneSlot (sp + 5), NStoreSlot (sp + 9), NCloneSlot (sp + 3), NStoreSlot (sp + 10), NCallBuiltin 50 (sp + 9) 2, NDropVal, NJump done_lbl, NLabel raw_chan_lbl, NCloneSlot sp, NStoreSlot (sp + 8), NCloneSlot (sp + 1), NStoreSlot (sp + 9), NCallBuiltin 50 (sp + 8) 2, NDropVal, NLabel done_lbl, NClearLocals sp (sp + 18), NLoadImmRaw 0]
@@ -2039,10 +2107,10 @@ fn :: lower agent call RNativeEnv String [RExpr] [String] Int RNativeCode => RNa
         st_has_job_lbl2 = not_ag_lbl + 9
         fallback_chan_lbl = not_ag_lbl + 10
         unwrap_blk_lbl = not_ag_lbl + 11
-        st3 = nc set lbl st2 (not_ag_lbl + 12)
+        st3 = nc set lbl st2 (not_ag_lbl + 13)
         ins_check = [NMatchTuple sp 3, NJumpIfZero not_ag_lbl, NTupleGet sp 1, NStoreSlot (sp + 1), NTupleGet sp 2, NStoreSlot sp, NCloneSlot (sp + 1), NStoreSlot (sp + 2), NCallBuiltin 32 (sp + 2) 1, NStoreSlot (sp + 2), NTupleGet (sp + 2) 0, NStoreSlot (sp + 3), NTupleGet (sp + 2) 1, NStoreSlot (sp + 4), NMatchInt (sp + 3) 3, NJumpIfZero check_st_lbl, NMatchNonEmpty (sp + 4), NJumpIfZero no_job_lbl]
         ins_pop = [NCallBuiltin 99 (sp + 4) 1, NStoreSlot (sp + 4), NTupleGet (sp + 4) 0, NStoreSlot (sp + 5), NTupleGet (sp + 4) 1, NStoreSlot (sp + 6), NLoadImmInt 3, NStoreSlot (sp + 7), NMoveSlot (sp + 6), NStoreSlot (sp + 8), NMakeTuple (sp + 7) 2, NStoreSlot (sp + 7), NCloneSlot (sp + 1), NStoreSlot (sp + 8), NCallBuiltin 50 (sp + 7) 2, NDropVal, NClearLocals sp (sp + 5), NCallBuiltin 59 (sp + 5) 1, NJump done_lbl]
-        ins_st = [NLabel check_st_lbl, NCloneSlot sp, NStoreSlot (sp + 5), NCallBuiltin 98 (sp + 5) 0, NStoreSlot (sp + 5), NMatchTuple (sp + 5) 2, NJumpIfZero st_await_lbl, NMoveSlot (sp + 2), NStoreSlot (sp + 7), NCloneSlot (sp + 1), NStoreSlot (sp + 8), NCallBuiltin 50 (sp + 7) 2, NDropVal, NTupleGet (sp + 5) 1, NStoreSlot (sp + 6), NClearLocals sp (sp + 6), NMoveSlot (sp + 6), NJump done_lbl, NLabel st_await_lbl, NMatchInt (sp + 3) 2, NJumpIfZero fallback_chan_lbl, NTupleGet (sp + 4) 0, NStoreSlot (sp + 5), NTupleGet (sp + 4) 1, NStoreSlot (sp + 6), NMatchInt (sp + 6) 0, NJumpIfZero st_has_job_lbl, NJump fallback_chan_lbl, NLabel st_has_job_lbl, NMatchInt (sp + 6) 1, NJumpIfZero st_has_job_lbl2, NJump fallback_chan_lbl, NLabel st_has_job_lbl2, NTupleGet (sp + 6) 0, NStoreSlot (sp + 10), NTupleGet (sp + 6) 1, NStoreSlot (sp + 6), NCallBuiltin 59 (sp + 6) 1, NStoreSlot (sp + 7), NMatchTuple (sp + 7) 2, NJumpIfZero st_same_lbl, NMatchTuple (sp + 5) 2, NJumpIfZero st_split_lbl, NLabel st_same_lbl, NCloneSlot (sp + 7), NStoreSlot (sp + 8), NCloneSlot (sp + 7), NStoreSlot (sp + 9), NJump st_save_lbl, NLabel st_split_lbl, NTupleGet (sp + 7) 0, NStoreSlot (sp + 8), NTupleGet (sp + 7) 1, NStoreSlot (sp + 9), NLabel st_save_lbl, NMoveSlot (sp + 9), NStoreSlot (sp + 11), NMakeTuple (sp + 10) 2, NStoreSlot (sp + 10), NCloneSlot sp, NStoreSlot (sp + 11), NCallBuiltin 50 (sp + 10) 2, NDropVal, NLoadImmInt 1, NStoreSlot (sp + 9), NMakeTuple (sp + 8) 2, NStoreSlot (sp + 9), NLoadImmInt 2, NStoreSlot (sp + 8), NMakeTuple (sp + 8) 2, NStoreSlot (sp + 2), NLabel fallback_chan_lbl, NCloneSlot sp, NStoreSlot (sp + 5), NCallBuiltin 98 (sp + 5) 1, NStoreSlot (sp + 5), NMatchTuple (sp + 5) 2, NJumpIfZero no_job_lbl, NMoveSlot (sp + 2), NStoreSlot (sp + 7), NCloneSlot (sp + 1), NStoreSlot (sp + 8), NCallBuiltin 50 (sp + 7) 2, NDropVal, NTupleGet (sp + 5) 1, NStoreSlot (sp + 6), NClearLocals sp (sp + 6), NMoveSlot (sp + 6), NJump done_lbl]
+        ins_st = [NLabel check_st_lbl, NCloneSlot sp, NStoreSlot (sp + 5), NCallBuiltin 98 (sp + 5) 0, NStoreSlot (sp + 5), NMatchTuple (sp + 5) 2, NJumpIfZero st_await_lbl, NMoveSlot (sp + 2), NStoreSlot (sp + 7), NCloneSlot (sp + 1), NStoreSlot (sp + 8), NCallBuiltin 50 (sp + 7) 2, NDropVal, NTupleGet (sp + 5) 1, NStoreSlot (sp + 6), NClearLocals sp (sp + 6), NMoveSlot (sp + 6), NJump done_lbl, NLabel st_await_lbl] :: (stateful mode check (sp + 3) fallback_chan_lbl (not_ag_lbl + 12)) :: [NTupleGet (sp + 4) 0, NStoreSlot (sp + 5), NTupleGet (sp + 4) 1, NStoreSlot (sp + 6), NMatchInt (sp + 6) 0, NJumpIfZero st_has_job_lbl, NJump fallback_chan_lbl, NLabel st_has_job_lbl, NMatchInt (sp + 6) 1, NJumpIfZero st_has_job_lbl2, NJump fallback_chan_lbl, NLabel st_has_job_lbl2, NTupleGet (sp + 6) 0, NStoreSlot (sp + 10), NTupleGet (sp + 6) 1, NStoreSlot (sp + 6), NCallBuiltin 59 (sp + 6) 1, NStoreSlot (sp + 7)] :: (step form branch (sp + 3) st_same_lbl st_split_lbl) :: [NMatchTuple (sp + 7) 2, NJumpIfZero st_same_lbl, NMatchTuple (sp + 5) 2, NJumpIfZero st_split_lbl, NLabel st_same_lbl, NCloneSlot (sp + 7), NStoreSlot (sp + 8), NCloneSlot (sp + 7), NStoreSlot (sp + 9), NJump st_save_lbl, NLabel st_split_lbl, NTupleGet (sp + 7) 0, NStoreSlot (sp + 8), NTupleGet (sp + 7) 1, NStoreSlot (sp + 9), NLabel st_save_lbl, NMoveSlot (sp + 9), NStoreSlot (sp + 11), NMakeTuple (sp + 10) 2, NStoreSlot (sp + 10), NCloneSlot sp, NStoreSlot (sp + 11), NCallBuiltin 50 (sp + 10) 2, NDropVal, NLoadImmInt 1, NStoreSlot (sp + 9), NMakeTuple (sp + 8) 2, NStoreSlot (sp + 9), NCloneSlot (sp + 3), NStoreSlot (sp + 8), NMakeTuple (sp + 8) 2, NStoreSlot (sp + 2), NLabel fallback_chan_lbl, NCloneSlot sp, NStoreSlot (sp + 5), NCallBuiltin 98 (sp + 5) 1, NStoreSlot (sp + 5), NMatchTuple (sp + 5) 2, NJumpIfZero no_job_lbl, NMoveSlot (sp + 2), NStoreSlot (sp + 7), NCloneSlot (sp + 1), NStoreSlot (sp + 8), NCallBuiltin 50 (sp + 7) 2, NDropVal, NTupleGet (sp + 5) 1, NStoreSlot (sp + 6), NClearLocals sp (sp + 6), NMoveSlot (sp + 6), NJump done_lbl]
         ins_no_job = [NLabel no_job_lbl, NMoveSlot (sp + 2), NStoreSlot (sp + 7), NCloneSlot (sp + 1), NStoreSlot (sp + 8), NCallBuiltin 50 (sp + 7) 2, NDropVal, NClearLocals (sp + 1) (sp + 13), NCallBuiltin 32 sp 1, NStoreSlot sp, NMatchTuple sp 2, NJumpIfZero unwrap_blk_lbl, NTupleGet sp 1, NStoreSlot (sp + 1), NClearLocals sp (sp + 1), NMoveSlot (sp + 1), NJump done_lbl, NLabel unwrap_blk_lbl, NMoveSlot sp, NJump done_lbl, NLabel not_ag_lbl, NCallBuiltin 32 sp 1, NLabel done_lbl]
         nc emit list st3 (ins_check :: ins_pop :: ins_st :: ins_no_job) (sp + 13)
       lower agent call env "try_receive_from" (target_e:[]) bound_locals sp st =
@@ -2061,29 +2129,29 @@ fn :: lower agent call RNativeEnv String [RExpr] [String] Int RNativeCode => RNa
         try_st_save_lbl = not_ag_lbl + 10
         try_st_has_job_lbl2 = not_ag_lbl + 11
         try_fallback_lbl = not_ag_lbl + 12
-        st3 = nc set lbl st2 (not_ag_lbl + 13)
+        st3 = nc set lbl st2 (not_ag_lbl + 14)
         ok_off = env str off env "Ok"
         some_off = env str off env "Some"
         none_off = env str off env "None"
         ins_check = [NMatchTuple sp 3, NJumpIfZero not_ag_lbl, NTupleGet sp 1, NStoreSlot (sp + 1), NTupleGet sp 2, NStoreSlot sp, NCloneSlot (sp + 1), NStoreSlot (sp + 2), NCallBuiltin 32 (sp + 2) 1, NStoreSlot (sp + 2), NTupleGet (sp + 2) 0, NStoreSlot (sp + 3), NTupleGet (sp + 2) 1, NStoreSlot (sp + 4), NMatchInt (sp + 3) 3, NJumpIfZero try_st_lbl, NMatchNonEmpty (sp + 4), NJumpIfZero not_ready_lbl, NCallBuiltin 99 (sp + 4) 1, NStoreSlot (sp + 4), NTupleGet (sp + 4) 0, NStoreSlot (sp + 5), NTupleGet (sp + 4) 1, NStoreSlot (sp + 6), NCloneSlot (sp + 5), NStoreSlot (sp + 7), NCallBuiltin 58 (sp + 7) 1, NAsBool, NJumpIfZero not_ready_lbl]
         ins_ready = [NLoadImmInt 3, NStoreSlot (sp + 7), NMoveSlot (sp + 6), NStoreSlot (sp + 8), NMakeTuple (sp + 7) 2, NStoreSlot (sp + 7), NCloneSlot (sp + 1), NStoreSlot (sp + 8), NCallBuiltin 50 (sp + 7) 2, NDropVal, NCallBuiltin 59 (sp + 5) 1, NStoreSlot (sp + 5), NMakeAdt some_off 4 (sp + 5) 1, NStoreSlot (sp + 5), NClearLocals sp (sp + 5), NMoveSlot (sp + 5), NJump done_lbl]
-        ins_try_st = [NLabel try_st_lbl, NCloneSlot sp, NStoreSlot (sp + 5), NCallBuiltin 98 (sp + 5) 0, NStoreSlot (sp + 5), NMatchTuple (sp + 5) 2, NJumpIfZero try_st_poll_lbl, NMoveSlot (sp + 2), NStoreSlot (sp + 7), NCloneSlot (sp + 1), NStoreSlot (sp + 8), NCallBuiltin 50 (sp + 7) 2, NDropVal, NTupleGet (sp + 5) 1, NStoreSlot (sp + 6), NMakeAdt some_off 4 (sp + 6) 1, NStoreSlot (sp + 6), NClearLocals sp (sp + 6), NMoveSlot (sp + 6), NJump done_lbl, NLabel try_st_poll_lbl, NMatchInt (sp + 3) 2, NJumpIfZero try_fallback_lbl, NTupleGet (sp + 4) 0, NStoreSlot (sp + 5), NTupleGet (sp + 4) 1, NStoreSlot (sp + 6), NMatchInt (sp + 6) 0, NJumpIfZero try_st_has_job_lbl, NJump try_fallback_lbl, NLabel try_st_has_job_lbl, NMatchInt (sp + 6) 1, NJumpIfZero try_st_has_job_lbl2, NJump try_fallback_lbl, NLabel try_st_has_job_lbl2, NTupleGet (sp + 6) 0, NStoreSlot (sp + 10), NTupleGet (sp + 6) 1, NStoreSlot (sp + 6), NCloneSlot (sp + 6), NStoreSlot (sp + 7), NCallBuiltin 58 (sp + 7) 1, NAsBool, NJumpIfZero not_ready_lbl, NCallBuiltin 59 (sp + 6) 1, NStoreSlot (sp + 7), NMatchTuple (sp + 7) 2, NJumpIfZero try_st_same_lbl, NMatchTuple (sp + 5) 2, NJumpIfZero try_st_split_lbl, NLabel try_st_same_lbl, NCloneSlot (sp + 7), NStoreSlot (sp + 8), NCloneSlot (sp + 7), NStoreSlot (sp + 9), NJump try_st_save_lbl, NLabel try_st_split_lbl, NTupleGet (sp + 7) 0, NStoreSlot (sp + 8), NTupleGet (sp + 7) 1, NStoreSlot (sp + 9), NLabel try_st_save_lbl, NMoveSlot (sp + 9), NStoreSlot (sp + 11), NMakeTuple (sp + 10) 2, NStoreSlot (sp + 10), NCloneSlot sp, NStoreSlot (sp + 11), NCallBuiltin 50 (sp + 10) 2, NDropVal, NLoadImmInt 1, NStoreSlot (sp + 9), NMakeTuple (sp + 8) 2, NStoreSlot (sp + 9), NLoadImmInt 2, NStoreSlot (sp + 8), NMakeTuple (sp + 8) 2, NStoreSlot (sp + 2), NLabel try_fallback_lbl, NCloneSlot sp, NStoreSlot (sp + 5), NCallBuiltin 98 (sp + 5) 1, NStoreSlot (sp + 5), NMatchTuple (sp + 5) 2, NJumpIfZero not_ready_lbl, NMoveSlot (sp + 2), NStoreSlot (sp + 7), NCloneSlot (sp + 1), NStoreSlot (sp + 8), NCallBuiltin 50 (sp + 7) 2, NDropVal, NTupleGet (sp + 5) 1, NStoreSlot (sp + 6), NMakeAdt some_off 4 (sp + 6) 1, NStoreSlot (sp + 6), NClearLocals sp (sp + 6), NMoveSlot (sp + 6), NJump done_lbl]
+        ins_try_st = [NLabel try_st_lbl, NCloneSlot sp, NStoreSlot (sp + 5), NCallBuiltin 98 (sp + 5) 0, NStoreSlot (sp + 5), NMatchTuple (sp + 5) 2, NJumpIfZero try_st_poll_lbl, NMoveSlot (sp + 2), NStoreSlot (sp + 7), NCloneSlot (sp + 1), NStoreSlot (sp + 8), NCallBuiltin 50 (sp + 7) 2, NDropVal, NTupleGet (sp + 5) 1, NStoreSlot (sp + 6), NMakeAdt some_off 4 (sp + 6) 1, NStoreSlot (sp + 6), NClearLocals sp (sp + 6), NMoveSlot (sp + 6), NJump done_lbl, NLabel try_st_poll_lbl] :: (stateful mode check (sp + 3) try_fallback_lbl (not_ag_lbl + 13)) :: [NTupleGet (sp + 4) 0, NStoreSlot (sp + 5), NTupleGet (sp + 4) 1, NStoreSlot (sp + 6), NMatchInt (sp + 6) 0, NJumpIfZero try_st_has_job_lbl, NJump try_fallback_lbl, NLabel try_st_has_job_lbl, NMatchInt (sp + 6) 1, NJumpIfZero try_st_has_job_lbl2, NJump try_fallback_lbl, NLabel try_st_has_job_lbl2, NTupleGet (sp + 6) 0, NStoreSlot (sp + 10), NTupleGet (sp + 6) 1, NStoreSlot (sp + 6), NCloneSlot (sp + 6), NStoreSlot (sp + 7), NCallBuiltin 58 (sp + 7) 1, NAsBool, NJumpIfZero not_ready_lbl, NCallBuiltin 59 (sp + 6) 1, NStoreSlot (sp + 7)] :: (step form branch (sp + 3) try_st_same_lbl try_st_split_lbl) :: [NMatchTuple (sp + 7) 2, NJumpIfZero try_st_same_lbl, NMatchTuple (sp + 5) 2, NJumpIfZero try_st_split_lbl, NLabel try_st_same_lbl, NCloneSlot (sp + 7), NStoreSlot (sp + 8), NCloneSlot (sp + 7), NStoreSlot (sp + 9), NJump try_st_save_lbl, NLabel try_st_split_lbl, NTupleGet (sp + 7) 0, NStoreSlot (sp + 8), NTupleGet (sp + 7) 1, NStoreSlot (sp + 9), NLabel try_st_save_lbl, NMoveSlot (sp + 9), NStoreSlot (sp + 11), NMakeTuple (sp + 10) 2, NStoreSlot (sp + 10), NCloneSlot sp, NStoreSlot (sp + 11), NCallBuiltin 50 (sp + 10) 2, NDropVal, NLoadImmInt 1, NStoreSlot (sp + 9), NMakeTuple (sp + 8) 2, NStoreSlot (sp + 9), NCloneSlot (sp + 3), NStoreSlot (sp + 8), NMakeTuple (sp + 8) 2, NStoreSlot (sp + 2), NLabel try_fallback_lbl, NCloneSlot sp, NStoreSlot (sp + 5), NCallBuiltin 98 (sp + 5) 1, NStoreSlot (sp + 5), NMatchTuple (sp + 5) 2, NJumpIfZero not_ready_lbl, NMoveSlot (sp + 2), NStoreSlot (sp + 7), NCloneSlot (sp + 1), NStoreSlot (sp + 8), NCallBuiltin 50 (sp + 7) 2, NDropVal, NTupleGet (sp + 5) 1, NStoreSlot (sp + 6), NMakeAdt some_off 4 (sp + 6) 1, NStoreSlot (sp + 6), NClearLocals sp (sp + 6), NMoveSlot (sp + 6), NJump done_lbl]
         ins_not_ready = [NLabel not_ready_lbl, NMoveSlot (sp + 2), NStoreSlot (sp + 7), NCloneSlot (sp + 1), NStoreSlot (sp + 8), NCallBuiltin 50 (sp + 7) 2, NDropVal, NClearLocals sp (sp + 13), NLoadAdt0 none_off 4, NJump done_lbl]
         ins_chan = [NLabel no_job_lbl, NMoveSlot (sp + 2), NStoreSlot (sp + 7), NCloneSlot (sp + 1), NStoreSlot (sp + 8), NCallBuiltin 50 (sp + 7) 2, NDropVal, NClearLocals (sp + 1) (sp + 13), NLabel not_ag_lbl, NCallBuiltin 33 sp 1, NStoreSlot sp, NMatchAdt sp ok_off 2 1, NJumpIfZero chan_none_lbl, NAdtField sp 0, NStoreSlot (sp + 1), NMakeAdt some_off 4 (sp + 1) 1, NStoreSlot (sp + 1), NClearLocals sp (sp + 1), NMoveSlot (sp + 1), NJump done_lbl, NLabel chan_none_lbl, NClearLocals sp (sp + 2), NLoadAdt0 none_off 4, NLabel done_lbl]
         nc emit list st3 (ins_check :: ins_ready :: ins_try_st :: ins_not_ready :: ins_chan) (sp + 13)
       lower agent call env "stop" (ag_e:[]) bound_locals sp st =
         st1 = lower expr env ag_e bound_locals sp st
         flush_lbl = nc lbl st1
-        no_jobs_lbl = flush_lbl + 10
+        no_jobs_lbl = flush_lbl + 11
         loop_lbl = no_jobs_lbl + 1
         st_stop_lbl = no_jobs_lbl + 2
         st_stop_await_lbl = no_jobs_lbl + 3
         st_stop_await_lbl2 = no_jobs_lbl + 4
-        st2 = nc set lbl st1 (no_jobs_lbl + 5)
+        st2 = nc set lbl st1 (no_jobs_lbl + 6)
         ins_flush = [NStoreSlot sp, NCloneSlot sp, NStoreSlot (sp + 1)] :: (emit sink flush or state False (sp + 1) flush_lbl) :: [NDropVal]
         ins_open = [NTupleGet sp 1, NStoreSlot (sp + 1), NCloneSlot (sp + 1), NStoreSlot (sp + 2), NCallBuiltin 32 (sp + 2) 1, NStoreSlot (sp + 2), NTupleGet (sp + 2) 0, NStoreSlot (sp + 3), NTupleGet (sp + 2) 1, NStoreSlot (sp + 4), NMatchInt (sp + 3) 3, NJumpIfZero st_stop_lbl]
         ins_loop = [NLabel loop_lbl, NMatchNonEmpty (sp + 4), NJumpIfZero no_jobs_lbl, NListHead (sp + 4), NStoreSlot (sp + 5), NListTail (sp + 4), NStoreSlot (sp + 4), NTupleGet (sp + 5) 1, NStoreSlot (sp + 5), NCallBuiltin 59 (sp + 5) 1, NDropVal, NJump loop_lbl]
-        ins_st_stop = [NLabel st_stop_lbl, NMatchInt (sp + 3) 2, NJumpIfZero no_jobs_lbl, NTupleGet (sp + 4) 1, NStoreSlot (sp + 5), NMatchInt (sp + 5) 0, NJumpIfZero st_stop_await_lbl, NJump no_jobs_lbl, NLabel st_stop_await_lbl, NMatchInt (sp + 5) 1, NJumpIfZero st_stop_await_lbl2, NJump no_jobs_lbl, NLabel st_stop_await_lbl2, NTupleGet (sp + 5) 1, NStoreSlot (sp + 5), NCallBuiltin 59 (sp + 5) 1, NDropVal]
+        ins_st_stop = [NLabel st_stop_lbl] :: (stateful mode check (sp + 3) no_jobs_lbl (no_jobs_lbl + 5)) :: [NTupleGet (sp + 4) 1, NStoreSlot (sp + 5), NMatchInt (sp + 5) 0, NJumpIfZero st_stop_await_lbl, NJump no_jobs_lbl, NLabel st_stop_await_lbl, NMatchInt (sp + 5) 1, NJumpIfZero st_stop_await_lbl2, NJump no_jobs_lbl, NLabel st_stop_await_lbl2, NTupleGet (sp + 5) 1, NStoreSlot (sp + 5), NCallBuiltin 59 (sp + 5) 1, NDropVal]
         ins_close = [NLabel no_jobs_lbl, NLoadImmInt 0, NStoreSlot (sp + 2), NLoadImmInt 0, NStoreSlot (sp + 3), NMakeTuple (sp + 2) 2, NStoreSlot (sp + 2), NCloneSlot (sp + 1), NStoreSlot (sp + 3), NCallBuiltin 50 (sp + 2) 2, NDropVal, NClearLocals sp (sp + 19), NLoadImmRaw 0]
         nc emit list st2 (ins_flush :: ins_open :: ins_loop :: ins_st_stop :: ins_close) (sp + 19)
       lower agent call env "agent_alive" (ag_e:[]) bound_locals sp st =
@@ -2103,13 +2171,13 @@ fn :: lower agent call RNativeEnv String [RExpr] [String] Int RNativeCode => RNa
       lower agent call env "agent_flush" (ag_e:[]) bound_locals sp st =
         st1 = lower expr env ag_e bound_locals sp st
         base_lbl = nc lbl st1
-        st2 = nc set lbl st1 (base_lbl + 10)
+        st2 = nc set lbl st1 (base_lbl + 11)
         ins = [NStoreSlot sp] :: (emit sink flush or state False sp base_lbl)
         nc emit list st2 ins (sp + 18)
       lower agent call env "agent_state" (ag_e:[]) bound_locals sp st =
         st1 = lower expr env ag_e bound_locals sp st
         base_lbl = nc lbl st1
-        st2 = nc set lbl st1 (base_lbl + 10)
+        st2 = nc set lbl st1 (base_lbl + 11)
         ins = [NStoreSlot sp] :: (emit sink flush or state True sp base_lbl)
         nc emit list st2 ins (sp + 18)
       lower agent call _ _ _ _ _ st = st
@@ -4258,7 +4326,7 @@ fn :: lower program to native RProgram [String] => RNativeProg
         disp_set0 = str list to set field_names (str list to set b_val_names StrSetEmpty)
         disp_set = collect disp fndefs fns fn_arity_map disp_set0
         borrow_excl = str list to set ([entry_name] :: gagent_names :: show_roots :: (borrow tail fns fns [])) disp_set
-        fn_arity_map_b = add unit marks fns (add getter marks field_tbl fn_name_set (borrow masks fns borrow_excl fn_arity_map fn_arity_map))
+        fn_arity_map_b = add step form marks fns (add unit marks fns (add getter marks field_tbl fn_name_set (borrow masks fns borrow_excl fn_arity_map fn_arity_map)))
         entry_fid = lookup fn id map fn_id_map entry_name
         main_wrapper = build main wrapper fndef entry_fid gagent_names fn_id_map
         spawn_disp = NativeFn 2 "__rg_dispatch_spawn" 2 6 (build spawn dispatch entry fn_tbl str_map disp_set)
