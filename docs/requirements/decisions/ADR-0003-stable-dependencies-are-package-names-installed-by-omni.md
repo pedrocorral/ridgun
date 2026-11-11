@@ -46,3 +46,6 @@ Adopt **Option 3**.
   - omni must write package names, not folders, into `build.rg`, and drop local-path installs.
   - Ecosystem projects must list names instead of absolute paths.
   - This is noted in the compiler team notes.
+
+## Amendment
+- ADR-0005 (2026-11-11) adds developer links: a developer may build against a local checkout through `stable dev link`, kept in `~/.stable/dev-links`, never in a project. `build.rg` and `omni.lock` still hold names only.

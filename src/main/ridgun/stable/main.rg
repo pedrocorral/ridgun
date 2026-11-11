@@ -1,6 +1,6 @@
 -- ============================================================
 -- src/main/ridgun/stable/main.rg
--- `stable` v0.9.56 — The Interactive Build Tool for Ridgun (100% Ridgun)
+-- `stable` v0.9.57 — The Interactive Build Tool for Ridgun (100% Ridgun)
 -- Written in Ridgun's natural-language mixfix operator style (`op :: ...`).
 -- Decoupled from `ridgunc` internals per ADR-0001: delegates `check`,
 -- `compile`, `build`, `build lib`, and test/plugin compilation to the
@@ -24,7 +24,7 @@ type StableConfig = ProjectConfig String String String String String String
 type StableTask = TaskEntry String String String String
 
 -- Core command sum type + open extension variants via `expand type` (`FR-TOOL-003`)
-type StableCommand = CmdNoop | CmdExit | CmdHelp | CmdVersion | CmdInfo | CmdReload | CmdCheck | CmdCompile | CmdTest | CmdClean | CmdDeps | CmdTasks | CmdPlugins | CmdNew [String] | CmdInit [String] | CmdAdd [String] | CmdInstall [String] | CmdFormat [String] | CmdBuild [String] | CmdBuildLib [String] | CmdRun [String]
+type StableCommand = CmdNoop | CmdExit | CmdHelp | CmdVersion | CmdInfo | CmdReload | CmdCheck | CmdCompile | CmdTest | CmdClean | CmdDeps | CmdTasks | CmdPlugins | CmdNew [String] | CmdInit [String] | CmdAdd [String] | CmdDev [String] | CmdInstall [String] | CmdFormat [String] | CmdBuild [String] | CmdBuildLib [String] | CmdRun [String]
 
 expand type StableCommand = CmdCustomTask String String [String] | CmdPluginExec String [String]
 
@@ -131,6 +131,7 @@ fn :: tag ansi code String => String
       tag ansi code "error"   =  "31"
       tag ansi code "err"     =  "31"
       tag ansi code "FAIL"    =  "31"
+      tag ansi code "warn"    =  "33"
       tag ansi code _         =  "36"
 
 fn :: colorize tag String => String
@@ -152,6 +153,11 @@ fn :: log success String => ()
 fn :: log error String => ()
       log error msg    =
         ctag = colorize tag "error"
+        echo "{ctag} {msg}"
+
+fn :: log warn String => ()
+      log warn msg    =
+        ctag = colorize tag "warn"
         echo "{ctag} {msg}"
 
 fn :: log step String String => ()
@@ -988,12 +994,135 @@ op :: finish sync single dependency String String String Int => Int
         log error "Failed to synchronize dependency: {dep}"
         st
 
+-- Developer links (ADR-0005): a developer may build against a local checkout of a package instead of the
+-- copy omni installed. Links live in ~/.stable/dev-links, outside every project, so no repository or package can
+-- bring or turn one on, and there are none by default. build.rg and omni.lock still hold only names. A link is
+-- checked when it is made and every time it is used, and every use prints a warning.
+op :: dev links file => String
+      dev links file =  (env get or "HOME" "") + "/.stable/dev-links"
+
+op :: dev link entries => [String]
+      dev link entries
+        | (env get or "HOME" "") == "" = []
+        | not (file (dev links file) exists) = []
+        | otherwise = dev link lines (split lines of (read file (dev links file)))
+
+op :: dev link lines [String] => [String]
+      dev link lines []     =  []
+      dev link lines (l:ls)
+        | str contains l "|" = [str trim l] :: (dev link lines ls)
+        | otherwise = dev link lines ls
+
+op :: dev link name of String => String
+      dev link name of entry =  list str nth or (str split entry "|") 0 ""
+
+op :: dev link dir of String => String
+      dev link dir of entry =  list str nth or (str split entry "|") 1 ""
+
+op :: find dev link String in [String] => String
+      find dev link _    in []     =  ""
+      find dev link name in (e:es)
+        | (dev link name of e) == name = dev link dir of e
+        | otherwise = find dev link name in es
+
+op :: without dev link String in [String] => [String]
+      without dev link _    in []     =  []
+      without dev link name in (e:es)
+        | (dev link name of e) == name = without dev link name in es
+        | otherwise = [e] :: (without dev link name in es)
+
+-- Characters a link may not hold: they would let a folder name run shell code when the package is copied.
+op :: has unsafe char String => Bool
+      has unsafe char s =  (str contains s "\"") or (str contains s "$") or (str contains s "`") or (str contains s "\\") or (str contains s "|") or (str contains s "\n") or (str contains s "'")
+
+-- "" when name -> dir is a valid developer link, else the reason it is not.
+op :: dev link problem String String => String
+      dev link problem name dir
+        | (name == "") or (is path or url name) or (has unsafe char name) or (str contains name "@") = "'" + name + "' is not a package name"
+        | has unsafe char dir = "the folder path holds a character that is not allowed (\" $ ` \\ | ' or a newline)"
+        | not (str starts with dir "/") = "the folder must be an absolute path"
+        | not (file (dir + "/build.rg") exists) = dir + " has no build.rg"
+        | (linked project name dir) != name = dir + "/build.rg names the project '" + (linked project name dir) + "', not '" + name + "'"
+        | otherwise = ""
+
+op :: linked project name String => String
+      linked project name dir =  extract function body from (split lines of (read file (dir + "/build.rg"))) named "project_name" default ""
+
+op :: absolute dir String => String
+      absolute dir dir
+        | str starts with dir "/" = dir
+        | dir == "." = sys getcwd
+        | str starts with dir "./" = (sys getcwd) + "/" + (str slice dir 2 (str len dir))
+        | otherwise = (sys getcwd) + "/" + dir
+
+op :: write dev links [String] => ()
+      write dev links entries =
+        shell exec ('mkdir -p "' + (env get or "HOME" "") + '/.stable"') -> ()
+        write file (dev links file) (dev links text entries) -> ()
+
+op :: dev links text [String] => String
+      dev links text []     =  ""
+      dev links text (e:es) =  e + "\n" + (dev links text es)
+
+op :: run task dev args [String] => Int
+      run task dev args ("link":name:dir:[]) =  make dev link name (absolute dir dir) (dev link problem name (absolute dir dir))
+      run task dev args ("unlink":name:[])   =  remove dev link name (find dev link name in (dev link entries))
+      run task dev args ("links":[])         =  list dev links (dev link entries)
+      run task dev args _                    =
+        log error "Usage: stable dev link <package> <folder> | stable dev unlink <package> | stable dev links"
+        1
+
+op :: make dev link String String String => Int
+      make dev link name dir "" =
+        write dev links ((without dev link name in (dev link entries)) :: [name + "|" + dir])
+        log warn ("Developer link: every project that depends on '" + name + "' now builds it from " + dir + ", not from the package omni installed. Remove it with `stable dev unlink " + name + "`.")
+        0
+      make dev link name dir problem =
+        log error ("Cannot link '" + name + "': " + problem + ".")
+        1
+
+op :: remove dev link String String => Int
+      remove dev link name "" =
+        log error ("There is no developer link for '" + name + "'.")
+        1
+      remove dev link name _  =
+        write dev links (without dev link name in (dev link entries))
+        log success ("Removed the developer link for '" + name + "'; `stable deps` uses the package omni installed again.")
+        0
+
+op :: list dev links [String] => Int
+      list dev links [] =
+        log info "No developer links."
+        0
+      list dev links es =
+        log warn ("Developer links in " + (dev links file) + ":")
+        print dev links es
+        0
+
+op :: print dev links [String] => ()
+      print dev links []     =  ()
+      print dev links (e:es) =
+        echo ("  " + (dev link name of e) + " -> " + (dev link dir of e))
+        print dev links es
+
 op :: sync single dependency String => Int
       sync single dependency dep
         | is path or url dep =
-          log error "Dependency '{dep}' is a path or URL: build.rg lists package names, installed with omni (`omni install <name>`)."
+          log error "Dependency '{dep}' is a path or URL: build.rg lists package names, installed with omni (`omni install <name>`). To build against a local checkout on your machine, use `stable dev link <name> <folder>`."
           1
-        | otherwise = sync locked dependency dep (dep name of dep) (dep version of dep) (find locked (dep name of dep) in (omni lock entries))
+        | otherwise = sync named dependency dep (find dev link (dep name of dep) in (dev link entries))
+
+op :: sync named dependency String String => Int
+      sync named dependency dep "" =  sync locked dependency dep (dep name of dep) (dep version of dep) (find locked (dep name of dep) in (omni lock entries))
+      sync named dependency dep dir =  sync dev linked dep (dep name of dep) dir (dev link problem (dep name of dep) dir)
+
+op :: sync dev linked String String String String => Int
+      sync dev linked dep name dir "" =
+        log warn ("Developer link: '" + name + "' comes from " + dir + ", not from omni. `stable dev unlink " + name + "` goes back to the installed package.")
+        sync locked package dep name dir
+      sync dev linked _ name dir problem =
+        log error ("The developer link '" + name + "' -> " + dir + " is not valid: " + problem + ". Fix it or remove it with `stable dev unlink " + name + "`.")
+        1
 
 op :: sync dependency rest [String] Int => Int
       sync dependency rest ds 0  = sync dependency list ds
@@ -1195,7 +1324,7 @@ op :: run task tasks => Int
       run task tasks =
         custom_ts = load all custom tasks
         log section "Built-in `stable` Tasks"
-        echo "  new [--lib] <name>, init [--lib], deps, add <dep>, install [target]"
+        echo "  new [--lib] <name>, init [--lib], deps, add <dep>, dev link | unlink | links, install [target]"
         echo "  build | built [lib | target], run [target], test, check, format, compile, clean"
         echo "  info | status, tasks, plugins, reload, help, exit"
         log section "Custom Project & Plugin Tasks"
@@ -1268,6 +1397,8 @@ op :: run task help => Int
         echo "  init [--lib]                Initialize build.rg and src/ in the current directory"
         echo "  deps                        Synchronize the omni-installed packages build.rg lists into .stable/deps/"
         echo "  add <package>               Add a package installed by omni to build.rg and sync .stable/deps/"
+        echo "  dev link <package> <folder> For developers: build <package> from a local checkout on this machine (~/.stable/dev-links)"
+        echo "  dev unlink <package>        Remove a developer link; dev links lists them"
         echo "  install [target]            Build and install native ELF64 executable(s) into ~/.local/bin/ and bin/"
         echo "  build | built [target]      Compile all executables (or [target]) into target/<target>"
         echo "  build lib | built lib       Compile reusable library (.rglib and native ELF64 .so) into target/"
@@ -1306,6 +1437,7 @@ op :: parse stable command [String]          => Bool StableCommand String
       parse stable command ("init":extra)    =  (True, CmdInit extra, "")
       parse stable command ("deps":_)        =  (True, CmdDeps, "")
       parse stable command ("add":extra)     =  (True, CmdAdd extra, "")
+      parse stable command ("dev":extra)     =  (True, CmdDev extra, "")
       parse stable command ("install":extra) =  (True, CmdInstall extra, "")
       parse stable command ("format":extra)  =  (True, CmdFormat extra, "")
       parse stable command ("fmt":extra)     =  (True, CmdFormat extra, "")
@@ -1347,7 +1479,7 @@ op :: dispatch command StableCommand on StableConfig => Bool StableConfig Int
       dispatch command CmdExit on cfg = (False, cfg, 0)
       dispatch command CmdHelp on cfg = (True, cfg, run task help)
       dispatch command CmdVersion on cfg =
-        echo "stable 0.9.56 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
+        echo "stable 0.9.57 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
         (True, cfg, 0)
       dispatch command CmdInfo on cfg = (True, cfg, run task info on cfg)
       dispatch command CmdReload on _ =
@@ -1362,6 +1494,7 @@ op :: dispatch command StableCommand on StableConfig => Bool StableConfig Int
         | (project name of cfg) == "" = (True, cfg, no project loaded error)
         | otherwise = (True, cfg, run task deps)
       dispatch command (CmdAdd extra) on cfg = (True, cfg, run task add args extra)
+      dispatch command (CmdDev extra) on cfg = (True, cfg, run task dev args extra)
       dispatch command (CmdInstall extra) on cfg = (True, cfg, run task install on cfg args extra)
       dispatch command (CmdFormat extra) on cfg = (True, cfg, run task format on cfg args extra)
       dispatch command CmdCompile on cfg = (True, cfg, run task compile on cfg)
@@ -1429,12 +1562,12 @@ op :: report reload config StableConfig name String => Bool StableConfig Int
 
 op :: start interactive shell for StableConfig => ()
       start interactive shell for (ProjectConfig "" ver main_ep sdir tdir out_dir) =
-        log info "Welcome to stable 0.9.56 (Ridgun Build Tool — 100% Ridgun)"
+        log info "Welcome to stable 0.9.57 (Ridgun Build Tool — 100% Ridgun)"
         log info "No build.rg found in current directory. Run 'init' or 'new <name>' to create a project."
         log info "Commands: 'new', 'init', 'help', 'exit'"
         repl loop for (ProjectConfig "" ver main_ep sdir tdir out_dir)
       start interactive shell for (ProjectConfig name_str ver main_ep sdir tdir out_dir) =
-        log info "Welcome to stable 0.9.56 (Ridgun Build Tool — 100% Ridgun)"
+        log info "Welcome to stable 0.9.57 (Ridgun Build Tool — 100% Ridgun)"
         log info "Loading project definition from build.rg ..."
         log info "Set current project to '{name_str}' v{ver} (main: {main_ep})"
         log info "Commands: 'built' (or 'build'), 'run', 'test', 'check', 'compile', 'clean', 'info', 'exit'"

@@ -54,6 +54,7 @@ Read and follow the `implement-stable-project` and `implement-code-ridgun` skill
 - `stable run [args...]` — Compile and run the project's `main entry`.
 - `stable install [target]` — Build and install native ELF64 binaries into `~/.local/bin/` and `bin/`.
 - `stable deps` / `stable add <package>[@<version>]` — Synchronize the packages declared by name in `fn :: dependencies => [String]` into `.stable/deps/`. omni installs them and records each one in the project's `omni.lock`; `stable` reads that file, never downloads, and rejects paths and URLs (ADR-0003) (direct dependencies in `.stable/deps/<dep>` always take priority over nested transitive `.stable/deps/<other>/.stable/deps/<dep>` folders).
+- `stable dev link <package> <folder>` / `stable dev unlink <package>` / `stable dev links` — For developers only: build `<package>` from a local checkout on this machine instead of the package omni installed (ADR-0005). The links live in `~/.stable/dev-links`, never in a project, and every use prints a warning. Never put paths in `build.rg`.
 - `stable tasks` — List all custom `fn :: task <name> => String` commands discovered in `build.rg` and loaded plugins.
 - `stable plugins` — List all loaded `stable` plugin modules (`fn :: plugins => [String]`, `plugins/*.rg`, `.stable/plugins/*.rg`).
 - `stable clean` — Remove compiled artifacts from `target/`.

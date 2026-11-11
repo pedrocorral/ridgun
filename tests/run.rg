@@ -530,6 +530,11 @@ fn :: build tc11 result (Int, String, Int, Int) => CaseResult
         ok11 = c11 == 0 and (trim ws o11) == "200000 120 10"
         Result "toolchain: read bytes \"/dev/stdin\" reads every byte when stdin is a pipe, also past the first 64 KiB (FR-COMP-022; libs report tensor-u8 2026-11-09, item 6)" ok11 False ("exit " + (int to str c11) + "; output: " + (trim ws o11))
 
+fn :: build tc12 result (Int, String, Int, Int) => CaseResult
+      build tc12 result (c12, o12, _, _) =
+        ok12 = c12 == 0 and (trim ws o12) == "LINK_OK\nREFUSE_OK\nUNLINK_OK"
+        Result "toolchain: `stable dev link` builds a dependency from a local checkout with a warning, only from ~/.stable/dev-links; links to another project, a path as name or a folder with shell characters are refused; an invalid link stops `stable deps`; after `stable dev unlink` the name resolves through omni again (FR-TOOL-002 AC5, ADR-0005)" ok12 False ("exit " + (int to str c12) + "; output: " + (trim ws o12))
+
 fn :: resolve stable path String => String
       resolve stable path repo =
         absolute from repo (pick non empty (sys getenv "STABLE") (repo + "/bin/stable"))
@@ -573,7 +578,8 @@ fn :: run toolchain checks String String String String => [CaseResult]
         write file (d + "/stdin_bytes.rg") "fn :: size of Tensor[U8] => Int\n      size of (Tensor[U8 * n] _) = n\n\nfn :: main => ()\n      main =\n        t = read bytes \"/dev/stdin\"\n        echo (size of t) (t_(0)) (t_(199999))\n"
         write file (d + "/tc11.sh") ("set -e; \"" + ridgunc + "\" build stdin_bytes.rg -o stdin_bytes >/dev/null; yes x | head -c 200000 | ./stdin_bytes")
         r11 = build tc11 result (run sh capture "bash tc11.sh" d 600)
-        [r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11]
+        r12 = build tc12 result (run sh capture ("bash \"" + repo + "/tests/toolchain/stable_dev_links.sh\" \"" + stable_bin + "\" \"" + d + "\"") d 120)
+        [r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12]
 
 fn :: print case result CaseResult => ()
       print case result (Result name True _ _) =

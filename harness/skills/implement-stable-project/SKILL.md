@@ -54,6 +54,7 @@ Every setting in `build.rg` is a zero-argument Ridgun function (`fn :: <setting 
 | `stable install [target]` | Build and install ELF64 executables into `~/.local/bin/` and `./bin/` |
 | `stable deps` | Copy each package that `fn :: dependencies => [String]` names, from where `omni.lock` says omni installed it, into `.stable/deps/` |
 | `stable add <package>[@<version>]` | Synchronize a package omni installed into `.stable/deps/`, then append its name to `build.rg` |
+| `stable dev link <package> <folder>` / `dev unlink <package>` / `dev links` | Developers only: build `<package>` from a local checkout instead of omni's copy; links live in `~/.stable/dev-links`, never in a project; every use warns (ADR-0005) |
 | `stable tasks` | List all custom `fn :: task <name> => String` commands from `build.rg` and loaded plugins |
 | `stable plugins` | List all active plugin `.rg` modules |
 | `stable <custom_task> [args...]` | Execute a custom single-word or multi-word task or plugin command |

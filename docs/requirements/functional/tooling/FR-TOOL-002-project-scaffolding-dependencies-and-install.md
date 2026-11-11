@@ -29,6 +29,9 @@ The `stable` project manager (`src/main/ridgun/stable/main.rg`) SHALL support fu
    - `stable deps` SHALL fail, naming `omni install <name>`, when a name is not in `omni.lock` or its artifact is missing.
    - `stable deps` SHALL fail, naming `omni install <name>@<version>`, when the requested version differs from the locked one.
    - `stable deps` SHALL fail when the lock entry is a local one (version `local`).
+   - **Developer links (ADR-0005).** `stable dev link <package> <folder>` SHALL record, in `~/.stable/dev-links` and nowhere else, that `<package>` is built from `<folder>` on this machine. `stable dev unlink <package>` SHALL remove it and `stable dev links` SHALL list them. There SHALL be none by default.
+     - `stable` SHALL accept a link only when `<package>` is a package name, `<folder>` is an absolute path without `"`, `$`, `` ` ``, `\`, `|`, `'` or a newline, and `<folder>/build.rg` names the project `<package>`. It SHALL check this when it makes the link and every time it uses it, and SHALL stop with an error on an invalid link.
+     - When a dependency has a link, `stable deps` and `stable add` SHALL synchronize the linked folder as a package folder, instead of the `omni.lock` entry, and SHALL print a warning naming the folder each time.
    - `stable add <name>` SHALL append `<name>` to `dependencies` in `build.rg` and synchronize it under the same rules.
    - `load_rg_source` in `src/main/ridgun/lib/parser.rg` SHALL also search `.stable/deps/*/src/main/ridgun/lib/<mod>.rg` and `.stable/deps/*/<mod>.rg` when resolving `import <mod>`.
 3. **Binary Installation (`stable install [target]`)**:
@@ -41,4 +44,5 @@ Providing `new`, `init`, `deps`, `add`, and `install` directly inside `stable` c
 - AC1: `stable new <dir>` creates a valid Ridgun project that passes `stable check` and `stable test`.
 - AC2: `stable deps` and `stable add` manage `.stable/deps/` from package names locked in `omni.lock`, and `import` resolution searches `.stable/deps/`.
 - AC4: `stable deps` rejects a path, a URL, a local lock entry and a name missing from `omni.lock`, and never runs git.
+- AC5: with a developer link, `stable deps` copies the linked folder and warns; a link whose package is not a name, whose folder holds a disallowed character, or whose `build.rg` names another project is refused; after `stable dev unlink` the name resolves through `omni.lock` again.
 - AC3: `stable install` builds and installs native ELF64 binaries into `~/.local/bin/`.
