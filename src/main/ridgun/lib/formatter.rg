@@ -224,7 +224,7 @@ fn :: fmt parse sig tokens Int String String [FmtToken] => FmtSig
       fmt parse sig tokens _ clean cmt ((FmtTok kind _):(FmtTok "::" _):rest)
         | kind == "fn" or kind == "op" = fmt finish sig parse clean cmt kind (fmt split sig arrow rest [])
       fmt parse sig tokens 0 clean cmt ((FmtTok w col):rest)
-        | w == "type" or w == "expand" or w == "import" or w == "hardware" or (str starts with w "@") or (str starts with w "--") or (str starts with w "|") = NoSig
+        | w == "type" or w == "expand" or w == "opaque" or w == "import" or w == "hardware" or (str starts with w "@") or (str starts with w "--") or (str starts with w "|") = NoSig
         | otherwise = fmt finish bare sig parse clean cmt (fmt split sig arrow ([FmtTok w col] :: rest) [])
       fmt parse sig tokens _ _ _ _ = NoSig
 
@@ -267,7 +267,7 @@ fn :: fmt is top decl toks Int String [FmtToken] => Bool
       fmt is top decl toks _ tr _
         | str starts with tr "@" = True
       fmt is top decl toks ind _ ((FmtTok w col):rest)
-        | w == "fn" or w == "op" or w == "type" or w == "expand" or w == "import" or w == "hardware" = True
+        | w == "fn" or w == "op" or w == "type" or w == "expand" or w == "opaque" or w == "import" or w == "hardware" = True
         | ind == 0 and (not (str starts with w "--")) and (not (str starts with w "|")) = fmt has fat arrow ([FmtTok w col] :: rest)
         | otherwise = False
       fmt is top decl toks _ _ [] = False

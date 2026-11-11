@@ -1957,6 +1957,7 @@ type err count (_:xs)       =  1 + (type err count xs)
 fn :: format one syntax err String => String
       format one syntax err msg
         | str starts with msg "at " = "syntax error " + msg
+        | str starts with msg "visibility: " = "visibility error: " + (str slice msg 12 (str len msg))
         | otherwise = "syntax error: " + msg
 
 fn :: format type errors [RTypeError] => [String]

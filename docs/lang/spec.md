@@ -772,6 +772,19 @@ Every `.rg` file or `.rglib` bundle defines a module namespace (derived from its
      - **Tier 3 — Transitive Imports of `M`**: Consulted only when neither Tier 1 nor Tier 2 defines the name. Consequently, a direct import in `M` (`import json`) cleanly shadows a transitive helper (`codec.json get str` imported internally by `solstice`) without forcing `solstice` or `M` to rename or qualify its calls.
      - **Tier 4 — The Prelude (`FR-COMP-024`)**: Consulted only when no module in Tiers 1-3 defines the name. The prelude is the module `prelude`, which `ridgunc` adds to every program; no `import` is needed, and `import prelude` does nothing. It holds generic helpers: `list len`, `list reverse`, `list take`, `list drop`, `list nth or`, `list last or`, `list contains` and `str join`. Any other definition of one of these names wins, with no ambiguity error. `ridgunc prelude` prints its source.
    - **Isolation from Unimported Sibling Modules and the Root Application**: Declarations defined only in modules that `M` has not imported (neither directly nor transitively) — including sibling libraries imported by the root application or declarations in the root application itself when compiling an imported library `M` — are invisible to unqualified lookup inside `M` (`__unimported__.<name>`).
+4. **Opaque Types (`opaque type`, `FR-COMP-025`)**:
+   - `opaque type T = ...` declares a type that other modules can name, hold, pass, store and compare with `==`, but cannot build, match, read or update. Outside the defining module (every file that declares the same `module ::` name), calling a constructor, building a record by position, matching a constructor in a pattern, reading a field with its accessor, using `with`, and `expand type T` are compile errors (`visibility error: constructor 'C' of opaque type 'T' is private to module 'm' (used in function 'f')`). `_` and plain variables still match opaque values.
+   - The defining module exports the functions it chooses, for example a smart constructor that validates its input, so a value of the type is proof that the check was done.
+   - `echo` and string interpolation still show the value's constructor and fields; do not rely on `opaque` to keep a secret out of logs.
+
+```ridgun
+module :: store
+
+opaque type TenantScope = UnsafeTenantScope String
+
+fn :: sign in String => TenantScope          -- the only way other modules get a TenantScope
+      sign in t =  UnsafeTenantScope t
+```
 
 ---
 

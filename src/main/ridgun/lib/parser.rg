@@ -70,6 +70,8 @@ fn :: is top decl start [RToken]        => Bool
         | (is upper ident name) and (has type params then eq rest) = True
       is top decl start ((TokIdent "expand"):TokType:(TokIdent name):rest)
         | (is upper ident name) and (has type params then eq rest) = True
+      is top decl start ((TokIdent "opaque"):TokType:(TokIdent name):rest)
+        | (is upper ident name) and (has type params then eq rest) = True
       is top decl start (TokType:_)     =  False
       is top decl start ts              =  is top keyword (tok head ts)
 
@@ -1956,7 +1958,7 @@ fn :: parse block safe dispatch [RToken]          => [RStmt] [RToken]
         e_res = parse let rhs rest
         finish mut stmt name e_res
       parse block safe dispatch ((TokIdent name):rest)
-        | (name == "module" or name == "expand" or name == "agent") and (is top decl start ([TokIdent name] :: rest)) = ([], [TokIdent name] :: rest)
+        | (name == "module" or name == "expand" or name == "opaque" or name == "agent") and (is top decl start ([TokIdent name] :: rest)) = ([], [TokIdent name] :: rest)
         | otherwise = parse block line ident name rest
       parse block safe dispatch (TokFn:rest)
         | is top decl start ([TokFn] :: rest) = ([], [TokFn] :: rest)
@@ -6002,23 +6004,24 @@ fn :: merge fn def scoped fast [RFnDef] RStrSet RFnDef Bool => [RFnDef] RStrSet
         | otherwise =
           ([FnDef name ps ret cs] :: rev_acc, seen_fns)
 
-fn :: rewrite and merge fn step [RScopedFn] String Bool String [String] String [RFnCase] (RModCtx, [RModCtxEntry]) RModCtx [String] [String] [RModAlias] [RModAlias] [RModAlias] [RModAlias] [RModAlias] ([RFnDef], RStrSet) => [RFnDef]
-      rewrite and merge fn step fs m in_lib fname ps ret cs (sp1, cache1) base_ctx collided_fns collided_fields aliases type_map ctor_map fn_map field_map (rev_acc, seen_fns) =
+fn :: rewrite and merge fn step [RScopedFn] String Bool String [String] String [RFnCase] (RModCtx, [RModCtxEntry]) RModCtx [String] [String] [RModAlias] [RModAlias] [RModAlias] [RModAlias] [RModAlias] [ROpaqueName] ([RFnDef], RStrSet) => [RFnDef]
+      rewrite and merge fn step fs m in_lib fname ps ret cs (sp1, cache1) base_ctx collided_fns collided_fields aliases type_map ctor_map fn_map field_map opq (rev_acc, seen_fns) =
         canon_fn = canon scoped name m fname collided_fns
         ps1 = rewrite type str list ctx ps m sp1 aliases
         ret1 = rewrite type str ctx ret m sp1 aliases
         cs1 = rewrite fn cases cs m sp1 aliases ctor_map fn_map field_map
-        acc_pair = merge fn def scoped fast rev_acc seen_fns (FnDef canon_fn ps1 ret1 cs1) in_lib
-        rewrite and merge fns cached fs m sp1 cache1 base_ctx collided_fns collided_fields aliases type_map ctor_map fn_map field_map acc_pair
+        acc_pair0 = merge fn def scoped fast rev_acc seen_fns (FnDef canon_fn ps1 ret1 cs1) in_lib
+        acc_pair = add opaque errors (opaque violations m fname cs1 opq) acc_pair0
+        rewrite and merge fns cached fs m sp1 cache1 base_ctx collided_fns collided_fields aliases type_map ctor_map fn_map field_map opq acc_pair
 
-fn :: rewrite and merge fns cached [RScopedFn] String RModCtx [RModCtxEntry] RModCtx [String] [String] [RModAlias] [RModAlias] [RModAlias] [RModAlias] [RModAlias] ([RFnDef], RStrSet) => [RFnDef]
-      rewrite and merge fns cached [] _ _ _ _ _ _ _ _ _ _ _ (rev_acc, _) = list reverse rev_acc
-      rewrite and merge fns cached ((ScopedFn m in_lib (FnDef fname ps ret cs)):fs) cached_m cached_sp cache base_ctx collided_fns collided_fields aliases type_map ctor_map fn_map field_map acc_state
+fn :: rewrite and merge fns cached [RScopedFn] String RModCtx [RModCtxEntry] RModCtx [String] [String] [RModAlias] [RModAlias] [RModAlias] [RModAlias] [RModAlias] [ROpaqueName] ([RFnDef], RStrSet) => [RFnDef]
+      rewrite and merge fns cached [] _ _ _ _ _ _ _ _ _ _ _ _ (rev_acc, _) = list reverse rev_acc
+      rewrite and merge fns cached ((ScopedFn m in_lib (FnDef fname ps ret cs)):fs) cached_m cached_sp cache base_ctx collided_fns collided_fields aliases type_map ctor_map fn_map field_map opq acc_state
         | m == cached_m =
-          rewrite and merge fn step fs m in_lib fname ps ret cs (cached_sp, cache) base_ctx collided_fns collided_fields aliases type_map ctor_map fn_map field_map acc_state
+          rewrite and merge fn step fs m in_lib fname ps ret cs (cached_sp, cache) base_ctx collided_fns collided_fields aliases type_map ctor_map fn_map field_map opq acc_state
         | otherwise =
           c_pair = get or compute mod ctx m aliases base_ctx cache
-          rewrite and merge fn step fs m in_lib fname ps ret cs c_pair base_ctx collided_fns collided_fields aliases type_map ctor_map fn_map field_map acc_state
+          rewrite and merge fn step fs m in_lib fname ps ret cs c_pair base_ctx collided_fns collided_fields aliases type_map ctor_map fn_map field_map opq acc_state
 
 fn :: add split ident words set String Int Int Int RStrSet => RStrSet
       add split ident words set s start pos len acc
@@ -6451,23 +6454,220 @@ fn :: encode all scoped fns [RScopedFn] [RScopedType] => [RScopedFn]
         fn_names = collect scoped fn base names raw_s_fns StrSetEmpty
         encode scoped fn list raw_s_fns field_names fn_names False
 
+-- ── Opaque Types (FR-COMP-025, ADR-0006) ─────────────────────
+-- `opaque type T = ...` leaves a marker in the scoped type list. After names are resolved, a function of another
+-- module may not use T's constructors, accessors or `with` fields, and another module may not `expand type` T.
+
+-- OpaqueName resolved_name kind shown_name type_name owner_module; kind is "type", "constructor" or "field".
+type ROpaqueName = OpaqueName String String String String String
+
+fn :: opaque marker String String => RScopedType
+      opaque marker m tname =  ScopedType m True (TypeDef "__opaque__" [TypeVariant tname []] [])
+
+fn :: without opaque markers [RScopedType] => [RScopedType]
+      without opaque markers [] = []
+      without opaque markers ((ScopedType _ True (TypeDef "__opaque__" _ _)):ts) = without opaque markers ts
+      without opaque markers (t:ts) = [t] :: (without opaque markers ts)
+
+fn :: opaque decls of [RScopedType] => [RModAlias]
+      opaque decls of [] = []
+      opaque decls of ((ScopedType m True (TypeDef "__opaque__" ((TypeVariant tname _):_) _)):ts) =
+        [ModAlias m tname] :: (opaque decls of ts)
+      opaque decls of (_:ts) = opaque decls of ts
+
+fn :: find opaque def [RScopedType] String String => [RTypeDef]
+      find opaque def [] _ _ = []
+      find opaque def ((ScopedType m2 False (TypeDef t2 vs fs)):ts) m tname
+        | m2 == m and t2 == tname = [TypeDef t2 vs fs]
+      find opaque def (_:ts) m tname = find opaque def ts m tname
+
+fn :: opaque names [RModAlias] [RScopedType] [String] [String] [String] => [ROpaqueName]
+      opaque names [] _ _ _ _ = []
+      opaque names ((ModAlias m tname):ds) s_tys ct cc cf =
+        (opaque names of type m tname (find opaque def s_tys m tname) ct cc cf) :: (opaque names ds s_tys ct cc cf)
+
+fn :: opaque names of type String String [RTypeDef] [String] [String] [String] => [ROpaqueName]
+      opaque names of type _ _ [] _ _ _ = []
+      opaque names of type m tname ((TypeDef _ vs []):_) ct cc _ =
+        canon_t = canon scoped name m tname ct
+        [OpaqueName canon_t "type" tname tname m] :: (opaque ctor names m tname canon_t vs cc)
+      opaque names of type m tname ((TypeDef _ _ fs):_) ct _ cf =
+        canon_t = canon scoped name m tname ct
+        [OpaqueName canon_t "type" tname tname m, OpaqueName canon_t "constructor" tname tname m] :: (opaque field names m tname fs cf)
+
+fn :: opaque ctor names String String String [RVariant] [String] => [ROpaqueName]
+      opaque ctor names _ _ _ [] _ = []
+      opaque ctor names m tname canon_t ((TypeVariant c _):vs) cc =
+        [OpaqueName (canon variant ctor c canon_t cc) "constructor" c tname m] :: (opaque ctor names m tname canon_t vs cc)
+
+fn :: opaque field names String String [RField] [String] => [ROpaqueName]
+      opaque field names _ _ [] _ = []
+      opaque field names m tname ((TypeField f _):fs) cf =
+        [OpaqueName (canon scoped name m f cf) "field" f tname m] :: (opaque field names m tname fs cf)
+
+fn :: shown fn name loop String Int Int String => String
+      shown fn name loop s pos len acc
+        | pos >= len = acc
+        | (pos + 5) <= len and (str slice s pos (pos + 5)) == "__U__" = shown fn name loop s (pos + 5) len (acc + "__U__")
+        | (str char at s pos) == 95 = shown fn name loop s (pos + 1) len (acc + " ")
+        | otherwise = shown fn name loop s (pos + 1) len (acc + (str slice s pos (pos + 1)))
+
+-- A function name as its author wrote it: encoded word breaks become spaces again.
+fn :: shown fn name String => String
+      shown fn name s =  shown fn name loop s 0 (str len s) ""
+
+fn :: shown mod String => String
+      shown mod "" =  "main"
+      shown mod m  =  m
+
+fn :: opaque error fn String => RFnDef
+      opaque error fn msg =  FnDef "__syntax_error__" [] "Int" [FnCase [] [] (ECall "__syntax_error__" [EStr ("visibility: " + msg)])]
+
+fn :: add opaque errors [String] ([RFnDef], RStrSet) => [RFnDef] RStrSet
+      add opaque errors [] acc_pair = acc_pair
+      add opaque errors (msg:ms) (rev_acc, seen) =
+        add opaque errors ms ([opaque error fn msg] :: rev_acc, seen)
+
+fn :: foreign opaque names String [ROpaqueName] => [ROpaqueName]
+      foreign opaque names _ [] = []
+      foreign opaque names m ((OpaqueName rn kind shown tname owner):os)
+        | owner != m and kind != "type" = [OpaqueName rn kind shown tname owner] :: (foreign opaque names m os)
+        | otherwise = foreign opaque names m os
+
+fn :: opaque violations String String [RFnCase] [ROpaqueName] => [String]
+      opaque violations _ _ _ [] = []
+      opaque violations m fname cs opq =
+        opaque violations in (foreign opaque names m opq) fname cs
+
+fn :: opaque violations in [ROpaqueName] String [RFnCase] => [String]
+      opaque violations in [] _ _ = []
+      opaque violations in fopq fname cs =
+        first opaque hit fopq (case refs cs []) (shown fn name fname)
+
+-- A reference list holds "e:<name>" for a name used in an expression, "p:<ctor>" for a constructor pattern,
+-- "u:<field>" for a field set by `with` and "b:<name>" for a name the function binds itself.
+fn :: first opaque hit [ROpaqueName] [String] String => [String]
+      first opaque hit [] _ _ = []
+      first opaque hit ((OpaqueName rn kind shown tname owner):os) refs fname
+        | kind == "constructor" and ((list contains refs ("e:" + rn)) or (list contains refs ("p:" + rn))) =
+          ["constructor '" + shown + "' of opaque type '" + tname + "' is private to module '" + (shown mod owner) + "' (used in function '" + fname + "')"]
+        | kind == "field" and (list contains refs ("u:" + rn)) =
+          ["'with' on opaque type '" + tname + "' is private to module '" + (shown mod owner) + "' (field '" + shown + "', used in function '" + fname + "')"]
+        | kind == "field" and (list contains refs ("e:" + rn)) and (not (list contains refs ("b:" + rn))) =
+          ["field '" + shown + "' of opaque type '" + tname + "' is private to module '" + (shown mod owner) + "' (used in function '" + fname + "')"]
+        | otherwise = first opaque hit os refs fname
+
+fn :: case refs [RFnCase] [String] => [String]
+      case refs [] acc = acc
+      case refs ((FnCase pats guards body):cs) acc =
+        acc1 = guard refs list guards (pat refs list pats acc)
+        case refs cs (expr refs body acc1)
+
+fn :: pat refs RPattern [String] => [String]
+      pat refs (PatCtor c ps) acc = pat refs list ps (["p:" + c] :: acc)
+      pat refs (PatCons h t) acc = pat refs t (pat refs h acc)
+      pat refs (PatTuple ps) acc = pat refs list ps acc
+      pat refs (PatVar v) acc = ["b:" + v] :: acc
+      pat refs (PatSeqBind v) acc = ["b:" + v] :: acc
+      pat refs _ acc = acc
+
+fn :: pat refs list [RPattern] [String] => [String]
+      pat refs list [] acc = acc
+      pat refs list (p:ps) acc = pat refs list ps (pat refs p acc)
+
+fn :: guard refs list [RGuard] [String] => [String]
+      guard refs list [] acc = acc
+      guard refs list ((GuardBranch c e):gs) acc = guard refs list gs (expr refs e (expr refs c acc))
+
+fn :: stmt refs list [RStmt] [String] => [String]
+      stmt refs list [] acc = acc
+      stmt refs list ((StmtLet n e):ss) acc = stmt refs list ss (expr refs e (["b:" + n] :: acc))
+      stmt refs list ((StmtMut n e):ss) acc = stmt refs list ss (expr refs e (["b:" + n] :: acc))
+      stmt refs list ((StmtExpr e):ss) acc = stmt refs list ss (expr refs e acc)
+      stmt refs list ((StmtIndexAssign _ es e):ss) acc = stmt refs list ss (expr refs e (expr refs list es acc))
+
+fn :: where refs list [RWhereBind] [String] => [String]
+      where refs list [] acc = acc
+      where refs list ((WhereBind e n _):ws) acc = where refs list ws (expr refs e (["b:" + n] :: acc))
+
+fn :: update refs [RExpr] [String] => [String]
+      update refs [] acc = acc
+      update refs ((EStr f):v:rest) acc = update refs rest (expr refs v (["u:" + f] :: acc))
+      update refs (e:rest) acc = update refs rest (expr refs e acc)
+
+fn :: lambda binder refs [String] [String] => [String]
+      lambda binder refs [] acc = acc
+      lambda binder refs (p:ps) acc = lambda binder refs ps (["b:" + p] :: acc)
+
+fn :: expr refs list [RExpr] [String] => [String]
+      expr refs list [] acc = acc
+      expr refs list (e:es) acc = expr refs list es (expr refs e acc)
+
+fn :: expr refs RExpr [String] => [String]
+      expr refs (EVar n) acc = ["e:" + n] :: acc
+      expr refs (ECall "__record_update__" (base:rest)) acc = update refs rest (expr refs base acc)
+      expr refs (ECall "__lambda__" args) acc = expr refs list args (lambda binder refs (collect lambda param strs args []) acc)
+      expr refs (ECall n args) acc = expr refs list args (["e:" + n] :: acc)
+      expr refs (EStrInterp es) acc = expr refs list es acc
+      expr refs (ENot e) acc = expr refs e acc
+      expr refs (EOut e) acc = expr refs e acc
+      expr refs (EBin _ a b) acc = expr refs b (expr refs a acc)
+      expr refs (EEcho es) acc = expr refs list es acc
+      expr refs (EList es) acc = expr refs list es acc
+      expr refs (ETuple es) acc = expr refs list es acc
+      expr refs (ETensor es) acc = expr refs list es acc
+      expr refs (EEinsum es _) acc = expr refs list es acc
+      expr refs (EHadamard _ a _ b _) acc = expr refs b (expr refs a acc)
+      expr refs (EIndex e es) acc = expr refs list es (expr refs e acc)
+      expr refs (EIndexAssign _ es e) acc = expr refs e (expr refs list es acc)
+      expr refs (ESeqSelect e _) acc = expr refs e acc
+      expr refs (EBlock ss) acc = stmt refs list ss acc
+      expr refs (EGuard gs) acc = guard refs list gs acc
+      expr refs (EWhere e ws) acc = where refs list ws (expr refs e acc)
+      expr refs (EParPipe es) acc = expr refs list es acc
+      expr refs (EWithCtx _ a b) acc = expr refs b (expr refs a acc)
+      expr refs (EWithRegion _ e) acc = expr refs e acc
+      expr refs _ acc = acc
+
+fn :: opaque expand errors [RScopedType] [ROpaqueName] [RModAlias] RModCtx => [RFnDef]
+      opaque expand errors _ [] _ _ = []
+      opaque expand errors [] _ _ _ = []
+      opaque expand errors ((ScopedType m True (TypeDef tname _ _)):ts) opq aliases ctx0 =
+        resolved = resolve expand target (get or compute mod ctx m aliases ctx0 []) tname m aliases
+        (expand opaque hit opq resolved m) :: (opaque expand errors ts opq aliases ctx0)
+      opaque expand errors (_:ts) opq aliases ctx0 = opaque expand errors ts opq aliases ctx0
+
+fn :: resolve expand target (RModCtx, [RModCtxEntry]) String String [RModAlias] => String
+      resolve expand target (ctx, _) tname m aliases =  resolve one type ident ctx tname m ctx aliases
+
+fn :: expand opaque hit [ROpaqueName] String String => [RFnDef]
+      expand opaque hit [] _ _ = []
+      expand opaque hit ((OpaqueName rn kind _ tname owner):os) resolved m
+        | kind == "type" and rn == resolved and owner != m =
+          [opaque error fn ("'expand type' on opaque type '" + tname + "' is private to module '" + (shown mod owner) + "' (expanded in module '" + (shown mod m) + "')")]
+        | otherwise = expand opaque hit os resolved m
+
 fn :: resolve scoped state [RScopedFn] [RScopedType] [RModAlias] => RProgram
-      resolve scoped state raw_s_fns s_tys aliases
+      resolve scoped state raw_s_fns all_tys aliases =
+        resolve scoped state split raw_s_fns (without opaque markers all_tys) (opaque decls of all_tys) aliases
+
+fn :: resolve scoped state split [RScopedFn] [RScopedType] [RModAlias] [RModAlias] => RProgram
+      resolve scoped state split raw_s_fns s_tys opq_decls aliases
         | not (has any scoped mod raw_s_fns s_tys aliases) =
           enc_s_fns = encode all scoped fns raw_s_fns s_tys
           Program (merge plain scoped fns enc_s_fns []) (merge plain scoped types s_tys [])
         | otherwise =
           enc_s_fns = encode all scoped fns raw_s_fns s_tys
           s_fns = prune unreachable lib fns enc_s_fns
-          resolve scoped state encoded s_fns s_tys aliases
+          resolve scoped state encoded s_fns s_tys opq_decls aliases
 
-fn :: resolve scoped state finish ([RTypeDef], [RModCtxEntry]) [RScopedFn] RModCtx [String] [String] [RModAlias] [RModAlias] [RModAlias] [RModAlias] [RModAlias] => RProgram
-      resolve scoped state finish (tys_out, cache1) s_fns init_ctx collided_fns collided_fields aliases type_map ctor_map fn_map field_map =
-        fns_out = rewrite and merge fns cached s_fns "__none__" init_ctx cache1 init_ctx collided_fns collided_fields aliases type_map ctor_map fn_map field_map ([], StrSetEmpty)
-        Program fns_out tys_out
+fn :: resolve scoped state finish ([RTypeDef], [RModCtxEntry]) [RScopedFn] RModCtx [String] [String] [RModAlias] [RModAlias] [RModAlias] [RModAlias] [RModAlias] [ROpaqueName] [RFnDef] => RProgram
+      resolve scoped state finish (tys_out, cache1) s_fns init_ctx collided_fns collided_fields aliases type_map ctor_map fn_map field_map opq exp_errs =
+        fns_out = rewrite and merge fns cached s_fns "__none__" init_ctx cache1 init_ctx collided_fns collided_fields aliases type_map ctor_map fn_map field_map opq ([], StrSetEmpty)
+        Program (exp_errs :: fns_out) tys_out
 
-fn :: resolve scoped state encoded [RScopedFn] [RScopedType] [RModAlias] => RProgram
-      resolve scoped state encoded s_fns s_tys aliases =
+fn :: resolve scoped state encoded [RScopedFn] [RScopedType] [RModAlias] [RModAlias] => RProgram
+      resolve scoped state encoded s_fns s_tys opq_decls aliases =
         collided_types = collect collided types s_tys s_tys []
         collided_fields = collect field fn collided s_tys (fn mod map s_fns StrMapEmpty) (collect collided fields s_tys s_tys [])
         collided_fns = collect collided fns s_fns s_fns []
@@ -6490,7 +6690,9 @@ fn :: resolve scoped state encoded [RScopedFn] [RScopedType] [RModAlias] => RPro
         wm = build fn word mod map s_fns wm0
         init_ctx = ModCtx [] [] [] StrSetEmpty tb ts cb cs fb flb fls ffs wm
         ty_res = rewrite and merge types cached s_tys s_tys "__none__" init_ctx [] init_ctx collided_types collided_fields aliases []
-        resolve scoped state finish ty_res s_fns init_ctx collided_fns collided_fields aliases type_map ctor_map fn_map field_map
+        opq = opaque names opq_decls s_tys collided_types collided_ctors collided_fields
+        exp_errs = opaque expand errors s_tys opq aliases init_ctx
+        resolve scoped state finish ty_res s_fns init_ctx collided_fns collided_fields aliases type_map ctor_map fn_map field_map opq exp_errs
 
 -- ── Top-Level Program Loop ──────────────────────────────────
 
@@ -6684,6 +6886,7 @@ fn :: is next fn decl line String Int Int Int => Bool
         | (pos + 6) <= len and (str slice src pos (pos + 6)) == "fn :: " = True
         | (pos + 6) <= len and (str slice src pos (pos + 6)) == "op :: " = True
         | (pos + 5) <= len and (str slice src pos (pos + 5)) == "type " = True
+        | (pos + 12) <= len and (str slice src pos (pos + 12)) == "opaque type " = True
         | otherwise = False
 
 fn :: scan bracket mismatch String Int Int Int Int Int [Int] => Int Int
@@ -6828,6 +7031,10 @@ fn :: parse items loop [RToken] [RScopedFn] [RScopedType] [RModAlias] [String] B
       parse items loop ((TokIdent "expand"):TokType:(TokIdent name):rest) s_fns s_tys aliases mod_stack in_lib
         | (is upper ident name) and (has type params then eq rest) =
           parse chunk type True (split top decl chunk rest [TokIdent name, TokType]) s_fns s_tys aliases mod_stack in_lib
+      parse items loop ((TokIdent "opaque"):TokType:(TokIdent name):rest) s_fns s_tys aliases mod_stack in_lib
+        | (is upper ident name) and (has type params then eq rest) =
+          marker = opaque marker (cur mod of stack mod_stack) name
+          parse chunk type False (split top decl chunk rest [TokIdent name, TokType]) s_fns ([marker] :: s_tys) aliases mod_stack in_lib
       parse items loop ts                 s_fns s_tys aliases mod_stack in_lib
         | (not (line has colon colon ts)) and (line has fat arrow ts) =
           parse chunk bare (split top decl chunk ts []) s_fns s_tys aliases mod_stack in_lib

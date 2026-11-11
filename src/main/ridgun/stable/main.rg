@@ -1,6 +1,6 @@
 -- ============================================================
 -- src/main/ridgun/stable/main.rg
--- `stable` v0.9.59 — The Interactive Build Tool for Ridgun (100% Ridgun)
+-- `stable` v1.0.0 — The Interactive Build Tool for Ridgun (100% Ridgun)
 -- Written in Ridgun's natural-language mixfix operator style (`op :: ...`).
 -- Decoupled from `ridgunc` internals per ADR-0001: delegates `check`,
 -- `compile`, `build`, `build lib`, and test/plugin compilation to the
@@ -303,7 +303,7 @@ op :: quoted strings in String => [String]
 
 op :: is declaration header line String => Bool
       is declaration header line l      =
-        (str starts with l "--") or (str starts with l "fn ") or (str starts with l "fn::") or (str starts with l "op ") or (str starts with l "op::") or (str starts with l "type ") or (str starts with l "expand ") or (str starts with l "import ") or (str starts with l "|")
+        (str starts with l "--") or (str starts with l "fn ") or (str starts with l "fn::") or (str starts with l "op ") or (str starts with l "op::") or (str starts with l "type ") or (str starts with l "expand ") or (str starts with l "opaque ") or (str starts with l "import ") or (str starts with l "|")
 
 op :: parse clause key and rhs String => String String
       parse clause key and rhs line
@@ -1507,7 +1507,7 @@ op :: dispatch command StableCommand on StableConfig => Bool StableConfig Int
       dispatch command CmdExit on cfg = (False, cfg, 0)
       dispatch command CmdHelp on cfg = (True, cfg, run task help)
       dispatch command CmdVersion on cfg =
-        echo "stable 0.9.59 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
+        echo "stable 1.0.0 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
         (True, cfg, 0)
       dispatch command CmdInfo on cfg = (True, cfg, run task info on cfg)
       dispatch command CmdReload on _ =
@@ -1590,12 +1590,12 @@ op :: report reload config StableConfig name String => Bool StableConfig Int
 
 op :: start interactive shell for StableConfig => ()
       start interactive shell for (ProjectConfig "" ver main_ep sdir tdir out_dir) =
-        log info "Welcome to stable 0.9.59 (Ridgun Build Tool — 100% Ridgun)"
+        log info "Welcome to stable 1.0.0 (Ridgun Build Tool — 100% Ridgun)"
         log info "No build.rg found in current directory. Run 'init' or 'new <name>' to create a project."
         log info "Commands: 'new', 'init', 'help', 'exit'"
         repl loop for (ProjectConfig "" ver main_ep sdir tdir out_dir)
       start interactive shell for (ProjectConfig name_str ver main_ep sdir tdir out_dir) =
-        log info "Welcome to stable 0.9.59 (Ridgun Build Tool — 100% Ridgun)"
+        log info "Welcome to stable 1.0.0 (Ridgun Build Tool — 100% Ridgun)"
         log info "Loading project definition from build.rg ..."
         log info "Set current project to '{name_str}' v{ver} (main: {main_ep})"
         log info "Commands: 'built' (or 'build'), 'run', 'test', 'check', 'compile', 'clean', 'info', 'exit'"

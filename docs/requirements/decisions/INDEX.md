@@ -7,3 +7,4 @@
 | `ADR-0003` | `ADR-0003-stable-dependencies-are-package-names-installed-by-omni.md` | `stable` dependencies are package names installed by omni | `accepted` |
 | `ADR-0004` | `ADR-0004-the-prelude-ships-with-ridgunc.md` | The prelude ships with `ridgunc`, at the lowest lookup priority | `accepted` |
 | `ADR-0005` | `ADR-0005-developer-links-for-local-checkouts.md` | Developers build against local checkouts through links kept in `~/.stable/dev-links`, never in a project | `accepted` |
+| `ADR-0006` | `ADR-0006-opaque-types-keyword-per-type.md` | Opaque types are declared with one keyword per type and checked when the parser resolves names | `accepted` |
