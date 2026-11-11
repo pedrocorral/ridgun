@@ -1,6 +1,6 @@
 -- ============================================================
 -- src/main/ridgun/stable/main.rg
--- `stable` v1.0.0 — The Interactive Build Tool for Ridgun (100% Ridgun)
+-- `stable` v1.0.1 — The Interactive Build Tool for Ridgun (100% Ridgun)
 -- Written in Ridgun's natural-language mixfix operator style (`op :: ...`).
 -- Decoupled from `ridgunc` internals per ADR-0001: delegates `check`,
 -- `compile`, `build`, `build lib`, and test/plugin compilation to the
@@ -1009,13 +1009,15 @@ op :: sync locked package String String String => Int
         | (shell exec ('[ -d "' + dir + '" ]')) != 0 = not installed dep
         | otherwise =
           dest = ".stable/deps/" + name
-          shell exec 'mkdir -p .stable/deps src/main/ridgun/lib'
+          shell exec 'mkdir -p .stable/deps'
           st = shell exec ('rm -rf "' + dest + '" && mkdir -p "' + dest + '" && tar -C "' + dir + '" --exclude=".stable" --exclude="target" -cf - . | tar -C "' + dest + '" -xf -')
           finish sync single dependency dir name dest st
 
+-- A dependency stays under .stable/deps: ridgunc reads .stable/deps/<name>/src/main/ridgun/lib/<module>.rg,
+-- so nothing is copied into the project's own sources (FR-TOOL-002 AC7).
 op :: finish sync single dependency String String String Int => Int
       finish sync single dependency dep bname dest 0 =
-        shell exec ('if ls "' + dep + '"/target/bundles/*.rglib >/dev/null 2>&1; then for f in "' + dep + '"/target/bundles/*.rglib; do bn=$(basename "$f" .rglib); if [ "$bn" = "' + bname + '" ] || [ ! -d ".stable/deps/$bn" ]; then cp -f "$f" .stable/deps/ 2>/dev/null || true; fi; done; elif ls "' + dep + '"/target/*.rglib >/dev/null 2>&1; then for f in "' + dep + '"/target/*.rglib; do bn=$(basename "$f" .rglib); if [ "$bn" = "' + bname + '" ] || [ ! -d ".stable/deps/$bn" ]; then cp -f "$f" .stable/deps/ 2>/dev/null || true; fi; done; elif ls "' + dest + '"/target/bundles/*.rglib >/dev/null 2>&1; then for f in "' + dest + '"/target/bundles/*.rglib; do bn=$(basename "$f" .rglib); if [ "$bn" = "' + bname + '" ] || [ ! -d ".stable/deps/$bn" ]; then cp -f "$f" .stable/deps/ 2>/dev/null || true; fi; done; elif ls "' + dest + '"/target/*.rglib >/dev/null 2>&1; then for f in "' + dest + '"/target/*.rglib; do bn=$(basename "$f" .rglib); if [ "$bn" = "' + bname + '" ] || [ ! -d ".stable/deps/$bn" ]; then cp -f "$f" .stable/deps/ 2>/dev/null || true; fi; done; elif ls "' + dest + '"/*.rglib >/dev/null 2>&1; then for f in "' + dest + '"/*.rglib; do bn=$(basename "$f" .rglib); if [ "$bn" = "' + bname + '" ] || [ ! -d ".stable/deps/$bn" ]; then cp -f "$f" .stable/deps/ 2>/dev/null || true; fi; done; else for f in "' + dest + '"/src/main/ridgun/lib/*.rg; do [ -f "$f" ] || continue; bn=$(basename "$f" .rg); if [ "$bn" = "' + bname + '" ] || ( [ ! -e "src/main/ridgun/lib/$(basename "$f")" ] && [ ! -d ".stable/deps/$bn" ] ); then cp -f "$f" src/main/ridgun/lib/ 2>/dev/null || true; fi; done; fi')
+        shell exec ('if ls "' + dep + '"/target/bundles/*.rglib >/dev/null 2>&1; then for f in "' + dep + '"/target/bundles/*.rglib; do bn=$(basename "$f" .rglib); if [ "$bn" = "' + bname + '" ] || [ ! -d ".stable/deps/$bn" ]; then cp -f "$f" .stable/deps/ 2>/dev/null || true; fi; done; elif ls "' + dep + '"/target/*.rglib >/dev/null 2>&1; then for f in "' + dep + '"/target/*.rglib; do bn=$(basename "$f" .rglib); if [ "$bn" = "' + bname + '" ] || [ ! -d ".stable/deps/$bn" ]; then cp -f "$f" .stable/deps/ 2>/dev/null || true; fi; done; elif ls "' + dest + '"/target/bundles/*.rglib >/dev/null 2>&1; then for f in "' + dest + '"/target/bundles/*.rglib; do bn=$(basename "$f" .rglib); if [ "$bn" = "' + bname + '" ] || [ ! -d ".stable/deps/$bn" ]; then cp -f "$f" .stable/deps/ 2>/dev/null || true; fi; done; elif ls "' + dest + '"/target/*.rglib >/dev/null 2>&1; then for f in "' + dest + '"/target/*.rglib; do bn=$(basename "$f" .rglib); if [ "$bn" = "' + bname + '" ] || [ ! -d ".stable/deps/$bn" ]; then cp -f "$f" .stable/deps/ 2>/dev/null || true; fi; done; elif ls "' + dest + '"/*.rglib >/dev/null 2>&1; then for f in "' + dest + '"/*.rglib; do bn=$(basename "$f" .rglib); if [ "$bn" = "' + bname + '" ] || [ ! -d ".stable/deps/$bn" ]; then cp -f "$f" .stable/deps/ 2>/dev/null || true; fi; done; fi')
         log step "dep" "{dep} -> {dest}"
         0
       finish sync single dependency dep _ _ st =
@@ -1507,7 +1509,7 @@ op :: dispatch command StableCommand on StableConfig => Bool StableConfig Int
       dispatch command CmdExit on cfg = (False, cfg, 0)
       dispatch command CmdHelp on cfg = (True, cfg, run task help)
       dispatch command CmdVersion on cfg =
-        echo "stable 1.0.0 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
+        echo "stable 1.0.1 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
         (True, cfg, 0)
       dispatch command CmdInfo on cfg = (True, cfg, run task info on cfg)
       dispatch command CmdReload on _ =
@@ -1590,12 +1592,12 @@ op :: report reload config StableConfig name String => Bool StableConfig Int
 
 op :: start interactive shell for StableConfig => ()
       start interactive shell for (ProjectConfig "" ver main_ep sdir tdir out_dir) =
-        log info "Welcome to stable 1.0.0 (Ridgun Build Tool — 100% Ridgun)"
+        log info "Welcome to stable 1.0.1 (Ridgun Build Tool — 100% Ridgun)"
         log info "No build.rg found in current directory. Run 'init' or 'new <name>' to create a project."
         log info "Commands: 'new', 'init', 'help', 'exit'"
         repl loop for (ProjectConfig "" ver main_ep sdir tdir out_dir)
       start interactive shell for (ProjectConfig name_str ver main_ep sdir tdir out_dir) =
-        log info "Welcome to stable 1.0.0 (Ridgun Build Tool — 100% Ridgun)"
+        log info "Welcome to stable 1.0.1 (Ridgun Build Tool — 100% Ridgun)"
         log info "Loading project definition from build.rg ..."
         log info "Set current project to '{name_str}' v{ver} (main: {main_ep})"
         log info "Commands: 'built' (or 'build'), 'run', 'test', 'check', 'compile', 'clean', 'info', 'exit'"

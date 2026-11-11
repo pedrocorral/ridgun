@@ -26,6 +26,7 @@ The `stable` project manager (`src/main/ridgun/stable/main.rg`) SHALL support fu
    - `stable deps` SHALL resolve each name through the project's `omni.lock`:
      - A library's artifact is an `.rglib` file, which SHALL exist.
      - A package's artifact is a folder, which `stable` SHALL synchronize into `.stable/deps/<name>/`, copying its `.rglib` bundles into `.stable/deps/`.
+     - `stable deps` and `stable add` SHALL NOT write into the project's own sources. A package's `.rg` files stay under `.stable/deps/<name>/`, where `import` finds them.
    - `stable deps` SHALL fail, naming `omni install <name>`, when a name is not in `omni.lock` or its artifact is missing.
    - `stable deps` SHALL fail, naming `omni install <name>@<version>`, when the requested version differs from the locked one.
    - `stable deps` SHALL fail when the lock entry is a local one (version `local`).
@@ -46,5 +47,6 @@ Providing `new`, `init`, `deps`, `add`, and `install` directly inside `stable` c
 - AC2: `stable deps` and `stable add` manage `.stable/deps/` from package names locked in `omni.lock`, and `import` resolution searches `.stable/deps/`.
 - AC4: `stable deps` rejects a path, a URL, a local lock entry and a name missing from `omni.lock`, and never runs git.
 - AC6: after a source changes, `stable run` builds again and runs the new program, also when the change happens in the same second as the previous build; with no change it runs the existing binary without building.
+- AC7: after `stable deps` with a package folder that has no `.rglib`, the project's `src/` holds no file of the package, and a program that imports the package's module still builds.
 - AC5: with a developer link, `stable deps` copies the linked folder and warns; a link whose package is not a name, whose folder holds a disallowed character, or whose `build.rg` names another project is refused; after `stable dev unlink` the name resolves through `omni.lock` again.
 - AC3: `stable install` builds and installs native ELF64 binaries into `~/.local/bin/`.

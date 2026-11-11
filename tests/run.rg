@@ -540,6 +540,11 @@ fn :: build tc13 result (Int, String, Int, Int) => CaseResult
         ok13 = c13 == 0 and (trim ws o13) == "FIRST_OK\nREBUILT_OK\nCACHED_OK"
         Result "toolchain: `stable run` creates target/, rebuilds when a source changed since the last build (also within the same second) and runs the existing binary when nothing changed (FR-TOOL-002; compiler defect report 2026-11-11, item 3)" ok13 False ("exit " + (int to str c13) + "; output: " + (trim ws o13))
 
+fn :: build tc14 result (Int, String, Int, Int) => CaseResult
+      build tc14 result (c14, o14, _, _) =
+        ok14 = c14 == 0 and (trim ws o14) == "SOURCES_CLEAN_OK\nIMPORT_OK"
+        Result "toolchain: `stable deps` keeps a package under .stable/deps and writes nothing into the project's sources; its modules still import (FR-TOOL-002 AC7; stable feedback 2026-11-12)" ok14 False ("exit " + (int to str c14) + "; output: " + (trim ws o14))
+
 fn :: resolve stable path String => String
       resolve stable path repo =
         absolute from repo (pick non empty (sys getenv "STABLE") (repo + "/bin/stable"))
@@ -585,7 +590,8 @@ fn :: run toolchain checks String String String String => [CaseResult]
         r11 = build tc11 result (run sh capture "bash tc11.sh" d 600)
         r12 = build tc12 result (run sh capture ("bash \"" + repo + "/tests/toolchain/stable_dev_links.sh\" \"" + stable_bin + "\" \"" + d + "\"") d 120)
         r13 = build tc13 result (run sh capture ("bash \"" + repo + "/tests/toolchain/stable_run_rebuilds.sh\" \"" + stable_bin + "\" \"" + d + "\"") d 600)
-        [r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13]
+        r14 = build tc14 result (run sh capture ("bash \"" + repo + "/tests/toolchain/stable_deps_keeps_sources.sh\" \"" + stable_bin + "\" \"" + d + "\"") d 600)
+        [r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13, r14]
 
 fn :: print case result CaseResult => ()
       print case result (Result name True _ _) =
