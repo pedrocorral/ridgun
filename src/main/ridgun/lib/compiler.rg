@@ -4294,8 +4294,84 @@ fn :: lib with s2i helper [RFnDef] => [RFnDef]
         | fndefs call s2i fns = with s2i helper fns
         | otherwise = fns
 
+-- ADR-0008: a user definition shadows a builtin of the same name. A program that defines a function named like a
+-- builtin (`sys rename` in a library, `stop` in a test) gets its own function: the definition and every call to that
+-- name are renamed before lowering, so no builtin path sees them. Programs without such a name are left as they are.
+fn :: is shadowable builtin name String => Bool
+      is shadowable builtin name name =  (builtin call id name) >= 0 or (is std builtin name) or (is agent call name name)
+
+fn :: shadowed builtin names [RFnDef] => [String]
+      shadowed builtin names []                     =  []
+      shadowed builtin names ((FnDef name _ _ _):fs)
+        | is shadowable builtin name name = [name] :: (shadowed builtin names fs)
+        | otherwise                       = shadowed builtin names fs
+
+fn :: shadow name String RStrSet => String
+      shadow name n names
+        | str set has names n = "__user__" + n
+        | otherwise           = n
+
+fn :: shadow expr RExpr RStrSet => RExpr
+      shadow expr (EVar v) names                    =  EVar (shadow name v names)
+      shadow expr (ECall f args) names              =  ECall (shadow name f names) (shadow exprs args names)
+      shadow expr (EStrInterp es) names             =  EStrInterp (shadow exprs es names)
+      shadow expr (ENot a) names                    =  ENot (shadow expr a names)
+      shadow expr (EOut a) names                    =  EOut (shadow expr a names)
+      shadow expr (EBin bop a b) names              =  EBin bop (shadow expr a names) (shadow expr b names)
+      shadow expr (EEcho es) names                  =  EEcho (shadow exprs es names)
+      shadow expr (EList es) names                  =  EList (shadow exprs es names)
+      shadow expr (ETuple es) names                 =  ETuple (shadow exprs es names)
+      shadow expr (ETensor es) names                =  ETensor (shadow exprs es names)
+      shadow expr (EEinsum es ss) names             =  EEinsum (shadow exprs es names) ss
+      shadow expr (EHadamard bop a sa b sb) names   =  EHadamard bop (shadow expr a names) sa (shadow expr b names) sb
+      shadow expr (EIndex a es) names               =  EIndex (shadow expr a names) (shadow exprs es names)
+      shadow expr (EIndexAssign v es e) names       =  EIndexAssign v (shadow exprs es names) (shadow expr e names)
+      shadow expr (ESeqSelect a sel) names          =  ESeqSelect (shadow expr a names) sel
+      shadow expr (EBlock ss) names                 =  EBlock (shadow stmts ss names)
+      shadow expr (EGuard gs) names                 =  EGuard (shadow guards gs names)
+      shadow expr (EWhere b wbs) names              =  EWhere (shadow expr b names) (shadow where binds wbs names)
+      shadow expr (EParPipe es) names               =  EParPipe (shadow exprs es names)
+      shadow expr (EWithCtx c v b) names            =  EWithCtx c (shadow expr v names) (shadow expr b names)
+      shadow expr (EWithRegion q b) names           =  EWithRegion q (shadow expr b names)
+      shadow expr e _                               =  e
+
+fn :: shadow exprs [RExpr] RStrSet => [RExpr]
+      shadow exprs []     _     =  []
+      shadow exprs (e:es) names =  [shadow expr e names] :: (shadow exprs es names)
+
+fn :: shadow stmts [RStmt] RStrSet => [RStmt]
+      shadow stmts []                              _     =  []
+      shadow stmts ((StmtLet v e):ss)              names =  [StmtLet v (shadow expr e names)] :: (shadow stmts ss names)
+      shadow stmts ((StmtMut v e):ss)              names =  [StmtMut v (shadow expr e names)] :: (shadow stmts ss names)
+      shadow stmts ((StmtExpr e):ss)               names =  [StmtExpr (shadow expr e names)] :: (shadow stmts ss names)
+      shadow stmts ((StmtIndexAssign v is e):ss)   names =  [StmtIndexAssign v (shadow exprs is names) (shadow expr e names)] :: (shadow stmts ss names)
+
+fn :: shadow guards [RGuard] RStrSet => [RGuard]
+      shadow guards []                       _     =  []
+      shadow guards ((GuardBranch c b):gs)   names =  [GuardBranch (shadow expr c names) (shadow expr b names)] :: (shadow guards gs names)
+
+fn :: shadow where binds [RWhereBind] RStrSet => [RWhereBind]
+      shadow where binds []                        _     =  []
+      shadow where binds ((WhereBind e v ix):ws)   names =  [WhereBind (shadow expr e names) v ix] :: (shadow where binds ws names)
+
+fn :: shadow cases [RFnCase] RStrSet => [RFnCase]
+      shadow cases []                       _     =  []
+      shadow cases ((FnCase ps gs b):cs)    names =  [FnCase ps (shadow guards gs names) (shadow expr b names)] :: (shadow cases cs names)
+
+fn :: shadow fndefs [RFnDef] RStrSet => [RFnDef]
+      shadow fndefs []                         _     =  []
+      shadow fndefs ((FnDef n tps r cs):fs)    names =  [FnDef (shadow name n names) tps r (shadow cases cs names)] :: (shadow fndefs fs names)
+
+fn :: shadow builtins [RFnDef] => [RFnDef]
+      shadow builtins fns =  shadow builtins with fns (shadowed builtin names fns)
+
+fn :: shadow builtins with [RFnDef] [String] => [RFnDef]
+      shadow builtins with fns []    =  fns
+      shadow builtins with fns names =  shadow fndefs fns (str list to set names StrSetEmpty)
+
 fn :: lower program to native RProgram [String] => RNativeProg
-      lower program to native (Program user_fns tys) infos =
+      lower program to native (Program user_fns0 tys) infos =
+        user_fns = shadow builtins user_fns0
         raw_fns = with gt helpers (with s2i helper user_fns)
         entry_name = find entry fn name raw_fns "main"
         gagent_roots = collect gagent names raw_fns
@@ -4370,7 +4446,8 @@ fn :: build lib entry wrapper Int       => RNativeFn
       build lib entry wrapper entry_fid =  NativeFn 1 "__rg_entry_main" 0 2 [NCallFn entry_fid 0 (0 - 1), NReturn]
 
 fn :: lower library to native RProgram [String] => RNativeProg
-      lower library to native (Program user_fns tys) infos =
+      lower library to native (Program user_fns0 tys) infos =
+        user_fns = shadow builtins user_fns0
         raw_fns = lib with gt helpers (lib with s2i helper user_fns)
         field_tbl = collect typedef fields tys []
         raw_fn_names = collect fn names raw_fns

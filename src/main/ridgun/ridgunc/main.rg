@@ -1,6 +1,6 @@
 -- ============================================================
 -- src/main/ridgun/ridgunc/main.rg
--- Self-Hosted Ridgun Compiler CLI Driver (ridgunc v1.0.3)
+-- Self-Hosted Ridgun Compiler CLI Driver (ridgunc v1.0.4)
 -- Shared Library (`src/main/ridgun/lib/`): ast.rg, lexer.rg,
 -- parser.rg, analyzer.rg, typecheck.rg, compiler.rg, vm.rg,
 -- elf64.rg, x86_64.rg, arm64.rg, llvm.rg, macho64.rg, pe64.rg
@@ -236,11 +236,11 @@ fn :: build run binary SysOs String String => Int
       build run binary Windows input_path prog =  build native target executable input_path prog "x86_64-windows"
       build run binary _       input_path prog =  build native fast executable input_path prog
 
--- The program runs without a shell: its arguments reach it unchanged. It stays in target/ and the next
--- `ridgunc run` replaces it (ridgunc is built by the previous compiler, which has no `remove file`).
+-- The program runs without a shell: its arguments reach it unchanged. It is removed when it ends.
 fn :: exec built run Int String [String] => ()
       exec built run 0   prog run_args =
         code = sys exec prog run_args []
+        remove file prog
         sys exit code
       exec built run _   _    _        =  sys exit 1
 
@@ -265,7 +265,7 @@ fn :: run self hosted pipeline demo => ()
 
 fn :: run cli version => ()
       run cli version =
-        echo "ridgunc 1.0.3 (self-hosted Ridgun compiler, {host triple (host os)})"
+        echo "ridgunc 1.0.4 (self-hosted Ridgun compiler, {host triple (host os)})"
 
 fn :: host triple SysOs => String
       host triple Windows = "x86_64-pc-windows"

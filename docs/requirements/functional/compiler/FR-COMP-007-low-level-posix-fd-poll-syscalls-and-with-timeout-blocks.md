@@ -6,7 +6,7 @@ domain: compiler
 status: implemented
 priority: must
 created: 2026-10-21
-updated: 2026-10-21
+updated: 2026-11-12
 related: [ADR-0008]
 depends_on:
   - FR-COMP-004
@@ -30,6 +30,7 @@ The Ridgun compiler (`ridgunc`), its native runtime kernels (`x86_64.rg` and `ar
    - `sys pipe => Int Int` (`=> (Int, Int)` returning `(read_fd, write_fd)` via `__NR_pipe`, or `(-1, -1)` on error).
    - `sys waitpid Int Int => Int Int` (`pid`, `options` (`0` = blocking wait, `1` = `WNOHANG`) -> `(ret_pid, exit_status)` via `__NR_wait4`, where `exit_status` is decoded with `WIFEXITED`/`WEXITSTATUS` (`0..255`) or `WIFSIGNALED` (`128 + WTERMSIG`), `0` when `WNOHANG` returns `0`, or `-1` on error).
    - `sys call Int Int Int Int Int Int Int => Int` (`nr`, `a1..a6` -> low-level target-OS ABI syscall escape hatch for platform-specific drivers, e.g., `fork` = `57` and `dup2` = `33` on Linux `x86_64`).
+   - **Names (ADR-0008):** a function the program defines with the name of a builtin SHALL be the one that runs, wherever the name is used: called, passed as a value, or called from another module. Builtins with other names keep working. Adding a builtin therefore never changes a program that already defines that name.
 2. **Layer 2 (Declarative `with timeout <duration> do` Execution Quota)**:
    - Duration literals in the lexer (`_ms`, `_s`, `_min`, e.g. `500_ms` -> `500`, `5_s` -> `5000`, `2_min` -> `120000`).
    - `with timeout <ms_expr> do <body>` (and combined `with region <bytes>, timeout <ms> do <body>`) syntax in the parser, formatter, typechecker, analyzer, and compiler.
@@ -43,6 +44,7 @@ Exposing only raw Linux syscall numbers or Linux-specific `O_*` bitflags would b
 - **AC-2 (Cross-Platform PAL Primitives & Target Platform ADTs)**: Built-in `SysOs` (`Linux | MacOS | Windows`) and `SysArch` (`X86_64 | Arm64`), `sys os`, `sys arch`, `sys open mode`, `sys open`, `sys close`, `sys read fd`, `sys write fd`, `sys poll`, `sys terminate`, `sys kill`, `sys call`, `sys deadline ms`, and `sys remaining ms` are supported in `parser.rg`, `typecheck.rg`, `compiler.rg`, `x86_64.rg`, `arm64.rg`, and `vm.rg` (both space-separated and `_`-separated).
 - **AC-3 (`with timeout` Block)**: `with timeout <expr> do <body>` (and `with region <bytes>, timeout <ms> do <body>`) sets the active deadline for the lexical scope, clamps to any stricter outer deadline, restores the outer deadline upon exit, and integrates with `sys remaining ms` and `sys poll`.
 - **AC-4 (Tests & Documentation)**: Automated tests verify `sys os` / `sys arch`, duration literals, `sys open mode` / `sys open` / `sys write fd` / `sys read fd` / `sys close`, `sys poll` (ready and timeout `0`), `sys terminate` / `sys kill`, `sys call`, and `with timeout ... do` (`sys remaining ms`), and `docs/lang/pal-and-system-libraries.md` + `harness/` are updated.
+- **AC-5 (A user definition shadows a builtin)**: A program that defines `rename path` (returning `Bool`) and `remove file`, calls them and passes `remove file` to `map`, gets its own results on the LLVM and x86-64 backends (`tests/cases/names/user_function_shadows_builtin_of_same_name.rg`).
 
 ## Traceability
 - Implemented by: `src/main/ridgun/lib/lexer.rg`, `src/main/ridgun/lib/parser.rg`, `src/main/ridgun/lib/typecheck.rg`, `src/main/ridgun/lib/compiler.rg`, `src/main/ridgun/lib/x86_64.rg`, `src/main/ridgun/lib/arm64.rg`, `src/main/ridgun/lib/formatter.rg`, `src/main/ridgun/lib/vm.rg`

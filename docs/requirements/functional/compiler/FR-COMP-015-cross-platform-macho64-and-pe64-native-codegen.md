@@ -70,4 +70,3 @@ To allow developers on Linux, macOS (Intel and Apple Silicon), and Windows to do
 - **arm64 Windows:** the image carries the Linux arm64 runtime; the system layer is x86_64 only.
 - **Windows `.dll`:** the image starts the runtime from its entry point, as an `.exe` does.
 - **Windows x86_64:** sockets, file mappings and signals are not in the layer yet. AC-5 passes under Wine 10.0 (Debian trixie, 64-bit console), not yet on a Windows machine. Under Wine, `ridgunc.exe` builds and runs a Windows program.
-- **`ridgunc run`:** it leaves the program it built in `target/.ridgunc_run_bin` (`.exe` on Windows). It will remove it with `sys_unlink` once the compiler that builds `ridgunc` knows that builtin (1.0.4).
