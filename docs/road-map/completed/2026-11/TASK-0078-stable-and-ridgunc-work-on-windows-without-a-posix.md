@@ -1,9 +1,9 @@
 ---
 id: TASK-0078
 title: stable and ridgunc work on Windows without a POSIX shell
-status: going-on
+status: completed
 created: 2026-11-12
-completed:
+completed: 2026-11-12
 requirements: [FR-VM-002, FR-TOOL-002, FR-COMP-015, FR-COMP-022]
 tests: [TS-VM-002]
 security: []                # VUL-* to address
@@ -44,12 +44,13 @@ policy:                     # a cycle for this task only (hotfix, release, ...);
 - s3 run tests/run.rg on the new case → passes on llvm and x86_64-elf.
 - stable 1.0.3 on Linux: new, check, build, run (twice, no rebuild), test, compile, clean, dev link + deps, install → all work.
 - Wine 10.0: ridgunc.exe --version → x86_64-pc-windows; stable.exe new demo, check, build (target/demo.exe), run, run, test, compile, clean → all work, no sh.exe.
+- After the rename: bootstrap s1→s4 (s3/s4 differ only in the 4 build-stamp bytes); suite 296/296 (llvm 155, x86_64-elf 141); 8 unit test files, 0 fails; libs 35/35 (`test tls.rg` once timed out on badssl.com, network; passes on rerun, twice, 0 fails).
+- Wine with the published 1.0.3 exes: ridgunc.exe --version, stable.exe new/check/build/run/run/test/compile/clean, ridgunc.exe run hello.rg; the suite case as a .exe prints the same as on Linux (-39, -2 included).
 
 ## Exact next actions
-1. Close the task after the full bootstrap, suite, unit tests and libs pass with the 1.0.3 sources.
-2. 1.0.4: `ridgunc run` removes `target/.ridgunc_run_bin` with `remove file` (the 1.0.2 compiler that builds ridgunc 1.0.3 does not know the builtin).
-3. Parser quirk: an op named `make dirs` / `mk dirs` used as a statement in a guard block gives "unknown or invalid top-level declaration"; `ensure folder` passes. Find the cause.
-4. ADR for the PAL (platform abstraction layer, after FR-COMP-007): one interface, one implementation per target chosen at compile time; user definitions shadow builtins. Then sockets as its first family, omni.exe, macOS.
+1. 1.0.4: `ridgunc run` removes `target/.ridgunc_run_bin` with `remove file` (the 1.0.2 compiler that builds ridgunc 1.0.3 does not know the builtin).
+2. Parser quirk: an op named `make dirs` / `mk dirs` used as a statement in a guard block gives "unknown or invalid top-level declaration"; `ensure folder` passes. Find the cause.
+3. ADR for the PAL (platform abstraction layer, after FR-COMP-007): one interface, one implementation per target chosen at compile time; user definitions shadow builtins. Then sockets as its first family, omni.exe, macOS.
 
 ## Decisions / open questions
 - A "run a program with its output to a file" primitive is not added: `sys exec` lives in the opaque base runtime and its environment handling cannot be repeated outside it. `ridgunc build --quiet` answers the small Solstice request instead.
