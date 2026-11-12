@@ -1,9 +1,9 @@
 ---
 id: TASK-0083
 title: x86-64 PE and Mach-O images reserve the channel lock bytes: agents work in Windows .exe
-status: going-on
+status: completed
 created: 2026-11-12
-completed:
+completed: 2026-11-12
 requirements: [FR-COMP-015, FR-COMP-009] # FR-*/NFR-* this task delivers or touches
 tests: []                   # TS-* to automate
 security: []                # VUL-* to address
@@ -35,6 +35,7 @@ Agents and channels in x86-64 Windows `.exe` and macOS images run as on Linux, i
 
 ## Verification performed (command → result, newest last)
 - Test compiler: all agents/* and parallel/* cases built for x86_64-windows give their expected output in Wine (the two compile-failure cases do not build, as expected).
+- 1.0.9 (var/n): s3 = s4 apart from the stamp; suite 310/310 (llvm 162, x86 148); unit tests 0 fails; libs 35/35; ridgunc.exe and stable.exe build; 13 agents/parallel .exe cases match in Wine.
 
 ## Exact next actions
 1. None after the 1.0.9 verification.
