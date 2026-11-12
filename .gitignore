@@ -24,12 +24,15 @@ editors/vscode/out/
 .gemini/
 
 # AIX: generated per machine by `aix install` (kit copy, agent links, rendered files)
-.aix/*
-!.aix/custom/
-.claude/skills/
-.agents/skills/
-.opencode/skills/
+# Agent tooling and agent instruction files: local only, never in git
+.aix/
+.agents/
+.opencode/
+.claude/
+.gemini/
+AGENTS.md
+CLAUDE.md
+GEMINI.md
 
 bin/
 /.stable/
-.aix/
