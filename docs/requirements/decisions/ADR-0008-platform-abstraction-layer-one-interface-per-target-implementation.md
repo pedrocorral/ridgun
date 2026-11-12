@@ -56,7 +56,7 @@ Adopt **Option 3**.
    - Builtins that live in the base runtime move into the extension one family at a time. For those not moved yet, the Windows trap layer of ADR-0007 stays as the bridge, and shrinks as they move.
 4. **`sys call`.** It stays as the escape hatch with Linux numbers, like inline assembly in LLVM. Code that uses it is Linux code. On other targets the trap layer keeps emulating the calls it knows, so existing libraries keep running while they move to PAL operations.
 5. **Names.** A user definition shadows a builtin of the same name, as it already shadows the prelude (ADR-0004). Adding a PAL operation never breaks a library that already uses the name.
-6. **Order.** Sockets come first, written directly as PAL operations, because `omni.exe` needs HTTP on Windows and a Linux socket emulation over Winsock would be one more translation. Then the file and process families move out of the base runtime. macOS is written on the PAL from the start.
+6. **Order.** Sockets come first, written directly as PAL operations: the network libraries of libs (`socket.rg`, and `http`, `tls`, `mail` and `ws` on top of it) need them on Windows, and a Linux socket emulation over Winsock would be one more translation. `omni` does not need them: it starts `curl` and `tar`, which Windows 10 and later ship. Then the file and process families move out of the base runtime. macOS is written on the PAL from the start.
 
 ## Consequences
 - **Run-time cost.**
