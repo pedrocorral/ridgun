@@ -11,7 +11,7 @@ depends_on:
   - FR-COMP-004
   - FR-COMP-006
   - FR-COMP-007
-related: [ADR-0007, ADR-0008]
+related: [ADR-0007, ADR-0008, ADR-0011]
 verified_by: []
 ---
 # FR-COMP-015 — Cross-Platform Native Code Generation for macOS `Mach-O 64` and Windows `PE32+` (`.exe`) with Self-Contained Toolchain Support
