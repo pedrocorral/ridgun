@@ -1,9 +1,9 @@
 ---
 id: TASK-0079
 title: PAL sockets: one interface, Linux and Windows implementations
-status: going-on
+status: completed
 created: 2026-11-12
-completed:
+completed: 2026-11-12
 requirements: [FR-VM-003, FR-COMP-007, ADR-0008]
 tests: []                   # TS-* to automate
 security: []                # VUL-* to address
