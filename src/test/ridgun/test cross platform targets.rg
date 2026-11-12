@@ -178,6 +178,17 @@ fn :: test sys os specialization => ()
         assert equals (adt0 offset (specialize macos instr (NLoadAdt0 5 5))) 5
         assert equals (adt0 offset (specialize windows instr (NLoadAdt0 10 5))) 10
 
+fn :: test x86 channel lock gap => ()
+      test x86 channel lock gap =
+        echo "--- 7. Testing the x86-64 channel lock word: 16 zero bytes between code and rodata in every image ---"
+        code = x86 code with lock [195, 195, 195]
+        assert equals (list len code) 19
+        assert equals (byte at idx code 2) 195
+        assert equals (byte at idx code 3) 0
+        assert equals (byte at idx code 18) 0
+        assert equals (x86 rodata vaddr 4096) 4112
+        assert equals (x86 chan lock (x86 rodata vaddr 4096)) 4096
+
 fn :: main => ()
       main =
         echo "=== Ridgun Cross-Platform Target Codegen Test Suite (FR-COMP-015) ==="
@@ -187,4 +198,5 @@ fn :: main => ()
         test arm64 immediates
         test windows syscall sites
         test sys os specialization
+        test x86 channel lock gap
         echo "=== All Cross-Platform Target Codegen Tests Passed! ==="

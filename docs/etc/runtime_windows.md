@@ -34,7 +34,7 @@ A Windows image carries the Windows build of the runtime extension (`rtx.c` buil
 | Part | Address | Contents |
 |---|---|---|
 | Page 0 | `0x400000` | DOS header; page-0 dispatch table (`0x80..0xA0`); the address of `rg_pal` (`0xA0`, written at start); PE headers at `0x400`. The runtime's variables at `0x158..0x178` and `0xF00..0x1000` stay zero; the layer makes the page writable at start. |
-| `.text` | `0x401000` | Runtime, program, rodata, then 128 KiB of zero memory. Read, write, execute. |
+| `.text` | `0x401000` | Runtime, program, 16 zero bytes, rodata, then 128 KiB of zero memory. The 16 bytes hold the agents' channel lock word (`x86 chan lock` = rodata - 16), the same layout as Linux and macOS x86-64 images. Read, write, execute. |
 | `.idata` | after `.text` | Import descriptors for `KERNEL32.dll`, `api-ms-win-core-synch-l1-2-0.dll`, `ADVAPI32.dll` and `WS2_32.dll`, lookup tables, hint/name entries (each as long as its name). |
 | `.rgsys` | after `.idata` | The layer. Entry point at offset 0 (`rg_head`: a jump to `rg_win_start`); the import address table at offset 16 (768 bytes, filled by the loader). Read, write, execute. |
 

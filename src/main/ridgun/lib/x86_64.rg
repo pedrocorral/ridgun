@@ -117,10 +117,19 @@ fn :: x86 index set fast Int => [Int]
 
 -- Channel operations take a spin lock, as LLVM's `@__rg_chan_lock`
 -- wrappers do: agents run on several threads and the runtime channel
--- builtins are not atomic. The lock is a word in the 16 zero bytes that
--- `emit x8664 elf kind` reserves between the code and the rodata.
+-- builtins are not atomic. The lock is a word in the 16 zero bytes that every
+-- x86-64 image (ELF, PE, Mach-O) puts between the code and the rodata: the
+-- emitters take the layout from `x86 rodata vaddr` and `x86 code with lock`.
 fn :: x86 chan lock Int => Int
       x86 chan lock rodata_vaddr =  rodata_vaddr - 16
+
+-- The rodata address after code that ends at `code_end`, past the lock bytes.
+fn :: x86 rodata vaddr Int => Int
+      x86 rodata vaddr code_end =  code_end + 16
+
+-- The code bytes followed by the 16 zero bytes of the lock.
+fn :: x86 code with lock [Int] => [Int]
+      x86 code with lock code =  code :: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
 -- Builtins 1 (new channel), 32 with count 0 (receive without blocking),
 -- 33 (try receive) and 50 (send): the runtime builtin under the lock
@@ -1149,11 +1158,10 @@ fn :: emit x8664 elf kind Int RNativeProg => [Int]
         rt_len = list len rt_bytes
         region2_vaddr = 4198400 + rt_len
         sr = x8664 scan fns fns region2_vaddr []
-        -- 16 zero bytes after the code hold the channel lock (x86 chan lock).
-        rodata_vaddr = (scan offset sr) + 16
+        rodata_vaddr = x86 rodata vaddr (scan offset sr)
         fn_table = scan labels sr
         code_len = rodata_vaddr - region2_vaddr
-        code_bytes = (x8664 encode fns fns rodata_vaddr fn_table []) :: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        code_bytes = x86 code with lock (x8664 encode fns fns rodata_vaddr fn_table [])
         main_vaddr = lookup label offset fn_table main_fid
         spawn_vaddr = lookup label offset fn_table spawn_fid
         call2_vaddr = lookup label offset fn_table call2_fid
