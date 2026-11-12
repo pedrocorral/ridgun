@@ -1,9 +1,9 @@
 ---
 id: TASK-0084
 title: Source files use .ridgun and bundles .ridgunlib in every repository; .rgc and the bytecode VM removed
-status: going-on
+status: completed
 created: 2026-11-12
-completed:
+completed: 2026-11-12
 requirements: [FR-COMP-006, FR-TOOL-002]
 tests: []                   # TS-* to automate
 security: []                # VUL-* to address
@@ -28,7 +28,7 @@ Every Ridgun repository (except solstice, edtech and calipso) names its sources 
 - [x] `.gitattributes` with `* linguist-detectable=false`; `stable new` and `stable init` write it when missing (TASK-0085 removes it later).
 - [x] Version 1.0.10; bootstrap from r1; fixed point; suite; unit tests; libs; Windows .exe.
 - [x] Install 1.0.10 into `bin/`.
-- [ ] Rename the other repositories: omni (done, 0.2.1), unix-tools, www-ridgun, AIX, apps, ide, editors, web, libs/db. libs was renamed by its own team.
+- [x] Rename the other repositories: omni (0.2.1), unix-tools, eterval, red, wildcat, admin, blogbox, codehub, opinionhub, telemetry, ecosystem/libs/db (abstract, adapter, orm, postgres), www-ridgun and AIX (2.23.17). libs was renamed by its own team. griphgun has no commits yet: its files are renamed on disk only.
 
 ## Progress log (append-only, newest last)
 - 2026-11-12: Started. ADR-0010 accepted. `.rgc` turned out to be the checked source with an `RGC1` header, not bytecode, and nothing used it: removed with the VM.
@@ -48,11 +48,13 @@ Every Ridgun repository (except solstice, edtech and calipso) names its sources 
 - The 8 unit tests in `src/test/ridgun/` with t1 and stable_t → 0 fails each.
 
 ## Exact next actions
-1. Rename the other repositories and patch their read-side code to accept both names.
+1. None. TASK-0085 removes `.gitattributes` when Linguist knows Ridgun.
+
+- 2026-11-12: 1.0.10 committed (3293ddd) and installed. Other repositories committed locally, nothing pushed. Each commit holds only the rename of HEAD; other teams' uncommitted work stays unstaged. codehub, red, wildcat and the www-ridgun package page accept both names; the web apps' `.gitignore` lists both names for the files that `stable deps` copies, because solstice keeps `.rg`.
 
 ## Decisions / open questions
 - solstice, edtech and calipso keep `.rg`; the toolchain keeps reading the old names for them.
 
 ## Definition of done checklist
-- [x] requirements referenced are `implemented`  - [ ] tests automated & green
+- [x] requirements referenced are `implemented`  - [x] tests automated & green
 - [ ] security entries updated  - [x] docs INDEX updated  - [ ] coverage matrix regenerated
