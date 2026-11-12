@@ -9,3 +9,4 @@
 | `ADR-0005` | `ADR-0005-developer-links-for-local-checkouts.md` | Developers build against local checkouts through links kept in `~/.stable/dev-links`, never in a project | `accepted` |
 | `ADR-0006` | `ADR-0006-opaque-types-keyword-per-type.md` | Opaque types are declared with one keyword per type and checked when the parser resolves names | `accepted` |
 | `ADR-0007` | `ADR-0007-windows-system-layer-traps-linux-syscalls.md` | On Windows, a system layer traps the runtime's Linux system calls (`ud2` + vectored handler) and does them with KERNEL32 | `accepted` |
+| `ADR-0008` | `ADR-0008-platform-abstraction-layer-one-interface-per-target-implementation.md` | The PAL is one interface of Ridgun operations, implemented once per target and chosen at compile time; user definitions shadow builtins | `accepted` |

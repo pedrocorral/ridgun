@@ -7,6 +7,7 @@ status: implemented
 priority: must
 created: 2026-10-21
 updated: 2026-10-21
+related: [ADR-0008]
 depends_on:
   - FR-COMP-004
   - FR-COMP-006

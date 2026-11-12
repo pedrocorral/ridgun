@@ -7,6 +7,7 @@ created: 2026-10-17
 updated: 2026-10-17
 depends_on: [FR-VM-001]
 verified_by: []
+related: [ADR-0008]
 ---
 # FR-VM-002 — Native POSIX Filesystem, Process, and Security Built-ins
 
