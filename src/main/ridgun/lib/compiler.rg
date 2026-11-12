@@ -963,9 +963,24 @@ fn :: build str map loop [String] Int RStrIntMap => RStrIntMap
         slen = str len s
         build str map loop ss (cur_off + slen) (str int map insert mp s cur_off)
 
+-- The pool starts with these strings, in this order, so their offsets are
+-- fixed: the backends read "Linux" at 5, and `rest tag off` is the offset
+-- of the closure-rest constructor `__rg_rest__`.
+fn :: base pool strs => [String]
+      base pool strs =  ["", "+", "-", "*", "/", "%", "Linux", "MacOS", "Windows", "X86_64", "Arm64", "Ok", "Some", "None", "__rg_par_eval__", "ki,k", "i,j", "i,i", "ij,ij", "__rg_rest__"]
+
+fn :: rest tag off => Int
+      rest tag off =  base pool off (base pool strs) "__rg_rest__" 0
+
+fn :: base pool off [String] String Int => Int
+      base pool off [] _ acc =  acc
+      base pool off (s:ss) target acc
+        | s == target = acc
+        | otherwise = base pool off ss target (acc + (str len s))
+
 fn :: build str pool [RFnDef] [String]   => RStrPool
       build str pool fns      extra_strs =
-        base_strs = ["", "+", "-", "*", "/", "%", "Linux", "MacOS", "Windows", "X86_64", "Arm64", "Ok", "Some", "None", "__rg_par_eval__", "ki,k", "i,j", "i,i", "ij,ij"] :: extra_strs
+        base_strs = base pool strs :: extra_strs
         acc0 = pool add str list base_strs (StrPoolAcc StrSetEmpty [])
         all_strs = pool acc to list (collect fndef list strs fns acc0)
         rodata = join str tree all_strs
@@ -1922,6 +1937,18 @@ fn :: stateful step mode RNativeEnv RExpr [String] => Int
         | otherwise = 2
       stateful step mode _ _ _ = 2
 
+-- A lambda or a function value has no signature mark; the type checker
+-- records its form as ":agstep:<name>:<k>" (RG-115).
+fn :: typed step mode RNativeEnv RExpr Int => Int
+      typed step mode env (EVar n) 2 =  step mode of kind (env tensor kind env (":agstep:" + n + ":0"))
+      typed step mode env (ECall n args) 2 =  step mode of kind (env tensor kind env (":agstep:" + n + ":" + (int to str (list len args))))
+      typed step mode _ _ mode =  mode
+
+fn :: step mode of kind String => Int
+      step mode of kind "7" =  7
+      step mode of kind "8" =  8
+      step mode of kind _ =  2
+
 fn :: known step mode Int => Int
       known step mode 7 =  7
       known step mode 8 =  8
@@ -1987,12 +2014,12 @@ fn :: stateful agent mode RNativeEnv RExpr [String] => Int
 fn :: emit indirect1 call Int Int Int Int => [RNativeInstr]
       emit indirect1 call fn_slot arg_slot tmp_sp plain_lbl =
         done_lbl = plain_lbl + 1
-        [NMatchTuple fn_slot 2, NJumpIfZero plain_lbl, NTupleGet fn_slot 0, NStoreSlot tmp_sp, NTupleGet fn_slot 1, NStoreSlot (tmp_sp + 1), NMoveSlot arg_slot, NStoreSlot (tmp_sp + 2), NMakeList (tmp_sp + 2) 1, NBinOp 14 (tmp_sp + 1), NStoreSlot (tmp_sp + 1), NListHead (tmp_sp + 1), NStoreSlot (tmp_sp + 2), NListTail (tmp_sp + 1), NStoreSlot (tmp_sp + 3), NMoveSlot (tmp_sp + 2), NStoreSlot (tmp_sp + 1), NMoveSlot (tmp_sp + 3), NStoreSlot (tmp_sp + 2), NCallIndirect2 tmp_sp (tmp_sp + 1), NJump done_lbl, NLabel plain_lbl, NCallIndirect1 fn_slot arg_slot, NLabel done_lbl]
+        [NMatchTuple fn_slot 2, NJumpIfZero plain_lbl, NTupleGet fn_slot 0, NStoreSlot tmp_sp, NTupleGet fn_slot 1, NStoreSlot (tmp_sp + 1), NMoveSlot arg_slot, NStoreSlot (tmp_sp + 2), NMakeList (tmp_sp + 2) 1, NBinOp 14 (tmp_sp + 1), NStoreSlot (tmp_sp + 1), NListHead (tmp_sp + 1), NStoreSlot (tmp_sp + 2), NListTail (tmp_sp + 1), NStoreSlot (tmp_sp + 3), NMoveSlot (tmp_sp + 2), NStoreSlot (tmp_sp + 1), NMoveSlot (tmp_sp + 3), NStoreSlot (tmp_sp + 2), NMakeAdt (rest tag off) 11 (tmp_sp + 2) 1, NStoreSlot (tmp_sp + 2), NCallIndirect2 tmp_sp (tmp_sp + 1), NJump done_lbl, NLabel plain_lbl, NCallIndirect1 fn_slot arg_slot, NLabel done_lbl]
 
 fn :: emit indirect2 call Int Int Int Int => [RNativeInstr]
       emit indirect2 call fn_slot arg1_slot tmp_sp plain_lbl =
         done_lbl = plain_lbl + 1
-        [NMatchTuple fn_slot 2, NJumpIfZero plain_lbl, NTupleGet fn_slot 0, NStoreSlot tmp_sp, NTupleGet fn_slot 1, NStoreSlot (tmp_sp + 1), NMakeList arg1_slot 2, NBinOp 14 (tmp_sp + 1), NStoreSlot (tmp_sp + 1), NListHead (tmp_sp + 1), NStoreSlot (tmp_sp + 2), NListTail (tmp_sp + 1), NStoreSlot (tmp_sp + 3), NMoveSlot (tmp_sp + 2), NStoreSlot (tmp_sp + 1), NMoveSlot (tmp_sp + 3), NStoreSlot (tmp_sp + 2), NCallIndirect2 tmp_sp (tmp_sp + 1), NJump done_lbl, NLabel plain_lbl, NCallIndirect2 fn_slot arg1_slot, NLabel done_lbl]
+        [NMatchTuple fn_slot 2, NJumpIfZero plain_lbl, NTupleGet fn_slot 0, NStoreSlot tmp_sp, NTupleGet fn_slot 1, NStoreSlot (tmp_sp + 1), NMakeList arg1_slot 2, NBinOp 14 (tmp_sp + 1), NStoreSlot (tmp_sp + 1), NListHead (tmp_sp + 1), NStoreSlot (tmp_sp + 2), NListTail (tmp_sp + 1), NStoreSlot (tmp_sp + 3), NMoveSlot (tmp_sp + 2), NStoreSlot (tmp_sp + 1), NMoveSlot (tmp_sp + 3), NStoreSlot (tmp_sp + 2), NMakeAdt (rest tag off) 11 (tmp_sp + 2) 1, NStoreSlot (tmp_sp + 2), NCallIndirect2 tmp_sp (tmp_sp + 1), NJump done_lbl, NLabel plain_lbl, NCallIndirect2 fn_slot arg1_slot, NLabel done_lbl]
 
 fn :: emit sink state copy Bool Int => [RNativeInstr]
       emit sink state copy False _ = []
@@ -2027,7 +2054,7 @@ fn :: lower agent call RNativeEnv String [RExpr] [String] Int RNativeCode => RNa
         nc emit list st1 ins (sp + 5)
       lower agent call env "agent" (fn_e:init_e:[]) bound_locals sp st =
         st_flag = stateful agent mode env fn_e bound_locals
-        st_mode = stateful step mode env fn_e bound_locals
+        st_mode = typed step mode env fn_e (stateful step mode env fn_e bound_locals)
         st1 = lower expr env fn_e bound_locals sp st
         st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
         st3 = lower expr env (msg copy expr env init_e) bound_locals (sp + 4) st2
@@ -2230,7 +2257,7 @@ fn :: lower indirect call slots RNativeEnv Int [RExpr] [String] Int RNativeCode 
         st0 = nc set lbl st (plain_lbl + 2)
         st1 = nc emit list st0 [NMatchTuple fn_slot 2, NJumpIfZero plain_lbl, NTupleGet fn_slot 0, NStoreSlot sp, NTupleGet fn_slot 1, NStoreSlot (sp + 1)] (sp + 2)
         st2 = lower expr list to slots env args bound_locals (sp + 2) 0 st1
-        ins_clos = [NMakeList (sp + 2) count, NBinOp 14 (sp + 1), NStoreSlot (sp + 1), NListHead (sp + 1), NStoreSlot (sp + 2), NListTail (sp + 1), NStoreSlot (sp + 3), NMoveSlot (sp + 2), NStoreSlot (sp + 1), NMoveSlot (sp + 3), NStoreSlot (sp + 2), NCallIndirect2 sp (sp + 1), NStoreSlot (sp + 1), NClearLocals sp (sp + 1), NMoveSlot (sp + 1), NJump done_lbl, NLabel plain_lbl]
+        ins_clos = [NMakeList (sp + 2) count, NBinOp 14 (sp + 1), NStoreSlot (sp + 1), NListHead (sp + 1), NStoreSlot (sp + 2), NListTail (sp + 1), NStoreSlot (sp + 3), NMoveSlot (sp + 2), NStoreSlot (sp + 1), NMoveSlot (sp + 3), NStoreSlot (sp + 2), NMakeAdt (rest tag off) 11 (sp + 2) 1, NStoreSlot (sp + 2), NCallIndirect2 sp (sp + 1), NStoreSlot (sp + 1), NClearLocals sp (sp + 1), NMoveSlot (sp + 1), NJump done_lbl, NLabel plain_lbl]
         st3 = nc emit list st2 ins_clos (sp + count + 4)
         st4 = lower plain indirect call env fn_slot args bound_locals sp st3
         nc emit st4 (NLabel done_lbl) (sp + count + 4)
@@ -2264,7 +2291,7 @@ fn :: lower map or closure map RNativeEnv String [RExpr] [String] Int RNativeCod
         after_lbl = plain_lbl + 3
         st0 = nc set lbl st (plain_lbl + 4)
         st1 = lower expr list to slots env [fn_e, list_e] bound_locals sp 0 st0
-        ins_clos = [NMatchTuple sp 2, NJumpIfZero plain_lbl, NMakeList (sp + 2) 0, NStoreSlot (sp + 2), NLabel loop_lbl, NMatchNonEmpty (sp + 1), NJumpIfZero done_lbl, NTupleGet sp 0, NStoreSlot (sp + 3), NTupleGet sp 1, NStoreSlot (sp + 4), NListHead (sp + 1), NStoreSlot (sp + 5), NMakeList (sp + 5) 1, NBinOp 14 (sp + 4), NStoreSlot (sp + 4), NListHead (sp + 4), NStoreSlot (sp + 5), NListTail (sp + 4), NStoreSlot (sp + 6), NMoveSlot (sp + 5), NStoreSlot (sp + 4), NMoveSlot (sp + 6), NStoreSlot (sp + 5), NCallIndirect2 (sp + 3) (sp + 4), NStoreSlot (sp + 5), NMakeList (sp + 5) 1, NBinOp 14 (sp + 2), NStoreSlot (sp + 2), NListTail (sp + 1), NStoreSlot (sp + 1), NJump loop_lbl, NLabel done_lbl, NClearLocals sp (sp + 2), NClearLocals (sp + 3) (sp + 7), NMoveSlot (sp + 2), NJump after_lbl, NLabel plain_lbl, NCallBuiltin bid sp 2, NLabel after_lbl]
+        ins_clos = [NMatchTuple sp 2, NJumpIfZero plain_lbl, NMakeList (sp + 2) 0, NStoreSlot (sp + 2), NLabel loop_lbl, NMatchNonEmpty (sp + 1), NJumpIfZero done_lbl, NTupleGet sp 0, NStoreSlot (sp + 3), NTupleGet sp 1, NStoreSlot (sp + 4), NListHead (sp + 1), NStoreSlot (sp + 5), NMakeList (sp + 5) 1, NBinOp 14 (sp + 4), NStoreSlot (sp + 4), NListHead (sp + 4), NStoreSlot (sp + 5), NListTail (sp + 4), NStoreSlot (sp + 6), NMoveSlot (sp + 5), NStoreSlot (sp + 4), NMoveSlot (sp + 6), NStoreSlot (sp + 5), NMakeAdt (rest tag off) 11 (sp + 5) 1, NStoreSlot (sp + 5), NCallIndirect2 (sp + 3) (sp + 4), NStoreSlot (sp + 5), NMakeList (sp + 5) 1, NBinOp 14 (sp + 2), NStoreSlot (sp + 2), NListTail (sp + 1), NStoreSlot (sp + 1), NJump loop_lbl, NLabel done_lbl, NClearLocals sp (sp + 2), NClearLocals (sp + 3) (sp + 7), NMoveSlot (sp + 2), NJump after_lbl, NLabel plain_lbl, NCallBuiltin bid sp 2, NLabel after_lbl]
         nc emit list st1 ins_clos (sp + 7)
       lower map or closure map env fname args bound_locals sp st =
         count = list len args
@@ -2306,7 +2333,7 @@ fn :: lower filter or closure filter RNativeEnv String [RExpr] [String] Int RNat
         after_lbl = plain_lbl + 4
         st0 = nc set lbl st (plain_lbl + 5)
         st1 = lower expr list to slots env [fn_e, list_e] bound_locals sp 0 st0
-        ins_clos = [NMatchTuple sp 2, NJumpIfZero plain_lbl, NMakeList (sp + 2) 0, NStoreSlot (sp + 2), NLabel loop_lbl, NMatchNonEmpty (sp + 1), NJumpIfZero done_lbl, NTupleGet sp 0, NStoreSlot (sp + 3), NTupleGet sp 1, NStoreSlot (sp + 4), NListHead (sp + 1), NStoreSlot (sp + 5), NMakeList (sp + 5) 1, NBinOp 14 (sp + 4), NStoreSlot (sp + 4), NListHead (sp + 4), NStoreSlot (sp + 5), NListTail (sp + 4), NStoreSlot (sp + 6), NMoveSlot (sp + 5), NStoreSlot (sp + 4), NMoveSlot (sp + 6), NStoreSlot (sp + 5), NCallIndirect2 (sp + 3) (sp + 4), NAsBool, NJumpIfZero skip_lbl, NListHead (sp + 1), NStoreSlot (sp + 5), NMakeList (sp + 5) 1, NBinOp 14 (sp + 2), NStoreSlot (sp + 2), NLabel skip_lbl, NListTail (sp + 1), NStoreSlot (sp + 1), NJump loop_lbl, NLabel done_lbl, NClearLocals sp (sp + 2), NClearLocals (sp + 3) (sp + 7), NMoveSlot (sp + 2), NJump after_lbl, NLabel plain_lbl, NCallBuiltin bid sp 2, NLabel after_lbl]
+        ins_clos = [NMatchTuple sp 2, NJumpIfZero plain_lbl, NMakeList (sp + 2) 0, NStoreSlot (sp + 2), NLabel loop_lbl, NMatchNonEmpty (sp + 1), NJumpIfZero done_lbl, NTupleGet sp 0, NStoreSlot (sp + 3), NTupleGet sp 1, NStoreSlot (sp + 4), NListHead (sp + 1), NStoreSlot (sp + 5), NMakeList (sp + 5) 1, NBinOp 14 (sp + 4), NStoreSlot (sp + 4), NListHead (sp + 4), NStoreSlot (sp + 5), NListTail (sp + 4), NStoreSlot (sp + 6), NMoveSlot (sp + 5), NStoreSlot (sp + 4), NMoveSlot (sp + 6), NStoreSlot (sp + 5), NMakeAdt (rest tag off) 11 (sp + 5) 1, NStoreSlot (sp + 5), NCallIndirect2 (sp + 3) (sp + 4), NAsBool, NJumpIfZero skip_lbl, NListHead (sp + 1), NStoreSlot (sp + 5), NMakeList (sp + 5) 1, NBinOp 14 (sp + 2), NStoreSlot (sp + 2), NLabel skip_lbl, NListTail (sp + 1), NStoreSlot (sp + 1), NJump loop_lbl, NLabel done_lbl, NClearLocals sp (sp + 2), NClearLocals (sp + 3) (sp + 7), NMoveSlot (sp + 2), NJump after_lbl, NLabel plain_lbl, NCallBuiltin bid sp 2, NLabel after_lbl]
         nc emit list st1 ins_clos (sp + 7)
       lower filter or closure filter env fname args bound_locals sp st =
         count = list len args
@@ -2331,7 +2358,7 @@ fn :: lower fold or closure fold RNativeEnv [RExpr] [String] Int RNativeCode => 
         after_lbl = plain_lbl + 3
         st0 = nc set lbl st (plain_lbl + 4)
         st1 = lower expr list to slots env [fn_e, init_e, list_e] bound_locals sp 0 st0
-        ins_clos = [NMatchTuple sp 2, NJumpIfZero plain_lbl, NLabel loop_lbl, NMatchNonEmpty (sp + 2), NJumpIfZero done_lbl, NTupleGet sp 0, NStoreSlot (sp + 3), NTupleGet sp 1, NStoreSlot (sp + 4), NMoveSlot (sp + 1), NStoreSlot (sp + 5), NListHead (sp + 2), NStoreSlot (sp + 6), NMakeList (sp + 5) 2, NBinOp 14 (sp + 4), NStoreSlot (sp + 4), NListHead (sp + 4), NStoreSlot (sp + 5), NListTail (sp + 4), NStoreSlot (sp + 6), NMoveSlot (sp + 5), NStoreSlot (sp + 4), NMoveSlot (sp + 6), NStoreSlot (sp + 5), NCallIndirect2 (sp + 3) (sp + 4), NStoreSlot (sp + 1), NListTail (sp + 2), NStoreSlot (sp + 2), NJump loop_lbl, NLabel done_lbl, NCmmDropSlot sp, NClearLocals (sp + 2) (sp + 7), NMoveSlot (sp + 1), NJump after_lbl, NLabel plain_lbl, NCallBuiltin 61 sp 3, NLabel after_lbl]
+        ins_clos = [NMatchTuple sp 2, NJumpIfZero plain_lbl, NLabel loop_lbl, NMatchNonEmpty (sp + 2), NJumpIfZero done_lbl, NTupleGet sp 0, NStoreSlot (sp + 3), NTupleGet sp 1, NStoreSlot (sp + 4), NMoveSlot (sp + 1), NStoreSlot (sp + 5), NListHead (sp + 2), NStoreSlot (sp + 6), NMakeList (sp + 5) 2, NBinOp 14 (sp + 4), NStoreSlot (sp + 4), NListHead (sp + 4), NStoreSlot (sp + 5), NListTail (sp + 4), NStoreSlot (sp + 6), NMoveSlot (sp + 5), NStoreSlot (sp + 4), NMoveSlot (sp + 6), NStoreSlot (sp + 5), NMakeAdt (rest tag off) 11 (sp + 5) 1, NStoreSlot (sp + 5), NCallIndirect2 (sp + 3) (sp + 4), NStoreSlot (sp + 1), NListTail (sp + 2), NStoreSlot (sp + 2), NJump loop_lbl, NLabel done_lbl, NCmmDropSlot sp, NClearLocals (sp + 2) (sp + 7), NMoveSlot (sp + 1), NJump after_lbl, NLabel plain_lbl, NCallBuiltin 61 sp 3, NLabel after_lbl]
         nc emit list st1 ins_clos (sp + 7)
       lower fold or closure fold env args bound_locals sp st =
         count = list len args
@@ -4008,7 +4035,7 @@ fn :: build spawn dispatch entry [RFnEntry] RStrIntMap RStrSet => [RNativeInstr]
       build spawn dispatch entry fn_tbl str_map disp_set =
         par_off = lookup str off str_map "__rg_par_eval__"
         par_hdr = [NMatchStr 0 par_off 15, NJumpIfZero 1, NTupleGet 1 0, NStoreSlot 2, NTupleGet 1 1, NStoreSlot 1, NMoveSlot 2, NStoreSlot 0, NLabel 1]
-        clos_hdr = [NMatchTuple 0 2, NJumpIfZero 2, NTupleGet 0 0, NStoreSlot 2, NTupleGet 0 1, NStoreSlot 3, NMoveSlot 1, NStoreSlot 4, NMakeList 4 1, NBinOp 14 3, NStoreSlot 3, NListHead 3, NStoreSlot 4, NListTail 3, NStoreSlot 5, NMoveSlot 4, NStoreSlot 3, NMoveSlot 5, NStoreSlot 4, NCallIndirect2 2 3, NReturn, NLabel 2]
+        clos_hdr = [NMatchTuple 0 2, NJumpIfZero 2, NTupleGet 0 0, NStoreSlot 2, NTupleGet 0 1, NStoreSlot 3, NMoveSlot 1, NStoreSlot 4, NMakeList 4 1, NBinOp 14 3, NStoreSlot 3, NListHead 3, NStoreSlot 4, NListTail 3, NStoreSlot 5, NMoveSlot 4, NStoreSlot 3, NMoveSlot 5, NStoreSlot 4, NMakeAdt (rest tag off) 11 4 1, NStoreSlot 4, NCallIndirect2 2 3, NReturn, NLabel 2]
         init_rev = rev native instrs (par_hdr :: clos_hdr) []
         build spawn dispatch instrs fn_tbl str_map disp_set 3 init_rev
 
@@ -4055,6 +4082,11 @@ fn :: build call2 unpack list Int Int => [RNativeInstr]
         | otherwise =
           [NListHead 2, NStoreSlot (4 + idx), NListTail 2, NStoreSlot 2] :: (build call2 unpack list (idx + 1) count)
 
+-- `__rg_dispatch_call2` gets (name, first argument, rest). A closure call
+-- passes the rest as a list inside the reserved constructor `__rg_rest__`;
+-- any other call passes the second argument itself (arity 2) or a tuple of
+-- the others (arity 3+). A list argument stays whole: it is never taken for
+-- a closure's rest (RG-115). Not a 1-tuple: a 1-element list matches one.
 fn :: build call2 dispatch instrs [RFnEntry] RStrIntMap RStrSet Int [RNativeInstr] => [RNativeInstr]
       build call2 dispatch instrs [] _ _ _ rev_acc =
         rev native instrs (rev native instrs [NLoadImmRaw 0, NReturn] rev_acc) []
@@ -4065,7 +4097,7 @@ fn :: build call2 dispatch instrs [RFnEntry] RStrIntMap RStrSet Int [RNativeInst
           off = lookup str off str_map name
           lbl_plain = lbl + 1
           lbl_next = lbl + 2
-          arm = [NMatchStr 0 off (str len name), NJumpIfZero lbl_next, NMoveSlot 1, NStoreSlot 3, NMatchNonEmpty 2, NJumpIfZero lbl_plain, NListHead 2, NStoreSlot 4, NJump lbl, NLabel lbl_plain, NMoveSlot 2, NStoreSlot 4, NLabel lbl, NCallFn fid 3 2, NReturn, NLabel lbl_next]
+          arm = [NMatchStr 0 off (str len name), NJumpIfZero lbl_next, NMoveSlot 1, NStoreSlot 3, NMatchAdt 2 (rest tag off) 11 1, NJumpIfZero lbl_plain, NAdtField 2 0, NStoreSlot 2, NListHead 2, NStoreSlot 4, NJump lbl, NLabel lbl_plain, NMoveSlot 2, NStoreSlot 4, NLabel lbl, NCallFn fid 3 2, NReturn, NLabel lbl_next]
           build call2 dispatch instrs rest str_map disp_set (lbl + 3) (rev native instrs arm rev_acc)
         | arity >= 3 =
           off = lookup str off str_map name
@@ -4073,7 +4105,7 @@ fn :: build call2 dispatch instrs [RFnEntry] RStrIntMap RStrSet Int [RNativeInst
           lbl_next = lbl + 2
           unpack_list = build call2 unpack list 0 (arity - 1)
           unpack_tup = build call2 unpack tuple 0 (arity - 1)
-          arm = [NMatchStr 0 off (str len name), NJumpIfZero lbl_next, NMoveSlot 1, NStoreSlot 3, NMatchNonEmpty 2, NJumpIfZero lbl_tuple] :: unpack_list :: [NJump lbl, NLabel lbl_tuple] :: unpack_tup :: [NLabel lbl, NCallFn fid 3 arity, NReturn, NLabel lbl_next]
+          arm = [NMatchStr 0 off (str len name), NJumpIfZero lbl_next, NMoveSlot 1, NStoreSlot 3, NMatchAdt 2 (rest tag off) 11 1, NJumpIfZero lbl_tuple, NAdtField 2 0, NStoreSlot 2] :: unpack_list :: [NJump lbl, NLabel lbl_tuple] :: unpack_tup :: [NLabel lbl, NCallFn fid 3 arity, NReturn, NLabel lbl_next]
           build call2 dispatch instrs rest str_map disp_set (lbl + 3) (rev native instrs arm rev_acc)
         | otherwise =
           build call2 dispatch instrs rest str_map disp_set lbl rev_acc

@@ -1111,6 +1111,9 @@ fn :: check expr RExpr String [RTypeBind] [RTypeBind] => RType [RTypeError]
         with u8 use errs fn_name d (fst ty d_res) (with u8 call fact fn_name "sha256_raw" (finish call check "sha256_raw" ([fst ty d_res], snd errs d_res) fn_name locals fns))
       check expr (ECall "__syntax_error__" ((EStr msg):_)) _ _ _ =
         (TyVar "_any", [TypeError "syntax" msg])
+      check expr (ECall "agent" (f:i:[])) fn_name locals fns =
+        args_res = check expr list [f, i] fn_name locals fns
+        with agent step fact fn_name f fns args_res (with msg copy facts "agent" [f, i] args_res fn_name fns (finish call check "agent" args_res fn_name locals fns))
       check expr (ECall callee args) fn_name locals fns =
         args_res = check expr list args fn_name locals fns
         with u8 call fact fn_name callee (with msg copy facts callee args args_res fn_name fns (finish call check callee args_res fn_name locals fns))
@@ -1385,6 +1388,80 @@ fn :: infer stateful agent out RType RType => RType
       infer stateful agent out s_ty (TyTuple (r1:r2:[]))
         | (types compatible r1 s_ty) and (not (types compatible (TyTuple [r1, r2]) s_ty)) = r2
       infer stateful agent out _ ret_ty = ret_ty
+
+-- The form of an agent's step comes from its type when the agent is made:
+-- 8 when the step returns the state, 7 when it returns (state, reply).
+-- Lowering reads the info ":agstep:<name>:<k>" for a lambda or a function
+-- value, whose form no signature string gives (RG-115).
+fn :: with agent step fact String RExpr [RTypeBind] ([RType], [RTypeError]) (RType, [RTypeError]) => RType [RTypeError]
+      with agent step fact fn_name f fns (arg_tys, _) (t, errs) =
+        (t, errs :: (agent step info fn_name f fns arg_tys))
+
+fn :: agent step info String RExpr [RTypeBind] [RType] => [RTypeError]
+      agent step info fn_name f fns ((TyFun (s_ty:_) ret_ty):init_ty:[]) =
+        agent step form info fn_name (agent step key f) (agent state ty s_ty init_ty) (agent step ret ty f ret_ty fns)
+      agent step info _ _ _ _ = []
+
+fn :: agent step key RExpr => String
+      agent step key (EVar n) =  n + ":0"
+      agent step key (ECall n args) =  n + ":" + (int to str (list len args))
+      agent step key _ =  ""
+
+fn :: agent state ty RType RType => RType
+      agent state ty s_ty init_ty
+        | is poly tyvar s_ty = init_ty
+        | otherwise = s_ty
+
+fn :: agent step ret ty RExpr RType [RTypeBind] => RType
+      agent step ret ty (EVar n) ret_ty fns =  lambda ret or n ret_ty fns
+      agent step ret ty (ECall n _) ret_ty fns =  lambda ret or n ret_ty fns
+      agent step ret ty _ ret_ty _ =  ret_ty
+
+fn :: lambda ret or String RType [RTypeBind] => RType
+      lambda ret or n ret_ty fns
+        | str starts with n "__rg_lambda_" = found ty or poly (lookup type bind fns (":lamret:" + n))
+        | otherwise = ret_ty
+
+fn :: found ty or poly (Bool, RType) => RType
+      found ty or poly (True, t) =  t
+      found ty or poly _ =  TyVar "_any"
+
+fn :: agent step form info String String RType RType => [RTypeError]
+      agent step form info fn_name key st ret
+        | key == "" or (is poly tyvar st) or (is poly tyvar ret) = []
+        | types compatible ret st = [agent step mark fn_name key "8"]
+        | otherwise = agent step pair info fn_name key st ret
+
+fn :: agent step pair info String String RType RType => [RTypeError]
+      agent step pair info fn_name key st (TyTuple (r1:_:[]))
+        | (not (is poly tyvar r1)) and (types compatible r1 st) = [agent step mark fn_name key "7"]
+        | otherwise = []
+      agent step pair info _ _ _ _ = []
+
+fn :: agent step mark String String String => RTypeError
+      agent step mark fn_name key form =  TypeError ":tensor-elem:" (fn_name + "|:agstep:" + key + "|" + form)
+
+-- The type of a lambda's body, with its parameters as type variables, under
+-- ":lamret:<name>". The lambda's own signature keeps its type variables.
+fn :: lambda ret binds [String] [RFnDef] RTypeBindMap RTypeBindMap [RTypeBind] => [RTypeBind]
+      lambda ret binds _ [] _ _ acc = acc
+      lambda ret binds tnames ((FnDef name param_strs _ cases):fs) lmap fmap acc
+        | str starts with name "__rg_lambda_" = lambda ret binds tnames fs lmap fmap ((lambda ret bind tnames name param_strs cases lmap fmap) :: acc)
+        | otherwise = lambda ret binds tnames fs lmap fmap acc
+
+fn :: lambda ret bind [String] String [String] [RFnCase] RTypeBindMap RTypeBindMap => [RTypeBind]
+      lambda ret bind tnames name param_strs ((FnCase pats [] body):[]) lmap fmap =
+        param_tys = qualify declared adt list tnames (parse type list strs param_strs)
+        refs = tc snd list (tc refs cases [FnCase pats [] body] StrSetEmpty [])
+        body_fns = collect fns for refs refs fmap []
+        body_locals = bind case patterns pats param_tys (has seq bind pat pats) 0 (collect fns for refs refs lmap []) body_fns
+        lamret bind name (fst ty (check expr body name body_locals body_fns))
+      lambda ret bind _ _ _ _ _ _ = []
+
+fn :: lamret bind String RType => [RTypeBind]
+      lamret bind name t
+        | is poly tyvar t = []
+        | otherwise = [TypeBind (":lamret:" + name) t]
 
 fn :: check agent create [RType] [RTypeError] String => RType [RTypeError]
       check agent create ((TyFun params ret_ty):[]) arg_errs _ =
@@ -1876,8 +1953,9 @@ fn :: tc refs cases [RFnCase] RStrSet [String] => RStrSet [String]
 
 fn :: collect fns for refs [String] RTypeBindMap [RTypeBind] => [RTypeBind]
       collect fns for refs [] _ acc = acc
-      collect fns for refs (k:ks) fmap acc =
-        collect fns for refs ks fmap ((tbind map get fmap k) :: acc)
+      collect fns for refs (k:ks) fmap acc
+        | str starts with k "__rg_lambda_" = collect fns for refs ks fmap ((tbind map get fmap k) :: (tbind map get fmap (":lamret:" + k)) :: acc)
+        | otherwise = collect fns for refs ks fmap ((tbind map get fmap k) :: acc)
 
 fn :: resolve fn ret ty [String] String => RType
       resolve fn ret ty _ "__sink_agent__" = TyVar "SinkAgent"
@@ -1945,7 +2023,8 @@ fn :: check duplicate fndefs [RFnDef] => [RTypeError]
 fn :: typecheck with typedef env [String] RProgram [RFnDef] ([RTypeBind], [RTypeBind]) => [RTypeError]
       typecheck with typedef env tnames prog fdefs (locals, fns0) =
         dup_errs = check duplicate fndefs fdefs
-        fns = register fndef sigs tnames fdefs fns0
+        fns1 = register fndef sigs tnames fdefs fns0
+        fns = lambda ret binds tnames fdefs (build tbind map locals) (build tbind map fns1) fns1
         ty_errs = check all functions tnames fdefs locals fns
         an_errs = convert analysis errors (analyze program errors prog)
         dup_errs :: ty_errs :: an_errs
