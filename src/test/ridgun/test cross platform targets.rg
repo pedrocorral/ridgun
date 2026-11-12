@@ -154,8 +154,8 @@ fn :: test windows syscall sites => ()
       test windows syscall sites =
         echo "--- 5. Testing Windows system layer: syscall sites become ud2 ---"
         rt = build x8664 rt kernel
-        assert equals (list len (win rt sites)) 99
-        assert equals (count syscall pairs rt 0) 101
+        assert equals (list len (win rt sites)) 101
+        assert equals (count syscall pairs rt 0) 103
         -- the two pairs left are inside `mov edi, 0x50F00` (not instructions)
         assert equals (count syscall pairs (patch ud2 rt (win rt sites)) 0) 2
         check win sites (win sample instrs)

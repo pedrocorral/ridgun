@@ -35,9 +35,14 @@ The `stable` project manager (`src/main/ridgun/stable/main.rg`) SHALL support fu
      - When a dependency has a link, `stable deps` and `stable add` SHALL synchronize the linked folder as a package folder, instead of the `omni.lock` entry, and SHALL print a warning naming the folder each time.
    - `stable add <name>` SHALL append `<name>` to `dependencies` in `build.rg` and synchronize it under the same rules.
    - `load_rg_source` in `src/main/ridgun/lib/parser.rg` SHALL also search `.stable/deps/*/src/main/ridgun/lib/<mod>.rg` and `.stable/deps/*/<mod>.rg` when resolving `import <mod>`.
-   - `stable run [target]` SHALL build the target before running it unless the binary was built from exactly the current sources. It SHALL decide by content, not by file times: a stamp next to the binary (`<binary>.stamp`) holds a hash of every `.rg`, `.rglib` and `omni.lock` in the project (outside `target/`), with their paths, and of the compiler's version. It SHALL create the output folder when it is missing.
+   - `stable run [target]` SHALL build the target before running it unless the binary was built from exactly the current sources. It SHALL decide by content, not by file times: a stamp next to the binary (`<binary>.stamp`) holds a hash of every `.rg`, `.rglib` and `omni.lock` in the project (outside `target/`), with their paths, and of the compiler binary (its SHA-256). It SHALL create the output folder when it is missing.
 3. **Binary Installation (`stable install [target]`)**:
    - `stable install [target]` SHALL compile the project's native ELF64 executable(s) and install them with executable permissions (`0755`) into `~/.local/bin/` (and `bin/`).
+
+4. **No shell (Windows)**:
+   - `stable` SHALL create folders, remove and copy files, copy dependency folders, write stamps and start `ridgunc`, the built program, tests and plugins through system calls and argument lists (`sys mkdir`, `remove file`, `remove dir`, `rename path`, `read bytes` / `write bytes`, `sys exec`), never through `/bin/sh`, so it works on Windows without `sh.exe`. Only the command of a user task (`fn :: task ... => String` in `build.rg`) goes to the shell.
+   - On Windows the programs it builds for the host are named `<name>.exe`, and it finds `ridgunc.exe` next to `stable.exe`.
+   - It starts `ridgunc` with `--quiet`: a successful build prints the line of `stable`, not one of `ridgunc` as well.
 
 ## Rationale
 Providing `new`, `init`, `deps`, `add`, and `install` directly inside `stable` completes Ridgun's self-hosted developer experience without external package managers.
@@ -50,3 +55,4 @@ Providing `new`, `init`, `deps`, `add`, and `install` directly inside `stable` c
 - AC7: after `stable deps` with a package folder that has no `.rglib`, the project's `src/` holds no file of the package, and a program that imports the package's module still builds.
 - AC5: with a developer link, `stable deps` copies the linked folder and warns; a link whose package is not a name, whose folder holds a disallowed character, or whose `build.rg` names another project is refused; after `stable dev unlink` the name resolves through `omni.lock` again.
 - AC3: `stable install` builds and installs native ELF64 binaries into `~/.local/bin/`.
+- AC8: under Wine 10 without `sh.exe`, `stable.exe new demo`, then `check`, `build`, `run`, `test`, `compile` and `clean` in `demo` work as on Linux (`target/demo.exe`; the second `run` does not build again).

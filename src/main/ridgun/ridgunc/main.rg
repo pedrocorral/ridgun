@@ -1,6 +1,6 @@
 -- ============================================================
 -- src/main/ridgun/ridgunc/main.rg
--- Self-Hosted Ridgun Compiler CLI Driver (ridgunc v1.0.2)
+-- Self-Hosted Ridgun Compiler CLI Driver (ridgunc v1.0.3)
 -- Shared Library (`src/main/ridgun/lib/`): ast.rg, lexer.rg,
 -- parser.rg, analyzer.rg, typecheck.rg, compiler.rg, vm.rg,
 -- elf64.rg, x86_64.rg, arm64.rg, llvm.rg, macho64.rg, pe64.rg
@@ -85,14 +85,19 @@ fn :: report check result String RProgram [RTypeError] => ()
           prog -> count fn defs -> fn_c
           prog -> count type defs -> ty_c
           prog -> analyze rprogram -> summaries
-          echo "[ridgunc check] {input_path}: {fn_c} function(s), {ty_c} type(s)"
-          echo "[ridgunc check] Type checking & static analysis passed — 0 error(s)."
-          echo "[ridgunc check] Static strategies:" summaries
+          report check passed (quiet mode) input_path fn_c ty_c summaries
       report check result input_path _ errs =
         errs -> type err count -> err_c
         errs -> format type errors -> print error lines
         echo "[ridgunc check] {input_path}: {err_c} error(s) found."
         sys exit 1
+
+fn :: report check passed Bool String Int Int [String] => ()
+      report check passed True _ _ _ _ = ()
+      report check passed False input_path fn_c ty_c summaries =
+        echo "[ridgunc check] {input_path}: {fn_c} function(s), {ty_c} type(s)"
+        echo "[ridgunc check] Type checking & static analysis passed — 0 error(s)."
+        echo "[ridgunc check] Static strategies:" summaries
 
 fn :: run cli compile Bool String String => ()
       run cli compile strict_mode input_path output_rgc =
@@ -165,23 +170,37 @@ fn :: run cli build so Bool String String String => ()
 
 fn :: report rglib status String String Int => ()
       report rglib status input_path output_lib 0 =
-        echo "[ridgunc build --lib] Ridgun library bundle created: {input_path} -> {output_lib}"
+        say unless quiet "[ridgunc build --lib] Ridgun library bundle created: {input_path} -> {output_lib}"
       report rglib status _ output_lib code =
         echo "[ridgunc build --lib] Failed to build {output_lib} (exit code {code})"
         sys exit 1
 
 fn :: report so status String String Int => ()
       report so status input_path output_so 0 =
-        echo "[ridgunc build --so] Native ELF64 shared library (.so) created: {input_path} -> {output_so}"
+        say unless quiet "[ridgunc build --so] Native shared library created: {input_path} -> {output_so}"
       report so status _ output_so code =
         echo "[ridgunc build --so] Failed to build {output_so} (exit code {code})"
         sys exit 1
 
+-- Without --target, a program is built for the system ridgunc runs on.
 fn :: run cli build Bool String String => ()
-      run cli build strict_mode input_path output_bin =
+      run cli build strict_mode input_path output_bin = run cli build on (host os) strict_mode input_path output_bin
+
+fn :: run cli build on SysOs Bool String String => ()
+      run cli build on Windows strict_mode input_path output_bin = run cli build target strict_mode input_path output_bin "x86_64-windows"
+      run cli build on _ strict_mode input_path output_bin =
         verify strict if enabled strict_mode input_path
         build native executable input_path output_bin -> status
         report build status input_path output_bin status
+
+-- --quiet (anywhere on the command line): no line for a successful build.
+fn :: quiet mode => Bool
+      quiet mode = list contains (cli args) "--quiet"
+
+fn :: say unless quiet String => ()
+      say unless quiet msg
+        | quiet mode = ()
+        | otherwise = echo msg
 
 fn :: run cli build target Bool String String String => ()
       run cli build target strict_mode input_path output_bin target_arch =
@@ -191,27 +210,39 @@ fn :: run cli build target Bool String String String => ()
 
 fn :: report build status String String Int => ()
       report build status input_path output_bin 0 =
-        echo "[ridgunc build] Native ELF executable created: {input_path} -> {output_bin}"
+        say unless quiet "[ridgunc build] Native executable created: {input_path} -> {output_bin}"
       report build status _ output_bin code =
         echo "[ridgunc build] Failed to build {output_bin} (exit code {code})"
         sys exit 1
-
-fn :: quote shell args [String] => String
-      quote shell args []       =  ""
-      quote shell args (a:as)   =  " \"" + a + "\"" + (quote shell args as)
 
 fn :: run cli run Bool        String     [String] => ()
       run cli run strict_mode input_path run_args =
         verify strict if enabled strict_mode input_path
         sys mkdir "target" 493
-        build native fast executable input_path "target/.ridgunc_run_bin" -> status
-        exec built run status (quote shell args run_args)
+        prog = run binary path (host os)
+        status = build run binary (host os) input_path prog
+        exec built run status prog run_args
 
-fn :: exec built run Int String => ()
-      exec built run 0   q_args =
-        shell exec ("./target/.ridgunc_run_bin" + q_args + "; _st=$?; rm -f target/.ridgunc_run_bin; exit $_st") -> code
+-- The system ridgunc runs on.
+fn :: host os => SysOs
+      host os =  sys os
+
+-- The program of `ridgunc run`, built for the system ridgunc runs on.
+fn :: run binary path SysOs => String
+      run binary path Windows =  "target/.ridgunc_run_bin.exe"
+      run binary path _       =  "target/.ridgunc_run_bin"
+
+fn :: build run binary SysOs String String => Int
+      build run binary Windows input_path prog =  build native target executable input_path prog "x86_64-windows"
+      build run binary _       input_path prog =  build native fast executable input_path prog
+
+-- The program runs without a shell: its arguments reach it unchanged. It stays in target/ and the next
+-- `ridgunc run` replaces it (ridgunc is built by the previous compiler, which has no `remove file`).
+fn :: exec built run Int String [String] => ()
+      exec built run 0   prog run_args =
+        code = sys exec prog run_args []
         sys exit code
-      exec built run _   _      =  sys exit 1
+      exec built run _   _    _        =  sys exit 1
 
 fn :: run self hosted pipeline demo => ()
       run self hosted pipeline demo =
@@ -234,7 +265,12 @@ fn :: run self hosted pipeline demo => ()
 
 fn :: run cli version => ()
       run cli version =
-        echo "ridgunc 1.0.2 (self-hosted Ridgun compiler, x86_64-unknown-linux-gnu)"
+        echo "ridgunc 1.0.3 (self-hosted Ridgun compiler, {host triple (host os)})"
+
+fn :: host triple SysOs => String
+      host triple Windows = "x86_64-pc-windows"
+      host triple MacOS = "x86_64-apple-darwin"
+      host triple _ = "x86_64-unknown-linux-gnu"
 
 fn :: run cli help => ()
       run cli help =
@@ -245,6 +281,7 @@ fn :: run cli help => ()
         echo "  check   <file.rg>                              Typecheck and analyze static strategies"
         echo "  compile <file.rg> [-o out.rgc]                 Emit .rgc bytecode artifact"
         echo "  build   <file.rg> [-o binary] [--target arch]  Build standalone native executable (ELF64, Mach-O 64, PE32+)"
+        echo "          [--quiet]                              No line for a successful build"
         echo "  build   --lib <file.rg> [-o out.rglib]         Build reusable Ridgun library (.rglib & .so/.dylib/.dll)"
         echo "  build   --so  <file.rg> [-o out.so]            Build native shared library (.so, .dylib, .dll)"
         echo "  prelude                                        Print the prelude: helpers every program calls without import"
@@ -290,5 +327,5 @@ fn :: main => ()
       main =
         args = strip runner args cli args
         strict_mode = has strict flag args
-        clean_args = strip strict flag args
+        clean_args = strip strict flag args -> filter (a => a != "--quiet")
         dispatch cli strict_mode clean_args

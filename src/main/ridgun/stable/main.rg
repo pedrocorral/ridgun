@@ -1,6 +1,6 @@
 -- ============================================================
 -- src/main/ridgun/stable/main.rg
--- `stable` v1.0.2 — The Interactive Build Tool for Ridgun (100% Ridgun)
+-- `stable` v1.0.3 — The Interactive Build Tool for Ridgun (100% Ridgun)
 -- Written in Ridgun's natural-language mixfix operator style (`op :: ...`).
 -- Decoupled from `ridgunc` internals per ADR-0001: delegates `check`,
 -- `compile`, `build`, `build lib`, and test/plugin compilation to the
@@ -183,33 +183,101 @@ fn :: log section String => ()
 
 op :: read prompt line with String     => Bool String
       read prompt line with prompt_str =
-        pid = int to str sys getpid
-        tmp_ln = "/tmp/.stable_line_" + pid + ".txt"
-        cmd = 'printf "%s" "' + prompt_str + '" && IFS= read -r _stable_ln && printf "%s" "$_stable_ln" > "' + tmp_ln + '"'
-        st_code = shell exec cmd
-        decode prompt status st_code file tmp_ln
+        sys write fd 1 prompt_str -> ()
+        read stdin line ""
 
-op :: decode prompt status Int file String => Bool String
-      decode prompt status 0   file tmp_ln =
-        line = read file tmp_ln
-        shell exec ('rm -f "' + tmp_ln + '"')
-        (True, str trim line)
-      decode prompt status _   file tmp_ln =
-        shell exec ('rm -f "' + tmp_ln + '"')
-        (False, "")
+-- One byte at a time up to the end of the line; False at the end of the input.
+op :: read stdin line String => Bool String
+      read stdin line acc =  next stdin char (sys read fd 0 1) acc
+
+op :: next stdin char String String => Bool String
+      next stdin char ""   acc =  (acc != "", str trim acc)
+      next stdin char "\n" acc =  (True, str trim acc)
+      next stdin char c    acc =  read stdin line (acc + c)
+
+-- ── Files, folders and tools without a shell ───────────────────
+-- Windows has no `sh`, so stable makes folders, removes and copies files and starts tools through system
+-- calls and argument lists. Only the commands of user tasks (`fn :: task ...` in build.rg) go to the shell.
+
+op :: is path sep Int => Bool
+      is path sep c =  c == 47 or c == 92
+
+op :: host exe ext => String
+      host exe ext =  exe ext on (host os)
+
+op :: host os => SysOs
+      host os =  sys os
+
+op :: exe ext on SysOs => String
+      exe ext on Windows =  ".exe"
+      exe ext on _       =  ""
+
+-- `mkdir -p`: the missing parents first.
+op :: ensure folder String => ()
+      ensure folder path
+        | path == "" = ()
+        | is dir path = ()
+        | otherwise =
+          ensure folder (parent dir of path at 0 len (str len path) slash 0)
+          sys mkdir path 493
+          ()
+
+op :: discard file String => ()
+      discard file path =  remove file path -> ()
+
+-- `rm -rf`: a link is removed, not followed.
+op :: remove tree String => ()
+      remove tree path
+        | is dir path =
+          remove entries (list dir path) in path
+          remove dir path -> ()
+        | otherwise = discard file path
+
+op :: remove entries [String] in String => ()
+      remove entries []     in _   =  ()
+      remove entries (e:es) in dir =
+        remove tree (dir + "/" + e)
+        remove entries es in dir
+
+-- `cp`: the bytes and the permission bits.
+op :: copy file String to String => ()
+      copy file src to dst =
+        write bytes dst (read bytes src)
+        sys chmod dst (file mode src) -> ()
+
+-- A folder with everything under it, except the names in `skip` (at any depth) and links.
+op :: copy tree String to String skipping [String] => ()
+      copy tree src to dst skipping skip
+        | is dir src =
+          ensure folder dst
+          copy entries (list str sort (list dir src)) from src to dst skipping skip
+        | is file src = copy file src to dst
+        | otherwise = ()
+
+op :: copy entries [String] from String to String skipping [String] => ()
+      copy entries []     from _   to _   skipping _    =  ()
+      copy entries (e:es) from src to dst skipping skip
+        | name e is in skip = copy entries es from src to dst skipping skip
+        | otherwise =
+          copy tree (src + "/" + e) to (dst + "/" + e) skipping skip
+          copy entries es from src to dst skipping skip
+
+op :: name String is in [String] => Bool
+      name _ is in []     =  False
+      name n is in (x:xs) =  n == x or (name n is in xs)
 
 -- ── `build.rg` Declarative Configuration & `ridgunc` CLI Bridge ──
 
 op :: base filename of String at Int len Int       slash Int        => String
       base filename of path   at pos len total_len slash last_slash
         | pos >= total_len = str slice path (last_slash + 1) total_len
-        | (str char at path pos) == 47 = base filename of path at (pos + 1) len total_len slash pos
+        | is path sep (str char at path pos) = base filename of path at (pos + 1) len total_len slash pos
         | otherwise = base filename of path at (pos + 1) len total_len slash last_slash
 
 op :: parent dir of String at Int len Int       slash Int        => String
       parent dir of path   at pos len total_len slash last_slash
         | pos >= total_len = str slice path 0 last_slash
-        | (str char at path pos) == 47 = parent dir of path at (pos + 1) len total_len slash pos
+        | is path sep (str char at path pos) = parent dir of path at (pos + 1) len total_len slash pos
         | otherwise = parent dir of path at (pos + 1) len total_len slash last_slash
 
 op :: target name from entry String     => String
@@ -223,12 +291,12 @@ op :: first cli arg of [String] => String
 
 op :: pick sibling ridgunc in String => String
       pick sibling ridgunc in pdir
-        | file (pdir + "/ridgunc_candidate") exists = pdir + "/ridgunc_candidate"
-        | otherwise = pdir + "/ridgunc"
+        | file (pdir + "/ridgunc_candidate" + host exe ext) exists = pdir + "/ridgunc_candidate" + host exe ext
+        | otherwise = pdir + "/ridgunc" + host exe ext
 
 op :: sibling ridgunc from argv0 String => String
       sibling ridgunc from argv0 a0
-        | str contains a0 "/" =
+        | (str contains a0 "/") or (str contains a0 "\\") =
           pdir = parent dir of a0 at 0 len (str len a0) slash 0
           pick sibling ridgunc in pdir
         | otherwise = ""
@@ -248,6 +316,11 @@ op :: pick ridgunc binary String sibling String => String
         | file "/home/boogie/ridgun/bin/ridgunc" exists = "/home/boogie/ridgun/bin/ridgunc"
         | otherwise = "ridgunc"
 
+op :: strict args from String => [String]
+      strict args from build_path
+        | (load strict flag from build_path) == "" = []
+        | otherwise = ["--strict"]
+
 op :: verify artifact built Int at String   => Int
       verify artifact built 0   at out_path
         | file out_path exists = 0
@@ -257,30 +330,26 @@ op :: verify artifact built Int at String   => Int
 op :: invoke ridgunc build String     into String  => Int
       invoke ridgunc build entry_path into out_bin =
         rg_bin = resolve ridgunc binary
-        sflag = load strict flag from "build.rg"
-        shell exec ('rm -f "' + out_bin + '"')
-        shell exec ('"' + rg_bin + '" build ' + sflag + '"' + entry_path + '" -o "' + out_bin + '"') -> verify artifact built at out_bin
+        discard file out_bin
+        sys exec rg_bin (["build", "--quiet"] :: (strict args from "build.rg") :: [entry_path, "-o", out_bin]) [] -> verify artifact built at out_bin
 
 op :: invoke ridgunc build target String     into String  for String      => Int
       invoke ridgunc build target entry_path into out_bin for target_arch =
         rg_bin = resolve ridgunc binary
-        sflag = load strict flag from "build.rg"
-        shell exec ('rm -f "' + out_bin + '"')
-        shell exec ('"' + rg_bin + '" build --target ' + target_arch + ' ' + sflag + '"' + entry_path + '" -o "' + out_bin + '"') -> verify artifact built at out_bin
+        discard file out_bin
+        sys exec rg_bin (["build", "--quiet", "--target", target_arch] :: (strict args from "build.rg") :: [entry_path, "-o", out_bin]) [] -> verify artifact built at out_bin
 
 op :: invoke ridgunc rglib String     into String    => Int
       invoke ridgunc rglib entry_path into out_rglib =
         rg_bin = resolve ridgunc binary
-        sflag = load strict flag from "build.rg"
-        shell exec ('rm -f "' + out_rglib + '"')
-        shell exec ('"' + rg_bin + '" build --lib ' + sflag + '"' + entry_path + '" -o "' + out_rglib + '"') -> verify artifact built at out_rglib
+        discard file out_rglib
+        sys exec rg_bin (["build", "--quiet", "--lib"] :: (strict args from "build.rg") :: [entry_path, "-o", out_rglib]) [] -> verify artifact built at out_rglib
 
 op :: invoke ridgunc so String     into String => Int
       invoke ridgunc so entry_path into out_so =
         rg_bin = resolve ridgunc binary
-        sflag = load strict flag from "build.rg"
-        shell exec ('rm -f "' + out_so + '"')
-        shell exec ('"' + rg_bin + '" build --so ' + sflag + '"' + entry_path + '" -o "' + out_so + '"') -> verify artifact built at out_so
+        discard file out_so
+        sys exec rg_bin (["build", "--quiet", "--so"] :: (strict args from "build.rg") :: [entry_path, "-o", out_so]) [] -> verify artifact built at out_so
 
 op :: extract quoted strings String at Int len Int in quote Bool cur String into [String] => [String]
       extract quoted strings s at pos len n in quote False cur _ into acc
@@ -390,23 +459,16 @@ op :: no project loaded error => Int
 fn :: check single module String => Int Int
       check single module path   =
         rg_bin = resolve ridgunc binary
-        sflag = load strict flag from "build.rg"
-        shell exec "mkdir -p target"
-        chk_file = "target/.stable_chk_out.txt"
-        shell exec ('"' + rg_bin + '" check ' + sflag + '"' + path + '" > "' + chk_file + '" 2>&1')
-        out_txt = read file chk_file
-        shell exec ('rm -f "' + chk_file + '"')
-        report check module path output out_txt
+        st = sys exec rg_bin (["check", "--quiet"] :: (strict args from "build.rg") :: [path]) []
+        report check module path status st
 
-op :: report check module String output String  => Int Int
-      report check module path   output out_txt
-        | str contains out_txt "0 error(s)." =
-          log ok "{path}"
-          (1, 0)
-        | otherwise =
-          log err "{path}: error(s)"
-          print error lines (split lines of out_txt)
-          (0, 1)
+op :: report check module String status Int => Int Int
+      report check module path   status 0   =
+        log ok "{path}"
+        (1, 0)
+      report check module path   status _   =
+        log err "{path}: error(s)"
+        (0, 1)
 
 op :: sum check results [(Int, Int)] ok Int  err Int   => Int Int
       sum check results []           ok ok_c err err_c =  (ok_c, err_c)
@@ -416,12 +478,6 @@ op :: sum check results [(Int, Int)] ok Int  err Int   => Int Int
 op :: check modules [String] ok Int  err Int   => Int Int
       check modules files    ok ok_c err err_c =
         files map (check single module) -> sum check results ok ok_c err err_c
-
-op :: print error lines [String] => ()
-      print error lines []       =  ()
-      print error lines (l:ls)   =
-        echo "        " l
-        print error lines ls
 
 op :: run task check on StableConfig => Int
       run task check on (ProjectConfig "" _ _ _ _ _) =
@@ -455,8 +511,7 @@ fn :: compile single module (String, String) => Int
         bname = base filename of path at 0 len (str len path) slash (0 - 1)
         out_rgc = out_dir + "/" + (rgc artifact name for path base bname)
         rg_bin = resolve ridgunc binary
-        sflag = load strict flag from "build.rg"
-        shell exec ('"' + rg_bin + '" compile ' + sflag + '"' + path + '" -o "' + out_rgc + '"')
+        sys exec rg_bin (["compile"] :: (strict args from "build.rg") :: [path, "-o", out_rgc]) [] -> ()
         log step "rgc" "{path} -> {out_rgc}"
         1
 
@@ -475,7 +530,7 @@ op :: run task compile on StableConfig => Int
 
 op :: compile if check status Int  from String into String  => Int
       compile if check status 0    from sdir   into out_dir =
-        shell exec ('mkdir -p "' + out_dir + '"')
+        ensure folder out_dir
         files = list rg files in sdir
         c_count = compile modules files into out_dir count 0
         log success "Compiled {c_count} bytecode artifact(s) into {out_dir}/."
@@ -502,7 +557,7 @@ op :: resolve lib entry for String in String default String  => String
 
 op :: build library artifacts from String into String named String version String => Int
       build library artifacts from entry_path into out_dir named lib_name version ver =
-        shell exec ('mkdir -p "' + out_dir + '"')
+        ensure folder out_dir
         out_rglib = out_dir + "/" + lib_name + ".rglib"
         out_so = out_dir + "/lib" + lib_name + ".so"
         log info "Building Ridgun library '{lib_name}' from {entry_path} (v{ver}) ..."
@@ -547,7 +602,7 @@ op :: pair entries [String] with dir String version String => [(String, String, 
 fn :: build single entry (String, String, String) => Int
       build single entry (out_dir, ver, epath)    =
         tname = target name from entry epath
-        out_bin = out_dir + "/" + tname
+        out_bin = out_dir + "/" + tname + host exe ext
         build target from epath into out_bin version ver
 
 op :: build entry list [String] into String version String errors Int => Int
@@ -602,7 +657,7 @@ op :: build for target list [String] on StableConfig errors Int => Int
       build for target list [] on _ errors err_acc = err_acc
       build for target list (t_arch:rem_archs) on (ProjectConfig name_str ver main_ep sdir tdir out_dir) errors err_acc =
         sub_out = out_dir + "/dist/" + t_arch
-        shell exec ('mkdir -p "' + sub_out + '"')
+        ensure folder sub_out
         entries = list exec entries in sdir
         st = build discovered entries entries name name_str version ver entry main_ep into sub_out for t_arch
         build for target list rem_archs on (ProjectConfig name_str ver main_ep sdir tdir out_dir) errors (err_acc + st)
@@ -617,17 +672,17 @@ op :: run task build on StableConfig args [String]       => Int
       run task build on cfg          args ("all-targets":_) =
         build for target list ["x86_64-linux", "arm64-linux", "x86_64-macos", "arm64-macos", "x86_64-windows", "arm64-windows"] on cfg errors 0
       run task build on (ProjectConfig name_str ver main_ep sdir _ out_dir) args ("--target":target_arch:[]) =
-        shell exec ('mkdir -p "' + out_dir + '"')
+        ensure folder out_dir
         entries = list exec entries in sdir
         build discovered entries entries name name_str version ver entry main_ep into out_dir for target_arch
       run task build on (ProjectConfig _ ver _ sdir _ out_dir) args ("--target":target_arch:tname:_) =
-        shell exec ('mkdir -p "' + out_dir + '"')
+        ensure folder out_dir
         cand_entry = sdir + "/" + tname + "/main.rg"
         ext = target binary ext for target_arch
         out_bin = out_dir + "/" + tname + ext
         build target from cand_entry into out_bin for target_arch version ver
       run task build on (ProjectConfig _ ver _ sdir _ out_dir) args (tname:"--target":target_arch:_) =
-        shell exec ('mkdir -p "' + out_dir + '"')
+        ensure folder out_dir
         cand_entry = sdir + "/" + tname + "/main.rg"
         ext = target binary ext for target_arch
         out_bin = out_dir + "/" + tname + ext
@@ -636,24 +691,24 @@ op :: run task build on StableConfig args [String]       => Int
         | (load project kind from "build.rg") == "lib" =
           run task build lib on (ProjectConfig name_str ver main_ep sdir tdir out_dir) args []
         | otherwise =
-          shell exec ('mkdir -p "' + out_dir + '"')
+          ensure folder out_dir
           entries = list exec entries in sdir
           build discovered entries entries name name_str version ver entry main_ep into out_dir
       run task build on (ProjectConfig _ ver _ sdir _ out_dir) args (tname:_) =
-        shell exec ('mkdir -p "' + out_dir + '"')
+        ensure folder out_dir
         cand_entry = sdir + "/" + tname + "/main.rg"
-        out_bin = out_dir + "/" + tname
+        out_bin = out_dir + "/" + tname + host exe ext
         build target from cand_entry into out_bin version ver
 
 op :: build discovered entries [String] name String version String entry String into String => Int
       build discovered entries [] name name_str version ver entry main_ep into out_dir =
-        build target from main_ep into (out_dir + "/" + name_str) version ver
+        build target from main_ep into (out_dir + "/" + name_str + host exe ext) version ver
       build discovered entries entries name _ version ver entry _ into out_dir =
         build entry list entries into out_dir version ver errors 0
 
 op :: report build of String  status Int  => Int
       report build of out_bin status 0    =
-        log success "Built native ELF executable: {out_bin}"
+        log success "Built native executable: {out_bin}"
         0
       report build of out_bin status code =
         log error "Build failed for {out_bin} (exit code {code})"
@@ -672,20 +727,20 @@ op :: run task run on StableConfig args [String] => Int
 
 op :: run specific target String from String version String in String args [String] => Int
       run specific target tname from entry_path version ver in out_dir args extra_args =
-        out_bin = out_dir + "/" + tname
+        out_bin = out_dir + "/" + tname + host exe ext
         ensure_st = ensure target built (binary is current out_bin) from entry_path into out_bin version ver
         exec binary if built ensure_st path out_bin args extra_args
 
 op :: run default target for StableConfig args [String]   => Int
       run default target for (ProjectConfig name_str ver main_ep _ _ out_dir) args extra_args =
-        out_bin = out_dir + "/" + name_str
+        out_bin = out_dir + "/" + name_str + host exe ext
         ensure_st = ensure target built (binary is current out_bin) from main_ep into out_bin version ver
         exec binary if built ensure_st path out_bin args extra_args
 
 op :: ensure target built Bool from String into String version String => Int
       ensure target built True from _ into _ version _ = 0
       ensure target built False from entry_path into out_bin version ver =
-        shell exec ('mkdir -p "$(dirname "' + out_bin + '")"') -> ()
+        ensure folder (parent dir of out_bin at 0 len (str len out_bin) slash 0)
         st = build target from entry_path into out_bin version ver
         record source stamp st out_bin
 
@@ -693,33 +748,54 @@ op :: ensure target built Bool from String into String version String => Int
 -- binary (<binary>.stamp) is a hash of every .rg, .rglib and omni.lock in the project (target/ aside), with
 -- their paths, and of the compiler's version. It compares contents, not file times, so a source rewritten in
 -- the same second as the last build is still seen.
-op :: source stamp command String => String
-      source stamp command dest =
-        "( find . -path ./target -prune -o -path ./.git -prune -o -type f -name \"*.rg\" -print -o -type f -name \"*.rglib\" -print -o -type f -name omni.lock -print | LC_ALL=C sort | while IFS= read -r f; do sha256sum \"$f\"; done; \"" + (resolve ridgunc binary) + "\" --version 2>/dev/null ) | sha256sum > \"" + dest + "\""
+op :: source stamp => String
+      source stamp =
+        lines = stamp files in "." top True -> map (f => (sha256 file f) + "  " + f + "\n")
+        rg_bin = resolve ridgunc binary
+        sha256 str ((str join lines "") + (compiler stamp of rg_bin))
+
+op :: compiler stamp of String => String
+      compiler stamp of rg_bin
+        | file rg_bin exists = sha256 file rg_bin
+        | otherwise = rg_bin
+
+-- The sources a build reads, folder by folder in name order; ./target and ./.git are left out.
+op :: stamp files in String top Bool => [String]
+      stamp files in dir top at_top =  stamp entries (list str sort (list dir dir)) in dir top at_top
+
+op :: stamp entries [String] in String top Bool => [String]
+      stamp entries []     in _   top _      =  []
+      stamp entries (e:es) in dir top at_top =
+        full = dir + "/" + e
+        rest = stamp entries es in dir top at_top
+        stamp entry full name e top at_top then rest
+
+op :: stamp entry String name String top Bool then [String] => [String]
+      stamp entry full name e top at_top then rest
+        | at_top and (e == "target" or e == ".git") = rest
+        | is dir full = (stamp files in full top False) :: rest
+        | (is file full) and ((str ends with e ".rg") or (str ends with e ".rglib") or e == "omni.lock") = [full] :: rest
+        | otherwise = rest
 
 op :: binary is current String => Bool
       binary is current out_bin
         | not (file out_bin exists) = False
         | not (file (out_bin + ".stamp") exists) = False
-        | otherwise =
-          shell exec (source stamp command (out_bin + ".stamp.now")) -> ()
-          same = (read file (out_bin + ".stamp.now")) == (read file (out_bin + ".stamp"))
-          shell exec ("rm -f \"" + out_bin + ".stamp.now\"") -> ()
-          same
+        | otherwise = (source stamp) == (read file (out_bin + ".stamp"))
 
 op :: record source stamp Int String => Int
       record source stamp 0 out_bin =
-        shell exec (source stamp command (out_bin + ".stamp")) -> ()
+        write file (out_bin + ".stamp") (source stamp)
         0
       record source stamp st out_bin =
-        shell exec ("rm -f \"" + out_bin + ".stamp\"") -> ()
+        discard file (out_bin + ".stamp")
         st
 
 op :: exec binary if built Int  path String  args [String]   => Int
       exec binary if built 0    path out_bin args extra_args =
         arg_str = join words extra_args with spaces
-        log info "Running ./{out_bin} {arg_str}"
-        shell exec ("./" + out_bin + " " + arg_str)
+        log info "Running {out_bin} {arg_str}"
+        sys exec out_bin extra_args []
       exec binary if built code path _       args _          =  code
 
 -- ── Task 5: `test` (Discover, Check, Build & Run Tests) ─────
@@ -728,13 +804,14 @@ fn :: run single test suite String => Int Int
       run single test suite tpath  =
         log info "Compiling & running test suite: {tpath}"
         bname = base filename of tpath at 0 len (str len tpath) slash (0 - 1)
-        bin_path = "target/.stable_test_" + bname + "_bin"
+        bin_path = "target/.stable_test_" + bname + "_bin" + host exe ext
         st_code = invoke ridgunc build tpath into bin_path
         run built test binary st_code suite tpath binary bin_path
 
 op :: run built test binary Int suite String binary String   => Int Int
       run built test binary 0   suite tpath  binary bin_path =
-        run_st = shell exec ('"./' + bin_path + '"; _st=$?; rm -f "' + bin_path + '"; exit $_st')
+        run_st = sys exec bin_path [] []
+        discard file bin_path
         record single test outcome run_st suite tpath
       run built test binary _   suite tpath  binary _        =
         log fail "{tpath} (compilation/typecheck failed)"
@@ -750,7 +827,7 @@ op :: record single test outcome Int suite String => Int Int
 
 op :: execute test suites [String] passed Int    failed Int    => Int Int
       execute test suites suites   passed pass_c failed fail_c =
-        shell exec "mkdir -p target"
+        ensure folder "target"
         suites map (run single test suite) -> sum check results ok pass_c err fail_c
 
 op :: run task test on StableConfig => Int
@@ -830,11 +907,23 @@ op :: run task format on StableConfig args [String]     => Int
 
 -- ── Task 7: `clean` & `info` & `help` ───────────────────────
 
+op :: is build leftover String => Bool
+      is build leftover e =
+        (str ends with e ".rgc") or (str ends with e ".rglib") or (str ends with e ".so") or (str starts with e ".stable_") or (str starts with e ".ridgunc_")
+
+op :: remove leftovers [String] in String => ()
+      remove leftovers []     in _   =  ()
+      remove leftovers (e:es) in dir
+        | (is build leftover e) and (is file (dir + "/" + e)) =
+          discard file (dir + "/" + e)
+          remove leftovers es in dir
+        | otherwise = remove leftovers es in dir
+
 op :: run task clean on StableConfig => Int
       run task clean on (ProjectConfig "" _ _ _ _ _) =
         no project loaded error
       run task clean on (ProjectConfig _ _ _ _ _ out_dir) =
-        shell exec ('rm -f "' + out_dir + '"/*.rgc "' + out_dir + '"/*.rglib "' + out_dir + '"/*.so "' + out_dir + '"/.stable_* "' + out_dir + '"/.ridgunc_*')
+        remove leftovers (list dir out_dir) in out_dir
         log success "Cleaned bytecode and library artifacts in {out_dir}/."
         0
 
@@ -889,7 +978,10 @@ op :: load dependencies from String     => [String]
 
 op :: scaffold project named String in String => Int
       scaffold project named pname  in root   =
-        shell exec ('mkdir -p "' + root + '/src/main/ridgun/' + pname + '" "' + root + '/src/main/ridgun/lib" "' + root + '/src/test/ridgun" "' + root + '/target"')
+        ensure folder (root + "/src/main/ridgun/" + pname)
+        ensure folder (root + "/src/main/ridgun/lib")
+        ensure folder (root + "/src/test/ridgun")
+        ensure folder (root + "/target")
         build_content = "-- build.rg — Ridgun Project Build Definition\n\nfn :: project name => String\n      project name =  \"" + pname + "\"\n\nfn :: project version => String\n      project version =  \"0.1.0\"\n\nfn :: main entry => String\n      main entry =  \"src/main/ridgun/" + pname + "/main.rg\"\n\nfn :: source dir => String\n      source dir =  \"src/main/ridgun\"\n\nfn :: test dir => String\n      test dir =  \"src/test/ridgun\"\n\nfn :: target dir => String\n      target dir =  \"target\"\n\nfn :: dependencies => [String]\n      dependencies =  []\n"
         main_content = "-- src/main/ridgun/" + pname + "/main.rg\n\nfn :: greet String => String\n      greet who    =  \"Hello from \" + who + \"!\"\n\nfn :: main => ()\n      main =  echo (greet \"" + pname + "\")\n"
         test_lib_content = "-- src/test/ridgun/test.rg — Standard Test Assertions (`import test`)\n\nfn :: fail test String => ()\n      fail test msg    =\n        echo \"[FAIL] \" msg\n        sys exit 1\n\nfn :: assert equals A      A        => ()\n      assert equals actual expected\n        | actual == expected = echo \"  [ok]  \" actual \"==\" expected\n        | otherwise = fail test \"assert equals failed\"\n\nfn :: assert true Bool => ()\n      assert true cond\n        | cond = echo \"  [ok]   True\"\n        | otherwise = fail test \"assert true failed\"\n"
@@ -905,7 +997,9 @@ op :: scaffold project named String in String => Int
 
 op :: scaffold lib project named String in String => Int
       scaffold lib project named pname  in root   =
-        shell exec ('mkdir -p "' + root + '/src/main/ridgun/lib" "' + root + '/src/test/ridgun" "' + root + '/target"')
+        ensure folder (root + "/src/main/ridgun/lib")
+        ensure folder (root + "/src/test/ridgun")
+        ensure folder (root + "/target")
         build_content = "-- build.rg — Ridgun Library Project Definition\n\nfn :: project name => String\n      project name =  \"" + pname + "\"\n\nfn :: project kind => String\n      project kind =  \"lib\"\n\nfn :: project version => String\n      project version =  \"0.1.0\"\n\nfn :: main entry => String\n      main entry =  \"src/main/ridgun/lib/" + pname + ".rg\"\n\nfn :: source dir => String\n      source dir =  \"src/main/ridgun\"\n\nfn :: test dir => String\n      test dir =  \"src/test/ridgun\"\n\nfn :: target dir => String\n      target dir =  \"target\"\n\nfn :: dependencies => [String]\n      dependencies =  []\n"
         lib_content = "-- src/main/ridgun/lib/" + pname + ".rg\n\nfn :: greet String => String\n      greet who    =  \"Hello from library \" + who + \"!\"\n"
         test_lib_content = "-- src/test/ridgun/test.rg — Standard Test Assertions (`import test`)\n\nfn :: fail test String => ()\n      fail test msg    =\n        echo \"[FAIL] \" msg\n        sys exit 1\n\nfn :: assert equals A      A        => ()\n      assert equals actual expected\n        | actual == expected = echo \"  [ok]  \" actual \"==\" expected\n        | otherwise = fail test \"assert equals failed\"\n\nfn :: assert true Bool => ()\n      assert true cond\n        | cond = echo \"  [ok]   True\"\n        | otherwise = fail test \"assert true failed\"\n"
@@ -1006,18 +1100,52 @@ op :: sync locked library String String String => Int
 
 op :: sync locked package String String String => Int
       sync locked package dep name dir
-        | (shell exec ('[ -d "' + dir + '" ]')) != 0 = not installed dep
+        | not (is dir dir) = not installed dep
         | otherwise =
           dest = ".stable/deps/" + name
-          shell exec 'mkdir -p .stable/deps'
-          st = shell exec ('rm -rf "' + dest + '" && mkdir -p "' + dest + '" && tar -C "' + dir + '" --exclude=".stable" --exclude="target" -cf - . | tar -C "' + dest + '" -xf -')
-          finish sync single dependency dir name dest st
+          ensure folder ".stable/deps"
+          remove tree dest
+          copy tree dir to dest skipping [".stable", "target"]
+          finish sync single dependency dir name dest (copied status of dest)
+
+op :: copied status of String => Int
+      copied status of dest
+        | is dir dest = 0
+        | otherwise = 1
+
+-- The .rglib files of the first of these folders that has any go to .stable/deps: the one named after the
+-- dependency always, the others only when no folder of that name is there.
+op :: first bundle folder [String] => String
+      first bundle folder []     =  ""
+      first bundle folder (d:ds)
+        | (rglib names in d) != [] = d
+        | otherwise = first bundle folder ds
+
+op :: rglib names in String => [String]
+      rglib names in d
+        | not (is dir d) = []
+        | otherwise = list str sort (list dir d) -> filter (e => (str ends with e ".rglib") and (is file (d + "/" + e)))
+
+op :: copy bundles String named String => ()
+      copy bundles ""  named _     =  ()
+      copy bundles dir named bname =  copy bundle list (rglib names in dir) from dir named bname
+
+op :: copy bundle list [String] from String named String => ()
+      copy bundle list []     from _   named _     =  ()
+      copy bundle list (f:fs) from dir named bname
+        | (rglib base of f) == bname or (not (is dir (".stable/deps/" + (rglib base of f)))) =
+          copy file (dir + "/" + f) to (".stable/deps/" + f)
+          copy bundle list fs from dir named bname
+        | otherwise = copy bundle list fs from dir named bname
+
+op :: rglib base of String => String
+      rglib base of f =  str slice f 0 ((str len f) - 6)
 
 -- A dependency stays under .stable/deps: ridgunc reads .stable/deps/<name>/src/main/ridgun/lib/<module>.rg,
 -- so nothing is copied into the project's own sources (FR-TOOL-002 AC7).
 op :: finish sync single dependency String String String Int => Int
       finish sync single dependency dep bname dest 0 =
-        shell exec ('if ls "' + dep + '"/target/bundles/*.rglib >/dev/null 2>&1; then for f in "' + dep + '"/target/bundles/*.rglib; do bn=$(basename "$f" .rglib); if [ "$bn" = "' + bname + '" ] || [ ! -d ".stable/deps/$bn" ]; then cp -f "$f" .stable/deps/ 2>/dev/null || true; fi; done; elif ls "' + dep + '"/target/*.rglib >/dev/null 2>&1; then for f in "' + dep + '"/target/*.rglib; do bn=$(basename "$f" .rglib); if [ "$bn" = "' + bname + '" ] || [ ! -d ".stable/deps/$bn" ]; then cp -f "$f" .stable/deps/ 2>/dev/null || true; fi; done; elif ls "' + dest + '"/target/bundles/*.rglib >/dev/null 2>&1; then for f in "' + dest + '"/target/bundles/*.rglib; do bn=$(basename "$f" .rglib); if [ "$bn" = "' + bname + '" ] || [ ! -d ".stable/deps/$bn" ]; then cp -f "$f" .stable/deps/ 2>/dev/null || true; fi; done; elif ls "' + dest + '"/target/*.rglib >/dev/null 2>&1; then for f in "' + dest + '"/target/*.rglib; do bn=$(basename "$f" .rglib); if [ "$bn" = "' + bname + '" ] || [ ! -d ".stable/deps/$bn" ]; then cp -f "$f" .stable/deps/ 2>/dev/null || true; fi; done; elif ls "' + dest + '"/*.rglib >/dev/null 2>&1; then for f in "' + dest + '"/*.rglib; do bn=$(basename "$f" .rglib); if [ "$bn" = "' + bname + '" ] || [ ! -d ".stable/deps/$bn" ]; then cp -f "$f" .stable/deps/ 2>/dev/null || true; fi; done; fi')
+        copy bundles (first bundle folder [dep + "/target/bundles", dep + "/target", dest + "/target/bundles", dest + "/target", dest]) named bname
         log step "dep" "{dep} -> {dest}"
         0
       finish sync single dependency dep _ _ st =
@@ -1087,7 +1215,7 @@ op :: absolute dir String => String
 
 op :: write dev links [String] => ()
       write dev links entries =
-        shell exec ('mkdir -p "' + (env get or "HOME" "") + '/.stable"') -> ()
+        ensure folder ((env get or "HOME" "") + "/.stable")
         write file (dev links file) (dev links text entries) -> ()
 
 op :: dev links text [String] => String
@@ -1224,10 +1352,33 @@ op :: install built binaries Int from String  => Int
       install built binaries 0   from out_dir =
         home = env get or "HOME" "."
         inst_dir = home + "/.local/bin"
-        shell exec ('mkdir -p "' + inst_dir + '" bin && for f in "' + out_dir + '"/*; do if [ -f "$f" ] && [ -x "$f" ]; then cp -f --remove-destination "$f" bin/ && if [ ! -L "' + inst_dir + '/$(basename "$f")" ]; then cp -f --remove-destination "$f" "' + inst_dir + '/"; fi; fi; done')
+        ensure folder inst_dir
+        ensure folder "bin"
+        install files (list str sort (list dir out_dir)) from out_dir into inst_dir
         log success "Installed executable(s) from {out_dir}/ into {inst_dir}/ and bin/."
         0
       install built binaries st  from _       =  st
+
+-- Every executable file of the output folder goes to bin/, and to ~/.local/bin unless a link is there.
+op :: install files [String] from String into String => ()
+      install files []     from _       into _        =  ()
+      install files (f:fs) from out_dir into inst_dir
+        | is installable (out_dir + "/" + f) =
+          discard file ("bin/" + f)
+          copy file (out_dir + "/" + f) to ("bin/" + f)
+          install copy (out_dir + "/" + f) to (inst_dir + "/" + f)
+          install files fs from out_dir into inst_dir
+        | otherwise = install files fs from out_dir into inst_dir
+
+op :: is installable String => Bool
+      is installable path =  (is file path) and (((file mode path) / 64) % 2 == 1)
+
+op :: install copy String to String => ()
+      install copy src to dst
+        | is symlink dst = ()
+        | otherwise =
+          discard file dst
+          copy file src to dst
 
 op :: run task install on StableConfig args [String] => Int
       run task install on (ProjectConfig name_str ver main_ep sdir tdir out_dir) args extra =
@@ -1408,16 +1559,17 @@ op :: run custom shell task String command String extra [String]   => Int
 
 op :: run executable plugin String args [String]   => Int
       run executable plugin ppath  args extra_args =
-        shell exec "mkdir -p target"
+        ensure folder "target"
         bname = base filename of ppath at 0 len (str len ppath) slash (0 - 1)
-        bin_path = "target/.stable_plugin_" + bname + "_bin"
+        bin_path = "target/.stable_plugin_" + bname + "_bin" + host exe ext
         st = invoke ridgunc build ppath into bin_path
         exec plugin binary st path bin_path args extra_args
 
 op :: exec plugin binary Int path String   args [String]   => Int
       exec plugin binary 0   path bin_path args extra_args =
-        arg_str = join words extra_args with spaces
-        shell exec ('"./' + bin_path + '" ' + arg_str + '; _st=$?; rm -f "' + bin_path + '"; exit $_st')
+        st = sys exec bin_path extra_args []
+        discard file bin_path
+        st
       exec plugin binary st  path _        args _          =  st
 
 op :: run task help => Int
@@ -1509,7 +1661,7 @@ op :: dispatch command StableCommand on StableConfig => Bool StableConfig Int
       dispatch command CmdExit on cfg = (False, cfg, 0)
       dispatch command CmdHelp on cfg = (True, cfg, run task help)
       dispatch command CmdVersion on cfg =
-        echo "stable 1.0.2 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
+        echo "stable 1.0.3 (Ridgun Interactive Build Tool, 100% self-hosted in Ridgun)"
         (True, cfg, 0)
       dispatch command CmdInfo on cfg = (True, cfg, run task info on cfg)
       dispatch command CmdReload on _ =
@@ -1592,12 +1744,12 @@ op :: report reload config StableConfig name String => Bool StableConfig Int
 
 op :: start interactive shell for StableConfig => ()
       start interactive shell for (ProjectConfig "" ver main_ep sdir tdir out_dir) =
-        log info "Welcome to stable 1.0.2 (Ridgun Build Tool — 100% Ridgun)"
+        log info "Welcome to stable 1.0.3 (Ridgun Build Tool — 100% Ridgun)"
         log info "No build.rg found in current directory. Run 'init' or 'new <name>' to create a project."
         log info "Commands: 'new', 'init', 'help', 'exit'"
         repl loop for (ProjectConfig "" ver main_ep sdir tdir out_dir)
       start interactive shell for (ProjectConfig name_str ver main_ep sdir tdir out_dir) =
-        log info "Welcome to stable 1.0.2 (Ridgun Build Tool — 100% Ridgun)"
+        log info "Welcome to stable 1.0.3 (Ridgun Build Tool — 100% Ridgun)"
         log info "Loading project definition from build.rg ..."
         log info "Set current project to '{name_str}' v{ver} (main: {main_ep})"
         log info "Commands: 'built' (or 'build'), 'run', 'test', 'check', 'compile', 'clean', 'info', 'exit'"

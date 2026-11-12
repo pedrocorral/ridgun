@@ -37,6 +37,9 @@ The arguments are the values in `slots[0 .. count-1]`. The routine consumes them
 | 119 | `tensor u8 from list` | list of Int 0..255 | `Tensor[U8]` |
 | 120 | `sys execve` | path, argv (argv[0] included), envp | `-errno` (returns only on failure) |
 | 121 | `+` on Strings in a tail position (OPT-020) | left String (owned), right String | the left String with the right one appended in place when its header has rc 1; else `0`, and both slots are left as they are (the caller then does the usual `+`) |
+| 122 | `remove file` | path | `0` or `-errno` (`unlinkat`) |
+| 123 | `remove dir` | path | `0` or `-errno` (`unlinkat`, `AT_REMOVEDIR`) |
+| 124 | `rename path` | from, to | `0` or `-errno` (`renameat`, replaces `to`) |
 
 ## `Tensor[U8]` layout
 
@@ -67,7 +70,7 @@ ld.lld -T rtx.ld -o rtx.elf rtx.o
 llvm-objcopy -O binary --only-section=.rtx rtx.elf rtx.bin
 ```
 
-Then check that the object has only PC-relative relocations (`llvm-readobj -r rtx.o`: `R_X86_64_PC32` and `R_X86_64_PLT32`), and that `llvm-nm rtx.elf` lists no undefined symbol. Replace the list in `x86 rt ext` with the bytes of `rtx.bin` (`od -An -tu1 -v rtx.bin`), writing the trailing zero bytes as `zero bytes n`. Built with clang 19.1.7: 11 568 bytes, of which the last 4 096 are zero.
+Then check that the object has only PC-relative relocations (`llvm-readobj -r rtx.o`: `R_X86_64_PC32` and `R_X86_64_PLT32`), and that `llvm-nm rtx.elf` lists no undefined symbol. Replace the list in `x86 rt ext` with the bytes of `rtx.bin` (`od -An -tu1 -v rtx.bin`), writing the trailing zero bytes as `zero bytes n`. Built with clang 19.1.7: 11 776 bytes, of which the last 4 096 are zero.
 
 **LLVM runtime cache.** The LLVM backend keeps the assembled runtime and its linker script in `/tmp/__rg_llvm_cache_<runtime fingerprint>_<script fingerprint>.rt` / `.lds` (`llvm rt cache base` in `llvm.rg`). Any change to the runtime gives a new name, so no build links a stale copy. Until 0.9.49 the name held only the version: a runtime changed without a version bump was linked stale, and a builtin missing from it crashed or did nothing in LLVM builds while x86-64 builds worked.
 
@@ -401,6 +404,18 @@ static int path_of(i64 s, char *p, i64 cap) {
   return 1;
 }
 
+/* remove file, remove dir (unlinkat, AT_REMOVEDIR) and rename path
+ * (renameat, which replaces the target): 0 or -errno. */
+static i64 path_call(i64 id, i64 a, i64 b) {
+  char p[4096], q[4096];
+  if (!path_of(a, p, sizeof p)) return -2; /* ENOENT */
+  if (id == 124) {
+    if (!path_of(b, q, sizeof q)) return -2;
+    return sc6(264, -100, (i64)p, -100, (i64)q, 0, 0);
+  }
+  return sc3(263, -100, (i64)p, id == 123 ? 0x200 : 0);
+}
+
 static i64 read_all(i64 fd, u8 *dst, i64 cap) {
   i64 got = 0;
   while (got < cap) {
@@ -680,7 +695,7 @@ enum {
   ID_FROM_STR = 108, ID_TO_STR = 109, ID_TO_LIST = 110, ID_TO_WORDS = 111,
   ID_READ_BYTES = 112, ID_WRITE_BYTES = 113, ID_READ_INTO = 114, ID_WRITE_FROM = 115,
   ID_SYS_CALL = 116, ID_SHA_RAW = 117, ID_SHA_DIGEST = 118, ID_FROM_LIST = 119, ID_EXECVE = 120,
-  ID_STR_APPEND = 121
+  ID_STR_APPEND = 121, ID_UNLINK = 122, ID_RMDIR = 123, ID_RENAME = 124
 };
 
 __attribute__((used)) i64 rg_rtx(i64 id, i64 *s, i64 count) {
@@ -735,6 +750,7 @@ __attribute__((used)) i64 rg_rtx(i64 id, i64 *s, i64 count) {
   case ID_FROM_LIST: r = list_to_u8(s[0]); break;
   case ID_EXECVE: r = tag_int(exec_full(s[0], s[1], s[2])); break;
   case ID_STR_APPEND: return str_append(s);
+  case ID_UNLINK: case ID_RMDIR: case ID_RENAME: r = tag_int(path_call(id, s[0], count > 1 ? s[1] : 0)); break;
   case ID_TO_WORDS: r = u8_to_words(s[0]); break;
   case ID_READ_BYTES: r = read_bytes(s[0]); break;
   case ID_WRITE_BYTES: r = write_bytes(s[0], s[1]); break;

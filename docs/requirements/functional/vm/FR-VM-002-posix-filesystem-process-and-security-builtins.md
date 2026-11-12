@@ -22,6 +22,10 @@ The `ridgunc` runtime SHALL provide direct OS/POSIX built-in functions for files
 - **`sha256_file : String => String`**: Computes the 64-character lowercase hex SHA-256 digest of `path`.
 - **`sys_mkdir : String Int => Int`**: Creates directory `path` with mode `mode`, returning `0` on success.
 - **`sys_chmod : String Int => Int`**: Sets permissions on `path` to `mode`, returning `0` on success.
+- **`remove_file : String => Int`**: Removes the file (or link) `path`, returning `0` or `-errno` (`unlinkat(2)`). It does not remove a folder.
+- **`remove_dir : String => Int`**: Removes the empty folder `path`, returning `0` or `-errno` (`-39`, `ENOTEMPTY`, when it holds anything).
+- **`rename_path : String String => Int`**: Renames `from` to `to`, replacing `to` when it exists, returning `0` or `-errno` (`renameat(2)`).
+- These three are in the shared runtime extension (ids 122-124), like `sys_execve`. Their names are not `sys_unlink` / `sys_rmdir` / `sys_rename`: the `posix` library already defines those (returning `Bool`), and a builtin takes precedence over a user function of the same name. The x86-64 and LLVM backends and the Windows layer have them; ARM64 does not have the extension yet (FR-COMP-022). Programs use them instead of `rm`, `rmdir` and `mv` through a shell, or Linux system call numbers through `sys_call`.
 
 ### 2. Process & Environment Built-ins (for `apply`, `make`, `sh`)
 - **`sys_exec : String [String] [String] => Int`**: Spawns executable `prog` directly (`Command::new(prog).args(args)`) without `/bin/sh` and returns its exit status code.
@@ -44,3 +48,4 @@ The `ridgunc` runtime SHALL provide direct OS/POSIX built-in functions for files
 - AC1: `list_dir` and `file_lstat` inspect directories, permissions, sizes, timestamps, and symlinks without spawning a shell.
 - AC2: `sys_exit 1` terminates the Ridgun binary with OS exit code `1`.
 - AC3: `sys_exec` and `sys_execve` execute target binaries directly with argument vectors containing spaces or shell metacharacters without shell interpretation.
+- AC4: `remove_file`, `remove_dir` and `rename_path` remove a file, remove an empty folder and rename (replacing the target) with `0`, and return `-2` for a missing path and `-39` for `remove_dir` of a folder with files (`tests/cases/files/remove_file_dir_and_rename_path_return_errno.rg`).

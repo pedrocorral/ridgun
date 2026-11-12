@@ -28,6 +28,8 @@ The `ridgunc` compiler and `stable` build tool SHALL support 100% pure-Ridgun na
      - `x86_64-windows` / `windows-x86_64` / `win64` (**Windows 64-bit `PE32+`** `MZ` + `PE\0\0`, `IMAGE_FILE_MACHINE_AMD64 = 0x8664`, Optional Header `0x020B` `.exe` executable and `.dll` dynamic library)
      - `arm64-windows` / `windows-arm64` (**Windows ARM64 `PE32+`** `IMAGE_FILE_MACHINE_ARM64 = 0xAA64` `.exe` executable and `.dll` dynamic library)
    - `stable built [--target <target>]` and `stable built all-targets` SHALL build project executables for the requested target(s) without requiring external C/Rust compilers.
+   - Without `--target`, `ridgunc build` and `ridgunc run` SHALL build for the host the compiler runs on: `ridgunc.exe` on Windows builds an `x86_64-windows` `.exe`, and `ridgunc run` on Windows names its program `.exe`. The host is read with `sys os`.
+   - `ridgunc build --quiet` (also `--lib`, `--so` and `check`) SHALL print nothing on success; errors are still printed. `stable` uses it, so it never redirects the compiler's output through a shell.
 
 2. **Pure-Ridgun `Mach-O 64` and `PE32+` Binary Emitters (`src/main/ridgun/lib/macho64.rg` and `src/main/ridgun/lib/pe64.rg`)**:
    - `macho64.rg` SHALL emit valid 64-bit Mach-O headers (`MH_EXECUTE = 2` and `MH_DYLIB = 6`), load commands (`LC_SEGMENT_64` for `__PAGEZERO`, `__TEXT` with `__text`/`__rodata`, `__DATA`, `LC_MAIN` / `LC_UNIXTHREAD`, `LC_LOAD_DYLINKER`, `LC_LOAD_DYLIB` for `/usr/lib/libSystem.B.dylib`, `LC_SYMTAB`, `LC_DYSYMTAB`), target-specific `sys os => MacOS` / `sys arch => X86_64 | Arm64` compile-time constants, BSD/Darwin runtime syscall adaptation (`0x2000000 | nr` on `x86_64` and `x16` + `svc #0x80` on `arm64`), and deterministic ad-hoc `LC_CODE_SIGNATURE` superblobs (`CSMAGIC_EMBEDDED_SIGNATURE = 0xFADE0CC0`, `CSMAGIC_CODEDIRECTORY = 0xFADE0C02` with SHA-256 4096-byte page hashes).
@@ -68,5 +70,4 @@ To allow developers on Linux, macOS (Intel and Apple Silicon), and Windows to do
 - **arm64 Windows:** the image carries the Linux arm64 runtime; the system layer is x86_64 only.
 - **Windows `.dll`:** the image starts the runtime from its entry point, as an `.exe` does.
 - **Windows x86_64:** sockets, file mappings and signals are not in the layer yet. AC-5 passes under Wine 10.0 (Debian trixie, 64-bit console), not yet on a Windows machine. Under Wine, `ridgunc.exe` builds and runs a Windows program.
-- **`sys_os` and `sys_arch`:** they are constants (`Linux`, `X86_64`) in every image, so a program cannot tell it runs on Windows and `ridgunc.exe` defaults to the Linux target.
-- **`stable` on Windows:** it creates and removes folders with POSIX shell commands (`mkdir -p`, `rm -f`), which need `sh.exe` on `PATH`.
+- **`ridgunc run`:** it leaves the program it built in `target/.ridgunc_run_bin` (`.exe` on Windows). It will remove it with `sys_unlink` once the compiler that builds `ridgunc` knows that builtin (1.0.4).
