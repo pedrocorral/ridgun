@@ -202,6 +202,8 @@ fn :: arm64 encode instr RNativeInstr Int Int Int Int [RLabelEntry] [RLabelEntry
         (arm64 mov imm64 0 (rodata_vaddr + off)) :: (arm64 mov imm64 1 len) :: (arm64 bl rt 11 (cur_vaddr + 32))
       arm64 encode instr (NLoadStrLit off len) cur_vaddr _ _ rodata_vaddr _ _ =
         (arm64 mov imm64 0 (rodata_vaddr + off)) :: (arm64 mov imm64 1 len) :: (arm64 bl rt 12 (cur_vaddr + 32))
+      arm64 encode instr (NLoadAdt0 -2 0) cur_vaddr _ _ rodata_vaddr _ _ =
+        (arm64 mov imm64 0 (rodata_vaddr + 5)) :: (arm64 mov imm64 1 5) :: (arm64 bl rt 13 (cur_vaddr + 32))
       arm64 encode instr (NLoadAdt0 -1 0) cur_vaddr _ _ rodata_vaddr _ _ =
         (arm64 mov imm64 0 (rodata_vaddr + 28)) :: (arm64 mov imm64 1 5) :: (arm64 bl rt 13 (cur_vaddr + 32))
       arm64 encode instr (NLoadAdt0 off len) cur_vaddr _ _ rodata_vaddr _ _ =

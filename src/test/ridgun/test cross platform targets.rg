@@ -154,13 +154,29 @@ fn :: test windows syscall sites => ()
       test windows syscall sites =
         echo "--- 5. Testing Windows system layer: syscall sites become ud2 ---"
         rt = build x8664 rt kernel
-        assert equals (list len (win rt sites)) 101
-        assert equals (count syscall pairs rt 0) 103
+        assert equals (list len (win rt sites)) 130
+        assert equals (count syscall pairs rt 0) 132
         -- the two pairs left are inside `mov edi, 0x50F00` (not instructions)
         assert equals (count syscall pairs (patch ud2 rt (win rt sites)) 0) 2
         check win sites (win sample instrs)
         assert true ((win iat size) <= 640)
         assert equals (list len (win layer 4096)) ((list len (win layer head)) + 640 + (list len (win layer body)))
+
+fn :: adt0 offset RNativeInstr => Int
+      adt0 offset (NLoadAdt0 off _) =  off
+      adt0 offset _                 =  0 - 100
+
+-- `sys os` is the marker -2; only it is specialized. A `Linux` written in the
+-- program (rodata offset 5) stays `Linux` in Windows and macOS images
+-- (Solstice report sysos-literal-rewritten, 2026-11-12).
+fn :: test sys os specialization => ()
+      test sys os specialization =
+        echo "--- 6. Testing sys os: only its marker is specialized ---"
+        assert equals (adt0 offset (specialize windows instr (NLoadAdt0 (0 - 2) 0))) 15
+        assert equals (adt0 offset (specialize macos instr (NLoadAdt0 (0 - 2) 0))) 10
+        assert equals (adt0 offset (specialize windows instr (NLoadAdt0 5 5))) 5
+        assert equals (adt0 offset (specialize macos instr (NLoadAdt0 5 5))) 5
+        assert equals (adt0 offset (specialize windows instr (NLoadAdt0 10 5))) 10
 
 fn :: main => ()
       main =
@@ -170,4 +186,5 @@ fn :: main => ()
         test llvm triples and disk target builds
         test arm64 immediates
         test windows syscall sites
+        test sys os specialization
         echo "=== All Cross-Platform Target Codegen Tests Passed! ==="

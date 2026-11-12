@@ -1494,6 +1494,17 @@ fn :: builtin call id String             => Int
       builtin call id "remove_file"       =  122
       builtin call id "remove_dir"        =  123
       builtin call id "rename_path"       =  124
+      builtin call id "net_connect" = 125
+      builtin call id "net_listen" = 126
+      builtin call id "net_accept" = 127
+      builtin call id "net_send" = 128
+      builtin call id "net_recv_into" = 129
+      builtin call id "net_recv" = 130
+      builtin call id "net_shutdown" = 131
+      builtin call id "net_option" = 132
+      builtin call id "net_local_port" = 133
+      builtin call id "net_peer_ip" = 134
+      builtin call id "net_resolve" = 135
       builtin call id "sys_getpid"       =  70
       builtin call id "sys_time_ms"      =  102
       builtin call id "sys_time_ns"      =  100
@@ -1596,7 +1607,7 @@ fn :: lower var expr RNativeEnv String [String] Int RNativeCode => RNativeCode
         | (lookup local bound_locals name) >= 0 =
           nc emit st (NCloneSlot (env var slot env name)) sp
         | name == "sys_os" =
-          nc emit st (NLoadAdt0 (env str off env "Linux") 5) sp
+          nc emit st (NLoadAdt0 (0 - 2) 0) sp
         | name == "sys_arch" =
           nc emit st (NLoadAdt0 (0 - 1) 0) sp
         | is upper ident name =
@@ -2532,7 +2543,7 @@ fn :: lower call expr RNativeEnv String [RExpr] [String] Int RNativeCode => RNat
           lower indirect call slots env (env var slot env fname) args bound_locals sp st
       lower call expr env fname [] _ sp st
         | fname == "sys_os" =
-          nc emit st (NLoadAdt0 (env str off env "Linux") 5) sp
+          nc emit st (NLoadAdt0 (0 - 2) 0) sp
         | fname == "sys_arch" =
           nc emit st (NLoadAdt0 (0 - 1) 0) sp
       lower call expr env fname (a1:[]) bound_locals sp st

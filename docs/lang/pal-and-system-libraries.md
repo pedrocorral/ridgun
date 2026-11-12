@@ -65,6 +65,24 @@ fn :: null device for SysOs   => String
 | `sys write fd` | `Int String => Int` | Writes `data` to `fd`/handle. Returns bytes written (`>= 0`) or negative `-errno`. |
 | `sys poll` | `Int Int Int => Int` | Polls `fd` for normalized `events` (`1` = `POLLIN` readable, `4` = `POLLOUT` writable, `8` = `POLLERR`, `16` = `POLLHUP`) with `timeout_ms` (`-1` = infinite or clamped to `sys remaining ms` when inside `with timeout`, `0` = non-blocking poll, `> 0` = max wait in ms). Returns `> 0` ready event bitmask, `0` on timeout, or `< 0` on `-errno`. |
 
+### 2.2b TCP Sockets (`FR-VM-003`, ADR-0008)
+
+A handle from these operations also works with `sys close`, `sys poll`, `sys read fd` and `sys write fd`. Errors are negative Linux errno numbers on every target (`-110` timeout, `-111` refused, `-104` reset, `-32` broken pipe, `-98` address in use, `-2` host name not found). A timeout of `-1` waits without limit, or for the time left inside `with timeout`.
+
+| Primitive | Signature | Normalized PAL Contract |
+|---|---|---|
+| `net connect` | `String Int Int => Int` | Connects to `host` (IPv4 text or a name) and `port` within the timeout. Returns a handle or `-errno`. |
+| `net listen` | `String Int Int => Int` | Listens on `host` (`""` = every address) and `port` (`0` = a free port) with a backlog. Address reuse is on. |
+| `net accept` | `Int Int => Int` | Waits for a connection within the timeout. Returns its handle or `-errno`. |
+| `net send` | `Int Data Int => Int` | Sends a String or `Tensor[U8]`. Returns the bytes sent (fewer when the timeout ended first) or `-errno`. |
+| `net recv into` | `Int Tensor[U8] Int Int Int => Int` | Receives up to `count` bytes into the tensor from index `from`. Returns the bytes received, `0` when the peer closed, or `-errno`. |
+| `net recv` | `Int Int Int => String` | Receives up to `max` bytes. Returns `""` at the end, on timeout or on error. |
+| `net shutdown` | `Int Int => Int` | Shuts down reading (`0`), writing (`1`) or both (`2`). |
+| `net option` | `Int String Int => Int` | Sets `"nodelay"`, `"keepalive"`, `"reuseport"`, `"broadcast"`, `"rcvbuf"` or `"sndbuf"`. An unknown name returns `-92`. |
+| `net local port` | `Int => Int` | The local port of the handle. |
+| `net peer ip` | `Int => String` | The peer's IPv4 address as text, `""` on error. |
+| `net resolve` | `String => String` | The first IPv4 address of a host name, `""` when there is none. |
+
 ### 2.3 Clocks, Deadlines, Signals & Low-Level Escape Hatch
 
 | Primitive | Signature | Normalized PAL Contract |

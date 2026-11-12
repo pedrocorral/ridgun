@@ -273,6 +273,8 @@ fn :: emit llvm instr RNativeInstr Int Int Int => String
         "  %p_{step} = getelementptr inbounds [{rodata_len} x i8], ptr @__rg_rodata, i64 0, i64 {off}\n  %r_{step} = call i64 @__rg_rt_load_real_lit(ptr %p_{step}, i64 {len})\n  store i64 %r_{step}, ptr %acc, align 8\n"
       emit llvm instr (NLoadStrLit off len) step _ rodata_len =
         "  %p_{step} = getelementptr inbounds [{rodata_len} x i8], ptr @__rg_rodata, i64 0, i64 {off}\n  %r_{step} = call i64 @__rg_rt_load_str_lit(ptr %p_{step}, i64 {len})\n  store i64 %r_{step}, ptr %acc, align 8\n"
+      emit llvm instr (NLoadAdt0 -2 0) step _ rodata_len =
+        "  %p_{step} = getelementptr inbounds [{rodata_len} x i8], ptr @__rg_rodata, i64 0, i64 5\n  %r_{step} = call i64 @__rg_rt_load_adt0(ptr %p_{step}, i64 5)\n  store i64 %r_{step}, ptr %acc, align 8\n"
       emit llvm instr (NLoadAdt0 -1 0) step _ rodata_len =
         "  %p_{step} = getelementptr inbounds [{rodata_len} x i8], ptr @__rg_rodata, i64 0, i64 22\n  %r_{step} = call i64 @__rg_rt_load_adt0(ptr %p_{step}, i64 6)\n  store i64 %r_{step}, ptr %acc, align 8\n"
       emit llvm instr (NLoadAdt0 off len) step _ rodata_len =

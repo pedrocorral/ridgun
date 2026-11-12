@@ -29,8 +29,8 @@ fn :: pad str bytes String Int       => [Int]
 -- ── Target-Specific Instruction Specialization (MacOS) ───────
 
 fn :: specialize macos instr RNativeInstr     => RNativeInstr
+      -- `sys os` (marker -2) reads `MacOS`; a `Linux` written in the program stays `Linux`.
       specialize macos instr (NLoadAdt0 -2 0) =  NLoadAdt0 10 5
-      specialize macos instr (NLoadAdt0 5 5)  =  NLoadAdt0 10 5
       specialize macos instr ins              =  ins
 
 fn :: specialize macos instr list [RNativeInstr] [RNativeInstr] => [RNativeInstr]
