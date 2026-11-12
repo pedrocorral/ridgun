@@ -1,32 +1,49 @@
-# Windows system layer (`FR-COMP-015`, `ADR-0007`)
+# Windows system layer (`FR-COMP-015`, `ADR-0007`, `ADR-0008`)
 
-The x86_64 runtime and the code generator make Linux system calls. A Windows image (`pe64.rg`, x86_64) keeps that code and adds a layer that does each call with KERNEL32. The layer is C (`rtw.c`, below), built once into position-independent bytes kept in `pe64.rg` (`win layer head`, `win layer body`).
+The x86_64 runtime and the code generator make Linux system calls. A Windows image (`pe64.rg`, x86_64) keeps that code and adds a layer that does each call with KERNEL32. The runtime extension has a Windows build that calls the layer directly, and the PAL socket operations (FR-VM-003) are Winsock calls in the layer. The layer is C (`rtw.c`, below), built once into position-independent bytes kept in `pe64.rg` (`win layer head`, `win layer body`).
 
 ## How a call works
 
 1. `pe64.rg` turns every `syscall` (`0F 05`) into `ud2` (`0F 0B`), the same length:
-   - in the runtime, at the 99 offsets of `win rt sites` (from `0x401000`);
+   - in the runtime, at the offsets of `win rt sites` (from `0x401000`);
    - in the program, at the offsets of `win sys sites` for each instruction form (`win encode instrs`).
 2. At start the layer registers a vectored exception handler (`on_trap`).
 3. A `ud2` raises `STATUS_ILLEGAL_INSTRUCTION`. The handler checks that the bytes at `Rip` are `0F 0B`, reads the Linux registers from the `CONTEXT` (`rax` = number; `rdi`, `rsi`, `rdx`, `r10`, `r8`, `r9`), does the call, writes the result to `rax` (a negative errno on failure), sets `rcx` and `r11` as the kernel does, adds 2 to `Rip` and resumes the thread.
 
 A call the layer does not know returns `-ENOSYS` (38).
 
+### Direct calls from the runtime extension
+
+A Windows image carries the Windows build of the runtime extension (`rtx.c` built with `RG_WIN`, `win rt ext` in `pe64.rg`) at `0x417290`. Its system calls do not trap: they call `rg_pal(nr, a1 ... a6)` in the layer, whose address the layer writes at `0x4000A0` at start. `rg_pal` runs the same Linux call as the handler, without a thread context. `clone`, `fork`, `vfork`, `execve`, `exit` and `exit_group` need that context, so the extension still makes them with `syscall` (one site). Numbers from 1000 are PAL operations:
+
+| Number | Operation | Arguments |
+|---|---|---|
+| 1000 | `net connect` | IPv4 address, port, limit ms |
+| 1001 | `net listen` | IPv4 address, port, backlog |
+| 1002 | `net accept` | handle, limit ms |
+| 1003 | `net send` | handle, data, length, limit ms |
+| 1004 | `net recv` (into a buffer) | handle, buffer, length, limit ms |
+| 1005 | `net shutdown` | handle, how |
+| 1006 | `net option` | handle, option index (0 nodelay, 1 keepalive, 2 reuseport, 3 broadcast, 4 rcvbuf, 5 sndbuf), value |
+| 1007 | `net local port` | handle |
+| 1008 | peer IPv4 address | handle |
+| 1009 | `net resolve` | NUL-terminated host name |
+
 ## Image layout
 
 | Part | Address | Contents |
 |---|---|---|
-| Page 0 | `0x400000` | DOS header; page-0 dispatch table (`0x80..0xA0`); PE headers at `0x400`. The runtime's variables at `0x158..0x178` and `0xF00..0x1000` stay zero; the layer makes the page writable at start. |
+| Page 0 | `0x400000` | DOS header; page-0 dispatch table (`0x80..0xA0`); the address of `rg_pal` (`0xA0`, written at start); PE headers at `0x400`. The runtime's variables at `0x158..0x178` and `0xF00..0x1000` stay zero; the layer makes the page writable at start. |
 | `.text` | `0x401000` | Runtime, program, rodata, then 128 KiB of zero memory. Read, write, execute. |
-| `.idata` | after `.text` | Import descriptors for `KERNEL32.dll`, `api-ms-win-core-synch-l1-2-0.dll` and `ADVAPI32.dll`, lookup tables, hint/name entries. |
-| `.rgsys` | after `.idata` | The layer. Entry point at offset 0 (`rg_head`: a jump to `rg_win_start`); the import address table at offset 16 (640 bytes, filled by the loader). Read, write, execute. |
+| `.idata` | after `.text` | Import descriptors for `KERNEL32.dll`, `api-ms-win-core-synch-l1-2-0.dll`, `ADVAPI32.dll` and `WS2_32.dll`, lookup tables, hint/name entries (each as long as its name). |
+| `.rgsys` | after `.idata` | The layer. Entry point at offset 0 (`rg_head`: a jump to `rg_win_start`); the import address table at offset 16 (768 bytes, filled by the loader). Read, write, execute. |
 
 ImageBase is `0x400000` with no relocations (`IMAGE_FILE_RELOCS_STRIPPED`). The stack is 8 MiB, reserved and committed: runtime frames reach 16 KiB, which would skip a guard page.
 
 ## Start
 
 `rg_win_start`:
-1. allocates its tables, registers the handler and makes page 0 writable;
+1. allocates its tables, registers the handler, makes page 0 writable and writes the address of `rg_pal` at `0x4000A0`;
 2. sets the console code pages to UTF-8 (65001) and restores them when the process ends;
 3. opens descriptors 0, 1 and 2 on the standard handles;
 4. builds the Linux initial stack 128 KiB below its frame: `argc`, `argv` (from `GetCommandLineW`, split with the rules of `CommandLineToArgvW`, in UTF-8), `envp` (from `GetEnvironmentStringsW`, without the `=C:` entries; `Path` is renamed `PATH`), and the auxiliary vector (`AT_PAGESZ`, `AT_RANDOM`);
@@ -50,7 +67,7 @@ ImageBase is `0x400000` with no relocations (`IMAGE_FILE_RELOCS_STRIPPED`). The 
 | `exit`, `exit_group` | `ExitThread`; the process ends (`ExitProcess`) when no other runtime thread is left |
 | `fork`, `vfork`, `execve`, `wait4`, `kill` | see below |
 | `pipe`, `pipe2`, `dup`, `dup2`, `dup3` | `CreatePipe`, `DuplicateHandle` |
-| `poll`, `ppoll` | pipes: `PeekNamedPipe` (data, or closed = `POLLHUP`); console: `WaitForSingleObject`; other handles are always ready |
+| `poll`, `ppoll` | pipes: `PeekNamedPipe` (data, or closed = `POLLHUP`); console: `WaitForSingleObject`; sockets: `select` with no wait; other handles are always ready |
 | `getrandom`, reads of `/dev/urandom` | `SystemFunction036` (`RtlGenRandom`) |
 | `getpid`, `gettid`, `getppid`, `getuid`, `getgid`, `uname` | process and thread ids, 1, 1000, 1000, `Windows` / `x86_64` |
 | `setresuid`, `setresgid`, `setgroups` | 0 for the ids 1000 and -1, else `-EPERM` |
@@ -74,6 +91,15 @@ ImageBase is `0x400000` with no relocations (`IMAGE_FILE_RELOCS_STRIPPED`). The 
 - `execve` outside a child runs the program, waits for it and ends the process with its exit code.
 - `wait4` waits with `WaitForSingleObject` (`WNOHANG` supported) and returns the status `code << 8`. `kill` ends a child with `TerminateProcess` (code `128 + signal`).
 
+### Sockets
+
+- A socket is a non-blocking Winsock socket in the descriptor table, so `read`, `write`, `close` and `poll` work on its handle (`recv`, `send`, `closesocket`, `select`).
+- Every wait is a `select` with the caller's limit; a negative limit waits without one.
+- `WSAStartup` (2.2) runs on the first socket operation.
+- `net listen` does not set `SO_REUSEADDR`: on Windows it would let another socket take a port in use. Windows already allows listening on a port held by a closed connection.
+- Winsock errors map to Linux errno: `WSAETIMEDOUT` -110, `WSAECONNREFUSED` -111, `WSAECONNRESET` -104, `WSAEADDRINUSE` -98, `WSAEACCES` -13, `WSAENETUNREACH` -101, `WSAEHOSTUNREACH` -113, `WSAENOTSOCK` -9, `WSAENOPROTOOPT` -92, `WSAHOST_NOT_FOUND` -2.
+- `net resolve` uses `getaddrinfo` (IPv4).
+
 ## Tracing
 
 With the environment variable `RIDGUN_TRACE_SYSCALLS` set (any value), the layer writes two lines per call to standard error, in hex:
@@ -87,9 +113,9 @@ A resume address other than the call's address means the call moved the thread (
 
 ## Limits
 
-- Sockets, file mappings (`mmap` of a file), `inotify`, signals and terminal modes are not covered.
+- Linux socket calls through `sys call`, file mappings (`mmap` of a file), `inotify`, signals and terminal modes are not covered.
 - Windows 8 or later (`WaitOnAddress`, `GetSystemTimePreciseAsFileTime`).
-- Each call costs a CPU exception. A debugger stops at each `ud2` as a first-chance exception.
+- Each trapped call costs a CPU exception. A debugger stops at each `ud2` as a first-chance exception.
 - arm64 Windows images still carry the Linux arm64 runtime.
 
 ## Building the bytes
@@ -106,9 +132,9 @@ llvm-objcopy -O binary --only-section=.rgsys rtw.elf rtw.bin
 Then check:
 - `llvm-readobj -r rtw.o` lists only `R_X86_64_PC32` and `R_X86_64_PLT32`;
 - `llvm-nm rtw.elf` lists no undefined symbol;
-- `llvm-objdump -d rtw.elf` has no `syscall` and no `xmm` register.
+- `rtw.bin` has no `syscall` (`0F 05`) and no `xmm` register.
 
-Bytes 0..15 of `rtw.bin` go to `win layer head`; bytes 16..655 are the import address table (zero, written by `win layer`); the bytes from 656 go to `win layer body`, the trailing zero bytes written as `zero bytes n`. The order of the `I_*` indexes in `rtw.c` is the order of `win kernel32 imports`, `win synch imports` and `win advapi imports` in `pe64.rg`, each list followed by one null entry. Built with clang 19.1.7: 19 092 bytes.
+Bytes 0..15 of `rtw.bin` go to `win layer head`; bytes 16..783 are the import address table (zero, written by `win layer`); the bytes from 784 go to `win layer body`, the trailing zero bytes written as `zero bytes n`. The order of the `I_*` indexes in `rtw.c` is the order of `win kernel32 imports`, `win synch imports`, `win advapi imports` and `win ws2 imports` in `pe64.rg`, each list followed by one null entry. Built with clang 19.1.7: 22 840 bytes.
 
 ### `rtw.ld`
 
@@ -160,7 +186,7 @@ __asm__(".section .text.rg_head,\"ax\",@progbits\n"
         "  .p2align 4\n"
         ".globl rg_iat\n"
         "rg_iat:\n"
-        "  .zero 640\n"
+        "  .zero 768\n"
         ".text\n");
 extern HID void *rg_iat[];
 
@@ -183,7 +209,15 @@ enum {
 /* api-ms-win-core-synch-l1-2-0.dll, after KERNEL32's null entry. */
 enum { I_WaitOnAddress = N_KERNEL32 + 1, I_WakeByAddressSingle, I_WakeByAddressAll, N_SYNCH_END };
 /* ADVAPI32.dll, after the synch null entry. */
-enum { I_SystemFunction036 = N_SYNCH_END + 1 };
+enum { I_SystemFunction036 = N_SYNCH_END + 1, N_ADVAPI_END };
+/* WS2_32.dll, after the ADVAPI32 null entry (pe64.rg `win ws2 imports`). */
+enum {
+  I_WSAStartup = N_ADVAPI_END + 1, I_WSAGetLastError, I_socket, I_connect, I_bind,
+  I_listen, I_accept, I_send, I_recv, I_shutdown,
+  I_closesocket, I_setsockopt, I_getsockopt, I_getsockname, I_getpeername,
+  I_ioctlsocket, I_select, I_getaddrinfo, I_freeaddrinfo,
+  N_WS2_END
+};
 
 #define FN(i, R, ...) ((R(W *)(__VA_ARGS__))rg_iat[i])
 #define GetStdHandle(a) FN(I_GetStdHandle, H, u32)(a)
@@ -248,6 +282,25 @@ enum { I_SystemFunction036 = N_SYNCH_END + 1 };
 #define WakeByAddressSingle(a) FN(I_WakeByAddressSingle, void, void *)(a)
 #define WakeByAddressAll(a) FN(I_WakeByAddressAll, void, void *)(a)
 #define RtlGenRandom(a, b) FN(I_SystemFunction036, u8, void *, u32)(a, b)
+#define WSAStartup(a, b) FN(I_WSAStartup, i32, u16, void *)(a, b)
+#define WSAGetLastError() FN(I_WSAGetLastError, i32, void)()
+#define ws_socket(a, b, c) FN(I_socket, u64, i32, i32, i32)(a, b, c)
+#define ws_connect(a, b, c) FN(I_connect, i32, u64, const void *, i32)(a, b, c)
+#define ws_bind(a, b, c) FN(I_bind, i32, u64, const void *, i32)(a, b, c)
+#define ws_listen(a, b) FN(I_listen, i32, u64, i32)(a, b)
+#define ws_accept(a, b, c) FN(I_accept, u64, u64, void *, i32 *)(a, b, c)
+#define ws_send(a, b, c, d) FN(I_send, i32, u64, const void *, i32, i32)(a, b, c, d)
+#define ws_recv(a, b, c, d) FN(I_recv, i32, u64, void *, i32, i32)(a, b, c, d)
+#define ws_shutdown(a, b) FN(I_shutdown, i32, u64, i32)(a, b)
+#define ws_closesocket(a) FN(I_closesocket, i32, u64)(a)
+#define ws_setsockopt(a, b, c, d, e) FN(I_setsockopt, i32, u64, i32, i32, const void *, i32)(a, b, c, d, e)
+#define ws_getsockopt(a, b, c, d, e) FN(I_getsockopt, i32, u64, i32, i32, void *, i32 *)(a, b, c, d, e)
+#define ws_getsockname(a, b, c) FN(I_getsockname, i32, u64, void *, i32 *)(a, b, c)
+#define ws_getpeername(a, b, c) FN(I_getpeername, i32, u64, void *, i32 *)(a, b, c)
+#define ws_ioctlsocket(a, b, c) FN(I_ioctlsocket, i32, u64, i32, u32 *)(a, b, c)
+#define ws_select(a, b, c, d, e) FN(I_select, i32, i32, void *, void *, void *, const void *)(a, b, c, d, e)
+#define ws_getaddrinfo(a, b, c, d) FN(I_getaddrinfo, i32, const char *, const char *, const void *, void **)(a, b, c, d)
+#define ws_freeaddrinfo(a) FN(I_freeaddrinfo, void, void *)(a)
 
 #define INVALID ((H)(i64)-1)
 #define INFINITE 0xFFFFFFFFu
@@ -359,7 +412,7 @@ static void wpath(const char *p, u16 *d) {
 static void slashes(char *s) { for (; *s; s++) if (*s == '\\') *s = '/'; }
 
 /* ── File descriptors ───────────────────────────────────────────────── */
-enum { K_FREE, K_FILE, K_DIR, K_RANDOM };
+enum { K_FREE, K_FILE, K_DIR, K_RANDOM, K_SOCK };
 #define NFD 1024
 typedef struct {
   H h;
@@ -390,7 +443,8 @@ static void fd_free(Fd *f) {
     release(f->path);
     release(f->entry);
   }
-  if (f->h && f->h != INVALID) CloseHandle(f->h);
+  if (f->kind == K_SOCK) ws_closesocket((u64)f->h);
+  else if (f->h && f->h != INVALID) CloseHandle(f->h);
   f->kind = K_FREE;
 }
 
@@ -554,9 +608,14 @@ static i64 sys_open(const char *p, i64 flags) {
   return fd;
 }
 
+static i64 net_send(i64 fd, const u8 *d, i64 n, i64 ms);
+static i64 net_recv(i64 fd, u8 *d, i64 n, i64 ms);
+static u16 sock_ready(u64 s, u16 ev);
+
 static i64 sys_read(i64 fd, u8 *buf, u64 n) {
   Fd *f = fd_get(fd);
   if (!f) return -9;
+  if (f->kind == K_SOCK) return net_recv(fd, buf, (i64)n, -1);
   if (f->kind == K_RANDOM) { if (n > 0x7FFFFFFF) n = 0x7FFFFFFF; return RtlGenRandom(buf, (u32)n) ? (i64)n : -5; }
   if (f->kind == K_DIR) return -21; /* EISDIR */
   u32 got = 0;
@@ -577,6 +636,7 @@ static i64 sys_read(i64 fd, u8 *buf, u64 n) {
 static i64 sys_write(i64 fd, const u8 *buf, u64 n) {
   Fd *f = fd_get(fd);
   if (!f) return -9;
+  if (f->kind == K_SOCK) return net_send(fd, buf, (i64)n, -1);
   if (f->kind != K_FILE) return -9;
   if (f->append) SetFilePointerEx(f->h, 0, 0, 2);
   u64 done = 0;
@@ -917,6 +977,7 @@ static i64 do_poll(u8 *pfd, u64 n, i64 ms) {
       Fd *f = fd_get(fd);
       if (fd < 0) { *(u16 *)(e + 6) = 0; continue; }
       if (!f) rev = 0x20; /* POLLNVAL */
+      else if (f->kind == K_SOCK) rev = sock_ready((u64)f->h, ev);
       else if (f->kind == K_FILE && GetFileType(f->h) == 3) {
         u32 avail = 0;
         if (!PeekNamedPipe(f->h, 0, 0, 0, &avail, 0)) rev = 0x10 | (ev & 1); /* POLLHUP */
@@ -936,6 +997,219 @@ static i64 do_poll(u8 *pfd, u64 n, i64 ms) {
     if (ms >= 0 && spent >= ms) return 0;
     Sleep(1);
   }
+}
+
+/* ── TCP sockets (FR-VM-003, ADR-0008) ──────────────────────────────── */
+/* A socket is a non-blocking Winsock socket in the descriptor table
+ * (K_SOCK). Every wait is a select with the caller's limit in ms
+ * (negative: no limit). Results are >= 0 or a negative Linux errno. */
+static i32 net_ready;
+typedef struct { u32 n; u64 s[1]; } FdSet;
+
+static i64 wsa_err(i32 e) {
+  switch (e) {
+  case 10060: return -110; case 10061: return -111; case 10054: return -104;
+  case 10053: return -103; case 10048: return -98;  case 10013: return -13;
+  case 10051: return -101; case 10065: return -113; case 10038: return -9;
+  case 10035: return -11;  case 10036: return -115; case 10037: return -114;
+  case 10058: return -32;  case 10049: return -99;  case 10042: return -92;
+  case 10056: return -106; case 10057: return -107; case 10047: return -97;
+  case 10024: return -24;  case 10055: return -105; case 10050: return -100;
+  case 11001: case 11002: case 11004: return -2;
+  default: return -22;
+  }
+}
+static i64 wsa_last(void) { return wsa_err(WSAGetLastError()); }
+
+static int net_start(void) {
+  if (__atomic_load_n(&net_ready, __ATOMIC_ACQUIRE)) return 1;
+  u8 data[512];
+  lock();
+  if (!net_ready && WSAStartup(0x202, data) == 0) __atomic_store_n(&net_ready, 1, __ATOMIC_RELEASE);
+  unlock();
+  return net_ready;
+}
+
+/* 1 when s can be read (w = 0) or written (w = 1), 2 on an error
+ * condition (a failed connect), -110 when ms ran out. */
+static i64 sock_wait(u64 s, int w, i64 ms) {
+  FdSet a = {1, {s}}, e = {1, {s}};
+  struct { i32 sec, usec; } tv = {(i32)(ms / 1000), (i32)(ms % 1000) * 1000};
+  i32 r = ws_select(0, w ? 0 : &a, w ? &a : 0, &e, ms < 0 ? 0 : &tv);
+  if (r < 0) return wsa_last();
+  if (r == 0) return -110;
+  return a.n ? 1 : 2;
+}
+
+/* The poll events of s now (1 readable, 4 writable, 8 error). */
+static u16 sock_ready(u64 s, u16 ev) {
+  FdSet r = {1, {s}}, w = {1, {s}}, e = {1, {s}};
+  struct { i32 sec, usec; } tv = {0, 0};
+  if (ws_select(0, (ev & 1) ? &r : 0, (ev & 4) ? &w : 0, &e, &tv) <= 0) return 0;
+  return (u16)((((ev & 1) && r.n) ? 1 : 0) | (((ev & 4) && w.n) ? 4 : 0) | (e.n ? 8 : 0));
+}
+
+/* What is left of a limit of lim ms started at start; -1 without limit. */
+static i64 left_ms(i64 lim, const i64 *start) {
+  if (lim < 0) return -1;
+  i64 t[2];
+  now_mono(t);
+  i64 spent = (t[0] - start[0]) * 1000 + (t[1] - start[1]) / 1000000;
+  return spent >= lim ? 0 : lim - spent;
+}
+
+static i64 sock_new(u64 *out) {
+  if (!net_start()) return -97;
+  u64 s = ws_socket(2, 1, 6);
+  if (s == (u64)-1) return wsa_last();
+  u32 one = 1;
+  ws_ioctlsocket(s, (i32)0x8004667E, &one); /* FIONBIO */
+  *out = s;
+  return 0;
+}
+static i64 sock_fd(u64 s) {
+  i64 fd = fd_new((H)s, K_SOCK);
+  if (fd < 0) ws_closesocket(s);
+  return fd;
+}
+static u64 sock_of(i64 fd) {
+  Fd *f = fd_get(fd);
+  return (f && f->kind == K_SOCK) ? (u64)f->h : (u64)-1;
+}
+static void sa_in(u8 *sa, u32 ip, i64 port) {
+  memset(sa, 0, 16);
+  sa[0] = 2;
+  sa[2] = (u8)(port >> 8); sa[3] = (u8)port;
+  sa[4] = (u8)(ip >> 24); sa[5] = (u8)(ip >> 16); sa[6] = (u8)(ip >> 8); sa[7] = (u8)ip;
+}
+static i64 sa_ip(const u8 *sa) { return ((i64)sa[4] << 24) | ((i64)sa[5] << 16) | ((i64)sa[6] << 8) | sa[7]; }
+
+static i64 net_connect(u32 ip, i64 port, i64 ms) {
+  u64 s;
+  i64 r = sock_new(&s);
+  if (r) return r;
+  u8 sa[16];
+  sa_in(sa, ip, port);
+  if (ws_connect(s, sa, 16) != 0) {
+    i32 e = WSAGetLastError();
+    r = e == 10035 ? sock_wait(s, 1, ms) : wsa_err(e);
+    if (r == 2) {
+      i32 se = 0, len = 4;
+      ws_getsockopt(s, 0xFFFF, 0x1007, &se, &len); /* SO_ERROR */
+      r = se ? wsa_err(se) : -111;
+    }
+    if (r < 0) { ws_closesocket(s); return r; }
+  }
+  return sock_fd(s);
+}
+
+static i64 net_listen(u32 ip, i64 port, i64 backlog) {
+  u64 s;
+  i64 r = sock_new(&s);
+  if (r) return r;
+  u8 sa[16];
+  sa_in(sa, ip, port);
+  if (ws_bind(s, sa, 16) != 0 || ws_listen(s, (i32)backlog) != 0) {
+    r = wsa_last();
+    ws_closesocket(s);
+    return r;
+  }
+  return sock_fd(s);
+}
+
+static i64 net_accept(i64 fd, i64 ms) {
+  u64 l = sock_of(fd);
+  if (l == (u64)-1) return -9;
+  i64 start[2];
+  now_mono(start);
+  for (;;) {
+    u64 s = ws_accept(l, 0, 0);
+    if (s != (u64)-1) {
+      u32 one = 1;
+      ws_ioctlsocket(s, (i32)0x8004667E, &one);
+      return sock_fd(s);
+    }
+    i32 e = WSAGetLastError();
+    if (e != 10035) return wsa_err(e);
+    i64 w = sock_wait(l, 0, left_ms(ms, start));
+    if (w < 0) return w;
+  }
+}
+
+static i64 net_send(i64 fd, const u8 *d, i64 n, i64 ms) {
+  u64 s = sock_of(fd);
+  if (s == (u64)-1) return -9;
+  i64 start[2], sent = 0;
+  now_mono(start);
+  while (sent < n) {
+    i32 k = (n - sent) > 0x40000000 ? 0x40000000 : (i32)(n - sent);
+    i32 r = ws_send(s, d + sent, k, 0);
+    if (r > 0) { sent += r; continue; }
+    i32 e = WSAGetLastError();
+    if (r == 0 || e != 10035) return sent ? sent : wsa_err(e);
+    i64 w = sock_wait(s, 1, left_ms(ms, start));
+    if (w < 0) return sent ? sent : w;
+  }
+  return sent;
+}
+
+static i64 net_recv(i64 fd, u8 *d, i64 n, i64 ms) {
+  u64 s = sock_of(fd);
+  if (s == (u64)-1) return -9;
+  if (n > 0x40000000) n = 0x40000000;
+  i64 start[2];
+  now_mono(start);
+  for (;;) {
+    i32 r = ws_recv(s, d, (i32)n, 0);
+    if (r >= 0) return r;
+    i32 e = WSAGetLastError();
+    if (e != 10035) return wsa_err(e);
+    i64 w = sock_wait(s, 0, left_ms(ms, start));
+    if (w < 0) return w;
+  }
+}
+
+/* idx: 0 nodelay, 1 keepalive, 2 reuseport, 3 broadcast, 4 rcvbuf, 5 sndbuf. */
+static i64 net_option(i64 fd, i64 idx, i64 value) {
+  u64 s = sock_of(fd);
+  if (s == (u64)-1) return -9;
+  i32 level = 0xFFFF, name;
+  switch (idx) {
+  case 0: level = 6; name = 1; break;
+  case 1: name = 8; break;
+  case 3: name = 0x20; break;
+  case 4: name = 0x1002; break;
+  case 5: name = 0x1001; break;
+  default: return -92;
+  }
+  i32 v = (i32)value;
+  return ws_setsockopt(s, level, name, &v, 4) ? wsa_last() : 0;
+}
+
+/* The local port (peer = 0) or the peer's IPv4 address (peer = 1). */
+static i64 net_name(i64 fd, int peer) {
+  u64 s = sock_of(fd);
+  if (s == (u64)-1) return -9;
+  u8 sa[16];
+  i32 len = 16;
+  memset(sa, 0, 16);
+  if ((peer ? ws_getpeername(s, sa, &len) : ws_getsockname(s, sa, &len)) != 0) return wsa_last();
+  if (sa[0] != 2) return -22;
+  return peer ? sa_ip(sa) : (((i64)sa[2] << 8) | sa[3]);
+}
+
+static i64 net_resolve(const char *name) {
+  if (!net_start()) return -2;
+  i32 hints[12];
+  memset(hints, 0, sizeof hints);
+  hints[1] = 2; /* AF_INET */
+  hints[2] = 1; /* SOCK_STREAM */
+  void *res = 0;
+  if (ws_getaddrinfo(name, 0, hints, &res) != 0 || !res) return -2;
+  u8 *sa = *(u8 **)((u8 *)res + 32); /* ai_addr */
+  i64 ip = sa ? sa_ip(sa) : -2;
+  ws_freeaddrinfo(res);
+  return ip;
 }
 
 /* ── Threads ────────────────────────────────────────────────────────── */
@@ -1267,6 +1541,30 @@ static void trace_line(const char *tag, u64 nr, u64 a, u64 b, u64 c, u64 r, u64 
 
 /* The vectored exception handler: a `ud2` placed where the Linux code had
  * `syscall`. */
+/* Direct entry for the Windows build of the runtime extension
+ * (ADR-0008); its address is at 0x4000A0. Below 1000: a Linux system call
+ * that needs no thread context. From 1000: a PAL operation. */
+HID __attribute__((used)) i64 rg_pal(i64 nr, i64 a, i64 b, i64 d, i64 e, i64 f, i64 g) {
+  if (trace) trace_line("[rg> ", nr, a, b, d, 0, 0);
+  i64 r;
+  switch (nr) {
+  case 1000: r = net_connect((u32)a, b, d); break;
+  case 1001: r = net_listen((u32)a, b, d); break;
+  case 1002: r = net_accept(a, b); break;
+  case 1003: r = net_send(a, (const u8 *)b, d, e); break;
+  case 1004: r = net_recv(a, (u8 *)b, d, e); break;
+  case 1005: { u64 s = sock_of(a); r = s == (u64)-1 ? -9 : (ws_shutdown(s, (i32)b) ? wsa_last() : 0); break; }
+  case 1006: r = net_option(a, b, d); break;
+  case 1007: r = net_name(a, 0); break;
+  case 1008: r = net_name(a, 1); break;
+  case 1009: r = net_resolve((const char *)a); break;
+  case 56: case 57: case 58: case 59: r = -38; break; /* need the thread context: they trap */
+  default: r = dispatch(0, nr, a, b, d, e, f, g);
+  }
+  if (trace) trace_line("[rg< ", 0, 0, 0, 0, (u64)r, 0);
+  return r;
+}
+
 W static i32 on_trap(void **ptrs) {
   u32 *rec = ptrs[0];
   u8 *c = ptrs[1];
@@ -1355,6 +1653,7 @@ W __attribute__((noreturn, used)) void rg_win_start(void) {
   AddVectoredExceptionHandler(1, (void *)on_trap);
   u32 old;
   VirtualProtect((void *)0x400000, 0x1000, 0x04, &old); /* the runtime's page-0 variables */
+  *(volatile u64 *)0x4000A0 = (u64)rg_pal;              /* the extension's direct entry */
   main_tid = GetCurrentThreadId();
   QueryPerformanceFrequency(&qpc_freq);
   if (qpc_freq <= 0) qpc_freq = 1;

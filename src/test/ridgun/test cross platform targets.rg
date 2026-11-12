@@ -153,14 +153,14 @@ fn :: check win sites [RNativeInstr] => ()
 fn :: test windows syscall sites => ()
       test windows syscall sites =
         echo "--- 5. Testing Windows system layer: syscall sites become ud2 ---"
-        rt = build x8664 rt kernel
-        assert equals (list len (win rt sites)) 130
-        assert equals (count syscall pairs rt 0) 132
+        rt = (build x8664 rt base) :: win rt ext
+        assert equals (list len (win rt sites)) 76
+        assert equals (count syscall pairs rt 0) 78
         -- the two pairs left are inside `mov edi, 0x50F00` (not instructions)
         assert equals (count syscall pairs (patch ud2 rt (win rt sites)) 0) 2
         check win sites (win sample instrs)
-        assert true ((win iat size) <= 640)
-        assert equals (list len (win layer 4096)) ((list len (win layer head)) + 640 + (list len (win layer body)))
+        assert true ((win iat size) <= 768)
+        assert equals (list len (win layer 4096)) ((list len (win layer head)) + 768 + (list len (win layer body)))
 
 fn :: adt0 offset RNativeInstr => Int
       adt0 offset (NLoadAdt0 off _) =  off

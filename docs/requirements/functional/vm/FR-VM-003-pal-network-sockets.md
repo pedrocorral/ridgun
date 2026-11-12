@@ -1,7 +1,7 @@
 ---
 id: FR-VM-003
 title: PAL network sockets (TCP), one interface with a Linux and a Windows implementation
-status: approved
+status: implemented
 priority: must
 created: 2026-11-12
 updated: 2026-11-12
@@ -72,5 +72,5 @@ Libraries open sockets today through `sys call` with Linux numbers: `libs` `sock
   4. It shuts down writing and sees `0` from the other side.
   5. It closes everything.
 - AC2: `net connect` to a closed local port returns `-111`. `net accept` with a timeout of `100` and no client returns `-110`. `net resolve "localhost"` returns `"127.0.0.1"`.
-- AC3: The program of AC1, built with `--target x86_64-windows`, prints the same lines under Wine.
+- AC3: The programs of AC1 and AC2, built with `--target x86_64-windows`, print the same lines under Wine.
 - AC4: `net option` with `"nodelay"` returns `0` on a connected socket. An unknown option name returns `-92`.

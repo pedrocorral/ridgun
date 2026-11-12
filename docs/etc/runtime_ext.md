@@ -5,6 +5,7 @@ The shared runtime is machine code at fixed addresses (`x86_64.rg`). Both backen
 ## Where it lives
 
 - `x86 rt ext` in `x86_64.rg`: the machine code, appended after the runtime at `x86 rt ext addr` = `0x417290` (4289168). `build x8664 rt kernel` pads the runtime up to that address.
+- `win rt ext` in `pe64.rg`: the Windows build of the same source (`-DRG_WIN`), at the same address in Windows images. See *Windows build* below.
 - Entry point: `rg_rtx(id, slots, count)`, the first byte of the extension.
 - Callers: `NCallBuiltin id` with `id >= 100`. The x86-64 encoder emits `mov rdi, id; lea rsi, [slots]; mov rdx, count; call 0x417290`. The LLVM backend calls `@__rg_rt_ext(i64 id, ptr slots, i64 count)`; the linker script defines `__rg_rt_ext = 4289168`.
 - The LLVM backend also has two inline fast paths, `@__rg_u8_get1` and `@__rg_u8_set1` (`llvm u8 helpers`): a one-dimensional read or write with an Int index in range (and a value in 0..255) touches the byte directly. Every other case calls the extension, which reports the error.
@@ -70,6 +71,15 @@ Known limit: `echo` of a list, tuple or record that holds a `Tensor[U8]` shows i
 
 The first clock read looks up `__vdso_clock_gettime`: the address of the vDSO comes from the auxiliary vector (`AT_SYSINFO_EHDR`), read with `prctl(PR_GET_AUXV)` (Linux 6.4 and later) or, on older kernels, from `/proc/self/auxv`. The result is cached in the extension (the image is one writable segment). Without a vDSO the clocks use the `clock_gettime` system call.
 
+## System parts (ADR-0008)
+
+The source has one common part and one part per system, chosen at build time:
+
+- **Linux** (default): `syscall` instructions, the vDSO for clocks, and the TCP sockets of FR-VM-003 with Linux system calls (`os_*` functions): `poll` waits, `MSG_DONTWAIT`, `/etc/hosts` and a UDP query to the first `nameserver` of `/etc/resolv.conf` for host names.
+- **Windows** (`-DRG_WIN`): `sc6` calls the Windows layer's `rg_pal` (its address is at `0x4000A0`) instead of trapping, except `clone`, `fork`, `vfork`, `execve`, `exit` and `exit_group`, which need the thread context and keep one `syscall` site (`sc_trap`). The `os_*` socket functions are the layer's operations 1000..1009 (docs/etc/runtime_windows.md).
+
+The common part decodes the arguments, resolves an IPv4 address written as text, turns a timeout of `-1` into the time left in a `with timeout` block (id 73 of the PAL entry `0x416680`, the entry of builtin ids 70..99), and builds the results.
+
 ## Building the bytes
 
 The source is `rtx.c` and the linker script `rtx.ld` below. The code is freestanding (no libc) and position independent: calls into the runtime go to its fixed addresses, everything else is relative. Static data (the CRC table, the vDSO cache) lives in the same output section.
@@ -82,6 +92,8 @@ llvm-objcopy -O binary --only-section=.rtx rtx.elf rtx.bin
 ```
 
 Then check that the object has only PC-relative relocations (`llvm-readobj -r rtx.o`: `R_X86_64_PC32` and `R_X86_64_PLT32`), and that `llvm-nm rtx.elf` lists no undefined symbol. Replace the list in `x86 rt ext` with the bytes of `rtx.bin` (`od -An -tu1 -v rtx.bin`), writing the trailing zero bytes as `zero bytes n`. Built with clang 19.1.7: 17 952 bytes, of which the last 4 096 are zero.
+
+**Windows build.** The same commands with `-DRG_WIN` give the bytes of `win rt ext` in `pe64.rg` (15 456 bytes, of which the last 4 096 are zero). Its one `syscall` (in `sc_trap`) is listed in `win rt sites` after the sites of the base runtime.
 
 **LLVM runtime cache.** The LLVM backend keeps the assembled runtime and its linker script in `/tmp/__rg_llvm_cache_<runtime fingerprint>_<script fingerprint>.rt` / `.lds` (`llvm rt cache base` in `llvm.rg`). Any change to the runtime gives a new name, so no build links a stale copy. Until 0.9.49 the name held only the version: a runtime changed without a version bump was linked stale, and a builtin missing from it crashed or did nothing in LLVM builds while x86-64 builds worked.
 

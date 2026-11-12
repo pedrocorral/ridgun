@@ -1125,6 +1125,12 @@ fn :: x86 build rt phase4 bytes => [Int]
 
 fn :: build x8664 rt kernel => [Int]
       build x8664 rt kernel =
+        (build x8664 rt base) :: x86 rt ext
+
+-- The runtime up to the extension, which starts at a fixed address
+-- (`x86 rt ext addr`); Windows images put their own build of it there.
+fn :: build x8664 rt base => [Int]
+      build x8664 rt base =
         jt = x86 build rt jump table 0 []
         pre = x86 build rt pre bytes
         phase1 = x86 build rt phase1 bytes
@@ -1132,9 +1138,8 @@ fn :: build x8664 rt kernel => [Int]
         phase3 = x86 build rt phase3 bytes
         phase4 = x86 build rt phase4 bytes
         base = jt :: pre :: phase1 :: phase2 :: phase3 :: phase4
-        -- The extension starts at a fixed address (`x86 rt ext addr`).
         pad = zero bytes ((x86 rt ext addr) - 4198400 - (list len base))
-        base :: pad :: x86 rt ext
+        base :: pad
 
 -- ── Public x86_64 ELF64 Image Builder ────────────────────────
 
