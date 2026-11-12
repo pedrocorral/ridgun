@@ -2,6 +2,8 @@
 
 **A tabular, pure-by-default functional & systems programming language built for massive parallelism, native isolated agents, symbolic tensor algebra, and deterministic zero-GC memory management.**
 
+🌐 **Website and downloads: [ridgun.com](https://ridgun.com)**
+
 Ridgun combines the declarative clarity of tabular functional programming with native systems performance. Its self-hosted compiler (**`ridgunc`**) and project manager/formatter (**`stable`**) are written **100% in pure Ridgun** (`src/main/ridgun/`, zero Rust/C code or external compiler dependencies) and emit standalone, statically linked Linux ELF64 executables (`x86_64` and `ARM64` / Raspberry Pi) directly to disk with zero Garbage Collector pauses.
 
 ---
