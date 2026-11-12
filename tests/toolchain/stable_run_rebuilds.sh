@@ -6,8 +6,8 @@
 set -e
 S="$1"; O="$2/runrebuild"
 rm -rf "$O"; mkdir -p "$O/src/main/ridgun/demo"; cd "$O"
-printf 'fn :: project name => String\n      project name =  "demo"\nfn :: main entry => String\n      main entry =  "src/main/ridgun/demo/main.rg"\n' > build.rg
-M=src/main/ridgun/demo/main.rg
+printf 'fn :: project name => String\n      project name =  "demo"\nfn :: main entry => String\n      main entry =  "src/main/ridgun/demo/main.ridgun"\n' > build.ridgun
+M=src/main/ridgun/demo/main.ridgun
 printf 'fn :: main => ()\n      main =  echo "uno"\n' > "$M"
 "$S" run > out1.txt 2>&1
 grep -q "^uno$" out1.txt && echo FIRST_OK

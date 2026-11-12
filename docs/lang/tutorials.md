@@ -4,7 +4,7 @@
 
 ### Your First Ridgun Program
 
-Create a file `hello.rg`:
+Create a file `hello.ridgun`:
 
 ```ridgun
 fn :: main => ()
@@ -13,7 +13,7 @@ main = echo "Hello, World!"
 
 Run it:
 ```bash
-ridgunc run hello.rg
+ridgunc run hello.ridgun
 ```
 
 Output:
@@ -261,5 +261,5 @@ fn :: parallel sum pairs [Int] [Int] => Int
 ## Next Steps
 
 - Read the [Language Specification](spec.md) for complete syntax details
-- Explore the [Architecture](../etc/architecture.md) documentation
-- Check the [Roadmap](../etc/roadmap.md) for upcoming features
+- Explore the [compiler and runtime documents](../etc/INDEX.md)
+- Check the [road map](../road-map/) for upcoming features

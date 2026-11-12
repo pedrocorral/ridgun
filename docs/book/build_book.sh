@@ -367,12 +367,12 @@ write_template_prefix() {
       border-bottom: none;
     }
     /* Syntax tokens */
-    .rg-com { color: var(--com); font-style: italic; }
-    .rg-kw  { color: var(--kw); font-weight: 600; }
-    .rg-ty  { color: var(--ty); font-weight: 600; }
-    .rg-str { color: var(--str); }
-    .rg-num { color: var(--num); }
-    .rg-op  { color: var(--op); font-weight: 600; }
+    .ridgun-com { color: var(--com); font-style: italic; }
+    .ridgun-kw  { color: var(--kw); font-weight: 600; }
+    .ridgun-ty  { color: var(--ty); font-weight: 600; }
+    .ridgun-str { color: var(--str); }
+    .ridgun-num { color: var(--num); }
+    .ridgun-op  { color: var(--op); font-weight: 600; }
     /* Chapter pager */
     .pager {
       margin-top: 3.5rem;

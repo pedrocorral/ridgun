@@ -38,7 +38,7 @@ Each spiral is a full cycle of **Planning → Risk Analysis → Engineering → 
 | **Build** | Lexer, parser, AST, basic bytecode compiler, minimal stack-machine VM |
 | **Evaluate** | Can simple programs (arithmetic, functions, conditionals) compile and run? |
 
-**Deliverable:** `ridgun` compiles and runs basic sequential `.rg` programs.
+**Deliverable:** `ridgun` compiles and runs basic sequential `.ridgun` programs.
 
 ### Spiral 2 — Parallelism
 
@@ -160,7 +160,7 @@ OWASP SAMM is applied as a cross-cutting concern across all spirals. The practic
 
 | Practice | Application |
 |---|---|
-| **Threat Assessment** | Model threats: malicious `.rg` code, crafted bytecode, FFI abuse, Python injection |
+| **Threat Assessment** | Model threats: malicious `.ridgun` code, crafted bytecode, FFI abuse, Python injection |
 | **Security Requirements** | Green thread isolation, no shared mutable state, bounds-checked stack access |
 | **Security Architecture** | Rust's ownership for VM internals, sandboxed FFI, GIL-isolated Python bridge |
 
@@ -227,7 +227,7 @@ Applied to Ridgun components:
 | Scheduler | Fairness properties, queue invariant maintenance, preemption correctness |
 | Standard library | API ergonomics, documentation completeness, consistent error handling |
 
-Code reviews can be performed **manually by developers** or **automated** via linting tools (Clippy for Rust, custom Ridgun lints for `.rg` code).
+Code reviews can be performed **manually by developers** or **automated** via linting tools (Clippy for Rust, custom Ridgun lints for `.ridgun` code).
 
 ### Secure Code Review
 
@@ -249,7 +249,7 @@ Applied to Ridgun components:
 | VM stack machine | Stack bounds checking, heap boundary enforcement, no out-of-bounds reads |
 | FFI layer | Pointer validation, buffer length verification, no unchecked `unsafe` casts |
 | Python bridge | GIL state integrity, no Python code injection via string interpolation |
-| Bytecode loader | Malformed `.rgc` rejection, checksum verification, no arbitrary code execution |
+| Library bundles | A `.ridgunlib` is source text: it is type-checked like any import before use |
 | GC | No dangling references after collection, shared heap concurrent access safety |
 | Scheduler | No thread ID spoofing, mailbox access control, no cross-thread stack access |
 

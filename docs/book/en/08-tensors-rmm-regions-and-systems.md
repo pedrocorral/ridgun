@@ -193,7 +193,7 @@ Pause for a second and look at those ~40 lines of code:
 - `count newlines` compiles down to a native `loop` using 0 bytes of stack thanks to automatic TCO.
 - `||map analyze file paths` processes files in parallel across all cores of your CPU, and the `||` block computes the formatted rows, total lines, and total bytes simultaneously.
 - Temporary memory is freed deterministically via **`RMM1`/`RMM2`**.
-- And when you run `ridgunc build rg_wc.rg -o rg-wc`, you get a self-contained ~350 KB native binary ready to copy into `/usr/local/bin`.
+- And when you run `ridgunc build rg_wc.ridgun -o rg-wc`, you get a self-contained ~350 KB native binary ready to copy into `/usr/local/bin`.
 
 ---
 

@@ -50,7 +50,7 @@ Ridgun is built in **Rust** with **FFI to C/C++** and an **embedded CPython brid
 | **Taint analysis** | Track untrusted bytecode input from `.rgc` files through the loader to execution |
 | **Data flow analysis** | Follow FFI arguments from Ridgun values through marshalling to native calls |
 | **Control flow analysis** | Verify scheduler state machine transitions have no unreachable-but-exploitable paths |
-| **AST analysis** | Analyze Ridgun source (`.rg`) for patterns that could cause runtime security issues |
+| **AST analysis** | Analyze Ridgun source (`.ridgun`) for patterns that could cause runtime security issues |
 | **Pattern matching** | Detect `unsafe` blocks, raw pointer usage, `transmute`, `.unwrap()` in error paths |
 
 ---

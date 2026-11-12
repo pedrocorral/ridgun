@@ -1,11 +1,11 @@
 # Shared runtime extension (`FR-COMP-022`, `FR-COMP-023`)
 
-The shared runtime is machine code at fixed addresses (`x86_64.rg`). Both backends use it: the pure x86-64 encoder places it at `0x401000`, and the LLVM backend links the same bytes with a linker script. The extension adds byte tensors, CRC-32, the clocks, byte I/O and `sys call` with buffers **once**, for both backends.
+The shared runtime is machine code at fixed addresses (`x86_64.ridgun`). Both backends use it: the pure x86-64 encoder places it at `0x401000`, and the LLVM backend links the same bytes with a linker script. The extension adds byte tensors, CRC-32, the clocks, byte I/O and `sys call` with buffers **once**, for both backends.
 
 ## Where it lives
 
-- `x86 rt ext` in `x86_64.rg`: the machine code, appended after the runtime at `x86 rt ext addr` = `0x417290` (4289168). `build x8664 rt kernel` pads the runtime up to that address.
-- `win rt ext` in `pe64.rg`: the Windows build of the same source (`-DRG_WIN`), at the same address in Windows images. See *Windows build* below.
+- `x86 rt ext` in `x86_64.ridgun`: the machine code, appended after the runtime at `x86 rt ext addr` = `0x417290` (4289168). `build x8664 rt kernel` pads the runtime up to that address.
+- `win rt ext` in `pe64.ridgun`: the Windows build of the same source (`-DRG_WIN`), at the same address in Windows images. See *Windows build* below.
 - Entry point: `rg_rtx(id, slots, count)`, the first byte of the extension.
 - Callers: `NCallBuiltin id` with `id >= 100`. The x86-64 encoder emits `mov rdi, id; lea rsi, [slots]; mov rdx, count; call 0x417290`. The LLVM backend calls `@__rg_rt_ext(i64 id, ptr slots, i64 count)`; the linker script defines `__rg_rt_ext = 4289168`.
 - The LLVM backend also has two inline fast paths, `@__rg_u8_get1` and `@__rg_u8_set1` (`llvm u8 helpers`): a one-dimensional read or write with an Int index in range (and a value in 0..255) touches the byte directly. Every other case calls the extension, which reports the error.
@@ -93,9 +93,9 @@ llvm-objcopy -O binary --only-section=.rtx rtx.elf rtx.bin
 
 Then check that the object has only PC-relative relocations (`llvm-readobj -r rtx.o`: `R_X86_64_PC32` and `R_X86_64_PLT32`), and that `llvm-nm rtx.elf` lists no undefined symbol. Replace the list in `x86 rt ext` with the bytes of `rtx.bin` (`od -An -tu1 -v rtx.bin`), writing the trailing zero bytes as `zero bytes n`. Built with clang 19.1.7: 17 952 bytes, of which the last 4 096 are zero.
 
-**Windows build.** The same commands with `-DRG_WIN` give the bytes of `win rt ext` in `pe64.rg` (15 456 bytes, of which the last 4 096 are zero). Its one `syscall` (in `sc_trap`) is listed in `win rt sites` after the sites of the base runtime.
+**Windows build.** The same commands with `-DRG_WIN` give the bytes of `win rt ext` in `pe64.ridgun` (15 456 bytes, of which the last 4 096 are zero). Its one `syscall` (in `sc_trap`) is listed in `win rt sites` after the sites of the base runtime.
 
-**LLVM runtime cache.** The LLVM backend keeps the assembled runtime and its linker script in `/tmp/__rg_llvm_cache_<runtime fingerprint>_<script fingerprint>.rt` / `.lds` (`llvm rt cache base` in `llvm.rg`). Any change to the runtime gives a new name, so no build links a stale copy. Until 0.9.49 the name held only the version: a runtime changed without a version bump was linked stale, and a builtin missing from it crashed or did nothing in LLVM builds while x86-64 builds worked.
+**LLVM runtime cache.** The LLVM backend keeps the assembled runtime and its linker script in `/tmp/__rg_llvm_cache_<runtime fingerprint>_<script fingerprint>.rt` / `.lds` (`llvm rt cache base` in `llvm.ridgun`). Any change to the runtime gives a new name, so no build links a stale copy. Until 0.9.49 the name held only the version: a runtime changed without a version bump was linked stale, and a builtin missing from it crashed or did nothing in LLVM builds while x86-64 builds worked.
 
 To test the logic natively, compile `rtx.c` with `-DHARNESS` and link it with a C file that defines the `rt_*` functions.
 

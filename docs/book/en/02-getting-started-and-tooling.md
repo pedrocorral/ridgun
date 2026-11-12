@@ -4,7 +4,7 @@ Some languages have a wonderful compiler, but a project tooling ecosystem that f
 
 In Ridgun we made ourselves a very simple promise on day one:
 
-> *"There will be only two executables in the entire ecosystem (`ridgunc` and `stable`), both will be written in Ridgun itself, and the project configuration file (`build.rg`) will be ordinary Ridgun code. No JSON, no YAML, no TOML, no weird inventions."*
+> *"There will be only two executables in the entire ecosystem (`ridgunc` and `stable`), both will be written in Ridgun itself, and the project configuration file (`build.ridgun`) will be ordinary Ridgun code. No JSON, no YAML, no TOML, no weird inventions."*
 
 Let's see how to use them.
 
@@ -12,22 +12,19 @@ Let's see how to use them.
 
 ## 2.1. `ridgunc`: The Sniper for Standalone Files
 
-When you have a single `.rg` file in front of you and want to test a quick idea, check its types, or compile an executable, you talk directly to **`ridgunc`**.
+When you have a single `.ridgun` file in front of you and want to test a quick idea, check its types, or compile an executable, you talk directly to **`ridgunc`**.
 
-It only has 4 commands you actually need to remember:
+It only has 3 commands you actually need to remember:
 
 ```bash
 # 1. "Does this compile, or did I mess up a type?"
-ridgunc check experiment.rg
+ridgunc check experiment.ridgun
 
 # 2. "Run it now!" (Compiles and runs in one go)
-ridgunc run experiment.rg
+ridgunc run experiment.ridgun
 
 # 3. "Build me a standalone native ELF binary to go"
-ridgunc build experiment.rg -o my_program
-
-# 4. "Emit the intermediate bytecode artifact (.rgc)"
-ridgunc compile experiment.rg -o experiment.rgc
+ridgunc build experiment.ridgun -o my_program
 ```
 
 ### The Hidden Superpower of `ridgunc check`
@@ -51,25 +48,25 @@ The directory layout of a Ridgun project is completely straightforward:
 
 ```text
 my-super-tool/
-├── build.rg                  # The project manifest (it's Ridgun code!)
+├── build.ridgun              # The project manifest (it's Ridgun code!)
 ├── src/
 │   ├── main/
 │   │   └── ridgun/
 │   │       ├── lib/          # Your reusable modules (`import utils`)
 │   │       └── app/
-│   │           └── main.rg   # Entry point (`main => ()`)
+│   │           └── main.ridgun # Entry point (`main => ()`)
 │   └── test/
-│       └── ridgun/           # Your test suites (`test *.rg`)
-│           └── test all.rg
+│       └── ridgun/           # Your test suites (`test *.ridgun`)
+│           └── test all.ridgun
 └── target/                   # Where compiled binaries appear
 ```
 
 ---
 
-## 2.3. `build.rg`: A Configuration File That Will Never Lie to You
+## 2.3. `build.ridgun`: A Configuration File That Will Never Lie to You
 
 Why did we refuse to use YAML or TOML to configure a Ridgun project?
-Because in YAML you misalign two spaces of indentation and don't find out until deployment fails. By contrast, since **`build.rg` is a Ridgun file**, it has static types, gets verified by `stable check`, and formats itself with `stable format`:
+Because in YAML you misalign two spaces of indentation and don't find out until deployment fails. By contrast, since **`build.ridgun` is a Ridgun file**, it has static types, gets verified by `stable check`, and formats itself with `stable format`:
 
 ```ridgun
 fn :: project name => String
@@ -78,12 +75,12 @@ fn :: project name => String
 fn :: project version => String
       project version =  "0.1.0"
 
--- "exe" (executable), "lib" (.rglib + .so library), or "both"
+-- "exe" (executable), "lib" (.ridgunlib + .so library), or "both"
 fn :: project kind => String
       project kind =  "both"
 
 fn :: main entry => String
-      main entry =  "src/main/ridgun/app/main.rg"
+      main entry =  "src/main/ridgun/app/main.ridgun"
 
 fn :: source dir => String
       source dir =  "src/main/ridgun"
@@ -116,7 +113,7 @@ When working inside your project, your day-to-day workflow boils down to four co
 ```bash
 stable format
 ```
-Your teammate puts three spaces before `=>` and you put one? Doesn't matter. Run `stable format` and in under a second it leaves **every** `.rg` file in the repository aligned like a Swiss watch.
+Your teammate puts three spaces before `=>` and you put one? Doesn't matter. Run `stable format` and in under a second it leaves **every** `.ridgun` file in the repository aligned like a Swiss watch.
 
 ### 2. `stable check` — Instant Radar
 ```bash
@@ -128,10 +125,10 @@ Walks every module in `src/main/ridgun/`, verifies types, constructors, arities,
 ```bash
 stable test
 ```
-Finds all `src/test/ridgun/test *.rg` suites, executes them, and verifies every `assert equals` and `assert true`.
+Finds all `src/test/ridgun/test *.ridgun` suites, executes them, and verifies every `assert equals` and `assert true`.
 
 ```ridgun
--- Example of src/test/ridgun/test math.rg
+-- Example of src/test/ridgun/test math.ridgun
 import test
 
 double Int => Int
@@ -151,7 +148,7 @@ Compiles all native targets into `target/`. And if you ever want to wipe `target
 
 ---
 
-## 2.5. Building and Using Reusable Libraries (`.rglib` & ELF64 `.so`) and `stable` Plugins
+## 2.5. Building and Using Reusable Libraries (`.ridgunlib` & ELF64 `.so`) and `stable` Plugins
 
 A library module does not need `main => ()`: it exports `type`, `expand type`, `fn ::`, and `op ::` declarations for other projects to import.
 
@@ -162,11 +159,11 @@ cd geometry
 stable built lib
 ```
 When compiling in library mode (`project kind = "lib"` or `stable built lib`), the compiler disables `main`-rooted dead-code elimination so **all** exported functions and types are preserved, producing two artifacts in `target/`:
-- **`target/geometry.rglib`**: a self-contained Ridgun library bundle ready to be imported from any project via `import geometry` or `import "target/geometry.rglib"`.
+- **`target/geometry.ridgunlib`**: a self-contained Ridgun library bundle ready to be imported from any project via `import geometry` or `import "target/geometry.ridgunlib"`.
 - **`target/libgeometry.so`**: a native Linux ELF64 shared object (`ET_DYN`, for `x86_64` or `arm64-linux`).
 
 ```ridgun
--- src/main/ridgun/lib/geometry.rg (No main function required!)
+-- src/main/ridgun/lib/geometry.ridgun (No main function required!)
 type Point = x: Int, y: Int
 
 fn :: shift point Point Int Int => Point
@@ -178,7 +175,7 @@ fn :: point coords Point => Int Int
 
 ### 2. How Do I Import a Module or Library? (`import`)
 
-Without horrific relative paths like `../../../lib/stuff.rg`. If you have a module at `src/main/ridgun/lib/geometry.rg` or a `geometry.rglib` package (in `target/`, `lib/`, or `.stable/deps/` after `stable deps`), write at the top of any file:
+Without horrific relative paths like `../../../lib/stuff.ridgun`. If you have a module at `src/main/ridgun/lib/geometry.ridgun` or a `geometry.ridgunlib` package (in `target/`, `lib/`, or `.stable/deps/` after `stable deps`), write at the top of any file:
 
 ```ridgun
 import geometry
@@ -186,12 +183,12 @@ import geometry
 
 All functions, operators, and types from `geometry` become available immediately, and Ridgun's canonical loader guarantees each library is included **only once** even across diamond imports.
 
-### 3. Extending `stable` with Custom Tasks (`fn :: task`) and Plugins (`plugins/*.rg`)
-- **In `build.rg`**: declare any `fn :: task <words...> => String` (e.g., `fn :: task serve web => String`) and run it via `stable serve web`.
-- **In `plugins/*.rg` or `.stable/plugins/*.rg`**: drop `.rg` plugin modules that contribute `fn :: task ...` commands or their own `fn :: main => ()` entrypoint, or extend `expand type StableCommand`. Inspect active extensions anytime with `stable tasks` and `stable plugins`.
+### 3. Extending `stable` with Custom Tasks (`fn :: task`) and Plugins (`plugins/*.ridgun`)
+- **In `build.ridgun`**: declare any `fn :: task <words...> => String` (e.g., `fn :: task serve web => String`) and run it via `stable serve web`.
+- **In `plugins/*.ridgun` or `.stable/plugins/*.ridgun`**: drop `.ridgun` plugin modules that contribute `fn :: task ...` commands or their own `fn :: main => ()` entrypoint, or extend `expand type StableCommand`. Inspect active extensions anytime with `stable tasks` and `stable plugins`.
 
 ### 4. Opt-in Strict Mode (`--strict` and `strict mode = True`)
-By default, neither `ridgunc` nor new projects scaffolded with `stable new` or `stable init` enable strict mode. However, when you want to enforce 100% canonical space-separated Ridgun style across a project, pass `--strict` to `ridgunc` (`ridgunc check --strict`, `ridgunc build --strict`) or set `fn :: strict mode => Bool` (`strict mode = True`) in `build.rg`. Strict mode rejects with a **compilation error**:
+By default, neither `ridgunc` nor new projects scaffolded with `stable new` or `stable init` enable strict mode. However, when you want to enforce 100% canonical space-separated Ridgun style across a project, pass `--strict` to `ridgunc` (`ridgunc check --strict`, `ridgunc build --strict`) or set `fn :: strict mode => Bool` (`strict mode = True`) in `build.ridgun`. Strict mode rejects with a **compilation error**:
 1. Any underscore `_` inside a `fn ::` or `op ::` declaration name (write `fn :: compute total`, never `fn :: compute_total`; local variable names and record field names may still use `_`).
 2. Any parenthesized or comma-separated multi-value return type after `=>` (write `=> Int Int` or `=> RToken [RToken]`, never `=> (Int, Int)`).
 
@@ -199,7 +196,7 @@ By default, neither `ridgunc` nor new projects scaffolded with `stable new` or `
 
 ## 2.6. The Standard and Cryptographic Library Ecosystem (`ridgun-libs`)
 
-Ridgun ships with an official suite of **32 pure-Ridgun libraries** (`ridgun-libs`), compiled as `.rglib` bundles and ELF64 `.so` shared libraries ready to import via `import <name>`:
+Ridgun ships with an official suite of **32 pure-Ridgun libraries** (`ridgun-libs`), compiled as `.ridgunlib` bundles and ELF64 `.so` shared libraries ready to import via `import <name>`:
 
 | Family | Libraries (`import ...`) | What They Provide |
 |---|---|---|

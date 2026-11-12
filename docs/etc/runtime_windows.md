@@ -1,10 +1,10 @@
 # Windows system layer (`FR-COMP-015`, `ADR-0007`, `ADR-0008`)
 
-The x86_64 runtime and the code generator make Linux system calls. A Windows image (`pe64.rg`, x86_64) keeps that code and adds a layer that does each call with KERNEL32. The runtime extension has a Windows build that calls the layer directly, and the PAL socket operations (FR-VM-003) are Winsock calls in the layer. The layer is C (`rtw.c`, below), built once into position-independent bytes kept in `pe64.rg` (`win layer head`, `win layer body`).
+The x86_64 runtime and the code generator make Linux system calls. A Windows image (`pe64.ridgun`, x86_64) keeps that code and adds a layer that does each call with KERNEL32. The runtime extension has a Windows build that calls the layer directly, and the PAL socket operations (FR-VM-003) are Winsock calls in the layer. The layer is C (`rtw.c`, below), built once into position-independent bytes kept in `pe64.ridgun` (`win layer head`, `win layer body`).
 
 ## How a call works
 
-1. `pe64.rg` turns every `syscall` (`0F 05`) into `ud2` (`0F 0B`), the same length:
+1. `pe64.ridgun` turns every `syscall` (`0F 05`) into `ud2` (`0F 0B`), the same length:
    - in the runtime, at the offsets of `win rt sites` (from `0x401000`);
    - in the program, at the offsets of `win sys sites` for each instruction form (`win encode instrs`).
 2. At start the layer registers a vectored exception handler (`on_trap`).
@@ -14,7 +14,7 @@ A call the layer does not know returns `-ENOSYS` (38).
 
 ### Direct calls from the runtime extension
 
-A Windows image carries the Windows build of the runtime extension (`rtx.c` built with `RG_WIN`, `win rt ext` in `pe64.rg`) at `0x417290`. Its system calls do not trap: they call `rg_pal(nr, a1 ... a6)` in the layer, whose address the layer writes at `0x4000A0` at start. `rg_pal` runs the same Linux call as the handler, without a thread context. `clone`, `fork`, `vfork`, `execve`, `exit` and `exit_group` need that context, so the extension still makes them with `syscall` (one site). Numbers from 1000 are PAL operations:
+A Windows image carries the Windows build of the runtime extension (`rtx.c` built with `RG_WIN`, `win rt ext` in `pe64.ridgun`) at `0x417290`. Its system calls do not trap: they call `rg_pal(nr, a1 ... a6)` in the layer, whose address the layer writes at `0x4000A0` at start. `rg_pal` runs the same Linux call as the handler, without a thread context. `clone`, `fork`, `vfork`, `execve`, `exit` and `exit_group` need that context, so the extension still makes them with `syscall` (one site). Numbers from 1000 are PAL operations:
 
 | Number | Operation | Arguments |
 |---|---|---|
@@ -134,7 +134,7 @@ Then check:
 - `llvm-nm rtw.elf` lists no undefined symbol;
 - `rtw.bin` has no `syscall` (`0F 05`) and no `xmm` register.
 
-Bytes 0..15 of `rtw.bin` go to `win layer head`; bytes 16..783 are the import address table (zero, written by `win layer`); the bytes from 784 go to `win layer body`, the trailing zero bytes written as `zero bytes n`. The order of the `I_*` indexes in `rtw.c` is the order of `win kernel32 imports`, `win synch imports`, `win advapi imports` and `win ws2 imports` in `pe64.rg`, each list followed by one null entry. Built with clang 19.1.7: 22 840 bytes.
+Bytes 0..15 of `rtw.bin` go to `win layer head`; bytes 16..783 are the import address table (zero, written by `win layer`); the bytes from 784 go to `win layer body`, the trailing zero bytes written as `zero bytes n`. The order of the `I_*` indexes in `rtw.c` is the order of `win kernel32 imports`, `win synch imports`, `win advapi imports` and `win ws2 imports` in `pe64.ridgun`, each list followed by one null entry. Built with clang 19.1.7: 22 840 bytes.
 
 ### `rtw.ld`
 
@@ -165,7 +165,7 @@ SECTIONS {
  *
  * Freestanding: no libc, position independent. Windows functions are
  * called through the import address table rg_iat, which the PE loader
- * fills; the order of the entries is the order of the names in pe64.rg
+ * fills; the order of the entries is the order of the names in pe64.ridgun
  * (`win imports`).
  */
 typedef unsigned long long u64;
@@ -190,7 +190,7 @@ __asm__(".section .text.rg_head,\"ax\",@progbits\n"
         ".text\n");
 extern HID void *rg_iat[];
 
-/* KERNEL32.dll, in import order (pe64.rg `win kernel32 imports`). */
+/* KERNEL32.dll, in import order (pe64.ridgun `win kernel32 imports`). */
 enum {
   I_GetStdHandle, I_WriteFile, I_ReadFile, I_CreateFileW, I_CloseHandle,
   I_VirtualAlloc, I_VirtualFree, I_VirtualProtect, I_VirtualQuery, I_ExitProcess,
@@ -210,7 +210,7 @@ enum {
 enum { I_WaitOnAddress = N_KERNEL32 + 1, I_WakeByAddressSingle, I_WakeByAddressAll, N_SYNCH_END };
 /* ADVAPI32.dll, after the synch null entry. */
 enum { I_SystemFunction036 = N_SYNCH_END + 1, N_ADVAPI_END };
-/* WS2_32.dll, after the ADVAPI32 null entry (pe64.rg `win ws2 imports`). */
+/* WS2_32.dll, after the ADVAPI32 null entry (pe64.ridgun `win ws2 imports`). */
 enum {
   I_WSAStartup = N_ADVAPI_END + 1, I_WSAGetLastError, I_socket, I_connect, I_bind,
   I_listen, I_accept, I_send, I_recv, I_shutdown,

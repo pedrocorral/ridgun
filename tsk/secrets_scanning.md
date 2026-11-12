@@ -15,7 +15,7 @@ Secrets can leak at every layer of the project:
 | **Documentation** (`doc/`) | Example configs with real secrets, copy-pasted terminal output containing tokens |
 | **CI/CD configuration** | Pipeline secrets in plaintext, environment variables logged in build output |
 | **Git history** | Secrets committed and then "deleted" — still recoverable from past commits |
-| **Ridgun programs** (`.rg` files) | User programs containing embedded credentials passed to FFI or Python bridge |
+| **Ridgun programs** (`.ridgun` files) | User programs containing embedded credentials passed to FFI or Python bridge |
 
 ---
 

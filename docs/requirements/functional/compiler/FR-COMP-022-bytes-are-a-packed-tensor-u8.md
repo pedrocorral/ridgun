@@ -45,8 +45,8 @@ Binary formats (TLS, PostgreSQL, the Eterval log) build frames byte by byte, wri
 `U8` and `Byte` in element position are their own type. A `Tensor[U8]` is compatible only with another `Tensor[U8]`: not with `Tensor[Int]`, a bare `Tensor` or `Tensor[T]`. `@`, element-wise and bitwise operators, row and column slices and maps over a `Tensor[U8]` are compile errors. A `Tensor[U8]` that is indexed, shown, hashed or turned into a list is a variable, a function call, a typed allocation or a copy `t_ij`; any other expression must first be bound to a variable (compile error otherwise).
 
 ## Implementation status
-Implemented in 0.9.48 (TASK-0063): one shared runtime routine for both backends (`docs/etc/runtime_ext.md`, builtins 103-118), with inline LLVM fast paths for one-dimensional reads and writes. Tests: `tests/cases/tensors/bytes_*.rg`, `tests/cases/perf/bytes_crc32_and_conversions.rg`.
+Implemented in 0.9.48 (TASK-0063): one shared runtime routine for both backends (`docs/etc/runtime_ext.md`, builtins 103-118), with inline LLVM fast paths for one-dimensional reads and writes. Tests: `tests/cases/tensors/bytes_*.ridgun`, `tests/cases/perf/bytes_crc32_and_conversions.ridgun`.
 
-0.9.50 (TASK-0065, libs report `tensor-u8`): `tensor u8 from list`; a shape pattern binds the right dimensions also when the tensor is `_` or has no name; a `Tensor[U8]` bound inside a constructor, list cons, tuple or `Some` pattern is read by bytes. Tests: `bytes_from_list*.rg`, `bytes_shape_pattern_without_name.rg`, `bytes_in_constructor_pattern.rg`.
+0.9.50 (TASK-0065, libs report `tensor-u8`): `tensor u8 from list`; a shape pattern binds the right dimensions also when the tensor is `_` or has no name; a `Tensor[U8]` bound inside a constructor, list cons, tuple or `Some` pattern is read by bytes. Tests: `bytes_from_list*.ridgun`, `bytes_shape_pattern_without_name.ridgun`, `bytes_in_constructor_pattern.ridgun`.
 
 Known limit: `echo` of a list, tuple or record that holds a `Tensor[U8]` shows the tensor's storage words; `echo t` on the tensor shows its elements.

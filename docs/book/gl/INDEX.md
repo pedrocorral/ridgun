@@ -5,7 +5,7 @@
 | `index.html` | Libro online interactivo en HTML/CSS/JS (Galego) | Abrir no navegador para ler o libro completo en galego |
 | `00-por-que-preciso-ridgun.md` | Capítulo 00: Por que preciso Ridgun? Ah, si? Non o sabía... Cóntame máis! | Motivación, dores que resolve e visión xeral |
 | `01-benvido-a-ridgun.md` | Capítulo 01: Filosofía, vantaxes, comparativa e primeiro programa | Introdución á linguaxe |
-| `02-primeiros-pasos-e-ferramentas.md` | Capítulo 02: `ridgunc`, `stable`, `build.rg` e fluxo de traballo | Configurar e compilar proxectos |
+| `02-primeiros-pasos-e-ferramentas.md` | Capítulo 02: `ridgunc`, `stable`, `build.ridgun` e fluxo de traballo | Configurar e compilar proxectos |
 | `03-funcions-tipos-e-alinamento.md` | Capítulo 03: Funcións, sinaturas, estilo tabular, regra do `=` e variables `mut` | Aprender a sintaxe base e o formatado canónico |
 | `04-pattern-matching-e-gardas.md` | Capítulo 04: Pattern matching, gardas `|`, árbores aniñadas con `|.` e TCO | Control de fluxo funcional e bucles recursivos |
 | `05-listas-tuplas-e-secuencias.md` | Capítulo 05: Listas, tuplas, funcións variádicas e máscaras de secuencias | Traballar con coleccións e tubaxes de datos |

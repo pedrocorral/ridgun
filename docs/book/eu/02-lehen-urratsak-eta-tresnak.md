@@ -4,7 +4,7 @@ Badira konpiladore zoragarria duten lengoaiak, baina haien proiektu-sistema zure
 
 Ridgunen promesa oso sinple bat egin genion geure buruari lehen egunetik:
 
-> *"Bi exekutagarri baino ez dira egongo ekosistema osoan (`ridgunc` eta `stable`), biak Ridgunen bertan idatzita egongo dira, eta proiektuaren konfigurazio-fitxategia (`build.rg`) Ridgun kode arrunta izango da. Ez JSON, ez YAML, ez TOML, ez asmakizun arrarorik."*
+> *"Bi exekutagarri baino ez dira egongo ekosistema osoan (`ridgunc` eta `stable`), biak Ridgunen bertan idatzita egongo dira, eta proiektuaren konfigurazio-fitxategia (`build.ridgun`) Ridgun kode arrunta izango da. Ez JSON, ez YAML, ez TOML, ez asmakizun arrarorik."*
 
 Ikus dezagun nola erabiltzen diren.
 
@@ -12,22 +12,19 @@ Ikus dezagun nola erabiltzen diren.
 
 ## 2.1. `ridgunc`: Fitxategi solteetarako frankotiratzailea
 
-Esku artean `.rg` fitxategi bakar bat duzunean eta ideia azkar bat probatu, bere motak aztertu edo exekutagarri bat konpilatu nahi duzunean, zuzenean **`ridgunc`**-ekin hitz egiten duzu.
+Esku artean `.ridgun` fitxategi bakar bat duzunean eta ideia azkar bat probatu, bere motak aztertu edo exekutagarri bat konpilatu nahi duzunean, zuzenean **`ridgunc`**-ekin hitz egiten duzu.
 
-Benetan gogoratu behar dituzun 4 komando baino ez ditu:
+Benetan gogoratu behar dituzun 3 komando baino ez ditu:
 
 ```bash
 # 1. "Honek konpilatzen du ala hanka sartu dut motaren batekin?"
-ridgunc check esperimentua.rg
+ridgunc check esperimentua.ridgun
 
 # 2. "Exekutatu oraintxe!" (Konpilatu eta exekutatu kolpe batean)
-ridgunc run esperimentua.rg
+ridgunc run esperimentua.ridgun
 
 # 3. "Egidazu eramateko prest dagoen ELF bitar natibo bat"
-ridgunc build esperimentua.rg -o nire_programa
-
-# 4. "Atera iezadazu tarteko bytecode artefaktua (.rgc)"
-ridgunc compile esperimentua.rg -o esperimentua.rgc
+ridgunc build esperimentua.ridgun -o nire_programa
 ```
 
 ### `ridgunc check`-en superbotere ezkutua
@@ -51,25 +48,25 @@ Ridgun proiektu baten karpeta-egiturak ez du misteriorik:
 
 ```text
 nire-super-tresna/
-├── build.rg                  # Proiektuaren manifestua (Ridgun kodea da!)
+├── build.ridgun              # Proiektuaren manifestua (Ridgun kodea da!)
 ├── src/
 │   ├── main/
 │   │   └── ridgun/
 │   │       ├── lib/          # Zure modulu berrerabilgarriak (`import tresnak`)
 │   │       └── app/
-│   │           └── main.rg   # Sarrera-puntua (`main => ()`)
+│   │           └── main.ridgun # Sarrera-puntua (`main => ()`)
 │   └── test/
-│       └── ridgun/           # Zure test-bateriak (`test *.rg`)
-│           └── test dena.rg
+│       └── ridgun/           # Zure test-bateriak (`test *.ridgun`)
+│           └── test dena.ridgun
 └── target/                   # Konpilatutako bitarrak agertzen diren lekua
 ```
 
 ---
 
-## 2.3. `build.rg`: Inoiz gezurrik esango ez dizun konfigurazio-fitxategia
+## 2.3. `build.ridgun`: Inoiz gezurrik esango ez dizun konfigurazio-fitxategia
 
 Zergatik uko egiten diogu YAML edo TOML erabiltzeari Ridgun proiektu bat konfiguratzeko?
-YAMLen koskako bi zuriunetan huts egiten duzulako eta ez zarelako konturatzen hedapenak huts egiten duen arte. Aldiz, **`build.rg` Ridgun fitxategi bat denez**, mota estatikoak ditu, `stable check`-etik pasatzen da eta bakarrik lerrokatzen da `stable format`-ekin:
+YAMLen koskako bi zuriunetan huts egiten duzulako eta ez zarelako konturatzen hedapenak huts egiten duen arte. Aldiz, **`build.ridgun` Ridgun fitxategi bat denez**, mota estatikoak ditu, `stable check`-etik pasatzen da eta bakarrik lerrokatzen da `stable format`-ekin:
 
 ```ridgun
 type ProjectInfo =
@@ -97,7 +94,7 @@ strict mode =  True
 Eremu bat idaztean huts egiten baduzu, konpiladoreak berak abisatzen dizu. Ezustekorik gabe.
 
 ### Modu zorrotza (`--strict` / `strict mode = True`)
-Lehenespenez, bai `ridgunc`-ek bai `stable new` edo `stable init`-ekin sortutako proiektu berriek modu zorrotza **desaktibatuta** dute askatasun osoz prototipatu ahal izan dezazun. Proiektu baten estilo kanonikoa blindatu nahi duzunean (Ridgunen konpiladorean bertan egiten dugun bezala), `--strict` pasa diezaiokezu `ridgunc`-i edo `strict mode = True` gehitu zure `build.rg` fitxategian. Modu zorrotzak bi dotorezia-arau eskatzen ditu:
+Lehenespenez, bai `ridgunc`-ek bai `stable new` edo `stable init`-ekin sortutako proiektu berriek modu zorrotza **desaktibatuta** dute askatasun osoz prototipatu ahal izan dezazun. Proiektu baten estilo kanonikoa blindatu nahi duzunean (Ridgunen konpiladorean bertan egiten dugun bezala), `--strict` pasa diezaiokezu `ridgunc`-i edo `strict mode = True` gehitu zure `build.ridgun` fitxategian. Modu zorrotzak bi dotorezia-arau eskatzen ditu:
 1. **`fn ::` eta `op ::` izenak zuriune naturalekin, `_` gabe**: deklarazioek zuriuneak erabili behar dituzte (`fn :: kalkulatu zerga`, inoiz ez `fn :: kalkulatu_zerga`).
 2. **Balio anitzeko itzulerak zuriunez bereizita `=>` ondoren**: funtzio edo eragile batek hainbat balio itzultzen dituenean, bere irteera-sinadura `=> Int Int` edo `=> Egoera Int` idazten da (inoiz ez `=> (Int, Int)` parentesiekin edo komekin).
 
@@ -111,7 +108,7 @@ Zure proiektuaren barruan lanean ari zarenean, zure egunerokoa lau komandotara m
 ```bash
 stable format
 ```
-Zure lankideak `=>` aurretik hiru zuriune jartzen dituela eta zuk bat? Berdin dio. `stable format` exekutatzen duzu eta segundo bat baino gutxiagoan biltegiko `.rg` fitxategi **guztiak** Suitzako taula bat bezala lerrokatuta uzten ditu.
+Zure lankideak `=>` aurretik hiru zuriune jartzen dituela eta zuk bat? Berdin dio. `stable format` exekutatzen duzu eta segundo bat baino gutxiagoan biltegiko `.ridgun` fitxategi **guztiak** Suitzako taula bat bezala lerrokatuta uzten ditu.
 
 ### 2. `stable check` — Berehalako radarra
 ```bash
@@ -123,10 +120,10 @@ stable check
 ```bash
 stable test
 ```
-`src/test/ridgun/test *.rg` suite guztiak bilatzen ditu, exekutatzen ditu eta `assert equals` zein `assert true` bakoitza egiaztatzen du.
+`src/test/ridgun/test *.ridgun` suite guztiak bilatzen ditu, exekutatzen ditu eta `assert equals` zein `assert true` bakoitza egiaztatzen du.
 
 ```ridgun
--- src/test/ridgun/test matematika.rg adibidea
+-- src/test/ridgun/test matematika.ridgun adibidea
 import test
 
 bikoitza Int => Int
@@ -148,12 +145,12 @@ Helburu natibo guztiak `target/` karpetan konpilatzen ditu. Eta egunen batean `t
 
 ## 2.5. Nola inportatzen dut fitxategi bat beste batetik? (`import`)
 
-`../../../lib/gauzak.rg` moduko bide erlatibo infernuzkorik gabe. `src/main/ridgun/lib/kateak.rg` fitxategi bat baduzu, beste edozein fitxategitan goi-goian hau idazten duzu:
+`../../../lib/gauzak.ridgun` moduko bide erlatibo infernuzkorik gabe. `src/main/ridgun/lib/kateak.ridgun` fitxategi bat baduzu, beste edozein fitxategitan goi-goian hau idazten duzu:
 
 ```ridgun
 import kateak
 ```
 
-Eta kitto: `kateak.rg`-ko funtzio eta mota guztiak eskuragarri daude zure fitxategian bertan baleude bezala. Eta zer gertatzen da `A` moduluak `import kateak` egiten badu, `B` moduluak ere `import kateak` egiten badu, eta zure `main.rg`-k `A` eta `B` inportatzen baditu? Lasai: Ridgunen kargatzaileak gogoratzen du zein fitxategi kanoniko irakurri dituen dagoeneko eta **behin bakarrik sartzen du**.
+Eta kitto: `kateak.ridgun`-ko funtzio eta mota guztiak eskuragarri daude zure fitxategian bertan baleude bezala. Eta zer gertatzen da `A` moduluak `import kateak` egiten badu, `B` moduluak ere `import kateak` egiten badu, eta zure `main.ridgun`-k `A` eta `B` inportatzen baditu? Lasai: Ridgunen kargatzaileak gogoratzen du zein fitxategi kanoniko irakurri dituen dagoeneko eta **behin bakarrik sartzen du**.
 
 Orain tresna-kutxa kontrolpean duzula, pasa gaitezen **03. kapitulura** funtzioak, motak, blokeak eta testu-kateekin egiteko trikimailuak menderatzeko.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tests/run_case.sh: runs one built acceptance case for tests/run.rg and measures it.
+# tests/run_case.sh: runs one built acceptance case for tests/run.ridgun and measures it.
 # Usage: run_case.sh WORK_DIR TIMEOUT_S OUT_FILE TIME_FILE RSS_FILE EXE
 #   OUT_FILE   standard output and standard error of EXE
 #   TIME_FILE  "USER_MS SYS_MS": CPU that EXE used (all its threads)

@@ -6,11 +6,11 @@ Every expected value comes from the language's own documents, and each case says
 
 ## Run them
 ```bash
-./bin/ridgunc run tests/run.rg                  # every case under tests/cases/ and the toolchain checks
-./bin/ridgunc run tests/run.rg agents lists     # cases whose path contains "agents" or "lists"
-./bin/ridgunc run tests/run.rg --no-toolchain   # cases only
-./bin/ridgunc run tests/run.rg --llvm           # cases built only for LLVM (the default target)
-./bin/ridgunc run tests/run.rg --x86            # cases built only for the pure x86-64 encoder
+./bin/ridgunc run tests/run.ridgun                  # every case under tests/cases/ and the toolchain checks
+./bin/ridgunc run tests/run.ridgun agents lists     # cases whose path contains "agents" or "lists"
+./bin/ridgunc run tests/run.ridgun --no-toolchain   # cases only
+./bin/ridgunc run tests/run.ridgun --llvm           # cases built only for LLVM (the default target)
+./bin/ridgunc run tests/run.ridgun --x86            # cases built only for the pure x86-64 encoder
 ```
 - Every case is built and run twice: for LLVM (the default target) and for the pure x86-64 encoder (`--target x86_64-elf`), as FR-COMP-004 and FR-COMP-020 require. The x86-64 rows end in `[x86_64-elf]`, and the summary counts each backend apart. On x86-64 a case checks output, exit status and `max-rss-mb`; `max-ms` and `max-cpu-ms` are LLVM promises (FR-COMP-011 AC-4) and are not checked there, and every x86-64 run may take 30 s. The toolchain checks use LLVM only.
 - Every build is `ridgunc build --strict`. The cases use the canonical style: spaced names in declarations and calls (no `_` in function names or calls), and tuples written `=> Int Int`. Local variables and parameters may contain `_`.
@@ -39,7 +39,7 @@ fn :: main => ()
 ```
 `-- expect-build-error: TEXT` makes the case pass only when the build fails and its output contains TEXT. An empty TEXT accepts any build failure, for removed or forbidden constructs whose message the documents don't fix. `-- uses-libs` copies the ridgun-libs bundles next to the case; no case needs them yet.
 
-`run.rg` also holds toolchain checks that no single program can express, among them:
+`run.ridgun` also holds toolchain checks that no single program can express, among them:
 - `-o` into a folder that doesn't exist either creates the folder or fails. It never reports success without writing the file (FR-COMP-004: build writes the ELF; Solstice register RG-081).
 - A type error exits with a non-zero status and writes no binary.
 - Build time stays near-linear in the number of functions: 200 → 800 functions takes at most 8× as long. The documents promise nothing here; Solstice register RG-075 measured 26 s for any program importing Solstice.
@@ -88,7 +88,7 @@ The documents leave these points open, or say different things in different plac
   - There's no statement of how 8 busy agents should compare with 1 (Solstice register RG-079: 8 agents at once are 8× slower in total).
 - **Stale documents.**
   - spec.md:84-99 describes a `ridgun run` CLI.
-  - spec.md:816-854 describes a test library that isn't `src/test/ridgun/test.rg`.
+  - spec.md:816-854 describes a test library that isn't `src/test/ridgun/test.ridgun`.
   - spec.md:893,905 and FR-COMP-004:23 still list `global` / `context` / `shared` / `atomic`.
   - tutorials.md uses `spawn` and `let`.
 
@@ -96,4 +96,4 @@ The documents leave these points open, or say different things in different plac
 1. Put a program under the matching `tests/cases/<area>/` folder.
 2. Write the `-- case:` and `-- source:` lines, then the expectations. The source is a document and a line or section. When nothing promises the behaviour, say so ("no promise in the docs (proposal)") and put the case under `perf/` or a folder that says it.
 3. Derive the expected output from that source by hand, never from running the compiler.
-4. Check that it builds with `--strict`: `./bin/ridgunc run tests/run.rg <its path>`.
+4. Check that it builds with `--strict`: `./bin/ridgunc run tests/run.ridgun <its path>`.

@@ -1,6 +1,6 @@
-# Ridgun — Platform Abstraction Layer (PAL) & System Libraries (`posix.rglib`, `io.rglib`) Specification
+# Ridgun — Platform Abstraction Layer (PAL) & System Libraries (`posix.ridgunlib`, `io.ridgunlib`) Specification
 
-This specification defines the contract between the **Ridgun Compiler (`ridgunc`)** and the **Ridgun System Libraries (`posix.rglib`, `io.rglib`, `unix-tools`)** across all supported and planned OS targets (`Linux`, `MacOS`, `Windows`) and CPU architectures (`X86_64`, `Arm64`).
+This specification defines the contract between the **Ridgun Compiler (`ridgunc`)** and the **Ridgun System Libraries (`posix.ridgunlib`, `io.ridgunlib`, `unix-tools`)** across all supported and planned OS targets (`Linux`, `MacOS`, `Windows`) and CPU architectures (`X86_64`, `Arm64`).
 
 ---
 
@@ -19,7 +19,7 @@ Ridgun avoids exposing raw Linux-only syscall numbers or OS-specific bitflags in
 
 2. **Layer 1 — Cross-Platform PAL Primitives (`sys open mode`, `sys open`, `sys close`, `sys read fd`, `sys write fd`, `sys poll`, `sys terminate`, `sys kill`, `sys call`)**:
    - All flag masks and poll event masks passed to Layer 1 primitives use **Ridgun PAL Normalized Constants**.
-   - Each backend (`x86_64.rg` ELF64, `arm64.rg` ELF64, and future `Mach-O` macOS / `PE64` Windows backends) translates those normalized constants into the native OS kernel ABI (`openat`/`poll`/`kill` on Linux, `open`/`poll`/`kill` on macOS, `CreateFileW`/`WaitForSingleObject`/`WSAPoll`/`TerminateProcess` on Windows).
+   - Each backend (`x86_64.ridgun` ELF64, `arm64.ridgun` ELF64, and future `Mach-O` macOS / `PE64` Windows backends) translates those normalized constants into the native OS kernel ABI (`openat`/`poll`/`kill` on Linux, `open`/`poll`/`kill` on macOS, `CreateFileW`/`WaitForSingleObject`/`WSAPoll`/`TerminateProcess` on Windows).
    - Both natural-language space-separated syntax (`sys open mode path "r"`) and underscore-separated syntax (`sys open mode path "r"`) are accepted identically.
 
 3. **Layer 2 — Declarative Execution Quotas (`with timeout <duration> do`)**:
@@ -38,7 +38,7 @@ Ridgun avoids exposing raw Linux-only syscall numbers or OS-specific bitflags in
 | `sys os` | `=> SysOs` | Compile-time target operating system (`Linux \| MacOS \| Windows`). |
 | `sys arch` | `=> SysArch` | Compile-time target CPU architecture (`X86_64 \| Arm64`). |
 
-Example of idiomatic multi-OS dispatch in a `.rglib` library without `if/else` chains:
+Example of idiomatic multi-OS dispatch in a `.ridgunlib` library without `if/else` chains:
 
 ```ridgun
 fn :: path separator SysOs   => String
@@ -100,9 +100,9 @@ A handle from these operations also works with `sys close`, `sys poll`, `sys rea
 
 ---
 
-## 3. Recommended `.rglib` Library Surface (`io.rglib` & `posix.rglib`)
+## 3. Recommended `.ridgunlib` Library Surface (`io.ridgunlib` & `posix.ridgunlib`)
 
-### 3.1 `io.rglib` — High-Level Timeout-Aware I/O Wrappers
+### 3.1 `io.ridgunlib` — High-Level Timeout-Aware I/O Wrappers
 
 ```ridgun
 type IoResult = IoOk String | IoTimeout | IoEof | IoError Int
@@ -140,7 +140,7 @@ fn :: io wrap chunk String => IoResult
       io wrap chunk s      =  IoOk s
 ```
 
-### 3.2 `posix.rglib` — Symbolic Constants & Process Helpers
+### 3.2 `posix.ridgunlib` — Symbolic Constants & Process Helpers
 
 ```ridgun
 -- Normalized PAL Open Flags
@@ -194,16 +194,16 @@ fn :: process exists Int => Bool
 
 ---
 
-## 4. Building & Distributing `.rglib` and `.so` Libraries
+## 4. Building & Distributing `.ridgunlib` and `.so` Libraries
 
 Compile any library module without requiring `main`:
 
 ```bash
-# Emit portable Ridgun library bundle (.rglib)
-./bin/ridgunc build --lib src/main/ridgun/lib/io.rg -o target/io.rglib
+# Emit portable Ridgun library bundle (.ridgunlib)
+./bin/ridgunc build --lib src/main/ridgun/lib/io.ridgun -o target/io.ridgunlib
 
 # Emit native ELF64 shared object (.so)
-./bin/ridgunc build --so src/main/ridgun/lib/io.rg -o target/libio.so
+./bin/ridgunc build --so src/main/ridgun/lib/io.ridgun -o target/libio.so
 
 # Or via stable in a library project (`stable new --lib io`):
 ./bin/stable built lib

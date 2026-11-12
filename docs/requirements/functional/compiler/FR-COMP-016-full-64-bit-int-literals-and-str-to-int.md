@@ -32,6 +32,6 @@ verified_by: [TS-COMP-016]
 Before 0.9.34 the literal `9223372036854775807` compiled to `-1` and `str_to_int` returned wrong values for 19-digit strings, without any error (Solstice register RG-113). Programs worked around it by computing the maximum and by writing their own parsers.
 
 ## Acceptance Criteria
-1. **AC-1**: `echo (int to str 9223372036854775807)`, `(-9223372036854775808)` and `4611686018427387904` print exactly those values, and literal patterns with those values match (`tests/cases/literals/rg113_int64_literals.rg`).
-2. **AC-2**: `9223372036854775808`, `0 - 9223372036854775808`, a 17-digit hex literal and `9000000000_GB` fail to build with `integer literal '<text>' is out of range for Int` (`tests/cases/literals/rg113_*_fails.rg`, `rg113_int_min_magnitude_needs_unary_minus.rg`).
-3. **AC-3**: `str_to_int` returns `9223372036854775807`, `-9223372036854775808` and every 19-digit value exactly, returns `0` for `9223372036854775808` and invalid text, and gives the same results through `map str to int` (`tests/cases/strings/rg113_str_to_int_64bit.rg`).
+1. **AC-1**: `echo (int to str 9223372036854775807)`, `(-9223372036854775808)` and `4611686018427387904` print exactly those values, and literal patterns with those values match (`tests/cases/literals/rg113_int64_literals.ridgun`).
+2. **AC-2**: `9223372036854775808`, `0 - 9223372036854775808`, a 17-digit hex literal and `9000000000_GB` fail to build with `integer literal '<text>' is out of range for Int` (`tests/cases/literals/rg113_*_fails.ridgun`, `rg113_int_min_magnitude_needs_unary_minus.ridgun`).
+3. **AC-3**: `str_to_int` returns `9223372036854775807`, `-9223372036854775808` and every 19-digit value exactly, returns `0` for `9223372036854775808` and invalid text, and gives the same results through `map str to int` (`tests/cases/strings/rg113_str_to_int_64bit.ridgun`).

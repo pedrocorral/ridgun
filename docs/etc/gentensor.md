@@ -19,7 +19,7 @@ A *GenTensor* is a `Tensor` whose elements are not numbers (`String`, `Bool`, `C
 
 ## Helper functions
 
-`compiler.rg` adds Ridgun helper functions (`__rg_gt_*`) to a program that uses `Tensor[T * n]` with a non-numeric `T`, `Tensor[T * dims] with v`, `tensor from list` or `tensor to list`. Some of them are stubs: `lower expr` replaces calls to the stubs with native instructions.
+`compiler.ridgun` adds Ridgun helper functions (`__rg_gt_*`) to a program that uses `Tensor[T * n]` with a non-numeric `T`, `Tensor[T * dims] with v`, `tensor from list` or `tensor to list`. Some of them are stubs: `lower expr` replaces calls to the stubs with native instructions.
 
 | Native instruction | Stub | Result |
 |---|---|---|
@@ -32,11 +32,11 @@ A *GenTensor* is a `Tensor` whose elements are not numbers (`String`, `Bool`, `C
 | `NGtConv slot 3` | `__rg_gt_tensor_reals t` | a list of `Real`s from the data of a numeric tensor |
 | `NGtConv slot 4` | (`:tensor-zeros:` with 3+ dimensions, `:tensor-with:`) | a numeric tensor of any rank from the list `[v, d1, ..., dn]`, every element equal to `v` |
 
-The LLVM backend implements them in IR (`llvm gen tensor helpers`, `llvm gt conv helpers` in `llvm.rg`). The ARM64 encoder emits placeholders: its runtime has no `Real` or GenTensor support yet.
+The LLVM backend implements them in IR (`llvm gen tensor helpers`, `llvm gt conv helpers` in `llvm.ridgun`). The ARM64 encoder emits placeholders: its runtime has no `Real` or GenTensor support yet.
 
 ## x86-64 encodings of `NGtConv`
 
-`x86_64.rg` stores the machine code of each mode as a byte list (`x86 gt conv bytes`). The encoder emits `mov rdi, [rsp + slot*8]` and then the bytes. The code saves `rbx` and `r12`-`r15`, keeps `rsp` 16-byte aligned and calls the runtime through `rax`. The addresses are those of the runtime blob, the same as in the LLVM linker script (`llvm.rg`).
+`x86_64.ridgun` stores the machine code of each mode as a byte list (`x86 gt conv bytes`). The encoder emits `mov rdi, [rsp + slot*8]` and then the bytes. The code saves `rbx` and `r12`-`r15`, keeps `rsp` 16-byte aligned and calls the runtime through `rax`. The addresses are those of the runtime blob, the same as in the LLVM linker script (`llvm.ridgun`).
 
 To change a routine, edit its source below, assemble it and replace the byte list and its size (`x86 gt conv size`):
 
@@ -565,7 +565,7 @@ The two-dimensional part of `idxset2.s`:
 
 ## x86-64 encodings of builtins 89-99, channels and jobs
 
-The LLVM backend implements builtins 89-99 as IR helpers in `llvm.rg`, and wraps the runtime channel and job builtins (1, 32, 33, 50, 57, 58, 59). The runtime builtin dispatcher has none of this, so since 0.9.40 the pure x86-64 encoder emits one routine per builtin (`x86 builtin bytes` / `x86 builtin size` in `x86_64.rg`). Each routine does what its LLVM helper does:
+The LLVM backend implements builtins 89-99 as IR helpers in `llvm.ridgun`, and wraps the runtime channel and job builtins (1, 32, 33, 50, 57, 58, 59). The runtime builtin dispatcher has none of this, so since 0.9.40 the pure x86-64 encoder emits one routine per builtin (`x86 builtin bytes` / `x86 builtin size` in `x86_64.ridgun`). Each routine does what its LLVM helper does:
 
 | Builtin | LLVM helper | Source | Before the bytes the encoder emits |
 |---|---|---|---|
@@ -1809,7 +1809,7 @@ Backends:
 - **x86-64.** `x86 sort by` (`sortby.s`, 1099 bytes), after `mov rdi, [rsp + sp*8]`, `mov rsi, [rsp + (sp+1)*8]` and `mov edx, mode`. The mode is kept at `[rsp+56]` for `.Lless`. The output index is `ii + jj - mid`.
 - **ARM64.** A placeholder.
 
-100,000 pseudo-random keys, sort time only (the lists built as in `tests/cases/perf/sort_by_100k_elements.rg`):
+100,000 pseudo-random keys, sort time only (the lists built as in `tests/cases/perf/sort_by_100k_elements.ridgun`):
 
 | Keys | LLVM | x86-64 |
 |---|---|---|

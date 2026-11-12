@@ -4,7 +4,7 @@ Det finns språk vars kompilator är underbar, men vars projektsystem verkar var
 
 I Ridgun gav vi oss själva ett mycket enkelt löfte redan från första dagen:
 
-> *"Det ska bara finnas två körbara program i hela ekosystemet (`ridgunc` och `stable`), båda ska vara skrivna i Ridgun självt, och projektets konfigurationsfil (`build.rg`) ska vara helt vanlig Ridgun-kod. Ingen JSON, ingen YAML, ingen TOML och inga konstiga påhitt."*
+> *"Det ska bara finnas två körbara program i hela ekosystemet (`ridgunc` och `stable`), båda ska vara skrivna i Ridgun självt, och projektets konfigurationsfil (`build.ridgun`) ska vara helt vanlig Ridgun-kod. Ingen JSON, ingen YAML, ingen TOML och inga konstiga påhitt."*
 
 Låt oss se hur de används.
 
@@ -12,22 +12,19 @@ Låt oss se hur de används.
 
 ## 2.1. `ridgunc`: Prickskytten för enskilda filer
 
-När du har en enskild `.rg`-fil framför dig och vill testa en snabb idé, analysera dess typer eller kompilera en körbar fil pratar du direkt med **`ridgunc`**.
+När du har en enskild `.ridgun`-fil framför dig och vill testa en snabb idé, analysera dess typer eller kompilera en körbar fil pratar du direkt med **`ridgunc`**.
 
-Den har bara 4 kommandon som du verkligen behöver komma ihåg:
+Den har bara 3 kommandon som du verkligen behöver komma ihåg:
 
 ```bash
 # 1. "Kompilerar det här eller har jag gjort bort mig med någon typ?"
-ridgunc check experiment.rg
+ridgunc check experiment.ridgun
 
 # 2. "Kör det nu!" (Kompilerar och kör i ett svep)
-ridgunc run experiment.rg
+ridgunc run experiment.ridgun
 
 # 3. "Gör en inbyggd ELF-binär färdig att ta med"
-ridgunc build experiment.rg -o mitt_program
-
-# 4. "Ta fram mellanartefakten med bytekod (.rgc)"
-ridgunc compile experiment.rg -o experiment.rgc
+ridgunc build experiment.ridgun -o mitt_program
 ```
 
 ### Den dolda superkraften i `ridgunc check`
@@ -51,25 +48,25 @@ Mappstrukturen i ett Ridgun-projekt rymmer inga mysterier:
 
 ```text
 mitt-superverktyg/
-├── build.rg                  # Projektmanifestet (det är Ridgun-kod!)
+├── build.ridgun              # Projektmanifestet (det är Ridgun-kod!)
 ├── src/
 │   ├── main/
 │   │   └── ridgun/
 │   │       ├── lib/          # Dina återanvändbara moduler (`import verktyg`)
 │   │       └── app/
-│   │           └── main.rg   # Startpunkt (`main => ()`)
+│   │           └── main.ridgun # Startpunkt (`main => ()`)
 │   └── test/
-│       └── ridgun/           # Dina testsviter (`test *.rg`)
-│           └── test allt.rg
+│       └── ridgun/           # Dina testsviter (`test *.ridgun`)
+│           └── test allt.ridgun
 └── target/                   # Där de kompilerade binärerna dyker upp
 ```
 
 ---
 
-## 2.3. `build.rg`: En konfigurationsfil som aldrig ljuger för dig
+## 2.3. `build.ridgun`: En konfigurationsfil som aldrig ljuger för dig
 
 Varför vägrar vi att använda YAML eller TOML för att konfigurera ett Ridgun-projekt?
-Därför att i YAML råkar du skriva två mellanslag fel i indraget och märker det inte förrän driftsättningen kraschar. Eftersom **`build.rg` är en Ridgun-fil** har den däremot statiska typer, kontrolleras med `stable check` och justeras automatiskt med `stable format`:
+Därför att i YAML råkar du skriva två mellanslag fel i indraget och märker det inte förrän driftsättningen kraschar. Eftersom **`build.ridgun` är en Ridgun-fil** har den däremot statiska typer, kontrolleras med `stable check` och justeras automatiskt med `stable format`:
 
 ```ridgun
 type ProjectInfo =
@@ -97,7 +94,7 @@ strict mode =  True
 Om du stavar fel på ett fält varnar kompilatorn själv. Inga överraskningar.
 
 ### Strikt läge (`--strict` / `strict mode = True`)
-Som standard är strikt läge **inaktiverat** i både `ridgunc` och nya projekt som skapas med `stable new` eller `stable init`, så att du kan bygga prototyper i full frihet. När du vill låsa den kanoniska stilen i ett projekt (som vi gör i Ridguns egen kompilator) kan du skicka `--strict` till `ridgunc` eller lägga till `strict mode = True` i din `build.rg`. Strikt läge kräver två elegansregler:
+Som standard är strikt läge **inaktiverat** i både `ridgunc` och nya projekt som skapas med `stable new` eller `stable init`, så att du kan bygga prototyper i full frihet. När du vill låsa den kanoniska stilen i ett projekt (som vi gör i Ridguns egen kompilator) kan du skicka `--strict` till `ridgunc` eller lägga till `strict mode = True` i din `build.ridgun`. Strikt läge kräver två elegansregler:
 1. **Namn på `fn ::` och `op ::` med naturliga mellanslag, utan `_`**: deklarationer måste använda mellanslag (`fn :: berakna skatt`, aldrig `fn :: berakna_skatt`).
 2. **Flertalsreturer åtskilda med mellanslag efter `=>`**: när en funktion eller operator returnerar flera värden skrivs dess utdatasignatur som `=> Int Int` eller `=> Tillstand Int` (aldrig `=> (Int, Int)` med parenteser eller kommatecken).
 
@@ -111,7 +108,7 @@ När du arbetar inne i ditt projekt kokar din vardag ner till fyra kommandon:
 ```bash
 stable format
 ```
-Sätter din kollega tre mellanslag före `=>` medan du sätter ett? Det spelar ingen roll. Du kör `stable format` och på mindre än en sekund är **alla** `.rg`-filer i förrådet uppradade som en schweizisk tabell.
+Sätter din kollega tre mellanslag före `=>` medan du sätter ett? Det spelar ingen roll. Du kör `stable format` och på mindre än en sekund är **alla** `.ridgun`-filer i förrådet uppradade som en schweizisk tabell.
 
 ### 2. `stable check` — Den omedelbara radarn
 ```bash
@@ -123,10 +120,10 @@ Går igenom alla moduler i `src/main/ridgun/`, verifierar typer, konstruktorer, 
 ```bash
 stable test
 ```
-Letar upp alla testsviter `src/test/ridgun/test *.rg`, kör dem och kontrollerar varje `assert equals` och `assert true`.
+Letar upp alla testsviter `src/test/ridgun/test *.ridgun`, kör dem och kontrollerar varje `assert equals` och `assert true`.
 
 ```ridgun
--- Exempel på src/test/ridgun/test matte.rg
+-- Exempel på src/test/ridgun/test matte.ridgun
 import test
 
 dubbel Int => Int
@@ -148,12 +145,12 @@ Kompilerar alla inbyggda mål i `target/`. Och om du någon dag vill radera `tar
 
 ## 2.5. Hur importerar jag en fil från en annan? (`import`)
 
-Inga helvetiska relativa sökvägar av typen `../../../lib/grejer.rg`. Om du har en fil `src/main/ridgun/lib/strangar.rg` skriver du helt enkelt längst upp i vilken annan fil som helst:
+Inga helvetiska relativa sökvägar av typen `../../../lib/grejer.ridgun`. Om du har en fil `src/main/ridgun/lib/strangar.ridgun` skriver du helt enkelt längst upp i vilken annan fil som helst:
 
 ```ridgun
 import strangar
 ```
 
-Och klart: alla funktioner och typer i `strangar.rg` är tillgängliga precis som om de låg i din egen fil. Men vad händer om modul `A` gör `import strangar`, modul `B` också gör `import strangar` och din `main.rg` importerar både `A` och `B`? Ta det lugnt: Ridguns laddare kommer ihåg vilka kanoniska filer den redan har läst och **inkluderar den bara en gång**.
+Och klart: alla funktioner och typer i `strangar.ridgun` är tillgängliga precis som om de låg i din egen fil. Men vad händer om modul `A` gör `import strangar`, modul `B` också gör `import strangar` och din `main.ridgun` importerar både `A` och `B`? Ta det lugnt: Ridguns laddare kommer ihåg vilka kanoniska filer den redan har läst och **inkluderar den bara en gång**.
 
 Nu när du har full koll på verktygslådan går vi vidare till **Kapitel 03** för att bemästra funktioner, typer, block och knep med textsträngar.

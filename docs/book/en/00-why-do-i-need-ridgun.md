@@ -128,6 +128,6 @@ Ridgun is built for you if you have ever wanted to:
 1. **Write systems tools, compilers, parsers, or CLI utilities** that start up in microseconds, weigh a few hundred KB, and cannot crash from null pointers or hidden side effects.
 2. **Build concurrent systems and servers using the Native Agent Model (`agent`, `send ... to`, `receive from`, `stop`)**, where any pure function becomes a stateless or stateful isolated agent and the compiler smartly selects between ultra-lightweight *green-thread* steps and multicore native kernel threads.
 3. **Program algorithms, data pipelines, or tensor algebra** where the compiler verifies even your matrix dimensions (`Tensor[M, K] * Tensor[K, N] => Tensor[M, N]`) before running a single instruction.
-4. **Enjoy reading your own code**: where every `.rg` file looks like a page from a well-typeset book thanks to the automatic tabular formatter (`stable format`).
+4. **Enjoy reading your own code**: where every `.ridgun` file looks like a page from a well-typeset book thanks to the automatic tabular formatter (`stable format`).
 
 Curious? Turn to **Chapter 01** and let's write our first program in under two minutes.

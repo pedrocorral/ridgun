@@ -6,11 +6,11 @@ set -e
 S="$1"; O="$2/devlinks"
 rm -rf "$O"; mkdir -p "$O/home" "$O/pkg/src/main/ridgun/lib" "$O/app/src/main/ridgun"
 export HOME="$O/home"
-printf 'fn :: project name => String\n      project name =  "pkg"\nfn :: project kind => String\n      project kind =  "lib"\n' > "$O/pkg/build.rg"
-printf 'fn :: pkg one => Int\n      pkg one =  1\n' > "$O/pkg/src/main/ridgun/lib/pkg.rg"
+printf 'fn :: project name => String\n      project name =  "pkg"\nfn :: project kind => String\n      project kind =  "lib"\n' > "$O/pkg/build.ridgun"
+printf 'fn :: pkg one => Int\n      pkg one =  1\n' > "$O/pkg/src/main/ridgun/lib/pkg.ridgun"
 cd "$O/app"
-printf 'fn :: project name => String\n      project name =  "app"\nfn :: main entry => String\n      main entry =  "main.rg"\nfn :: dependencies => [String]\n      dependencies =  ["pkg"]\n' > build.rg
-printf 'fn :: main => ()\n      main =  echo 1\n' > src/main/ridgun/main.rg
+printf 'fn :: project name => String\n      project name =  "app"\nfn :: main entry => String\n      main entry =  "main.ridgun"\nfn :: dependencies => [String]\n      dependencies =  ["pkg"]\n' > build.ridgun
+printf 'fn :: main => ()\n      main =  echo 1\n' > src/main/ridgun/main.ridgun
 # No link by default: the name must come from omni.
 if "$S" deps >/dev/null 2>&1; then exit 1; fi
 [ ! -e "$HOME/.stable/dev-links" ]
@@ -18,13 +18,13 @@ if "$S" deps >/dev/null 2>&1; then exit 1; fi
 "$S" dev link pkg "$O/pkg" >/dev/null
 "$S" deps > deps.out
 grep -q "Developer link" deps.out
-[ -f .stable/deps/pkg/src/main/ridgun/lib/pkg.rg ]
-grep -q "dependencies =  \[\"pkg\"\]" build.rg
+[ -f .stable/deps/pkg/src/main/ridgun/lib/pkg.ridgun ]
+grep -q "dependencies =  \[\"pkg\"\]" build.ridgun
 echo LINK_OK
 # Invalid links are refused: another project, a path as name, a shell character in the folder.
 if "$S" dev link app "$O/pkg" >/dev/null 2>&1; then exit 1; fi
 if "$S" dev link ../pkg "$O/pkg" >/dev/null 2>&1; then exit 1; fi
-mkdir -p "$O/a\$(touch pwned)"; cp "$O/pkg/build.rg" "$O/a\$(touch pwned)/"
+mkdir -p "$O/a\$(touch pwned)"; cp "$O/pkg/build.ridgun" "$O/a\$(touch pwned)/"
 if "$S" dev link pkg "$O/a\$(touch pwned)" >/dev/null 2>&1; then exit 1; fi
 # A link edited by hand to an invalid folder stops the build; it never falls back silently.
 printf 'pkg|/nonexistent\n' > "$HOME/.stable/dev-links"

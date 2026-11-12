@@ -54,5 +54,5 @@ consume_list c
 
 ## Acceptance Criteria
 - AC1: `ridgunc` implements `RMM1` (CMM liveness + `RCmmAlias` conditional pointer-identity guards) and `RMM2` (`CmmBox<T>` assignment & cascaded child teardown).
-- AC2: `cmm_trace_elegir True` produces `(2, 1, 1, 0, 1, 1)`, `cmm_trace_elegir False` produces `(2, 2, 1, 0, 1, 1)`, and `cmm_trace_cascada` passes in `src/test/ridgun/test_core_language.rg`.
+- AC2: `cmm_trace_elegir True` produces `(2, 1, 1, 0, 1, 1)`, `cmm_trace_elegir False` produces `(2, 2, 1, 0, 1, 1)`, and `cmm_trace_cascada` passes in `src/test/ridgun/test_core_language.ridgun`.
 - AC3: Self-hosted Stage 1 and Stage 2 bootstrap of `ridgunc` and `stable` and all 4 Ridgun test suites pass with 0 errors.

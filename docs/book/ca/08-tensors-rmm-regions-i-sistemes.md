@@ -130,7 +130,7 @@ I per treballar amb el sistema operatiu:
 
 ## 8.5. L'Ecosistema de Llibreries Estàndard (`ridgun-libs`)
 
-A més de les primitives del compilador, l'ecosistema oficial de Ridgun inclou **32 llibreries pures (`.rglib`)** escrites íntegrament en Ridgun que pots importar amb `import <nom>` en qualsevol projecte:
+A més de les primitives del compilador, l'ecosistema oficial de Ridgun inclou **32 llibreries pures (`.ridgunlib`)** escrites íntegrament en Ridgun que pots importar amb `import <nom>` en qualsevol projecte:
 
 | Categoria | Llibreries disponibles | Què aporten |
 |---|---|---|
@@ -195,7 +195,7 @@ Atura't un segon a mirar aquestes ~40 línies de codi:
 - `comptar salts` es compila a un `loop` natiu amb 0 bytes de pila gràcies al TCO automàtic.
 - `||map analitzar fitxer rutes` processa els fitxers en paral·lel en tots els nuclis de la teva CPU, i el bloc `||` calcula simultàniament les files formatades, el total de línies i el total de bytes.
 - La memòria temporal s'allibera determinísticament mitjançant **`RMM1`/`RMM2`**.
-- I quan executes `ridgunc build rg_wc.rg -o rg-wc`, obtens un binari natiu autònom de ~350 KB a punt per copiar a `/usr/local/bin`.
+- I quan executes `ridgunc build rg_wc.ridgun -o rg-wc`, obtens un binari natiu autònom de ~350 KB a punt per copiar a `/usr/local/bin`.
 
 ---
 

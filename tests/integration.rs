@@ -1,4 +1,4 @@
-/// Integration tests — load actual .rg files and run them through the full pipeline
+/// Integration tests — load actual .ridgun files and run them through the full pipeline
 
 use ridgun::analyzer::{analyze_program, AnalysisError};
 use ridgun::compiler;
@@ -376,13 +376,13 @@ main =
 
 #[test]
 fn test_self_hosted_compiler_and_metacircular_vm() {
-    let src = std::fs::read_to_string("examples/self_hosted_vm.rg")
-        .expect("Failed to read examples/self_hosted_vm.rg");
+    let src = std::fs::read_to_string("examples/self_hosted_vm.ridgun")
+        .expect("Failed to read examples/self_hosted_vm.ridgun");
     let (tokens, spans) = Lexer::new(&src).tokenize();
     let program = Parser::new(tokens, spans).parse();
     assert!(
         ridgun::typecheck::typecheck(&program).is_ok(),
-        "examples/self_hosted_vm.rg must typecheck cleanly"
+        "examples/self_hosted_vm.ridgun must typecheck cleanly"
     );
     let compiled = compiler::compile(&program);
     let mut vm = VM::with_seed(compiled, 42);
@@ -400,13 +400,13 @@ fn test_self_hosted_compiler_and_metacircular_vm() {
 
 #[test]
 fn test_demo_rg_runs_cleanly() {
-    let src = std::fs::read_to_string("examples/demo.rg")
-        .expect("Failed to read examples/demo.rg");
+    let src = std::fs::read_to_string("examples/demo.ridgun")
+        .expect("Failed to read examples/demo.ridgun");
     let (tokens, spans) = Lexer::new(&src).tokenize();
     let program = Parser::new(tokens, spans).parse();
     assert!(
         ridgun::typecheck::typecheck(&program).is_ok(),
-        "examples/demo.rg must typecheck cleanly"
+        "examples/demo.ridgun must typecheck cleanly"
     );
     let compiled = compiler::compile(&program);
     let mut vm = VM::new(compiled);
@@ -833,16 +833,16 @@ bounded_oom =
 #[test]
 fn test_all_example_rg_files_typecheck_and_run() {
     let example_files = [
-        "examples/01_strings_and_io.rg",
-        "examples/02_logic_and_math.rg",
-        "examples/03_lists_and_recursion.rg",
-        "examples/04_sequences_and_operators.rg",
-        "examples/05_adts_overload_variadic.rg",
-        "examples/06_tensors_and_einsum.rg",
-        "examples/07_parallel_where_and_pipes.rg",
-        "examples/08_channels_and_actors.rg",
-        "examples/09_scoped_state_and_atomics.rg",
-        "examples/10_bare_metal_systems.rg",
+        "examples/01_strings_and_io.ridgun",
+        "examples/02_logic_and_math.ridgun",
+        "examples/03_lists_and_recursion.ridgun",
+        "examples/04_sequences_and_operators.ridgun",
+        "examples/05_adts_overload_variadic.ridgun",
+        "examples/06_tensors_and_einsum.ridgun",
+        "examples/07_parallel_where_and_pipes.ridgun",
+        "examples/08_channels_and_actors.ridgun",
+        "examples/09_scoped_state_and_atomics.ridgun",
+        "examples/10_bare_metal_systems.ridgun",
     ];
 
     for path in &example_files {
@@ -861,8 +861,8 @@ fn test_all_example_rg_files_typecheck_and_run() {
 
 #[test]
 fn test_self_hosted_ridgun_compiler_pipeline() {
-    let path = std::path::Path::new("src/main/ridgun/ridgunc/main.rg");
-    let raw = std::fs::read_to_string(path).expect("Failed to read ridgunc/main.rg");
+    let path = std::path::Path::new("src/main/ridgun/ridgunc/main.ridgun");
+    let raw = std::fs::read_to_string(path).expect("Failed to read ridgunc/main.ridgun");
     let combined = ridgun::resolve_imports(&raw, path);
     let (tokens, spans) = Lexer::new(&combined).tokenize();
     let program = Parser::new(tokens, spans).parse();

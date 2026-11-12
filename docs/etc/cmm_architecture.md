@@ -96,7 +96,7 @@ When control flow cannot be fully resolved at compile time (**anonymous function
 
 ---
 
-## 4. Compiler & Runtime Implementation (`compiler.rg`)
+## 4. Compiler & Runtime Implementation (`compiler.ridgun`)
 
 - **Compile-Time Liveness & Ancestor Alias Pass (`RCmmAlias`)**:
   - `cmm_expr_vars`, `cmm_stmts_vars`, and `cmm_where_vars` compute exact per-statement liveness for every local variable in `EBlock`, `EWhere`, and `FnCase` bodies.

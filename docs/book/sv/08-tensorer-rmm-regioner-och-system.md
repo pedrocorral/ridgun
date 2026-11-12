@@ -130,7 +130,7 @@ Och för att arbeta med operativsystemet:
 
 ## 8.5. Ekosystemet av standardbibliotek (`ridgun-libs`)
 
-Utöver kompilatorns primitiver innehåller Ridguns officiella ekosystem **32 rena bibliotek (`.rglib`)** skrivna helt i Ridgun som du kan importera med `import <namn>` i vilket projekt som helst:
+Utöver kompilatorns primitiver innehåller Ridguns officiella ekosystem **32 rena bibliotek (`.ridgunlib`)** skrivna helt i Ridgun som du kan importera med `import <namn>` i vilket projekt som helst:
 
 | Kategori | Tillgängliga bibliotek | Vad de tillhandahåller |
 |---|---|---|
@@ -195,7 +195,7 @@ Stanna upp en sekund och titta på dessa ~40 rader kod:
 - `rakna radbrytningar` kompileras till en inbyggd `loop` med 0 byte stackminne tack vare automatisk TCO.
 - `||map analysera fil sokvagar` bearbetar filerna parallellt på alla kärnor i din processor, och `||`-blocket beräknar samtidigt de formaterade raderna, totalt antal rader och totalt antal byte.
 - Det tillfälliga minnet frigörs deterministiskt via **`RMM1`/`RMM2`**.
-- Och när du kör `ridgunc build rg_wc.rg -o rg-wc` får du en fristående inbyggd binär på ~350 KB, färdig att kopieras till `/usr/local/bin`.
+- Och när du kör `ridgunc build rg_wc.ridgun -o rg-wc` får du en fristående inbyggd binär på ~350 KB, färdig att kopieras till `/usr/local/bin`.
 
 ---
 

@@ -4,7 +4,7 @@ Hi ha llenguatges el compilador dels quals és meravellós, però amb un sistema
 
 A Ridgun ens vam fer una promesa molt simple des del primer dia:
 
-> *"Només hi haurà dos executables en tot l'ecosistema (`ridgunc` i `stable`), tots dos estaran escrits en el mateix Ridgun, i el fitxer de configuració del projecte (`build.rg`) serà codi Ridgun normal i corrent. Ni JSON, ni YAML, ni TOML, ni invents estranys."*
+> *"Només hi haurà dos executables en tot l'ecosistema (`ridgunc` i `stable`), tots dos estaran escrits en el mateix Ridgun, i el fitxer de configuració del projecte (`build.ridgun`) serà codi Ridgun normal i corrent. Ni JSON, ni YAML, ni TOML, ni invents estranys."*
 
 Vegem com es fan servir.
 
@@ -12,22 +12,19 @@ Vegem com es fan servir.
 
 ## 2.1. `ridgunc`: El franctirador per a fitxers solts
 
-Quan tens un únic fitxer `.rg` entre mans i vols provar una idea ràpida, analitzar els seus tipus o compilar un executable, parles directament amb **`ridgunc`**.
+Quan tens un únic fitxer `.ridgun` entre mans i vols provar una idea ràpida, analitzar els seus tipus o compilar un executable, parles directament amb **`ridgunc`**.
 
-Només té 4 ordres que de debò necessites recordar:
+Només té 3 ordres que de debò necessites recordar:
 
 ```bash
 # 1. "Compila això o he ficat la pota amb algun tipus?"
-ridgunc check experiment.rg
+ridgunc check experiment.ridgun
 
 # 2. "Executa-ho ja!" (Compila i corre d'una tirada)
-ridgunc run experiment.rg
+ridgunc run experiment.ridgun
 
 # 3. "Fes-me un binari natiu ELF a punt per emportar"
-ridgunc build experiment.rg -o el_meu_programa
-
-# 4. "Treu-me l'artefacte intermedi de bytecode (.rgc)"
-ridgunc compile experiment.rg -o experiment.rgc
+ridgunc build experiment.ridgun -o el_meu_programa
 ```
 
 ### El superpoder ocult de `ridgunc check`
@@ -51,25 +48,25 @@ L'estructura de carpetes d'un projecte Ridgun no té misteri:
 
 ```text
 la-meva-super-eina/
-├── build.rg                  # El manifest del projecte (és codi Ridgun!)
+├── build.ridgun              # El manifest del projecte (és codi Ridgun!)
 ├── src/
 │   ├── main/
 │   │   └── ridgun/
 │   │       ├── lib/          # Els teus mòduls reutilitzables (`import utilitats`)
 │   │       └── app/
-│   │           └── main.rg   # Punt d'entrada (`main => ()`)
+│   │           └── main.ridgun # Punt d'entrada (`main => ()`)
 │   └── test/
-│       └── ridgun/           # Les teves bateries de tests (`test *.rg`)
-│           └── test tot.rg
+│       └── ridgun/           # Les teves bateries de tests (`test *.ridgun`)
+│           └── test tot.ridgun
 └── target/                   # On apareixen els binaris compilats
 ```
 
 ---
 
-## 2.3. `build.rg`: Un fitxer de configuració que mai no et mentirà
+## 2.3. `build.ridgun`: Un fitxer de configuració que mai no et mentirà
 
 Per què ens neguem a fer servir YAML o TOML per configurar un projecte Ridgun?
-Perquè en YAML t'equivoques en dos espais de sagnat i no te n'assabentes fins que falla el desplegament. En canvi, com que **`build.rg` és un fitxer Ridgun**, té tipus estàtics, passa per `stable check` i s'alinea sol amb `stable format`:
+Perquè en YAML t'equivoques en dos espais de sagnat i no te n'assabentes fins que falla el desplegament. En canvi, com que **`build.ridgun` és un fitxer Ridgun**, té tipus estàtics, passa per `stable check` i s'alinea sol amb `stable format`:
 
 ```ridgun
 type ProjectInfo =
@@ -97,7 +94,7 @@ strict mode =  True
 Si t'equivoques en escriure un camp, el mateix compilador t'avisa. Sense sorpreses.
 
 ### El mode estricte (`--strict` / `strict mode = True`)
-Per defecte, tant `ridgunc` com els nous projectes creats amb `stable new` o `stable init` tenen el mode estricte **desactivat** perquè puguis prototipar amb total llibertat. Quan vulguis blindar l'estil canònic d'un projecte (com fem al propi compilador de Ridgun), pots passar `--strict` a `ridgunc` o afegir `strict mode = True` al teu `build.rg`. El mode estricte exigeix dues regles d'elegància:
+Per defecte, tant `ridgunc` com els nous projectes creats amb `stable new` o `stable init` tenen el mode estricte **desactivat** perquè puguis prototipar amb total llibertat. Quan vulguis blindar l'estil canònic d'un projecte (com fem al propi compilador de Ridgun), pots passar `--strict` a `ridgunc` o afegir `strict mode = True` al teu `build.ridgun`. El mode estricte exigeix dues regles d'elegància:
 1. **Noms de `fn ::` i `op ::` amb espais naturals, sense `_`**: les declaracions han de fer servir espais (`fn :: calcular impost`, mai `fn :: calcular_impost`).
 2. **Retorns múltiples separats per espais després de `=>`**: quan una funció o operador retorna diversos valors, la seva signatura de sortida s'escriu `=> Int Int` o `=> Estat Int` (mai `=> (Int, Int)` amb parèntesis ni comes).
 
@@ -111,7 +108,7 @@ Quan estàs treballant dins del teu projecte, el teu dia a dia es redueix a quat
 ```bash
 stable format
 ```
-Que el teu company posa tres espais abans del `=>` i tu en poses un? Tant se val. Executes `stable format` i en menys d'un segon deixa **tots** els fitxers `.rg` del repositori alineats com una taula suïssa.
+Que el teu company posa tres espais abans del `=>` i tu en poses un? Tant se val. Executes `stable format` i en menys d'un segon deixa **tots** els fitxers `.ridgun` del repositori alineats com una taula suïssa.
 
 ### 2. `stable check` — El radar instantani
 ```bash
@@ -123,10 +120,10 @@ Recorre tots els mòduls de `src/main/ridgun/`, verifica tipus, constructors, ar
 ```bash
 stable test
 ```
-Busca totes les suites `src/test/ridgun/test *.rg`, les executa i comprova cada `assert equals` i `assert true`.
+Busca totes les suites `src/test/ridgun/test *.ridgun`, les executa i comprova cada `assert equals` i `assert true`.
 
 ```ridgun
--- Exemple de src/test/ridgun/test mates.rg
+-- Exemple de src/test/ridgun/test mates.ridgun
 import test
 
 doble Int => Int
@@ -148,12 +145,12 @@ Compila tots els objectius natius a `target/`. I si algun dia vols esborrar `tar
 
 ## 2.5. Com importo un fitxer des d'un altre? (`import`)
 
-Sense rutes relatives infernals tipus `../../../lib/coses.rg`. Si tens un fitxer `src/main/ridgun/lib/cadenes.rg`, en qualsevol altre fitxer escrius a dalt de tot:
+Sense rutes relatives infernals tipus `../../../lib/coses.ridgun`. Si tens un fitxer `src/main/ridgun/lib/cadenes.ridgun`, en qualsevol altre fitxer escrius a dalt de tot:
 
 ```ridgun
 import cadenes
 ```
 
-I llestos: totes les funcions i tipus de `cadenes.rg` estan disponibles com si fossin al teu propi fitxer. I què passa si el mòdul `A` fa `import cadenes`, el mòdul `B` també fa `import cadenes`, i el teu `main.rg` importa `A` i `B`? Tranquil: el carregador de Ridgun recorda quins fitxers canònics ja ha llegit i **només l'inclou una vegada**.
+I llestos: totes les funcions i tipus de `cadenes.ridgun` estan disponibles com si fossin al teu propi fitxer. I què passa si el mòdul `A` fa `import cadenes`, el mòdul `B` també fa `import cadenes`, i el teu `main.ridgun` importa `A` i `B`? Tranquil: el carregador de Ridgun recorda quins fitxers canònics ja ha llegit i **només l'inclou una vegada**.
 
 Ara que tens la caixa d'eines controlada, passem al **Capítol 03** per dominar les funcions, els tipus, els blocs i els trucs amb cadenes de text.

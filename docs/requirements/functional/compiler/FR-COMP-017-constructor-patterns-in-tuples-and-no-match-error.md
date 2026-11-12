@@ -21,5 +21,5 @@ verified_by: [TS-COMP-017]
 Before 0.9.34 the parser read `(End _, _)` as `End` with three arguments and left the arguments of a constructor in a later tuple element unparsed, so such patterns never matched. The call then fell through every clause and silently returned `0` (an empty `Conn`, HTTP status 0, in edtech). Solstice register RG-114.
 
 ## Acceptance Criteria
-1. **AC-1**: The RG-114 reproduction prints `PAT picked end 1`; `(Ask n, _)`, `(k, Ask n)`, `(Ask a, Ask b)`, `(Stop, k)` and `(Ask n : _)` match as written (`tests/cases/adts/rg114_constructor_in_tuple_pattern.rg`).
-2. **AC-2**: A call with no matching pattern, and a call where no guard holds and there is no `otherwise`, print the lines before it and exit with status 1 (`tests/cases/functions/rg114_no_clause_matches_exits_with_error.rg`, `tests/cases/guards/rg114_guards_without_otherwise_exit_with_error.rg`).
+1. **AC-1**: The RG-114 reproduction prints `PAT picked end 1`; `(Ask n, _)`, `(k, Ask n)`, `(Ask a, Ask b)`, `(Stop, k)` and `(Ask n : _)` match as written (`tests/cases/adts/rg114_constructor_in_tuple_pattern.ridgun`).
+2. **AC-2**: A call with no matching pattern, and a call where no guard holds and there is no `otherwise`, print the lines before it and exit with status 1 (`tests/cases/functions/rg114_no_clause_matches_exits_with_error.ridgun`, `tests/cases/guards/rg114_guards_without_otherwise_exit_with_error.ridgun`).

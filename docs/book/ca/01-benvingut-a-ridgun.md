@@ -12,7 +12,7 @@ Som-hi, anem per feina!
 
 En la majoria dels llibres de programació t'ensenyen un `print("Hola món")` insípid i passen de pàgina. Nosaltres escriurem directament una funció amb lògica real perquè vegis com respira Ridgun des del minut u.
 
-Crea un fitxer anomenat `hola.rg` i escriu això:
+Crea un fitxer anomenat `hola.ridgun` i escriu això:
 
 ```ridgun
 salutacio String => String
@@ -30,7 +30,7 @@ main =
 Per executar-ho ara mateix:
 
 ```bash
-ridgunc run hola.rg
+ridgunc run hola.ridgun
 ```
 
 I veuràs al teu terminal:
@@ -49,7 +49,7 @@ Atura't un moment i mira el bloc de `salutacio` a dalt. Notes què **NO** hi ha?
 
 ---
 
-## 1.2. Com llegeix el teu cervell un fitxer `.rg`
+## 1.2. Com llegeix el teu cervell un fitxer `.ridgun`
 
 Destripem aquestes quatre línies de `salutacio`, perquè aquí ja hi ha el 50% de la filosofia de Ridgun:
 
@@ -89,12 +89,12 @@ I quan executes **`stable format`** (o prems `TAB` / deses el fitxer a Emacs amb
 
 ## 1.4. De script ràpid a binari de combat en una ordre
 
-Quan fas `ridgunc run hola.rg`, estàs compilant i llançant el programa al vol. Però imagina que ja has acabat la teva eina i te la vols emportar a un servidor de producció o compartir-la amb un company que no té instal·lat Ridgun.
+Quan fas `ridgunc run hola.ridgun`, estàs compilant i llançant el programa al vol. Però imagina que ja has acabat la teva eina i te la vols emportar a un servidor de producció o compartir-la amb un company que no té instal·lat Ridgun.
 
 Executes:
 
 ```bash
-ridgunc build hola.rg -o hola
+ridgunc build hola.ridgun -o hola
 ```
 
 I ja tens `./hola`: un **executable natiu ELF de Linux x86_64**, net, sense codi mort (*Tree-Shaking*), amb optimització d'enllaç complet (*LTO*) i sense dependre de cap intèrpret extern.
@@ -182,8 +182,8 @@ intercanviar (x, y) =  (y, x)
 ```
 *"I si al meu programa vull tenir un tipus real que es digui `type A`?"* — Cap problema: en Ridgun **les teves declaracions `type` manen**. Si no existeix `type A`, `A` és genèric; en l'instant en què defineixes `type A = ...`, passa a ser el teu tipus concret en tot el mòdul.
 
-### 7. Zero fitxers de configuració estranys: `build.rg` és Ridgun pur
-Oblida't d'aprendre TOML per a Cargo, JSON per a npm, XML per a Maven o la sintaxi arcana de `Makefile` amb tabuladors invisibles. En Ridgun, la recepta que construeix el teu projecte (`build.rg`) **és un fitxer `.rg` més**, amb les mateixes funcions pures i el mateix *pattern matching* que la resta del teu codi.
+### 7. Zero fitxers de configuració estranys: `build.ridgun` és Ridgun pur
+Oblida't d'aprendre TOML per a Cargo, JSON per a npm, XML per a Maven o la sintaxi arcana de `Makefile` amb tabuladors invisibles. En Ridgun, la recepta que construeix el teu projecte (`build.ridgun`) **és un fitxer `.ridgun` més**, amb les mateixes funcions pures i el mateix *pattern matching* que la resta del teu codi.
 
 ### 8. La "Santíssima Trinitat" que semblava impossible: Nivell Haskell + Memòria RMM sense GC ni Lifetimes + Binaris de ~350 KB
 Fins avui havies de triar:

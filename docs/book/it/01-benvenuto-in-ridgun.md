@@ -12,7 +12,7 @@ Dai, andiamo al sodo!
 
 Nella maggior parte dei libri di programmazione ti mostrano uno sciapo `print("Ciao mondo")` e voltano pagina. Noi scriveremo direttamente una funzione con logica reale per farti vedere come respira Ridgun fin dal primo minuto.
 
-Crea un file chiamato `ciao.rg` e scrivi questo:
+Crea un file chiamato `ciao.ridgun` e scrivi questo:
 
 ```ridgun
 saluto String => String
@@ -30,7 +30,7 @@ main =
 Per eseguirlo subito:
 
 ```bash
-ridgunc run ciao.rg
+ridgunc run ciao.ridgun
 ```
 
 E vedrai nel tuo terminale:
@@ -49,7 +49,7 @@ Fermati un attimo e guarda il blocco di `saluto` qui sopra. Noti cosa **NON** c'
 
 ---
 
-## 1.2. Come il tuo cervello legge un file `.rg`
+## 1.2. Come il tuo cervello legge un file `.ridgun`
 
 Analizziamo quelle quattro righe di `saluto`, perché qui c'è già il 50% della filosofia di Ridgun:
 
@@ -89,12 +89,12 @@ E quando esegui **`stable format`** (o premi `TAB` / salvi il file in Emacs con 
 
 ## 1.4. Da script veloce a binario da combattimento in un comando
 
-Quando fai `ridgunc run ciao.rg`, stai compilando e lanciando il programma al volo. Ma immagina di aver finito il tuo strumento e di volerlo portare su un server di produzione o condividerlo con un collega che non ha installato Ridgun.
+Quando fai `ridgunc run ciao.ridgun`, stai compilando e lanciando il programma al volo. Ma immagina di aver finito il tuo strumento e di volerlo portare su un server di produzione o condividerlo con un collega che non ha installato Ridgun.
 
 Esegui:
 
 ```bash
-ridgunc build ciao.rg -o ciao
+ridgunc build ciao.ridgun -o ciao
 ```
 
 E hai già `./ciao`: un **eseguibile nativo ELF per Linux x86_64**, pulito, senza codice morto (*Tree-Shaking*), con ottimizzazione dell'intero collegamento (*LTO*) e senza dipendere da alcun interprete esterno.
@@ -182,8 +182,8 @@ scambia (x, y) =  (y, x)
 ```
 *"E se nel mio programma voglio avere un tipo reale che si chiami `type A`?"* — Nessun problema: in Ridgun **le tue dichiarazioni `type` comandano**. Se non esiste `type A`, `A` è generico; nell'istante in cui definisci `type A = ...`, diventa il tuo tipo concreto in tutto il modulo.
 
-### 7. Zero file di configurazione strani: `build.rg` è puro Ridgun
-Dimenticati di imparare TOML per Cargo, JSON per npm, XML per Maven o la sintassi arcana di `Makefile` con tabulazioni invisibili. In Ridgun, la ricetta che costruisce il tuo progetto (`build.rg`) **è un file `.rg` come gli altri**, con le stesse funzioni pure e lo stesso *pattern matching* del resto del tuo codice.
+### 7. Zero file di configurazione strani: `build.ridgun` è puro Ridgun
+Dimenticati di imparare TOML per Cargo, JSON per npm, XML per Maven o la sintassi arcana di `Makefile` con tabulazioni invisibili. In Ridgun, la ricetta che costruisce il tuo progetto (`build.ridgun`) **è un file `.ridgun` come gli altri**, con le stesse funzioni pure e lo stesso *pattern matching* del resto del tuo codice.
 
 ### 8. La "Santissima Trinità" che sembrava impossibile: Livello Haskell + Memoria RMM senza GC né Lifetime + Binari da ~350 KB
 Fino a oggi dovevi scegliere:

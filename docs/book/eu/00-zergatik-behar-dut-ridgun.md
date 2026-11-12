@@ -128,6 +128,6 @@ Ridgun zuretzat egina dago inoiz honako hau nahi izan baduzu:
 1. **Sistemetako tresnak, konpiladoreak, analizatzaileak edo CLI utilitateak idaztea**, mikrosegundotan abiarazten direnak, ehunka KB gutxi batzuk pisatzen dituztenak eta erakusle nuluek edo ezkutuko albo-ondorioek hautsi ezin dituztenak.
 2. **Agenteen Eredu Natiboan (`agent`, `send ... to`, `receive from`, `stop`) oinarritutako sistema konkurrenteak eta zerbitzariak eraikitzea**, non edozein funtzio puru egoera isolatudun edo egoerarik gabeko agente bihurtzen den eta konpiladoreak modu adimendunean aukeratzen duen *green-thread* exekuzio ultraarinaren eta nukleo anitzeko hari natiboen artean.
 3. **Algoritmoak, datu-hodiak edo tentsore-aljebra programatzea**, non konpiladoreak matrizeen dimentsioak ere (`Tensor[M, K] * Tensor[K, N] => Tensor[M, N]`) zure ordez egiaztatzen dituen ezer exekutatu aurretik.
-4. **Zure kode propioa irakurtzen gozatzea**: `.rg` fitxategi bakoitzak ondo maketatutako liburu baten orrialdea dirudiela, formateatzaile taularatu automatikoari esker (`stable format`).
+4. **Zure kode propioa irakurtzen gozatzea**: `.ridgun` fitxategi bakoitzak ondo maketatutako liburu baten orrialdea dirudiela, formateatzaile taularatu automatikoari esker (`stable format`).
 
 Jakin-mina piztu zaizu? Pasa zaitez **01. kapitulura** eta idatz dezagun gure lehen programa bi minutu baino gutxiagoan.

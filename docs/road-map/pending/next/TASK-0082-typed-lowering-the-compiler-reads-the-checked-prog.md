@@ -7,8 +7,8 @@ completed:
 requirements: [FR-COMP-001, FR-COMP-009, FR-COMP-020, FR-COMP-022]
 tests: []                   # TS-* to automate
 security: []                # VUL-* to address
-context_files: [docs/requirements/decisions/ADR-0009-lowering-reads-the-types-of-the-checked-program.md, src/main/ridgun/lib/ast.rg, src/main/ridgun/lib/typecheck.rg, src/main/ridgun/lib/compiler.rg]
-scope: [src/main/ridgun/lib/ast.rg, src/main/ridgun/lib/typecheck.rg, src/main/ridgun/lib/compiler.rg]
+context_files: [docs/requirements/decisions/ADR-0009-lowering-reads-the-types-of-the-checked-program.md, src/main/ridgun/lib/ast.ridgun, src/main/ridgun/lib/typecheck.ridgun, src/main/ridgun/lib/compiler.ridgun]
+scope: [src/main/ridgun/lib/ast.ridgun, src/main/ridgun/lib/typecheck.ridgun, src/main/ridgun/lib/compiler.ridgun]
 owner:                      # the seat that holds it (agent-001 ...), signed by aix task start
 claimed:
 claimed_by:                 # tool user@host behind the seat at that moment (stays after the seat is released)
@@ -21,8 +21,8 @@ The lowering decides from the checked program's types and every patch in ADR-000
 
 ## Plan
 - [ ] Choose the typed form: a type on each expression node, or a type table keyed by node; write it down in ADR-0009 and accept the ADR.
-- [ ] `typecheck.rg` returns the typed program (lambdas with their inferred types, type variables instantiated where known).
-- [ ] `compiler.rg` reads the types. Remove the inventory one row at a time, each row its own verified patch version:
+- [ ] `typecheck.ridgun` returns the typed program (lambdas with their inferred types, type variables instantiated where known).
+- [ ] `compiler.ridgun` reads the types. Remove the inventory one row at a time, each row its own verified patch version:
   - fact strings and the `"U"` tensor kind;
   - agent step marks and mode 2;
   - field positions;

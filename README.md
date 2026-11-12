@@ -27,7 +27,7 @@ Learn Ridgun from scratch—from your first tabular function to parallel DAGs, t
 
 ## Quick Start
 
- Ridgun ships with two self-hosted tools—**`ridgunc`** (the single-file compiler & runner) and **`stable`** (the project manager, typechecker, test runner, and canonical tabular formatter)—configured via a pure Ridgun [`build.rg`](build.rg) file (no YAML, JSON, or TOML):
+ Ridgun ships with two self-hosted tools—**`ridgunc`** (the single-file compiler & runner) and **`stable`** (the project manager, typechecker, test runner, and canonical tabular formatter)—configured via a pure Ridgun [`build.ridgun`](build.ridgun) file (no YAML, JSON, or TOML):
 
 ```bash
 # Type-check all project modules in src/main/ridgun/
@@ -36,7 +36,7 @@ Learn Ridgun from scratch—from your first tabular function to parallel DAGs, t
 # Compile & run all test suites in src/test/ridgun/
 ./target/stable test
 
-# Format all .rg source files into canonical tabular alignment
+# Format all .ridgun source files into canonical tabular alignment
 ./target/stable format
 
 # Build all project targets into target/ (or install into ~/.local/bin/)
@@ -51,13 +51,13 @@ Learn Ridgun from scratch—from your first tabular function to parallel DAGs, t
 ./target/stable plugins
 ./target/stable deps
 
-# Compile or run a single .rg file or library directly with ridgunc (x86_64 or ARM64 Raspberry Pi)
-./target/ridgunc check my_program.rg
-./target/ridgunc run my_program.rg
-./target/ridgunc build my_program.rg -o my_program
-./target/ridgunc build --lib my_lib.rg -o my_lib.rglib
-./target/ridgunc build --so my_lib.rg -o libmy_lib.so
-./target/ridgunc build --target arm64-linux my_program.rg -o my_program_arm64
+# Compile or run a single .ridgun file or library directly with ridgunc (x86_64 or ARM64 Raspberry Pi)
+./target/ridgunc check my_program.ridgun
+./target/ridgunc run my_program.ridgun
+./target/ridgunc build my_program.ridgun -o my_program
+./target/ridgunc build --lib my_lib.ridgun -o my_lib.ridgunlib
+./target/ridgunc build --so my_lib.ridgun -o libmy_lib.so
+./target/ridgunc build --target arm64-linux my_program.ridgun -o my_program_arm64
 ```
 
 ### Release Verification (`minisign`)
@@ -191,36 +191,35 @@ fn :: track visits Int => Int
 ## Self-Hosted Architecture (`src/main/ridgun/`)
 
 ```text
-Ridgun Source (.rg) + build.rg
-              │
-              ▼
-  ┌────────────────────────┐
-  │  lexer.rg & parser.rg  │  Tokenization, Mixfix Resolution, Unified `=` (`|`, `||`, `|.`, `||.`)
-  └───────────┬────────────┘
-              │
-              ▼
-  ┌────────────────────────┐
-  │      typecheck.rg      │  Polymorphic `A..Z`, `mut` Immutability Check, Symbolic Tensor Dims
-  └───────────┬────────────┘
-              │
-              ▼
-  ┌────────────────────────┐
-  │       analyzer.rg      │  Static `||` DAG Cycle Detection & Work-Stealing Strategy Inference
-  └───────────┬────────────┘
-              │
-              ▼
-  ┌────────────────────────┐
-  │       compiler.rg      │  Call-Graph Tree-Shaking, TCO (`loop`), `RMM1` & `RMM2` Lowering
-  └─────┬────────────┬─────┘
-        │            │
-        ▼            ▼
-  ┌───────────┐    Bytecode (`.rgc`)
-  │ x86_64.rg │   (`vm.rg` Stack VM)
-  │ arm64.rg  │
-  │ elf64.rg  │
-  └─────┬─────┘
-        ▼
-  Native ELF64 (`x86_64` / `ARM64`)
+Ridgun Source (.ridgun) + build.ridgun
+                    │
+                    ▼
+  ┌──────────────────────────────────┐
+  │   lexer.ridgun & parser.ridgun   │  Tokenization, Mixfix Resolution, Unified `=` (`|`, `||`, `|.`, `||.`)
+  └─────────────────┬────────────────┘
+                    │
+                    ▼
+  ┌──────────────────────────────────┐
+  │         typecheck.ridgun         │  Polymorphic `A..Z`, `mut` Immutability Check, Symbolic Tensor Dims
+  └─────────────────┬────────────────┘
+                    │
+                    ▼
+  ┌──────────────────────────────────┐
+  │         analyzer.ridgun          │  Static `||` DAG Cycle Detection & Work-Stealing Strategy Inference
+  └─────────────────┬────────────────┘
+                    │
+                    ▼
+  ┌──────────────────────────────────┐
+  │         compiler.ridgun          │  Call-Graph Tree-Shaking, TCO (`loop`), `RMM1` & `RMM2` Lowering
+  └─────────────────┬────────────────┘
+                    │
+                    ▼
+  ┌──────────────────────────────────┐
+  │ x86_64.ridgun · arm64.ridgun     │  Machine code and runtime per architecture
+  │ elf64 · pe64 · macho64 .ridgun   │  Executable formats; llvm.ridgun for the LLVM path
+  └─────────────────┬────────────────┘
+                    ▼
+  Native executables (Linux, Windows, macOS; x86_64 / ARM64)
 ```
 
 ---
@@ -229,32 +228,34 @@ Ridgun Source (.rg) + build.rg
 
 ```text
 ridgun/
-├── build.rg                   # Pure-Ridgun project manifest for `stable`
+├── build.ridgun                  # Pure-Ridgun project manifest for `stable`
 ├── editors/
-│   └── emacs/ridgun-mode.el   # GNU Emacs major mode with tabular alignment
+│   └── emacs/ridgun-mode.el      # GNU Emacs major mode with tabular alignment
 ├── src/
 │   ├── main/ridgun/
 │   │   ├── lib/
-│   │   │   ├── ast.rg         # Compiler & VM Algebraic Data Types
-│   │   │   ├── lexer.rg       # Lexical scanner & byte-unit literals (_KB, _MB, _GB)
-│   │   │   ├── parser.rg      # Recursive-descent parser & mixfix normalizer
-│   │   │   ├── typecheck.rg   # Typechecker, A..Z unification & tensor shape checker
-│   │   │   ├── analyzer.rg    # Static parallel DAG & strategy analyzer
-│   │   │   ├── compiler.rg    # RMM1/RMM2 analyzer, native IR lowerer & .rgc compiler
-│   │   │   ├── elf64.rg       # Direct Linux ELF64 executable binary emitter
-│   │   │   ├── x86_64.rg      # Pure-Ridgun 2-pass x86_64 machine-code assembler & kernel
-│   │   │   ├── arm64.rg       # Pure-Ridgun 2-pass ARM64 (AArch64 / Raspberry Pi) assembler
-│   │   │   ├── formatter.rg   # Canonical tabular code formatter (`stable format`)
-│   │   │   └── vm.rg          # Meta-circular stack virtual machine
-│   │   ├── ridgunc/main.rg    # Self-hosted `ridgunc` CLI entry point
-│   │   └── stable/main.rg     # Self-hosted `stable` project manager CLI entry point
-│   └── test/ridgun/           # Self-hosted Ridgun test suites (`test_*.rg`)
+│   │   │   ├── ast.ridgun        # Compiler Algebraic Data Types
+│   │   │   ├── lexer.ridgun      # Lexical scanner & byte-unit literals (_KB, _MB, _GB)
+│   │   │   ├── parser.ridgun     # Recursive-descent parser, mixfix normalizer & import resolution
+│   │   │   ├── typecheck.ridgun  # Typechecker, A..Z unification & tensor shape checker
+│   │   │   ├── analyzer.ridgun   # Static parallel DAG & strategy analyzer
+│   │   │   ├── compiler.ridgun   # RMM1/RMM2 analyzer, native IR lowerer & library bundles
+│   │   │   ├── elf64.ridgun      # Direct Linux ELF64 executable binary emitter
+│   │   │   ├── pe64.ridgun       # Windows PE32+ executable emitter
+│   │   │   ├── macho64.ridgun    # macOS Mach-O 64 executable emitter
+│   │   │   ├── x86_64.ridgun     # Pure-Ridgun 2-pass x86_64 machine-code assembler & kernel
+│   │   │   ├── arm64.ridgun      # Pure-Ridgun 2-pass ARM64 (AArch64 / Raspberry Pi) assembler
+│   │   │   ├── llvm.ridgun       # LLVM IR backend
+│   │   │   └── formatter.ridgun  # Canonical tabular code formatter (`stable format`)
+│   │   ├── ridgunc/main.ridgun   # Self-hosted `ridgunc` CLI entry point
+│   │   └── stable/main.ridgun    # Self-hosted `stable` project manager CLI entry point
+│   └── test/ridgun/              # Self-hosted Ridgun test suites (`test*.ridgun`)
 ├── docs/
-│   ├── book/                  # The Ridgun Book in 7 languages (es, ca, gl, eu, en, pt, sv)
-│   ├── lang/spec.md           # Formal language specification
-│   ├── etc/cmm_architecture.md# RMM1 & RMM2 memory management architecture
-│   └── requirements/          # Functional requirements (FR-COMP-*, FR-TOOL-*, FR-VM-*)
-└── target/                    # Compiled self-hosted ELF64 binaries (`ridgunc`, `stable`)
+│   ├── book/                     # The Ridgun Book in 8 languages
+│   ├── lang/spec.md              # Formal language specification
+│   ├── etc/cmm_architecture.md   # RMM1 & RMM2 memory management architecture
+│   └── requirements/             # Functional requirements (FR-COMP-*, FR-TOOL-*, FR-VM-*)
+└── target/                       # Compiled self-hosted binaries (`ridgunc`, `stable`)
 ```
 
 ---

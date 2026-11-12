@@ -50,7 +50,7 @@ fn :: sign in String => TenantScope          -- the only way other modules get a
    `constructor 'UnsafeTenantScope' of opaque type 'TenantScope' is private to module 'store' (used in function 'peek')`.
 7. **Opt-in.** A type without `opaque` keeps its present behaviour. `opaque` changes nothing inside the defining
    module and nothing at run time.
-8. **Libraries.** A `.rglib` keeps its source, so the rules hold when a program that imports it is compiled. A
+8. **Libraries.** A `.ridgunlib` keeps its source, so the rules hold when a program that imports it is compiled. A
    native `.so` called from another language does not check them.
 
 ## Known limit

@@ -130,7 +130,7 @@ E para trabalhar com o sistema operativo:
 
 ## 8.5. O Ecossistema de Bibliotecas Padrão (`ridgun-libs`)
 
-Além das primitivas do compilador, o ecossistema oficial do Ridgun inclui **32 bibliotecas puras (`.rglib`)** escritas inteiramente em Ridgun que pode importar com `import <nome>` em qualquer projeto:
+Além das primitivas do compilador, o ecossistema oficial do Ridgun inclui **32 bibliotecas puras (`.ridgunlib`)** escritas inteiramente em Ridgun que pode importar com `import <nome>` em qualquer projeto:
 
 | Categoria | Bibliotecas disponíveis | O que oferecem |
 |---|---|---|
@@ -195,7 +195,7 @@ Pare um segundo para olhar para essas ~40 linhas de código:
 - `contar quebras` é compilada para um `loop` nativo com 0 bytes de pilha graças ao TCO automático.
 - `||map analisar ficheiro caminhos` processa os ficheiros em paralelo em todos os núcleos do seu CPU, e o bloco `||` calcula simultaneamente as linhas formatadas, o total de linhas e o total de bytes.
 - A memória temporária é libertada de forma determinística mediante **`RMM1`/`RMM2`**.
-- E quando executa `ridgunc build rg_wc.rg -o rg-wc`, obtém um binário nativo autónomo de ~350 KB pronto para copiar para `/usr/local/bin`.
+- E quando executa `ridgunc build rg_wc.ridgun -o rg-wc`, obtém um binário nativo autónomo de ~350 KB pronto para copiar para `/usr/local/bin`.
 
 ---
 

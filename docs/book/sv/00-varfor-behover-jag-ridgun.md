@@ -128,6 +128,6 @@ Ridgun är skapat för dig om du någonsin har velat:
 1. **Skriva systemverktyg, kompilatorer, parsrar eller CLI-verktyg** som startar på mikrosekunder, väger några hundra KB och inte kan krascha på grund av null-pekare eller dolda sidoeffekter.
 2. **Bygga samtidiga system och servrar med den inbyggda agentmodellen (`agent`, `send ... to`, `receive from`, `stop`)**, där varje ren funktion kan bli en agent med eller utan isolerat tillstånd och kompilatorn smart väljer mellan ultralätta *green-thread*-steg och flerkärniga operativsystemtrådar.
 3. **Programmera algoritmer, datapipelines eller tensoralgebra** där kompilatorn kontrollerar ända ner till matrisdimensionerna åt dig (`Tensor[M, K] * Tensor[K, N] => Tensor[M, N]`) innan något ens körs.
-4. **Njuta av att läsa din egen kod**: låta varje `.rg`-fil se ut som en sida ur en välformgiven bok tack vare den automatiska tabellformateraren (`stable format`).
+4. **Njuta av att läsa din egen kod**: låta varje `.ridgun`-fil se ut som en sida ur en välformgiven bok tack vare den automatiska tabellformateraren (`stable format`).
 
 Har vi väckt din nyfikenhet? Gå vidare till **Kapitel 01** så skriver vi vårt första program på under två minuter.

@@ -1,0 +1,26 @@
+-- @tests TS-COMP-005
+-- case: a function the program defines with the name of a builtin is the one that runs, called directly,
+--   from another function and as a value; builtins with other names keep working
+-- source: FR-COMP-007 AC-5, ADR-0008 (a user definition shadows a builtin of the same name); 1.0.3 clash of libs `posix.ridgun`
+--   `sys rename` / `sys unlink` (returning Bool) with builtins of the same names
+-- expect-output:
+--   rename: True
+--   remove: removed a.txt
+--   as a value: [removed x, removed y]
+--   builtin still: 2
+
+fn :: rename path String String => Bool
+      rename path from to =  (str len from) > 0 and (str len to) > 0
+
+fn :: remove file String => String
+      remove file path =  "removed " + path
+
+fn :: remove all [String] => [String]
+      remove all paths =  map remove file paths
+
+fn :: main => ()
+      main =
+        echo "rename:" (rename path "a" "b")
+        echo "remove:" (remove file "a.txt")
+        echo "as a value:" (remove all ["x", "y"])
+        echo "builtin still:" (str len "ab")

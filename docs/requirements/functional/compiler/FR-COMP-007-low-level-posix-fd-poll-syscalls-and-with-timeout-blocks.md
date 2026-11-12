@@ -15,8 +15,8 @@ depends_on:
 # FR-COMP-007 — Cross-platform PAL I/O, polling, process & syscall primitives and declarative `with timeout` blocks
 
 ## Statement
-The Ridgun compiler (`ridgunc`), its native runtime kernels (`x86_64.rg` and `arm64.rg`, and future macOS `Mach-O` / Windows `PE64` backends), and the stack VM (`vm.rg`) MUST provide an **OS-agnostic Platform Abstraction Layer (PAL)** alongside declarative timeout quotas:
-1. **Layer 1 (Cross-Platform PAL Primitives & Target Platform ADTs for `.rglib` System Libraries)**:
+The Ridgun compiler (`ridgunc`), its native runtime kernels (`x86_64.ridgun` and `arm64.ridgun`, and future macOS `Mach-O` / Windows `PE64` backends), and the stack VM (`vm.ridgun`) MUST provide an **OS-agnostic Platform Abstraction Layer (PAL)** alongside declarative timeout quotas:
+1. **Layer 1 (Cross-Platform PAL Primitives & Target Platform ADTs for `.ridgunlib` System Libraries)**:
    - Pre-declared target platform Sum ADTs:
      - `type SysOs = Linux | MacOS | Windows` (`sys os => SysOs`, open to extension via `expand type SysOs = ...`).
      - `type SysArch = X86_64 | Arm64` (`sys arch => SysArch`, open to extension via `expand type SysArch = ...`).
@@ -37,15 +37,15 @@ The Ridgun compiler (`ridgunc`), its native runtime kernels (`x86_64.rg` and `ar
    - Runtime deadline tracking (`sys deadline ms => Int` and `sys remaining ms => Int`) so code and blocking PAL primitives inside a `with timeout` block automatically see and respect the active deadline across all target operating systems.
 
 ## Rationale
-Exposing only raw Linux syscall numbers or Linux-specific `O_*` bitflags would break portability across `x86_64` vs `ARM64` Linux (`openat` is `257` on `x86_64` vs `56` on `ARM64`; `poll` is `7` vs `ppoll` `73`) and across macOS (`Mach-O`, where `O_CREAT` is `0x0200` instead of `0x40`) and Windows (`PE64`, which uses `HANDLE`s, `CreateFileW`, and `WaitForSingleObject`/`WSAPoll`). By defining normalized PAL semantics in Layer 1 and declarative `with timeout ... do` quotas in Layer 2, `.rglib` libraries (`posix.rglib`, `io.rglib`, `unix-tools`) remain 100% source-compatible across Linux (`x86_64`/`ARM64`), macOS, and Windows.
+Exposing only raw Linux syscall numbers or Linux-specific `O_*` bitflags would break portability across `x86_64` vs `ARM64` Linux (`openat` is `257` on `x86_64` vs `56` on `ARM64`; `poll` is `7` vs `ppoll` `73`) and across macOS (`Mach-O`, where `O_CREAT` is `0x0200` instead of `0x40`) and Windows (`PE64`, which uses `HANDLE`s, `CreateFileW`, and `WaitForSingleObject`/`WSAPoll`). By defining normalized PAL semantics in Layer 1 and declarative `with timeout ... do` quotas in Layer 2, `.ridgunlib` libraries (`posix.ridgunlib`, `io.ridgunlib`, `unix-tools`) remain 100% source-compatible across Linux (`x86_64`/`ARM64`), macOS, and Windows.
 
 ## Acceptance criteria
-- **AC-1 (Duration Literals)**: `lexer.rg` recognizes `<N>_ms` (`N`), `<N>_s` (`N * 1000`), and `<N>_min` (`N * 60000`) as integer millisecond literals.
-- **AC-2 (Cross-Platform PAL Primitives & Target Platform ADTs)**: Built-in `SysOs` (`Linux | MacOS | Windows`) and `SysArch` (`X86_64 | Arm64`), `sys os`, `sys arch`, `sys open mode`, `sys open`, `sys close`, `sys read fd`, `sys write fd`, `sys poll`, `sys terminate`, `sys kill`, `sys call`, `sys deadline ms`, and `sys remaining ms` are supported in `parser.rg`, `typecheck.rg`, `compiler.rg`, `x86_64.rg`, `arm64.rg`, and `vm.rg` (both space-separated and `_`-separated).
+- **AC-1 (Duration Literals)**: `lexer.ridgun` recognizes `<N>_ms` (`N`), `<N>_s` (`N * 1000`), and `<N>_min` (`N * 60000`) as integer millisecond literals.
+- **AC-2 (Cross-Platform PAL Primitives & Target Platform ADTs)**: Built-in `SysOs` (`Linux | MacOS | Windows`) and `SysArch` (`X86_64 | Arm64`), `sys os`, `sys arch`, `sys open mode`, `sys open`, `sys close`, `sys read fd`, `sys write fd`, `sys poll`, `sys terminate`, `sys kill`, `sys call`, `sys deadline ms`, and `sys remaining ms` are supported in `parser.ridgun`, `typecheck.ridgun`, `compiler.ridgun`, `x86_64.ridgun`, `arm64.ridgun`, and `vm.ridgun` (both space-separated and `_`-separated).
 - **AC-3 (`with timeout` Block)**: `with timeout <expr> do <body>` (and `with region <bytes>, timeout <ms> do <body>`) sets the active deadline for the lexical scope, clamps to any stricter outer deadline, restores the outer deadline upon exit, and integrates with `sys remaining ms` and `sys poll`.
 - **AC-4 (Tests & Documentation)**: Automated tests verify `sys os` / `sys arch`, duration literals, `sys open mode` / `sys open` / `sys write fd` / `sys read fd` / `sys close`, `sys poll` (ready and timeout `0`), `sys terminate` / `sys kill`, `sys call`, and `with timeout ... do` (`sys remaining ms`), and `docs/lang/pal-and-system-libraries.md` + `harness/` are updated.
-- **AC-5 (A user definition shadows a builtin)**: A program that defines `rename path` (returning `Bool`) and `remove file`, calls them and passes `remove file` to `map`, gets its own results on the LLVM and x86-64 backends (`tests/cases/names/user_function_shadows_builtin_of_same_name.rg`).
+- **AC-5 (A user definition shadows a builtin)**: A program that defines `rename path` (returning `Bool`) and `remove file`, calls them and passes `remove file` to `map`, gets its own results on the LLVM and x86-64 backends (`tests/cases/names/user_function_shadows_builtin_of_same_name.ridgun`).
 
 ## Traceability
-- Implemented by: `src/main/ridgun/lib/lexer.rg`, `src/main/ridgun/lib/parser.rg`, `src/main/ridgun/lib/typecheck.rg`, `src/main/ridgun/lib/compiler.rg`, `src/main/ridgun/lib/x86_64.rg`, `src/main/ridgun/lib/arm64.rg`, `src/main/ridgun/lib/formatter.rg`, `src/main/ridgun/lib/vm.rg`
-- Tested by: `src/test/ridgun/test lib and plugins.rg`
+- Implemented by: `src/main/ridgun/lib/lexer.ridgun`, `src/main/ridgun/lib/parser.ridgun`, `src/main/ridgun/lib/typecheck.ridgun`, `src/main/ridgun/lib/compiler.ridgun`, `src/main/ridgun/lib/x86_64.ridgun`, `src/main/ridgun/lib/arm64.ridgun`, `src/main/ridgun/lib/formatter.ridgun`, `src/main/ridgun/lib/vm.ridgun`
+- Tested by: `src/test/ridgun/test lib and plugins.ridgun`

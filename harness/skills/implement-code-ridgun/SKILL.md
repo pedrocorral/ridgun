@@ -1,20 +1,20 @@
 ---
 name: implement-code-ridgun
-description: Implement, refactor or review Ridgun (.rg) code and build.rg definitions using the exact Ridgun v0.9.30 grammar, idiomatic -> pipeline chaining (xs map f -> filter g -> results), (+ _ _ +) sequence masks, -> () unit discard, _ =-free side-effect blocks, type system, user-defined generic types (type Result T E, type Page T), lexical closures ((x => expr), (acc x => expr)), module namespaces (module ::, import ... as, mod.Type/Ctor/fn), Native Agent Model (agent, agent sink, agent ::, send ... to, receive from, try receive from, stop), RMM1/RMM2 deterministic memory rules, parallel || DAGs, with timeout quotas, PAL primitives, and pure-Ridgun stable/ridgunc ELF64 toolchain; use for any Ridgun (.rg) change.
+description: Implement, refactor or review Ridgun (.ridgun) code and build.ridgun definitions using the exact Ridgun v0.9.30 grammar, idiomatic -> pipeline chaining (xs map f -> filter g -> results), (+ _ _ +) sequence masks, -> () unit discard, _ =-free side-effect blocks, type system, user-defined generic types (type Result T E, type Page T), lexical closures ((x => expr), (acc x => expr)), module namespaces (module ::, import ... as, mod.Type/Ctor/fn), Native Agent Model (agent, agent sink, agent ::, send ... to, receive from, try receive from, stop), RMM1/RMM2 deterministic memory rules, parallel || DAGs, with timeout quotas, PAL primitives, and pure-Ridgun stable/ridgunc ELF64 toolchain; use for any Ridgun (.ridgun) change.
 ---
 # implement-code-ridgun (`v0.9.30`)
 
-Reading budget: `harness/skills/implement-code-ridgun/references/cheatsheet.rg` (or `docs/lang/spec.md` when a construct is unfamiliar), `build.rg`, and the target `.rg` files under `src/main/ridgun/` or `src/test/ridgun/`.
+Reading budget: `harness/skills/implement-code-ridgun/references/cheatsheet.ridgun` (or `docs/lang/spec.md` when a construct is unfamiliar), `build.ridgun`, and the target `.ridgun` files under `src/main/ridgun/` or `src/test/ridgun/`.
 
 ---
 
 ## 1. Project & Architecture Overview (`v0.9.30`)
-- **100% Pure Ridgun (Zero Rust / Zero `rustc`)**: Both `ridgunc` (`src/main/ridgun/ridgunc/main.rg`) and `stable` (`src/main/ridgun/stable/main.rg`) are written 100% in Ridgun and emit standalone, statically linked Linux ELF64 executables directly to disk via `elf64.rg`, `x86_64.rg` (`EM_X86_64 = 62`), and `arm64.rg` (`EM_AARCH64 = 183` for Raspberry Pi).
+- **100% Pure Ridgun (Zero Rust / Zero `rustc`)**: Both `ridgunc` (`src/main/ridgun/ridgunc/main.ridgun`) and `stable` (`src/main/ridgun/stable/main.ridgun`) are written 100% in Ridgun and emit standalone, statically linked Linux ELF64 executables directly to disk via `elf64.ridgun`, `x86_64.ridgun` (`EM_X86_64 = 62`), and `arm64.ridgun` (`EM_AARCH64 = 183` for Raspberry Pi).
 - **Project Layout**:
-  - `build.rg`: Pure-Ridgun project manifest (`fn :: project name => String`, `project version`, `main entry`, `source dir`, `test dir`, `target dir`).
-  - `src/main/ridgun/lib/*.rg`: Shared library modules (`ast`, `lexer`, `parser`, `typecheck`, `analyzer`, `compiler`, `elf64`, `x86_64`, `arm64`, `formatter`, `vm`). Imported by bare module name (`import ast`).
-  - `src/main/ridgun/<target>/main.rg`: Executable entrypoints (`ridgunc/main.rg` -> `target/ridgunc`, `stable/main.rg` -> `target/stable`).
-  - `src/test/ridgun/test*.rg`: Executable test suites (`test basics.rg`, `test core language.rg`, etc.; `import test`, `assert equals`, `assert true`), compiled and run in parallel by `stable test` via `||map`.
+  - `build.ridgun`: Pure-Ridgun project manifest (`fn :: project name => String`, `project version`, `main entry`, `source dir`, `test dir`, `target dir`).
+  - `src/main/ridgun/lib/*.ridgun`: Shared library modules (`ast`, `lexer`, `parser`, `typecheck`, `analyzer`, `compiler`, `elf64`, `x86_64`, `arm64`, `formatter`, `vm`). Imported by bare module name (`import ast`).
+  - `src/main/ridgun/<target>/main.ridgun`: Executable entrypoints (`ridgunc/main.ridgun` -> `target/ridgunc`, `stable/main.ridgun` -> `target/stable`).
+  - `src/test/ridgun/test*.ridgun`: Executable test suites (`test basics.ridgun`, `test core language.ridgun`, etc.; `import test`, `assert equals`, `assert true`), compiled and run in parallel by `stable test` via `||map`.
 
 ---
 
@@ -24,7 +24,7 @@ Reading budget: `harness/skills/implement-code-ridgun/references/cheatsheet.rg` 
 |---|---|---|
 | `fn :: parse_header String => (Int, [(String, String)], String)` | `fn :: parse header String => Int [String String] String` | Prefer natural spaces in function/built-in names (`FR-COMP-005`) and space-separated tuple/sequence type signatures (`FR-COMP-008`) |
 | `// comment` or `# comment` | `-- comment` | Only `--` starts a comment |
-| `import "lib/ast.rg"` | `import ast` | Bare module identifier, no quotes or path |
+| `import "lib/ast.ridgun"` | `import ast` | Bare module identifier, no quotes or path |
 | `fn :: main () => ()` | `fn :: main => ()` | 0-arg functions never put `()` before `=>` |
 | `x : xs` in an expression | `[x] :: xs` | `:` is only for pattern matching `(x:xs)`; `::` concatenates two lists |
 | `a && b`, `a \|\| b`, `!a` | `a and b`, `a or b`, `not a`, `a xor b` | Logical operators are lowercase words (`\|\|` is the parallel block/combinator prefix) |
@@ -90,7 +90,7 @@ Every `=` (in `fn ::`, `op ::`, local bindings `x =` / `mut x =`, and guard bran
            | otherwise = 405
    ```
 3. **Parallel DAG Block (`|| expr -> var` and `||.`)**:
-   - Evaluates independent branches in parallel, automatically ordering dataflow dependencies (`->`). Static analysis (`analyzer.rg`) rejects dependency cycles (`ErrDagCycle`) at compile time.
+   - Evaluates independent branches in parallel, automatically ordering dataflow dependencies (`->`). Static analysis (`analyzer.ridgun`) rejects dependency cycles (`ErrDagCycle`) at compile time.
    - Can appear below an inline header expression or at the start/middle of a block (closed with `||.` when sequential lines follow):
    ```ridgun
    -- Header expression fed by parallel || DAG lines below:
@@ -330,15 +330,15 @@ Ridgun achieves deterministic memory management with **zero Garbage Collector pa
 
 ## 7. Toolchain & Verification Workflow (`stable` and `ridgunc`)
 1. **Scaffold / Dependencies / Plugins (`FR-TOOL-002`, `FR-TOOL-003`)**:
-   - `stable new [--lib] <name>` or `stable init [--lib]`: create `build.rg`, `src/main/ridgun/...`, `src/test/ridgun/test main.rg`, and `.gitignore`.
-   - `stable deps` or `stable add <package>`: synchronize the packages `build.rg` names (installed by omni, locked in `omni.lock`) into `.stable/deps/`. Paths and URLs are rejected.
-   - `stable tasks` / `stable plugins` / `stable <task_name>`: inspect or run custom `fn :: task <name> => String` definitions and `plugins/*.rg` extensions from `build.rg`.
+   - `stable new [--lib] <name>` or `stable init [--lib]`: create `build.ridgun`, `src/main/ridgun/...`, `src/test/ridgun/test main.ridgun`, and `.gitignore`.
+   - `stable deps` or `stable add <package>`: synchronize the packages `build.ridgun` names (installed by omni, locked in `omni.lock`) into `.stable/deps/`. Paths and URLs are rejected.
+   - `stable tasks` / `stable plugins` / `stable <task_name>`: inspect or run custom `fn :: task <name> => String` definitions and `plugins/*.ridgun` extensions from `build.ridgun`.
    - `stable install [target]`: build and install native ELF64 binaries into `~/.local/bin/` and `bin/`.
-2. **Format**: `./target/stable format [file.rg ...]` (to apply canonical tabular alignment).
-3. **Type-check & Static Analysis**: `./target/stable check` (checks all modules in `src/main/ridgun/` in parallel) or `./target/ridgunc check <file.rg>`.
-4. **Run Tests**: `./target/stable test` (compiles and runs all `src/test/ridgun/test*.rg` suites in parallel via `||map`).
+2. **Format**: `./target/stable format [file.ridgun ...]` (to apply canonical tabular alignment).
+3. **Type-check & Static Analysis**: `./target/stable check` (checks all modules in `src/main/ridgun/` in parallel) or `./target/ridgunc check <file.ridgun>`.
+4. **Run Tests**: `./target/stable test` (compiles and runs all `src/test/ridgun/test*.ridgun` suites in parallel via `||map`).
 5. **Build Native ELF64 Executables & Libraries (`FR-COMP-004`, `FR-COMP-006`)**:
-   - Project targets: `./target/stable built` (or `./target/stable built lib` for `.rglib` + `.so` libraries)
-   - Single file (`x86_64` default): `./target/ridgunc build <entry.rg> -o <output_bin>`
-   - Library bundle (`.rglib`) & ELF64 `ET_DYN` shared object (`.so`): `./target/ridgunc build --lib <lib.rg> -o <out.rglib>` and `./target/ridgunc build --so <lib.rg> -o <lib.so>`
-   - Cross-compile for `ARM64` (`AArch64` / Raspberry Pi): `./target/ridgunc build --target arm64-linux <entry.rg> -o <output_bin_arm64>`
+   - Project targets: `./target/stable built` (or `./target/stable built lib` for `.ridgunlib` + `.so` libraries)
+   - Single file (`x86_64` default): `./target/ridgunc build <entry.ridgun> -o <output_bin>`
+   - Library bundle (`.ridgunlib`) & ELF64 `ET_DYN` shared object (`.so`): `./target/ridgunc build --lib <lib.ridgun> -o <out.ridgunlib>` and `./target/ridgunc build --so <lib.ridgun> -o <lib.so>`
+   - Cross-compile for `ARM64` (`AArch64` / Raspberry Pi): `./target/ridgunc build --target arm64-linux <entry.ridgun> -o <output_bin_arm64>`

@@ -84,17 +84,16 @@ No loose top-level expressions are allowed. Everything that runs must be called 
 ### CLI Usage
 
 ```
-ridgunc <command> [options] <file.rg>
+ridgunc <command> [options] <file.ridgun>
 ```
 
 | Command | Status | Purpose |
 |---|---|---|
-| `run <file.rg>` | ✅ Active | Compile and execute a Ridgun source file |
-| `check <file.rg>` | ✅ Active | Type-check and analyze static strategies without running |
-| `compile <file.rg> [-o out.rgc]` | ✅ Active | Emit `.rgc` bytecode artifact |
-| `build <file.rg> [-o binary] [--target arch]` | ✅ Active | Build standalone native ELF64 executable |
-| `build --lib <file.rg> [-o out.rglib]` | ✅ Active | Build reusable Ridgun library (`.rglib` & `.so`) |
-| `build --so <file.rg> [-o out.so]` | ✅ Active | Build native ELF64 shared library (`ET_DYN` `.so`) |
+| `run <file.ridgun>` | ✅ Active | Compile and execute a Ridgun source file |
+| `check <file.ridgun>` | ✅ Active | Type-check and analyze static strategies without running |
+| `build <file.ridgun> [-o binary] [--target arch]` | ✅ Active | Build standalone native ELF64 executable |
+| `build --lib <file.ridgun> [-o out.ridgunlib]` | ✅ Active | Build reusable Ridgun library (`.ridgunlib` & `.so`) |
+| `build --so <file.ridgun> [-o out.so]` | ✅ Active | Build native ELF64 shared library (`ET_DYN` `.so`) |
 | `version` / `--version` | ✅ Active | Show compiler version and target architecture |
 | `help` / `--help` | ✅ Active | Show usage information |
 
@@ -128,7 +127,7 @@ Functions and natural-language/infix operators are declared by a type signature 
   - Operator words (`and`, `or`, `xor`, `not`, `shl`, `shr`, `rotl`, `rotr`) can be words of a function name in any position (`fn :: mask xor Int Int`, `fn :: not empty [Int] => Bool`). A call is read as that function when its words form a known name with the right number of arguments (`mask xor 6 3`); everywhere else the words are operators (`a xor b`). `not` and `with` work the same way: where the tokens spell a declared name that holds them (`loaded or not 1 []`, `with record r 2`), they are words of that name; elsewhere `not` negates and `with` updates a record.
   - The first word of a multi-word call may also be a local variable: in `is ok err = err kind eq (kind err) KNone`, the words `err kind eq` form the known name, and `err` is not read as the subject of a call of `kind`.
   - Built-in runtime and test functions can be called with spaces (`assert equals a b`, `str len s`, `read file p`, `cmm live blocks`) while keeping `_` forms backward-compatible.
-  - First-class multi-word function references (`map double val xs`, `||map double val xs`, `filter is even xs`, `fold add pair 0 xs`) and `.rg` filenames with spaces (`src/test/ridgun/test core language.rg`) are supported natively by `ridgunc` and `stable`.
+  - First-class multi-word function references (`map double val xs`, `||map double val xs`, `filter is even xs`, `fold add pair 0 xs`) and `.ridgun` filenames with spaces (`src/test/ridgun/test core language.ridgun`) are supported natively by `ridgunc` and `stable`.
 
 ### Polymorphic Type Variables (`A`..`Z`) & Contextual Keywords (`type`, `with`)
 
@@ -759,10 +758,10 @@ expand type AppConfig = tls: Bool
 
 #### Module Namespaces, Qualified Access & Strict Per-Module Import Visibility (`FR-COMP-012`)
 
-Every `.rg` file or `.rglib` bundle defines a module namespace (derived from its file stem or an explicit `module :: <name>` header) and may import other modules via `import <mod>` or `import <mod> as <alias>`.
+Every `.ridgun` file or `.ridgunlib` bundle defines a module namespace (derived from its file stem or an explicit `module :: <name>` header) and may import other modules via `import <mod>` or `import <mod> as <alias>`.
 
 1. **Multi-File Modules (`module :: <name>`)**:
-   - Multiple files declaring the same `module :: <name>` header (for example, `orm.rg` and `orm_changeset.rg` both starting with `module :: orm`) share a single logical module namespace `orm` and see each other's types, constructors, record fields, and functions directly.
+   - Multiple files declaring the same `module :: <name>` header (for example, `orm.ridgun` and `orm_changeset.ridgun` both starting with `module :: orm`) share a single logical module namespace `orm` and see each other's types, constructors, record fields, and functions directly.
 2. **Qualified Access (`mod.Type`, `mod.Constructor`, `mod.field`, `mod.fn`)**:
    - Exported types, Sum ADT constructors, Product Record field accessors, record updates (`with`), and functions can be referenced with a `<mod_or_alias>.` prefix (`http.Config`, `db.Status`, `http.Ok 200`, `http.port cfg`, `http.check status cfg`).
 3. **Strict 3-Tier Per-Module Unqualified Name Resolution**:
@@ -1042,7 +1041,7 @@ Libraries are imported with `import`:
 import test
 ```
 
-### Unit Testing (`lib/test.rg`)
+### Unit Testing (`lib/test.ridgun`)
 
 A simple test library using `echo` for terminal output.
 
@@ -1116,7 +1115,7 @@ fn :: main => ()
 
 ## Canonical Source Code Formatting (`stable format` & Editor Tooling)
 
-> **Aesthetic Only — Not a Compiler Requirement (`FR-TOOL-001`)**: Ridgun's lexer and parser are insensitive to horizontal column alignment. Unaligned and column-aligned `.rg` source files are 100% equivalent to `ridgunc`. The rules below define the **canonical aesthetic layout** applied by `stable format` and GNU Emacs `ridgun-mode` (`C-c C-f`).
+> **Aesthetic Only — Not a Compiler Requirement (`FR-TOOL-001`)**: Ridgun's lexer and parser are insensitive to horizontal column alignment. Unaligned and column-aligned `.ridgun` source files are 100% equivalent to `ridgunc`. The rules below define the **canonical aesthetic layout** applied by `stable format` and GNU Emacs `ridgun-mode` (`C-c C-f`).
 
 1. **Alignment Group per Signature (`fn ::` / `op ::`)**:
    - Each `fn ::` or `op ::` declaration starts an alignment group spanning its signature, its pattern-matching clauses, and its `|| expr -> var` bindings, ending at the next top-level declaration (`fn`, `op`, `type`, `import`, `global`, `context`, `shared`, `hardware`, `@`).
@@ -1155,8 +1154,8 @@ Ridgun provides standard sequential collection combinators (`map`, `filter`, `fo
 ## Verbatim File I/O, Byte Streams & POSIX Built-ins (`FR-VM-001`, `FR-VM-002`)
 
 1. **Verbatim File & Byte Stream I/O (`FR-VM-001`)**:
-   - `read file : String => String` reads file contents verbatim (preserving `\r\n` and exact EOF newline presence/absence, and never running the compiler's `.rg` `import` preprocessor on data files).
-   - `load rg source : String => String` is used exclusively by the compiler toolchain when loading `.rg` source files with `import` splicing.
+   - `read file : String => String` reads file contents verbatim (preserving `\r\n` and exact EOF newline presence/absence, and never running the compiler's `.ridgun` `import` preprocessor on data files).
+   - `load rg source : String => String` is used exclusively by the compiler toolchain when loading `.ridgun` source files with `import` splicing.
    - `read bytes : String => Tensor[U8]` reads a file as bytes. `write bytes : String Tensor[U8] => ()` writes them (it also accepts a `[Int]` of values `0..255`).
    - `tensor from str : String => Tensor[U8]` and `tensor to str : Tensor[U8] => String` convert with one copy; any byte `0..255` is allowed.
    - `tensor u8 from list : [Int] => Tensor[U8]` makes a byte tensor from a list of values `0..255` in one allocation; a value outside `0..255` stops the program with `runtime error: U8 element out of 0..255`. (`tensor from list` of `[Int]` gives a `Tensor[Int]`.)
@@ -1171,7 +1170,7 @@ Ridgun provides standard sequential collection combinators (`map`, `filter`, `fo
      - `type SysOs = Linux | MacOS | Windows` (`sys os => SysOs`, open to extension via `expand type SysOs = ...`)
      - `type SysArch = X86_64 | Arm64` (`sys arch => SysArch`, open to extension via `expand type SysArch = ...`)
    - **Duration Unit Literals**: Integer literals accept `_ms` (`* 1`), `_s` (`* 1000`), and `_min` (`* 60000`) suffixes (e.g., `500_ms`, `5_s`, `2_min`), complementing byte-unit suffixes (`_KB`, `_MB`, `_GB`).
-   - **Layer 1 — Cross-Platform PAL Primitives for `.rglib` System Libraries (`posix.rglib` / `io.rglib`)**:
+   - **Layer 1 — Cross-Platform PAL Primitives for `.ridgunlib` System Libraries (`posix.ridgunlib` / `io.ridgunlib`)**:
      - `sys os => SysOs` and `sys arch => SysArch` (compile-time target OS and architecture Sum ADTs)
      - `sys open mode String String => Int` (`path`, portable mode `"r"`, `"w"`, `"a"`, `"rw"`, `"w+"`, `"a+"` -> descriptor/handle `>= 0` or `-errno`, translated per OS target)
      - `sys open String Int Int => Int` (`path`, Ridgun PAL normalized `flags` (`0` = read, `1` = write, `2` = rdwr, `64` = create, `512` = trunc, `1024` = append, `2048` = nonblock), `mode` -> `fd >= 0` or `-errno`)
@@ -1192,10 +1191,10 @@ Ridgun provides standard sequential collection combinators (`map`, `filter`, `fo
          rc  = sys poll fd 1 rem
          rc
        ```
-     - See [`docs/lang/pal-and-system-libraries.md`](pal-and-system-libraries.md) for the complete PAL & System Libraries (`.rglib`) architecture specification.
-4. **Reusable Library Compilation (`.rglib` & ELF64 `.so`) and Extensible `stable` (`FR-COMP-006`, `FR-TOOL-003`)**:
-   - `ridgunc build --lib <file.rg> -o <out.rglib>` and `ridgunc build --so <file.rg> -o <lib.so>` (or `stable built lib` / `stable new --lib <name>`) compile modules without requiring `fn :: main => ()` and preserve all exported functions, operators, and types.
-   - `stable` discovers custom `fn :: task <words...> => String` commands and `fn :: plugins => [String]` extensions (`plugins/*.rg`, `.stable/plugins/*.rg`), listed via `stable tasks` and `stable plugins`.
+     - See [`docs/lang/pal-and-system-libraries.md`](pal-and-system-libraries.md) for the complete PAL & System Libraries (`.ridgunlib`) architecture specification.
+4. **Reusable Library Compilation (`.ridgunlib` & ELF64 `.so`) and Extensible `stable` (`FR-COMP-006`, `FR-TOOL-003`)**:
+   - `ridgunc build --lib <file.ridgun> -o <out.ridgunlib>` and `ridgunc build --so <file.ridgun> -o <lib.so>` (or `stable built lib` / `stable new --lib <name>`) compile modules without requiring `fn :: main => ()` and preserve all exported functions, operators, and types.
+   - `stable` discovers custom `fn :: task <words...> => String` commands and `fn :: plugins => [String]` extensions (`plugins/*.ridgun`, `.stable/plugins/*.ridgun`), listed via `stable tasks` and `stable plugins`.
 
 ---
 

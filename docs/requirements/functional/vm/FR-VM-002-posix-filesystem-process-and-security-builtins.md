@@ -49,4 +49,4 @@ The `ridgunc` runtime SHALL provide direct OS/POSIX built-in functions for files
 - AC1: `list_dir` and `file_lstat` inspect directories, permissions, sizes, timestamps, and symlinks without spawning a shell.
 - AC2: `sys_exit 1` terminates the Ridgun binary with OS exit code `1`.
 - AC3: `sys_exec` and `sys_execve` execute target binaries directly with argument vectors containing spaces or shell metacharacters without shell interpretation.
-- AC4: `remove_file`, `remove_dir` and `rename_path` remove a file, remove an empty folder and rename (replacing the target) with `0`, and return `-2` for a missing path and `-39` for `remove_dir` of a folder with files (`tests/cases/files/remove_file_dir_and_rename_path_return_errno.rg`).
+- AC4: `remove_file`, `remove_dir` and `rename_path` remove a file, remove an empty folder and rename (replacing the target) with `0`, and return `-2` for a missing path and `-39` for `remove_dir` of a folder with files (`tests/cases/files/remove_file_dir_and_rename_path_return_errno.ridgun`).

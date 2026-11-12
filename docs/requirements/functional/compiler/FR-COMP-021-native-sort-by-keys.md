@@ -40,4 +40,4 @@ libs builds grouping, counting and ordering on lists and tensors. Sorting in Rid
 - A comparison function given by the caller.
 
 ## Implementation status
-Implemented in 0.9.44 (`NSortBy`): LLVM `@__rg_sort_by`, x86-64 `sortby.s`; ARM64 emits a placeholder. Design and measurements: `docs/etc/gentensor.md`, "Native sort by keys (0.9.44)". Tests: `tests/cases/lists/sort_by_ints_and_texts.rg`, `tests/cases/lists/sort_by_lists_of_different_lengths_fails.rg`, `tests/cases/perf/sort_by_100k_elements.rg`.
+Implemented in 0.9.44 (`NSortBy`): LLVM `@__rg_sort_by`, x86-64 `sortby.s`; ARM64 emits a placeholder. Design and measurements: `docs/etc/gentensor.md`, "Native sort by keys (0.9.44)". Tests: `tests/cases/lists/sort_by_ints_and_texts.ridgun`, `tests/cases/lists/sort_by_lists_of_different_lengths_fails.ridgun`, `tests/cases/perf/sort_by_100k_elements.ridgun`.

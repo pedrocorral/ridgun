@@ -128,6 +128,6 @@ O Ridgun foi feito para si se alguma vez quis:
 1. **Escrever ferramentas de sistemas, compiladores, analisadores ou utilitários CLI** que arranquem em microssegundos, pesem apenas algumas centenas de KB e não possam quebrar por ponteiros nulos nem efeitos colaterais ocultos.
 2. **Construir sistemas concorrentes e servidores baseados no Modelo Nativo de Agentes (`agent`, `send ... to`, `receive from`, `stop`)**, onde qualquer função pura se converte num agente com ou sem estado isolado e o compilador escolhe inteligentemente entre execução *green-thread* ultraleve e threads nativas multinúcleo.
 3. **Programar algoritmos, pipelines de dados ou álgebra de tensores** onde o compilador verifique por si até as dimensões das matrizes (`Tensor[M, K] * Tensor[K, N] => Tensor[M, N]`) antes de executar o que quer que seja.
-4. **Desfrutar a ler o seu próprio código**: que cada ficheiro `.rg` pareça uma página de um livro bem paginado graças ao formatador tabular automático (`stable format`).
+4. **Desfrutar a ler o seu próprio código**: que cada ficheiro `.ridgun` pareça uma página de um livro bem paginado graças ao formatador tabular automático (`stable format`).
 
 Ficou com curiosidade? Passe ao **Capítulo 01** e vamos escrever o nosso primeiro programa em menos de dois minutos.

@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   editors/gedit/ridgun.lang
-  GtkSourceView language specification for Ridgun (.rg)
+  GtkSourceView language specification for Ridgun (.ridgun)
   Compatible with gedit (GtkSourceView 3/4) and GNOME Text Editor (GtkSourceView 5)
   @implements FR-TOOL-001
 -->
 <language id="ridgun" name="Ridgun" version="2.0" _section="Source">
   <metadata>
     <property name="mimetypes">text/x-ridgun;application/x-ridgun</property>
-    <property name="globs">*.rg;*.rglib;build.rg</property>
+    <property name="globs">*.ridgun;*.ridgunlib;build.ridgun;*.rg;*.rglib;build.rg</property>
     <property name="line-comment-start">--</property>
   </metadata>
 

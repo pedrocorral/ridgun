@@ -23,6 +23,6 @@ verified_by: [TS-COMP-018]
 Before 0.9.35 the compiler ignored the element type. `Tensor[String * 3]` compiled, `t_(1) = "hola"` stored nothing and `t_(1)` returned `0`, without any error. `Tensor[Bool * n]` lost `True` the same way. Found while reviewing the ridgun-libs request for an `Array A` type (2026-11-07).
 
 ## Acceptance Criteria
-1. **AC-1**: `Tensor_GPU[String * 3]` in an expression fails to build with the message of §2 (`tests/cases/tensors/tensor_gpu_of_string_fails.rg`).
-2. **AC-2**: `Tensor_GPU[Bool * n]` in a parameter type fails to build, and the message names the function (`tests/cases/tensors/tensor_gpu_of_bool_in_signature_fails.rg`).
-3. **AC-3**: `Int`, `U64`, `Byte` and `Real` tensors still build, and integer tensors keep the values written to them (`tests/cases/tensors/numeric_tensor_elements_still_build.rg`).
+1. **AC-1**: `Tensor_GPU[String * 3]` in an expression fails to build with the message of §2 (`tests/cases/tensors/tensor_gpu_of_string_fails.ridgun`).
+2. **AC-2**: `Tensor_GPU[Bool * n]` in a parameter type fails to build, and the message names the function (`tests/cases/tensors/tensor_gpu_of_bool_in_signature_fails.ridgun`).
+3. **AC-3**: `Int`, `U64`, `Byte` and `Real` tensors still build, and integer tensors keep the values written to them (`tests/cases/tensors/numeric_tensor_elements_still_build.ridgun`).

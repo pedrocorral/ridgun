@@ -35,4 +35,4 @@ Eterval reads the clock twice per latency measurement. Today `sys time ms` costs
 - Other clocks (`CLOCK_PROCESS_CPUTIME_ID`, `CLOCK_BOOTTIME`) and time zones.
 
 ## Implementation status
-Implemented in 0.9.48 (TASK-0063): `clock_read` in the shared runtime extension (`docs/etc/runtime_ext.md`, builtins 100-102). The first read gets the auxiliary vector with `prctl(PR_GET_AUXV)` (Linux 6.4 and later) or `/proc/self/auxv`: the start code of the runtime does not keep the initial stack pointer, and changing it would move every runtime address. Test: `tests/cases/runtime/clocks_through_the_vdso.rg`.
+Implemented in 0.9.48 (TASK-0063): `clock_read` in the shared runtime extension (`docs/etc/runtime_ext.md`, builtins 100-102). The first read gets the auxiliary vector with `prctl(PR_GET_AUXV)` (Linux 6.4 and later) or `/proc/self/auxv`: the start code of the runtime does not keep the initial stack pointer, and changing it would move every runtime address. Test: `tests/cases/runtime/clocks_through_the_vdso.ridgun`.

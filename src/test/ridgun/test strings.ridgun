@@ -1,0 +1,41 @@
+-- ============================================================
+-- src/test/ridgun/test strings.ridgun
+-- Ridgun Test: String Operations (using test library)
+-- ============================================================
+
+import test
+
+fn :: lstat kind (Bool, String, Int, Int, Int, String, String, Int, String) => String
+      lstat kind (_, k, _, _, _, _, _, _, _) = k
+
+fn :: classify token String  => String
+      classify token ""      =  "empty"
+      classify token "alpha" =  "first"
+      classify token "beta"  =  "second"
+      classify token s       =  "other:{s}"
+
+fn :: main => ()
+      main =
+        echo "=== String Equality ==="
+        assert equals "hello" "hello"
+        assert equals "world" "world"
+        assert equals ("rid" + "gun") "ridgun"
+        name = "phase2"
+        slot_c = 37
+        assert equals "runtime:{name}:{slot_c}" "runtime:phase2:37"
+        assert equals (classify token "") "empty"
+        assert equals (classify token "alpha") "first"
+        assert equals (classify token "beta") "second"
+        assert equals (classify token "gamma") "other:gamma"
+        echo "=== Escape Sequences ==="
+        assert equals "tab\there" "tab\there"
+        assert equals "line1\nline2" "line1\nline2"
+        echo "=== Verbatim File I/O, Byte Streams & POSIX Built-ins ==="
+        write file "target/.test_verbatim.txt" "import fake_module\r\nno_trailing_newline"
+        assert equals (read file "target/.test_verbatim.txt") "import fake_module\r\nno_trailing_newline"
+        write bytes "target/.test_bytes.bin" [0, 65, 255, 10]
+        assert equals (tensor to list (read bytes "target/.test_bytes.bin")) [0, 65, 255, 10]
+        assert equals (lstat kind (file lstat "target/.test_bytes.bin")) "file"
+        assert equals (sha256 str "abc") "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        shell exec "rm -f target/.test_verbatim.txt target/.test_bytes.bin"
+        echo "=== All string tests passed ==="

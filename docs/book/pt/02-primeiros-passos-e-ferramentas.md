@@ -4,7 +4,7 @@ Há linguagens cujo compilador é maravilhoso, mas cujo sistema de projetos pare
 
 Em Ridgun fizemos uma promessa muito simples desde o primeiro dia:
 
-> *"Só haverá dois executáveis em todo o ecossistema (`ridgunc` e `stable`), ambos serão escritos no próprio Ridgun, e o ficheiro de configuração do projeto (`build.rg`) será código Ridgun normal e corrente. Nem JSON, nem YAML, nem TOML, nem invenções estranhas."*
+> *"Só haverá dois executáveis em todo o ecossistema (`ridgunc` e `stable`), ambos serão escritos no próprio Ridgun, e o ficheiro de configuração do projeto (`build.ridgun`) será código Ridgun normal e corrente. Nem JSON, nem YAML, nem TOML, nem invenções estranhas."*
 
 Vamos ver como se usam.
 
@@ -12,22 +12,19 @@ Vamos ver como se usam.
 
 ## 2.1. `ridgunc`: O atirador furtivo para ficheiros soltos
 
-Quando tem um único ficheiro `.rg` em mãos e quer testar uma ideia rápida, analisar os seus tipos ou compilar um executável, fala diretamente com o **`ridgunc`**.
+Quando tem um único ficheiro `.ridgun` em mãos e quer testar uma ideia rápida, analisar os seus tipos ou compilar um executável, fala diretamente com o **`ridgunc`**.
 
-Só tem 4 comandos que realmente precisa de recordar:
+Só tem 3 comandos que realmente precisa de recordar:
 
 ```bash
 # 1. "Isto compila ou meti água com algum tipo?"
-ridgunc check experiencia.rg
+ridgunc check experiencia.ridgun
 
 # 2. "Executa já!" (Compila e corre de uma só vez)
-ridgunc run experiencia.rg
+ridgunc run experiencia.ridgun
 
 # 3. "Faz-me um binário nativo ELF pronto a levar"
-ridgunc build experiencia.rg -o meu_programa
-
-# 4. "Gera-me o artefacto intermédio de bytecode (.rgc)"
-ridgunc compile experiencia.rg -o experiencia.rgc
+ridgunc build experiencia.ridgun -o meu_programa
 ```
 
 ### O superpoder oculto de `ridgunc check`
@@ -51,25 +48,25 @@ A estrutura de pastas de um projeto Ridgun não tem mistério:
 
 ```text
 minha-super-ferramenta/
-├── build.rg                  # O manifesto do projeto (é código Ridgun!)
+├── build.ridgun              # O manifesto do projeto (é código Ridgun!)
 ├── src/
 │   ├── main/
 │   │   └── ridgun/
 │   │       ├── lib/          # Os seus módulos reutilizáveis (`import utilitarios`)
 │   │       └── app/
-│   │           └── main.rg   # Ponto de entrada (`main => ()`)
+│   │           └── main.ridgun # Ponto de entrada (`main => ()`)
 │   └── test/
-│       └── ridgun/           # As suas baterias de testes (`test *.rg`)
-│           └── test tudo.rg
+│       └── ridgun/           # As suas baterias de testes (`test *.ridgun`)
+│           └── test tudo.ridgun
 └── target/                   # Onde aparecem os binários compilados
 ```
 
 ---
 
-## 2.3. `build.rg`: Um ficheiro de configuração que nunca lhe mentirá
+## 2.3. `build.ridgun`: Um ficheiro de configuração que nunca lhe mentirá
 
 Porque nos recusamos a usar YAML ou TOML para configurar um projeto Ridgun?
-Porque em YAML engana-se em dois espaços de indentação e só descobre quando falha a implementação. Em contrapartida, como **`build.rg` é um ficheiro Ridgun**, tem tipos estáticos, passa pelo `stable check` e alinha-se sozinho com `stable format`:
+Porque em YAML engana-se em dois espaços de indentação e só descobre quando falha a implementação. Em contrapartida, como **`build.ridgun` é um ficheiro Ridgun**, tem tipos estáticos, passa pelo `stable check` e alinha-se sozinho com `stable format`:
 
 ```ridgun
 type ProjectInfo =
@@ -97,7 +94,7 @@ strict mode =  True
 Se cometer um erro ao escrever um campo, o próprio compilador avisa-o. Sem surpresas.
 
 ### O modo estrito (`--strict` / `strict mode = True`)
-Por omissão, tanto o `ridgunc` como os novos projetos criados com `stable new` ou `stable init` têm o modo estrito **desativado** para que possa prototipar com total liberdade. Quando quiser blindar o estilo canónico de um projeto (como fazemos no próprio compilador do Ridgun), pode passar `--strict` ao `ridgunc` ou adicionar `strict mode = True` ao seu `build.rg`. O modo estrito exige duas regras de elegância:
+Por omissão, tanto o `ridgunc` como os novos projetos criados com `stable new` ou `stable init` têm o modo estrito **desativado** para que possa prototipar com total liberdade. Quando quiser blindar o estilo canónico de um projeto (como fazemos no próprio compilador do Ridgun), pode passar `--strict` ao `ridgunc` ou adicionar `strict mode = True` ao seu `build.ridgun`. O modo estrito exige duas regras de elegância:
 1. **Nomes de `fn ::` e `op ::` com espaços naturais, sem `_`**: as declarações devem usar espaços (`fn :: calcular imposto`, nunca `fn :: calcular_imposto`).
 2. **Retornos múltiplos separados por espaços após `=>`**: quando uma função ou operador devolve vários valores, a sua assinatura de saída escreve-se `=> Int Int` ou `=> Estado Int` (nunca `=> (Int, Int)` com parênteses nem vírgulas).
 
@@ -111,7 +108,7 @@ Quando está a trabalhar dentro do seu projeto, o seu dia a dia resume-se a quat
 ```bash
 stable format
 ```
-O seu colega põe três espaços antes do `=>` e você põe um? Tanto faz. Executa `stable format` e em menos de um segundo deixa **todos** os ficheiros `.rg` do repositório alinhados como um relógio suíço.
+O seu colega põe três espaços antes do `=>` e você põe um? Tanto faz. Executa `stable format` e em menos de um segundo deixa **todos** os ficheiros `.ridgun` do repositório alinhados como um relógio suíço.
 
 ### 2. `stable check` — O radar instantâneo
 ```bash
@@ -123,10 +120,10 @@ Percorre todos os módulos de `src/main/ridgun/`, verifica tipos, construtores, 
 ```bash
 stable test
 ```
-Procura todas as suites `src/test/ridgun/test *.rg`, executa-as e comprova cada `assert equals` e `assert true`.
+Procura todas as suites `src/test/ridgun/test *.ridgun`, executa-as e comprova cada `assert equals` e `assert true`.
 
 ```ridgun
--- Exemplo de src/test/ridgun/test matematica.rg
+-- Exemplo de src/test/ridgun/test matematica.ridgun
 import test
 
 dobro Int => Int
@@ -148,12 +145,12 @@ Compila todos os alvos nativos em `target/`. E se algum dia quiser apagar `targe
 
 ## 2.5. Como importo um ficheiro a partir de outro? (`import`)
 
-Sem caminhos relativos infernais do tipo `../../../lib/coisas.rg`. Se tiver um ficheiro `src/main/ridgun/lib/cadeias.rg`, em qualquer outro ficheiro escreve mesmo no topo:
+Sem caminhos relativos infernais do tipo `../../../lib/coisas.ridgun`. Se tiver um ficheiro `src/main/ridgun/lib/cadeias.ridgun`, em qualquer outro ficheiro escreve mesmo no topo:
 
 ```ridgun
 import cadeias
 ```
 
-E pronto: todas as funções e tipos de `cadeias.rg` ficam disponíveis como se estivessem no seu próprio ficheiro. E o que acontece se o módulo `A` fizer `import cadeias`, o módulo `B` também fizer `import cadeias`, e o seu `main.rg` importar `A` e `B`? Fique descansado: o carregador do Ridgun lembra-se de que ficheiros canónicos já leu e **só o inclui uma vez**.
+E pronto: todas as funções e tipos de `cadeias.ridgun` ficam disponíveis como se estivessem no seu próprio ficheiro. E o que acontece se o módulo `A` fizer `import cadeias`, o módulo `B` também fizer `import cadeias`, e o seu `main.ridgun` importar `A` e `B`? Fique descansado: o carregador do Ridgun lembra-se de que ficheiros canónicos já leu e **só o inclui uma vez**.
 
 Agora que tem a caixa de ferramentas controlada, passemos ao **Capítulo 03** para dominar as funções, os tipos, os blocos e os truques com cadeias de texto.

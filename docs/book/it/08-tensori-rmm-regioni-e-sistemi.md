@@ -194,7 +194,7 @@ Fermati un secondo a guardare quelle ~40 righe di codice:
 - `conta ritorni` viene compilata in un `loop` nativo con 0 byte di stack grazie alla TCO automatica.
 - `||map analizza file percorsi` elabora i file in parallelo su tutti i core della tua CPU, e il blocco `||` calcola simultaneamente le righe formattate, il totale delle righe e il totale dei byte.
 - La memoria temporanea viene liberata deterministicamente mediante **`RMM1`/`RMM2`**.
-- E quando esegui `ridgunc build rg_wc.rg -o rg-wc`, ottieni un binario nativo autonomo da ~350 KB pronto da copiare in `/usr/local/bin`.
+- E quando esegui `ridgunc build rg_wc.ridgun -o rg-wc`, ottieni un binario nativo autonomo da ~350 KB pronto da copiare in `/usr/local/bin`.
 
 ---
 

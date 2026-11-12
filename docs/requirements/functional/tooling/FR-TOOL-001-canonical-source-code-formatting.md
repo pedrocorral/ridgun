@@ -12,14 +12,14 @@ tests: []
 # FR-TOOL-001 — Canonical aesthetic source code formatting (`stable format`)
 
 ## Statement
-The `stable` build tool SHALL provide a `format` command (`stable format [path...]` and interactive `stable> format [path...]`) that formats Ridgun (`.rg`) source files according to the canonical signature-aligned layout rules defined in `ridgun-mode.el`, purely as an aesthetic tooling transformation without making column alignment a compiler requirement.
+The `stable` build tool SHALL provide a `format` command (`stable format [path...]` and interactive `stable> format [path...]`) that formats Ridgun (`.ridgun`) source files according to the canonical signature-aligned layout rules defined in `ridgun-mode.el`, purely as an aesthetic tooling transformation without making column alignment a compiler requirement.
 
 ## Rationale
 Ridgun's column-aligned signatures (`fn ::` / `op ::`), pattern clauses, and `where` bindings make mathematical and natural-language definitions immediately scannable. Providing a deterministic, self-hosted `stable format` command ensures uniform code aesthetics across editors and CI without coupling the `ridgunc` parser/compiler to whitespace alignment rules.
 
 ## Canonical Formatting Specification
 
-> **Non-normative for Compilation**: The `ridgunc` lexer and parser are whitespace-agnostic within a line. Unformatted and formatted `.rg` files are semantically identical and both compile without error or warning.
+> **Non-normative for Compilation**: The `ridgunc` lexer and parser are whitespace-agnostic within a line. Unformatted and formatted `.ridgun` files are semantically identical and both compile without error or warning.
 
 ### 1. Alignment Group Boundaries
 - Each `fn :: ...` or `op :: ...` declaration starts an **alignment group** extending through its definition clauses and `where` bindings until the next top-level declaration (`fn`, `op`, `type`, `import`, `global`, `context`, `shared`, `hardware`, or `@`).
@@ -55,9 +55,9 @@ Ridgun's column-aligned signatures (`fn ::` / `op ::`), pattern clauses, and `wh
 - **Blank lines and comments**: Blank lines are emitted as empty lines (`""` with trailing whitespace stripped); standalone comment lines (`-- ...`) at the top level stay at column 0, and inside a function body follow the surrounding indentation.
 
 ## Acceptance Criteria
-- AC1: Given an unaligned Ridgun `.rg` file containing `fn ::` and `op ::` declarations with multiple clauses, guards, and `where` bindings, when `stable format <file>` is executed, then the file is rewritten in-place with aligned LHS columns ($C_0 = 6$), aligned `=>`/`=`/`->` columns ($C_{\text{arrow}}$), and 2-space structural indentation.
-- AC2: Given a project with `build.rg`, when `stable format` is executed with no path arguments, then all `.rg` files in `source_dir`, `test_dir`, and `build.rg` are formatted in-place.
-- AC3: Given any `.rg` file, both the unformatted original and the output of `stable format` SHALL pass `stable check` and compile identically with `ridgunc`.
+- AC1: Given an unaligned Ridgun `.ridgun` file containing `fn ::` and `op ::` declarations with multiple clauses, guards, and `where` bindings, when `stable format <file>` is executed, then the file is rewritten in-place with aligned LHS columns ($C_0 = 6$), aligned `=>`/`=`/`->` columns ($C_{\text{arrow}}$), and 2-space structural indentation.
+- AC2: Given a project with `build.ridgun`, when `stable format` is executed with no path arguments, then all `.ridgun` files in `source_dir`, `test_dir`, and `build.ridgun` are formatted in-place.
+- AC3: Given any `.ridgun` file, both the unformatted original and the output of `stable format` SHALL pass `stable check` and compile identically with `ridgunc`.
 
 ## Actors & Permissions
 - Any developer or CI pipeline invoking `stable format`.

@@ -62,10 +62,10 @@ Every target returns the negative Linux errno numbers below. Each implementation
 - **Other targets:** ARM64 Linux and macOS do not have these operations yet (FR-COMP-022, FR-COMP-015).
 
 ## Rationale
-Libraries open sockets today through `sys call` with Linux numbers: `libs` `socket.rg`, and `http`, `tls`, `mail` and `ws` on top of it. Those calls only work on Linux. With these operations a library opens, uses and closes a TCP connection the same way on Linux and Windows, without knowing either system's numbers.
+Libraries open sockets today through `sys call` with Linux numbers: `libs` `socket.ridgun`, and `http`, `tls`, `mail` and `ws` on top of it. Those calls only work on Linux. With these operations a library opens, uses and closes a TCP connection the same way on Linux and Windows, without knowing either system's numbers.
 
 ## Acceptance criteria
-- AC1: On Linux (LLVM and x86-64), a program does the following on `127.0.0.1` with one thread. It prints the same lines on both backends (`tests/cases/net/tcp_loopback_echo.rg`).
+- AC1: On Linux (LLVM and x86-64), a program does the following on `127.0.0.1` with one thread. It prints the same lines on both backends (`tests/cases/net/tcp_loopback_echo.ridgun`).
   1. It listens on port `0` and reads the port with `net local port`.
   2. It connects, accepts and sends `"ping"` both ways.
   3. It receives with `net recv` and `net recv into`.

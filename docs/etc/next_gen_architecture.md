@@ -295,7 +295,7 @@ shared :: active_sessions => Int
 Because Ridgun controls task scheduling and forbids unsynchronized shared memory mutation, the runtime natively supports **Deterministic Simulation Testing (DST)**:
 
 ```bash
-ridgun test --seed 4294967291 my_program.rg
+ridgun test --seed 4294967291 my_program.ridgun
 ```
 
 1. **Seeded Virtual Scheduler:** In `--seed` mode, all work-stealing decisions, DAG tie-breakers, and Green Thread wakeups are governed by a deterministic PRNG (`ChaCha8Rng` initialized with the user seed) over a logical clock.
@@ -309,7 +309,7 @@ ridgun test --seed 4294967291 my_program.rg
 Ridgun is architected so that the bytecode VM and a native machine code compiler share the exact same front-end and middle-end analyses:
 
 ```
-Ridgun Source (.rg)
+Ridgun Source (.ridgun)
    │
    ▼
 [1. Lexer & Parser]       ──► Surface AST

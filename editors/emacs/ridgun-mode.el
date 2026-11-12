@@ -8,7 +8,7 @@
 
 ;;; Commentary:
 ;;
-;; Major mode for editing Ridgun (`.rg') source files in GNU Emacs.
+;; Major mode for editing Ridgun (`.ridgun') source files in GNU Emacs.
 ;;
 ;; Features:
 ;; - Full syntax highlighting for Ridgun v2.0:
@@ -25,7 +25,7 @@
 ;; - Indentation-aware smart line indentation (2-space default)
 ;; - Imenu support for functions, types, operators, and state/hardware blocks
 ;; - Interactive compilation & execution commands via `C-c C-c', `C-c C-r',
-;;   `C-c C-k', and `C-c C-b'
+;;   and `C-c C-b'
 ;;
 ;; Installation:
 ;;
@@ -36,7 +36,7 @@
 ;;
 ;;   (use-package ridgun-mode
 ;;     :load-path "/path/to/ridgun/editors/emacs"
-;;     :mode "\\.rg\\'")
+;;     :mode "\\.ridgun\\'")
 
 ;;; Code:
 
@@ -732,26 +732,6 @@
                       (shell-quote-argument rel-file))))
     (compile cmd)))
 
-(defun ridgun-compile-bytecode ()
-  "Compile the current Ridgun file to a `.rgc' bytecode artifact."
-  (interactive)
-  (unless buffer-file-name
-    (user-error "Buffer is not visiting a file"))
-  (save-buffer)
-  (let* ((default-directory (ridgun--project-root))
-         (rel-file (file-relative-name buffer-file-name default-directory))
-         (out-file (concat rel-file "c"))
-         (cmd (if (file-executable-p (expand-file-name ridgun-compiler-command default-directory))
-                  (format "%s compile %s -o %s"
-                          (shell-quote-argument ridgun-compiler-command)
-                          (shell-quote-argument rel-file)
-                          (shell-quote-argument out-file))
-                (format "%s compile %s -o %s"
-                        ridgun-vm-command
-                        (shell-quote-argument rel-file)
-                        (shell-quote-argument out-file)))))
-    (compile cmd)))
-
 (defun ridgun-build-native ()
   "Build a standalone native ELF executable from the current file via `ridgunc'."
   (interactive)
@@ -767,7 +747,7 @@
                           (shell-quote-argument ridgun-compiler-command)
                           (shell-quote-argument rel-file)
                           (shell-quote-argument out-bin))
-                (format "%s src/main/ridgun/ridgunc.rg build %s -o %s"
+                (format "%s src/main/ridgun/ridgunc.ridgun build %s -o %s"
                         ridgun-vm-command
                         (shell-quote-argument rel-file)
                         (shell-quote-argument out-bin)))))
@@ -781,7 +761,6 @@
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "C-c C-c") #'ridgun-check-buffer)
     (define-key map (kbd "C-c C-r") #'ridgun-run-buffer)
-    (define-key map (kbd "C-c C-k") #'ridgun-compile-bytecode)
     (define-key map (kbd "C-c C-b") #'ridgun-build-native)
     (define-key map (kbd "C-c C-f") #'ridgun-format-buffer)
     map)
@@ -812,7 +791,7 @@
 
 ;;;###autoload
 (define-derived-mode ridgun-mode prog-mode "Ridgun"
-  "Major mode for editing Ridgun (`.rg') source code.
+  "Major mode for editing Ridgun (`.ridgun') source code.
 
 \\{ridgun-mode-map}"
   :syntax-table ridgun-mode-syntax-table
@@ -827,7 +806,9 @@
   (add-hook 'post-self-insert-hook #'ridgun--post-self-insert-align nil t))
 
 ;;;###autoload
-(add-to-list 'auto-mode-alist '("\\.rg\\'" . ridgun-mode))
+(add-to-list 'auto-mode-alist '("\\.ridgun\\(lib\\)?\\'" . ridgun-mode))
+;; The names before 1.0.10 (ADR-0010): `.rg' and `.rglib'.
+(add-to-list 'auto-mode-alist '("\\.rg\\(lib\\)?\\'" . ridgun-mode))
 
 (provide 'ridgun-mode)
 ;;; ridgun-mode.el ends here

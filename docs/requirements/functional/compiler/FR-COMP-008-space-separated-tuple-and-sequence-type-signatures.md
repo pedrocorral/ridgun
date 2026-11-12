@@ -45,7 +45,7 @@ The Ridgun language and `ridgunc` / `stable` toolchain SHALL unify the type synt
    - Before `=>` in a signature, space-separated types `fn :: compute Int String Int => Bool` define the top-level input sequence (3 positional arguments), whereas parenthesizing a subsequence `fn :: compute (Int String) Int => Bool` groups that subsequence into a single nested tuple parameter slot (2 positional arguments, where the first is a 2-tuple).
 
 5. **100% Backward Compatibility & Canonical Normalization**:
-   - Both the space-separated syntax (`Int Int [String String] String`) and the traditional parenthesized/comma-separated syntax (`(Int, Int, [(String, String)], String)`) SHALL normalize in `parser.rg` to the same canonical type string representation `"(Int, Int, [(String, String)], String)"`.
+   - Both the space-separated syntax (`Int Int [String String] String`) and the traditional parenthesized/comma-separated syntax (`(Int, Int, [(String, String)], String)`) SHALL normalize in `parser.ridgun` to the same canonical type string representation `"(Int, Int, [(String, String)], String)"`.
    - All existing Ridgun code using `(T1, T2)` and `[(T1, T2)]` SHALL remain 100% valid and interchangeable with the space-separated notation.
 
 ## Rationale

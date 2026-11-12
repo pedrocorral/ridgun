@@ -1,0 +1,3 @@
+# GitHub does not know Ridgun yet. Better no language label than a wrong one:
+# without this, the repository shows as another language (Rouge for .rg, Emacs Lisp, ...).
+* linguist-detectable=false

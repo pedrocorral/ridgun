@@ -194,7 +194,7 @@ Párate un segundo a mirar esas ~40 líneas de código:
 - `contar saltos` se compila a un `loop` nativo con 0 bytes de pila gracias al TCO automático.
 - `||map analizar archivo rutas` procesa los archivos en paralelo en todos los núcleos de tu CPU, y el bloque `||` calcula simultáneamente las filas formateadas, el total de líneas y el total de bytes.
 - La memoria temporal se libera determinísticamente mediante **`RMM1`/`RMM2`**.
-- Y cuando ejecutas `ridgunc build rg_wc.rg -o rg-wc`, obtienes un binario nativo autónomo de ~350 KB listo para copiar a `/usr/local/bin`.
+- Y cuando ejecutas `ridgunc build rg_wc.ridgun -o rg-wc`, obtienes un binario nativo autónomo de ~350 KB listo para copiar a `/usr/local/bin`.
 
 ---
 

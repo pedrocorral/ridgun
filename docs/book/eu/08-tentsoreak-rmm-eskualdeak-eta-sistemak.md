@@ -130,7 +130,7 @@ Eta sistema eragilearekin lan egiteko:
 
 ## 8.5. Liburutegi Estandarren Ekosistema (`ridgun-libs`)
 
-Konpiladorearen primitibez gain, Ridgunen ekosistema ofizialak Ridgunen bertan osorik idatzitako **32 liburutegi puru (`.rglib`)** biltzen ditu, edozein proiektutan `import <izena>` bidez inporta ditzakezunak:
+Konpiladorearen primitibez gain, Ridgunen ekosistema ofizialak Ridgunen bertan osorik idatzitako **32 liburutegi puru (`.ridgunlib`)** biltzen ditu, edozein proiektutan `import <izena>` bidez inporta ditzakezunak:
 
 | Kategoria | Eskuragarri dauden liburutegiak | Zer eskaintzen duten |
 |---|---|---|
@@ -195,7 +195,7 @@ Gelditu segundo batez ~40 kode-lerro horiei begiratzeko:
 - `zenbatu jauziak` 0 pila-byteko `loop` natibo batera konpilatzen da TCO automatikoari esker.
 - `||map aztertu fitxategia bideak` deiak fitxategiak paraleloan prozesatzen ditu zure PUZaren nukleo guztietan, eta `||` blokeak aldi berean kalkulatzen ditu formateatutako errenkadak, lerroen guztizkoa eta byteen guztizkoa.
 - Aldi baterako memoria modu deterministan askatzen da **`RMM1`/`RMM2`** bidez.
-- Eta `ridgunc build rg_wc.rg -o rg-wc` exekutatzen duzunean, `/usr/local/bin`-era kopiatzeko prest dagoen ~350 KB-ko bitar natibo autonomo bat lortzen duzu.
+- Eta `ridgunc build rg_wc.ridgun -o rg-wc` exekutatzen duzunean, `/usr/local/bin`-era kopiatzeko prest dagoen ~350 KB-ko bitar natibo autonomo bat lortzen duzu.
 
 ---
 

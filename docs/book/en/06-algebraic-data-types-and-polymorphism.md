@@ -193,7 +193,7 @@ Ridgun makes algebraic data types and functions even more natural and extensible
 1. **Shared constructor names across types**: Multiple `type` declarations can reuse the same constructor names (`Error`, `Var`, `Lit`) with the same or different arities; the typechecker disambiguates them from the signature column type.
 2. **Bare type-name variants without repetition (`type Something = String | Int | MyStruct Float Int`)**: When a sum variant is a built-in type (`String`, `Int`, `Float`/`Real`, `Bool`, `Char`), you do not need to write `Int Int` or `String String`. You can pass bare values (`"hello"`, `42`) or explicit constructors (`String "hello"`, `Int 42`), and match both literals (`"admin"`, `0`) and typed patterns (`(String s)`, `(Int n)`).
 3. **Open type extensions (`expand type`) and automatic `fn ::` clause merging**: Use `expand type` to append new variants to a sum type or new fields to a record. Re-declaring `fn ::` for the same function automatically merges the new pattern clauses **before** any `_` catch-all clause (no `expand fn` keyword needed).
-4. **Natural spaces `" "` instead of `_` in `fn ::`, built-ins, and filenames**: Just like `op ::`, multi-word `fn ::` names, built-in calls (`assert equals`, `str len`, `read file`), and `.rg` filenames (`test core language.rg`) use natural spaces:
+4. **Natural spaces `" "` instead of `_` in `fn ::`, built-ins, and filenames**: Just like `op ::`, multi-word `fn ::` names, built-in calls (`assert equals`, `str len`, `read file`), and `.ridgun` filenames (`test core language.ridgun`) use natural spaces:
 
 ```ridgun
 type Something = String | Int | MyStruct Float Int

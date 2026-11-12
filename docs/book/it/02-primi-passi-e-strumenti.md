@@ -4,7 +4,7 @@ Ci sono linguaggi il cui compilatore è meraviglioso, ma il cui sistema di proge
 
 In Ridgun ci siamo fatti una promessa semplicissima fin dal primo giorno:
 
-> *"Ci saranno solo due eseguibili in tutto l'ecosistema (`ridgunc` e `stable`), entrambi saranno scritti nello stesso Ridgun, e il file di configurazione del progetto (`build.rg`) sarà normale codice Ridgun. Né JSON, né YAML, né TOML, né invenzioni strane."*
+> *"Ci saranno solo due eseguibili in tutto l'ecosistema (`ridgunc` e `stable`), entrambi saranno scritti nello stesso Ridgun, e il file di configurazione del progetto (`build.ridgun`) sarà normale codice Ridgun. Né JSON, né YAML, né TOML, né invenzioni strane."*
 
 Vediamo come si usano.
 
@@ -12,26 +12,23 @@ Vediamo come si usano.
 
 ## 2.1. `ridgunc`: Il cecchino per file singoli
 
-Quando hai per le mani un singolo file `.rg` e vuoi provare un'idea veloce, analizzarne i tipi o compilare un eseguibile, parli direttamente con **`ridgunc`**.
+Quando hai per le mani un singolo file `.ridgun` e vuoi provare un'idea veloce, analizzarne i tipi o compilare un eseguibile, parli direttamente con **`ridgunc`**.
 
-Ha solo 5 comandi che devi davvero ricordare:
+Ha solo 4 comandi che devi davvero ricordare:
 
 ```bash
 # 1. "Compila questo o ho combinato un pasticcio con qualche tipo?"
-ridgunc check esperimento.rg
+ridgunc check esperimento.ridgun
 
 # 2. "Eseguilo subito!" (Compila ed esegue in un colpo solo)
-ridgunc run esperimento.rg
+ridgunc run esperimento.ridgun
 
 # 3. "Fammi un binario nativo ELF64 pronto da portare via"
-ridgunc build esperimento.rg -o mio-programma
+ridgunc build esperimento.ridgun -o mio-programma
 
-# 4. "Compilami una libreria riutilizzabile (.rglib e .so ELF64 senza bisogno di main)"
-ridgunc build --lib utilita.rg -o target/utilita.rglib
-ridgunc build --so  utilita.rg -o target/libutilita.so
-
-# 5. "Tirami fuori l'artefatto intermedio di bytecode (.rgc)"
-ridgunc compile esperimento.rg -o esperimento.rgc
+# 4. "Compilami una libreria riutilizzabile (.ridgunlib e .so ELF64 senza bisogno di main)"
+ridgunc build --lib utilita.ridgun -o target/utilita.ridgunlib
+ridgunc build --so  utilita.ridgun -o target/libutilita.so
 ```
 
 ### Il superpotere nascosto di `ridgunc check`
@@ -55,25 +52,25 @@ La struttura delle cartelle di un progetto Ridgun non ha misteri:
 
 ```text
 mio-super-strumento/
-├── build.rg                  # Il manifesto del progetto (è codice Ridgun!)
+├── build.ridgun              # Il manifesto del progetto (è codice Ridgun!)
 ├── src/
 │   ├── main/
 │   │   └── ridgun/
 │   │       ├── lib/          # I tuoi moduli riutilizzabili (`import utilita`)
 │   │       └── app/
-│   │           └── main.rg   # Punto di ingresso (`main => ()`)
+│   │           └── main.ridgun # Punto di ingresso (`main => ()`)
 │   └── test/
-│       └── ridgun/           # Le tue batterie di test (`test *.rg`)
-│           └── test tutto.rg
+│       └── ridgun/           # Le tue batterie di test (`test *.ridgun`)
+│           └── test tutto.ridgun
 └── target/                   # Dove compaiono i binari compilati
 ```
 
 ---
 
-## 2.3. `build.rg`: Un file di configurazione che non ti mentirà mai
+## 2.3. `build.ridgun`: Un file di configurazione che non ti mentirà mai
 
 Perché ci rifiutiamo di usare YAML o TOML per configurare un progetto Ridgun?
-Perché in YAML sbagli due spazi di indentazione e non te ne accorgi finché non fallisce il deploy. Invece, poiché **`build.rg` è un file Ridgun**, ha tipi statici, passa attraverso `stable check` e si allinea da solo con `stable format`:
+Perché in YAML sbagli due spazi di indentazione e non te ne accorgi finché non fallisce il deploy. Invece, poiché **`build.ridgun` è un file Ridgun**, ha tipi statici, passa attraverso `stable check` e si allinea da solo con `stable format`:
 
 ```ridgun
 fn :: project name => String
@@ -82,7 +79,7 @@ fn :: project name => String
 fn :: project version => String
       project version =  "0.1.0"
 
--- "exe" (eseguibile), "lib" (libreria .rglib + .so) o "both" (entrambi)
+-- "exe" (eseguibile), "lib" (libreria .ridgunlib + .so) o "both" (entrambi)
 fn :: project kind => String
       project kind =  "both"
 
@@ -91,7 +88,7 @@ fn :: strict mode => Bool
       strict mode =  True
 
 fn :: main entry => String
-      main entry =  "src/main/ridgun/app/main.rg"
+      main entry =  "src/main/ridgun/app/main.ridgun"
 
 fn :: source dir => String
       source dir =  "src/main/ridgun"
@@ -124,7 +121,7 @@ Quando lavori all'interno del tuo progetto, la tua giornata si riduce a quattro 
 ```bash
 stable format
 ```
-Il tuo collega mette tre spazi prima di `=>` e tu ne metti uno? Non importa. Esegui `stable format` e in meno di un secondo lascia **tutti** i file `.rg` del repository allineati come una tabella svizzera.
+Il tuo collega mette tre spazi prima di `=>` e tu ne metti uno? Non importa. Esegui `stable format` e in meno di un secondo lascia **tutti** i file `.ridgun` del repository allineati come una tabella svizzera.
 
 ### 2. `stable check` — Il radar istantaneo
 ```bash
@@ -136,10 +133,10 @@ Percorre tutti i moduli di `src/main/ridgun/`, verifica tipi, costruttori, arit�
 ```bash
 stable test
 ```
-Cerca tutte le suite `src/test/ridgun/test *.rg`, le esegue e controlla ogni `assert equals` e `assert true`.
+Cerca tutte le suite `src/test/ridgun/test *.ridgun`, le esegue e controlla ogni `assert equals` e `assert true`.
 
 ```ridgun
--- Esempio di src/test/ridgun/test matematica.rg
+-- Esempio di src/test/ridgun/test matematica.ridgun
 import test
 
 doppio Int => Int
@@ -159,7 +156,7 @@ Compila tutti gli obiettivi nativi in `target/`. E se un giorno vuoi cancellare 
 
 ---
 
-## 2.5. Creare e usare Librerie Riutilizzabili (`.rglib` e `.so` ELF64) e Plugin di `stable`
+## 2.5. Creare e usare Librerie Riutilizzabili (`.ridgunlib` e `.so` ELF64) e Plugin di `stable`
 
 Una libreria non ha la funzione `main => ()`: offre tipi (`type`, `expand type`), funzioni (`fn ::`) e operatori (`op ::`) affinché altri progetti li importino.
 
@@ -170,11 +167,11 @@ cd geometria
 stable built lib
 ```
 Compilando in modalità libreria (`project kind = "lib"` o `stable built lib`), il compilatore disattiva la potatura da `main` per conservare **tutte** le funzioni e i tipi esportati, e genera due artefatti in `target/`:
-- **`target/geometria.rglib`**: pacchetto autocontenuto di libreria Ridgun (con tutti i suoi sorgenti e dipendenze interne risolte), pronto per essere importato da qualsiasi altro progetto con `import geometria` o `import "target/geometria.rglib"`.
+- **`target/geometria.ridgunlib`**: pacchetto autocontenuto di libreria Ridgun (con tutti i suoi sorgenti e dipendenze interne risolte), pronto per essere importato da qualsiasi altro progetto con `import geometria` o `import "target/geometria.ridgunlib"`.
 - **`target/libgeometria.so`**: libreria dinamica nativa ELF64 (`ET_DYN`, per `x86_64` o `arm64-linux`).
 
 ```ridgun
--- src/main/ridgun/lib/geometria.rg (Senza funzione main!)
+-- src/main/ridgun/lib/geometria.ridgun (Senza funzione main!)
 type Punto = x: Int, y: Int
 
 fn :: sposta punto Punto Int Int => Punto
@@ -186,7 +183,7 @@ fn :: coordinate punto Punto => Int Int
 
 ### 2. Come importo un modulo o una libreria da un altro file? (`import`)
 
-Senza percorsi relativi infernali tipo `../../../lib/cose.rg`. Se hai un modulo `src/main/ridgun/lib/geometria.rg` o un pacchetto `geometria.rglib` (in `target/`, `lib/` o `.stable/deps/` dopo aver eseguito `stable deps`), in qualsiasi altro file scrivi in cima:
+Senza percorsi relativi infernali tipo `../../../lib/cose.ridgun`. Se hai un modulo `src/main/ridgun/lib/geometria.ridgun` o un pacchetto `geometria.ridgunlib` (in `target/`, `lib/` o `.stable/deps/` dopo aver eseguito `stable deps`), in qualsiasi altro file scrivi in cima:
 
 ```ridgun
 import geometria
@@ -194,13 +191,13 @@ import geometria
 
 E fatto: tutte le funzioni, gli operatori e i tipi di `geometria` sono disponibili come se fossero nel tuo stesso file. Se più moduli fanno `import geometria`, il caricatore di Ridgun ricorda quali file canonici ha già letto e **lo include una sola volta**.
 
-### 3. Estendere `stable` con attività (`fn :: task`) e plugin (`plugins/*.rg`)
+### 3. Estendere `stable` con attività (`fn :: task`) e plugin (`plugins/*.ridgun`)
 Vuoi aggiungere comandi personalizzati per il tuo framework web, le tue migrazioni di database o il tuo flusso di deploy?
-- **In `build.rg`**: dichiara qualsiasi funzione `fn :: task <parole...> => String` (ad esempio, `fn :: task avvia server => String`) ed eseguila con `stable avvia server`.
-- **In `plugins/*.rg` o `.stable/plugins/*.rg`**: inserisci moduli `.rg` che definiscano attività `fn :: task ...` o il proprio `fn :: main => ()`, oppure estendi il tipo aperto `expand type StableCommand` di `stable`. Esegui `stable tasks` e `stable plugins` per ispezionarli in qualsiasi momento.
+- **In `build.ridgun`**: dichiara qualsiasi funzione `fn :: task <parole...> => String` (ad esempio, `fn :: task avvia server => String`) ed eseguila con `stable avvia server`.
+- **In `plugins/*.ridgun` o `.stable/plugins/*.ridgun`**: inserisci moduli `.ridgun` che definiscano attività `fn :: task ...` o il proprio `fn :: main => ()`, oppure estendi il tipo aperto `expand type StableCommand` di `stable`. Esegui `stable tasks` e `stable plugins` per ispezionarli in qualsiasi momento.
 
 ### 4. La modalità stretta opzionale (`--strict` e `strict mode = True`)
-Per impostazione predefinita, né `ridgunc` né i nuovi progetti creati con `stable new` o `stable init` attivano la modalità stretta. Tuttavia, quando vuoi garantire nel tuo progetto che tutto il team segua al 100% la convenzione canonica degli spazi naturali di Ridgun, puoi passare `--strict` a `ridgunc` (`ridgunc check --strict`, `ridgunc build --strict`) o dichiarare `strict mode = True` nel tuo `build.rg`. La modalità stretta trasforma in **errore di compilazione**:
+Per impostazione predefinita, né `ridgunc` né i nuovi progetti creati con `stable new` o `stable init` attivano la modalità stretta. Tuttavia, quando vuoi garantire nel tuo progetto che tutto il team segua al 100% la convenzione canonica degli spazi naturali di Ridgun, puoi passare `--strict` a `ridgunc` (`ridgunc check --strict`, `ridgunc build --strict`) o dichiarare `strict mode = True` nel tuo `build.ridgun`. La modalità stretta trasforma in **errore di compilazione**:
 1. Qualsiasi trattino basso `_` all'interno del nome di una dichiarazione `fn ::` o `op ::` (dovendo scrivere `fn :: calcola totale`, mai `fn :: calcola_totale`; le variabili locali e i campi dei record possono invece usare `_`).
 2. Qualsiasi tipo di ritorno multiplo scritto con parentesi o virgole dopo `=>` (dovendo scrivere `=> Int Int` o `=> RToken [RToken]`, mai `=> (Int, Int)`).
 
@@ -208,7 +205,7 @@ Per impostazione predefinita, né `ridgunc` né i nuovi progetti creati con `sta
 
 ## 2.6. L'Ecosistema di Librerie Standard e Crittografiche (`ridgun-libs`)
 
-Ridgun dispone di una suite ufficiale di **32 librerie pure** (`ridgun-libs`), compilate come pacchetti `.rglib` e librerie dinamiche `.so` ELF64 pronte da importare con `import <nome>`:
+Ridgun dispone di una suite ufficiale di **32 librerie pure** (`ridgun-libs`), compilate come pacchetti `.ridgunlib` e librerie dinamiche `.so` ELF64 pronte da importare con `import <nome>`:
 
 | Famiglia | Librerie (`import ...`) | Cosa portano nei tuoi progetti |
 |---|---|---|

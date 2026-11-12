@@ -2,7 +2,7 @@
 
 ## 1. Executive Summary & Motivation
 
-With the completion of `TASK-0013` (`v0.9.11`), the self-hosted Ridgun compiler (`ridgunc`) emits 100% of its native ELF64 runtime kernel (`x86_64` and `arm64`) through symbolic Ridgun functions (`src/main/ridgun/lib/x86_64.rg` and `src/main/ridgun/lib/arm64.rg`), eliminating all legacy pre-assembled hex strings.
+With the completion of `TASK-0013` (`v0.9.11`), the self-hosted Ridgun compiler (`ridgunc`) emits 100% of its native ELF64 runtime kernel (`x86_64` and `arm64`) through symbolic Ridgun functions (`src/main/ridgun/lib/x86_64.ridgun` and `src/main/ridgun/lib/arm64.ridgun`), eliminating all legacy pre-assembled hex strings.
 
 However, maintaining two architecture-specific runtime emitters (~3,000 lines of `x86_64` and ~1,800 lines of `arm64` symbolic instruction builders) still requires implementing every runtime routine twice:
 1. Once in `x86_64` (`push rbp`, `mov rdi, ...`, `syscall`), and
@@ -53,7 +53,7 @@ Using Ridgun's natural space-separated syntax and space-separated tuple signatur
 
 ### 4.1 Example 1: Arena Bump Allocator & Frame Initialization (`Slot 0: rt init frame`)
 
-#### Current Symbolic `x86_64` (`src/main/ridgun/lib/x86_64.rg`)
+#### Current Symbolic `x86_64` (`src/main/ridgun/lib/x86_64.ridgun`)
 ```ridgun
 fn :: x86 rt slot00 init frame (p) :: Bytes -> Bytes
 x86 rt slot00 init frame (p) = do
@@ -67,7 +67,7 @@ x86 rt slot00 init frame (p) = do
   c
 ```
 
-#### Proposed Portable Low-Level Ridgun (`src/main/ridgun/lib/runtime kernel.rg`)
+#### Proposed Portable Low-Level Ridgun (`src/main/ridgun/lib/runtime kernel.ridgun`)
 ```ridgun
 -- Arena state layout at global base:
 --   offset 0: current bump pointer (Int)
@@ -242,17 +242,17 @@ copy bytes (dst) (src) (idx) (count)
 
 ## 5. Architectural Trade-Off Analysis
 
-| Dimension | Current Symbolic Assembly (`x86_64.rg` + `arm64.rg`, `v0.9.11`) | Portable Low-Level Ridgun Runtime (`runtime kernel.rg`) |
+| Dimension | Current Symbolic Assembly (`x86_64.ridgun` + `arm64.ridgun`, `v0.9.11`) | Portable Low-Level Ridgun Runtime (`runtime kernel.ridgun`) |
 |---|---|---|
 | **Zero Hex / 100% Auditable** | Yes (`0` hex blobs; every instruction is a named Ridgun function call) | Yes (`0` hex blobs; runtime logic is high-level guarded Ridgun functions) |
-| **Lines of Target-Specific Code** | ~3,000 lines (`x86_64.rg`) + ~1,800 lines (`arm64.rg`) | ~150 lines per target (only `_start`, slot jump table, and the 6 intrinsics) |
+| **Lines of Target-Specific Code** | ~3,000 lines (`x86_64.ridgun`) + ~1,800 lines (`arm64.ridgun`) | ~150 lines per target (only `_start`, slot jump table, and the 6 intrinsics) |
 | **Adding a 3rd Target (e.g., `riscv64`)** | Requires writing ~2,000 lines of `riscv64` runtime slot assembly | Requires only ~150 lines of `riscv64` codegen for the 6 intrinsics + `_start` |
 | **Execution Overhead** | Hand-tuned register usage per slot (0 spill overhead) | Requires a simple register-allocation or stack-slot pass for freestanding `Int` locals |
-| **Compiler Complexity** | Zero new compiler passes; uses existing `Bytes` buffers | Requires adding a `@freestanding` / unboxed compilation mode in `compiler.rg` |
+| **Compiler Complexity** | Zero new compiler passes; uses existing `Bytes` buffers | Requires adding a `@freestanding` / unboxed compilation mode in `compiler.ridgun` |
 
 ## 6. Recommendation & Staged Roadmap
 
 1. **Short-Term (`v0.9.11` — Completed)**:
-   `src/main/ridgun/lib/x86_64.rg` and `src/main/ridgun/lib/arm64.rg` are now 100% symbolic, free of hex blobs, formatted with natural spaces, and verified at the 2-stage self-hosting fixed point (`cmp -s target/ridgunc_stage1 target/ridgunc_candidate`).
+   `src/main/ridgun/lib/x86_64.ridgun` and `src/main/ridgun/lib/arm64.ridgun` are now 100% symbolic, free of hex blobs, formatted with natural spaces, and verified at the 2-stage self-hosting fixed point (`cmp -s target/ridgunc_stage1 target/ridgunc_candidate`).
 2. **Medium-Term (`v0.10.x` Candidate)**:
-   Introduce an internal unboxed/freestanding compilation mode for `src/main/ridgun/lib/runtime.rg` with the 6 low-level intrinsics (`ptr load i64`, `ptr store i64`, `ptr load u8`, `ptr store u8`, `atomic add i64`, `sys call`), migrating complex data-structure runtime routines (`Slot 37` JSON/TOML/YAML parser, `Slot 40` Einsum, `Slot 55` built-in string/collection helpers, and `PAL` services) into a single architecture-independent Ridgun module shared by `x86_64`, `arm64`, and future targets.
+   Introduce an internal unboxed/freestanding compilation mode for `src/main/ridgun/lib/runtime.ridgun` with the 6 low-level intrinsics (`ptr load i64`, `ptr store i64`, `ptr load u8`, `ptr store u8`, `atomic add i64`, `sys call`), migrating complex data-structure runtime routines (`Slot 37` JSON/TOML/YAML parser, `Slot 40` Einsum, `Slot 55` built-in string/collection helpers, and `PAL` services) into a single architecture-independent Ridgun module shared by `x86_64`, `arm64`, and future targets.

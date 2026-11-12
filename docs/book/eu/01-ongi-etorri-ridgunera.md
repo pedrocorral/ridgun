@@ -12,7 +12,7 @@ Goazen ba harira!
 
 Programazio-liburu gehienetan `print("Kaixo mundua")` motel bat erakusten dizute eta orrialdea pasatzen dute. Guk zuzenean benetako logika duen funtzio bat idatziko dugu, Ridgunek lehen minututik nola arnasten duen ikus dezazun.
 
-Sortu `kaixo.rg` izeneko fitxategi bat eta idatzi hau:
+Sortu `kaixo.ridgun` izeneko fitxategi bat eta idatzi hau:
 
 ```ridgun
 agurra String => String
@@ -30,7 +30,7 @@ main =
 Oraintxe bertan exekutatzeko:
 
 ```bash
-ridgunc run kaixo.rg
+ridgunc run kaixo.ridgun
 ```
 
 Eta zure terminalean hau ikusiko duzu:
@@ -49,7 +49,7 @@ Gelditu une batez eta begiratu goiko `agurra` blokeari. Nabaritzen duzu zer **EZ
 
 ---
 
-## 1.2. Nola irakurtzen duen zure garunak `.rg` fitxategi bat
+## 1.2. Nola irakurtzen duen zure garunak `.ridgun` fitxategi bat
 
 Goazen `agurra`-ren lau lerro horiek xehatzera, hemen baitago dagoeneko Ridgunen filosofiaren % 50a:
 
@@ -89,12 +89,12 @@ Eta **`stable format`** exekutatzen duzunean (edo Emacsen `ridgun-mode`-rekin `T
 
 ## 1.4. Script azkarretik borrokako bitarrera komando bakarrean
 
-`ridgunc run kaixo.rg` egiten duzunean, programa hegaldian konpilatzen eta abiarazten ari zara. Baina imajinatu zure tresna amaitu duzula eta ekoizpen-zerbitzari batera eraman nahi duzula edo Ridgun instalatuta ez duen lankide batekin partekatu nahi duzula.
+`ridgunc run kaixo.ridgun` egiten duzunean, programa hegaldian konpilatzen eta abiarazten ari zara. Baina imajinatu zure tresna amaitu duzula eta ekoizpen-zerbitzari batera eraman nahi duzula edo Ridgun instalatuta ez duen lankide batekin partekatu nahi duzula.
 
 Hau exekutatzen duzu:
 
 ```bash
-ridgunc build kaixo.rg -o kaixo
+ridgunc build kaixo.ridgun -o kaixo
 ```
 
 Eta baduzu `./kaixo`: **Linux x86_64rako ELF exekutagarri natibo bat**, garbia, kode hilik gabe (*Tree-Shaking*), esteka osoko optimizazioarekin (*LTO*) eta kanpoko inongo interpretatzaileren menpe egon gabe.
@@ -182,8 +182,8 @@ trukatu (x, y) =  (y, x)
 ```
 *"Eta nire programan `type A` deitzen den benetako mota bat eduki nahi badut?"* — Arazorik ez: Ridgunen **zure `type` deklarazioek agintzen dute**. `type A` existitzen ez bada, `A` generikoa da; `type A = ...` definitzen duzun une berean, zure mota zehatza izatera pasatzen da modulu osoan.
 
-### 7. Zero konfigurazio-fitxategi arrotz: `build.rg` Ridgun purua da
-Ahaztu Cargorako TOML, npm-rako JSON, Mavenerako XML edo tabuladore ikusezinak dituen `Makefile`-ren sintaxi arkanoa ikasteaz. Ridgunen, zure proiektua eraikitzen duen errezeta (`build.rg`) **beste `.rg` fitxategi bat gehiago da**, zure gainerako kodearen funtzio puru eta *pattern matching* berberekin.
+### 7. Zero konfigurazio-fitxategi arrotz: `build.ridgun` Ridgun purua da
+Ahaztu Cargorako TOML, npm-rako JSON, Mavenerako XML edo tabuladore ikusezinak dituen `Makefile`-ren sintaxi arkanoa ikasteaz. Ridgunen, zure proiektua eraikitzen duen errezeta (`build.ridgun`) **beste `.ridgun` fitxategi bat gehiago da**, zure gainerako kodearen funtzio puru eta *pattern matching* berberekin.
 
 ### 8. Ezinezkoa zirudien "Hirutasun Santua": Haskell maila + RMM memoria GC eta Lifetimerik gabe + ~350 KB-ko bitarrak
 Gaur arte aukeratu egin behar zenuen:

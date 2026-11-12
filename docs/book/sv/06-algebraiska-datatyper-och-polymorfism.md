@@ -193,7 +193,7 @@ Ridgun gör algebraiska datatyper och funktioner ännu mer naturliga och utbyggb
 1. **Delade konstruktornamn mellan typer**: Olika `type`-deklarationer kan återanvända samma konstruktornamn (t.ex. `Error`, `Var`, `Lit`) med samma eller olika aritet — typkontrollanten avgör vilken typ som avses utifrån kolumnens signatur.
 2. **Nakna typvarianter utan upprepning (`type Something = String | Int | MyStruct Float Int`)**: När en variant är en inbyggd typ (`String`, `Int`, `Float`/`Real`, `Bool`, `Char`) behöver du inte skriva `Int Int` eller `String String`. Du kan skicka in nakna värden (`"hej"`, `42`) eller explicita konstruktorer (`String "hej"`, `Int 42`), och matcha både litteraler (`"admin"`, `0`) och typade mönster (`(String s)`, `(Int n)`).
 3. **Öppen typutvidgning (`expand type`) och automatisk sammanslagning av `fn ::`-klausuler**: Med `expand type` kan du lägga till nya varianter i en summatyp eller nya fält i en posttyp. Om du deklarerar `fn ::` igen för samma funktion slås de nya mönsterklausulerna ihop automatiskt **före** en eventuell `_`-reservklausul (utan att du behöver skriva `expand fn`).
-4. **Naturliga mellanslag `" "` istället för `_` i `fn ::` och filnamn**: Precis som i `op ::` kan funktionsnamn i `fn ::`, anrop till inbyggda funktioner (`assert equals`, `str len`, `read file`) och `.rg`-filnamn (`test core language.rg`) skrivas med naturliga mellanslag:
+4. **Naturliga mellanslag `" "` istället för `_` i `fn ::` och filnamn**: Precis som i `op ::` kan funktionsnamn i `fn ::`, anrop till inbyggda funktioner (`assert equals`, `str len`, `read file`) och `.ridgun`-filnamn (`test core language.ridgun`) skrivas med naturliga mellanslag:
 
 ```ridgun
 type Something = String | Int | MyStruct Float Int
