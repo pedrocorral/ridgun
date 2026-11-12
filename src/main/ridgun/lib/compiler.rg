@@ -1031,6 +1031,63 @@ fn :: build field idx map [RFieldEntry] RStrIntMap => RStrIntMap
       build field idx map ((FieldEntry k idx):rest) mp =
         build field idx map rest (str int map insert mp k idx)
 
+-- A field whose position differs between records (`timeout_ms` is field 1 of
+-- `Cfg` and field 2 of `Conn`) is read, set and called by the record's
+-- constructor at run time: one arm per record that has the field. Records
+-- that agree keep the single position of `field_map`.
+type RFieldAlt = FieldAlt String String Int Int
+
+fn :: collect field alts [RTypeDef] [RFieldAlt] => [RFieldAlt]
+      collect field alts [] acc =  acc
+      collect field alts ((TypeDef name _ fields):ts) acc =
+        collect field alts ts (field alts of fields (ident base name name) (list len fields) 0 acc)
+
+fn :: field alts of [RField] String Int Int [RFieldAlt] => [RFieldAlt]
+      field alts of [] _ _ _ acc =  acc
+      field alts of ((TypeField fname _):fs) tag arity idx acc =
+        acc1 = acc :: [FieldAlt fname tag arity idx]
+        acc2 = field alt base fname tag arity idx acc1
+        field alts of fs tag arity (idx + 1) acc2
+
+fn :: field alt base String String Int Int [RFieldAlt] => [RFieldAlt]
+      field alt base fname tag arity idx acc
+        | str contains fname "." = acc :: [FieldAlt (ident base name fname) tag arity idx]
+        | otherwise = acc
+
+-- The fields with more than one position, each with its records.
+fn :: ambiguous field alts [RFieldAlt] [RFieldAlt] => [RFieldAlt]
+      ambiguous field alts [] _ =  []
+      ambiguous field alts ((FieldAlt f t a i):rest) all
+        | field has other pos all f i = [FieldAlt f t a i] :: (ambiguous field alts rest all)
+        | otherwise = ambiguous field alts rest all
+
+fn :: field has other pos [RFieldAlt] String Int => Bool
+      field has other pos [] _ _ =  False
+      field has other pos ((FieldAlt f _ _ i):rest) fname idx
+        | f == fname and i != idx = True
+        | otherwise = field has other pos rest fname idx
+
+fn :: field alt strs [RFieldAlt] => [String]
+      field alt strs [] =  []
+      field alt strs ((FieldAlt f t _ _):rest) =  [t, field alt msg f] :: (field alt strs rest)
+
+fn :: field alt msg String => String
+      field alt msg fname =  "runtime error: this record has no field '" + fname + "'\n"
+
+-- Keys in `field_map`: "#fa f" the number of arms; for arm k, "#fa f k" the
+-- position, "#fo f k" / "#fl f k" the constructor name (offset, length) and
+-- "#fn f k" its field count.
+fn :: add field alts [RFieldAlt] RStrIntMap RStrIntMap => RStrIntMap
+      add field alts [] _ mp =  mp
+      add field alts ((FieldAlt f t a i):rest) str_map mp =
+        k = non neg int (str int map lookup mp ("#fa " + f))
+        key = " " + f + " " + (int to str k)
+        mp1 = str int map insert mp ("#fa " + f) (k + 1)
+        mp2 = str int map insert mp1 ("#fa" + key) i
+        mp3 = str int map insert mp2 ("#fo" + key) (lookup str off str_map t)
+        mp4 = str int map insert mp3 ("#fl" + key) (str len t)
+        add field alts rest str_map (str int map insert mp4 ("#fn" + key) a)
+
 fn :: collect field names [RFieldEntry] => [String]
       collect field names []            =  []
       collect field names ((FieldEntry k _):rest) = [k] :: (collect field names rest)
@@ -1608,14 +1665,28 @@ fn :: lower int list to slots [Int] Int Int RNativeCode => RNativeCode
         st1 = nc emit (lower int lit n cur_slot st) (NStoreSlot cur_slot) (cur_slot + 1)
         lower int list to slots ns sp (idx + 1) st1
 
+fn :: lower field call fn RNativeEnv String Int RNativeCode => RNativeCode
+      lower field call fn env fname sp st
+        | env field is alt env fname =
+          st1 = nc emit st (NStoreSlot sp) (sp + 1)
+          st2 = lower field alt env fname sp (0 - 1) (sp + 1) st1
+          nc emit st2 (NStoreSlot sp) (sp + 1)
+        | otherwise = nc emit list st [NStoreSlot sp, NAdtField sp (env field idx env fname), NStoreSlot sp] (sp + 1)
+
 fn :: lower record updates RNativeEnv [RExpr] [String] Int RNativeCode => RNativeCode
       lower record updates env ((EStr fname):val_e:rest) bound_locals sp st =
         st1 = nc emit st (NStoreSlot sp) (sp + 1)
         st2 = lower expr env val_e bound_locals (sp + 1) st1
-        fidx = env field idx env fname
-        st3 = nc emit st2 (NAdtSet sp fidx) (sp + 1)
+        st3 = lower field set env fname sp st2
         lower record updates env rest bound_locals sp st3
       lower record updates _ _ _ _ st = st
+
+fn :: lower field set RNativeEnv String Int RNativeCode => RNativeCode
+      lower field set env fname sp st
+        | env field is alt env fname =
+          st1 = nc emit st (NStoreSlot (sp + 1)) (sp + 2)
+          lower field alt env fname sp (sp + 1) (sp + 2) st1
+        | otherwise = nc emit st (NAdtSet sp (env field idx env fname)) (sp + 1)
 
 fn :: lower var expr RNativeEnv String [String] Int RNativeCode => RNativeCode
       lower var expr env name bound_locals sp st
@@ -1652,6 +1723,52 @@ fn :: add getter marks [RFieldEntry] RStrSet RStrIntMap => RStrIntMap
       add getter marks ((FieldEntry fname _):rest) fn_name_set m
         | str set has fn_name_set fname = add getter marks rest fn_name_set m
         | otherwise = add getter marks rest fn_name_set (str int map insert m ("#g " + fname) 1)
+
+fn :: lower named field read RNativeEnv String RExpr [String] Int RNativeCode => RNativeCode
+      lower named field read env fname (EVar v) bound_locals sp st
+        | (env field is alt env fname) and (lookup local bound_locals v) >= 0 =
+          lower field alt env fname (env var slot env v) (0 - 1) sp st
+      lower named field read env fname rec_e bound_locals sp st
+        | env field is alt env fname =
+          st1 = lower expr env rec_e bound_locals sp st
+          st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
+          st3 = lower field alt env fname sp (0 - 1) (sp + 1) st2
+          nc emit list st3 [NStoreSlot (sp + 1), NCmmDropSlot sp, NMoveSlot (sp + 1)] (sp + 2)
+        | otherwise = lower field read env (env field idx env fname) rec_e bound_locals sp st
+
+-- The arms of a field with more than one position: the record in `rec_slot`
+-- is matched by constructor; a read leaves the field in the accumulator, a
+-- set (`val_slot` >= 0) stores that slot's value and leaves the record. No
+-- arm matching is a run-time error, never another field.
+fn :: lower field alt RNativeEnv String Int Int Int RNativeCode => RNativeCode
+      lower field alt env fname rec_slot val_slot scratch st =
+        n = env field key env ("#fa " + fname)
+        base = nc lbl st
+        st0 = nc set lbl st (base + n + 1)
+        st1 = nc emit list st0 (field alt arms env fname rec_slot val_slot 0 n base) (scratch + 1)
+        st2 = lower expr env (ECall "sys_write_fd" [EInt 2, EStr (field alt msg fname)]) [] scratch st1
+        st3 = nc emit st2 NDropVal (scratch + 1)
+        st4 = lower expr env (ECall "sys_exit" [EInt 1]) [] scratch st3
+        nc emit list st4 [NLoadImmRaw 0, NLabel (base + n)] (scratch + 1)
+
+fn :: field alt arms RNativeEnv String Int Int Int Int Int => [RNativeInstr]
+      field alt arms env fname rec_slot val_slot k n base
+        | k >= n = []
+        | otherwise =
+          key = " " + fname + " " + (int to str k)
+          tag_ins = NMatchAdt rec_slot (env field key env ("#fo" + key)) (env field key env ("#fl" + key)) (env field key env ("#fn" + key))
+          [tag_ins, NJumpIfZero (base + k)] :: (field alt access rec_slot val_slot (env field key env ("#fa" + key))) :: [NJump (base + n), NLabel (base + k)] :: (field alt arms env fname rec_slot val_slot (k + 1) n base)
+
+fn :: field alt access Int Int Int => [RNativeInstr]
+      field alt access rec_slot val_slot idx
+        | val_slot < 0 = [NAdtField rec_slot idx]
+        | otherwise = [NMoveSlot val_slot, NAdtSet rec_slot idx]
+
+fn :: env field key RNativeEnv String => Int
+      env field key (NativeEnv _ _ _ _ _ _ _ field_map _) k =  str int map lookup field_map k
+
+fn :: env field is alt RNativeEnv String => Bool
+      env field is alt env fname =  (env field key env ("#fa " + fname)) > 0
 
 fn :: lower field read RNativeEnv Int RExpr [String] Int RNativeCode => RNativeCode
       lower field read env fidx (EVar v) bound_locals sp st
@@ -2578,12 +2695,11 @@ fn :: lower call expr RNativeEnv String [RExpr] [String] Int RNativeCode => RNat
           lower expr env a1 bound_locals sp st
       lower call expr env fname (rec_e:call_args) bound_locals sp st
         | (env has field env fname) and (env fn arity env fname) == 1 and (list len call_args) >= 1 =
-          fidx = env field idx env fname
           st1 = lower expr env rec_e bound_locals sp st
-          st2 = nc emit list st1 [NStoreSlot sp, NAdtField sp fidx, NStoreSlot sp] (sp + 1)
+          st2 = lower field call fn env fname sp st1
           lower indirect call slots env sp call_args bound_locals (sp + 1) st2
         | (env has field env fname) and (env is getter env fname) and (list len call_args) == 0 =
-          lower field read env (env field idx env fname) rec_e bound_locals sp st
+          lower named field read env fname rec_e bound_locals sp st
       lower call expr env fname args bound_locals sp st
         | is upper ident fname =
           count = list len args
@@ -3847,14 +3963,21 @@ fn :: lower fndef list acc [RFnDef] RStrIntMap RStrIntMap RStrIntMap RStrSet RSt
         nf = lower fndef f str_map fn_id_map fn_arity_map heavy_set field_map real_fns
         lower fndef list acc fs str_map fn_id_map fn_arity_map heavy_set field_map real_fns ([nf] :: acc)
 
-fn :: lower field getter fns [RFieldEntry] RStrSet RStrIntMap [RNativeFn] => [RNativeFn]
-      lower field getter fns [] _ _ acc = list reverse acc
-      lower field getter fns ((FieldEntry fname idx):rest) fn_name_set fn_id_map acc
-        | str set has fn_name_set fname = lower field getter fns rest fn_name_set fn_id_map acc
+fn :: lower field getter fns [RFieldEntry] RStrSet RStrIntMap RStrIntMap RStrIntMap [RNativeFn] => [RNativeFn]
+      lower field getter fns [] _ _ _ _ acc = list reverse acc
+      lower field getter fns ((FieldEntry fname idx):rest) fn_name_set fn_id_map str_map field_map acc
+        | str set has fn_name_set fname = lower field getter fns rest fn_name_set fn_id_map str_map field_map acc
         | otherwise =
           fid = lookup fn id map fn_id_map fname
-          nf = NativeFn fid fname 1 2 [NAdtField 0 idx, NReturn]
-          lower field getter fns rest fn_name_set fn_id_map ([nf] :: acc)
+          nf = field getter fn fid fname idx (NativeEnv fname 1 [] str_map fn_id_map StrIntEmpty StrSetEmpty field_map [])
+          lower field getter fns rest fn_name_set fn_id_map str_map field_map ([nf] :: acc)
+
+fn :: field getter fn Int String Int RNativeEnv => RNativeFn
+      field getter fn fid fname idx env
+        | env field is alt env fname =
+          st = lower field alt env fname 0 (0 - 1) 1 (NativeCode [] 1 2)
+          NativeFn fid fname 1 (nc max sp st) ((nc instrs st) :: [NReturn])
+        | otherwise = NativeFn fid fname 1 2 [NAdtField 0 idx, NReturn]
 
 -- ── Call-Graph Tree-Shaking & Dispatch Function Synthesis ────
 
@@ -4436,7 +4559,8 @@ fn :: lower program to native RProgram [String] => RNativeProg
         fn_names = collect fn names fns
         fn_name_set = str list to set fn_names StrSetEmpty
         field_names = collect field names field_tbl
-        str_pool = build str pool fns (field_names :: (no match msgs fns) :: [gen tensor oob msg])
+        field_alts = ambiguous field alts (collect field alts tys []) (collect field alts tys [])
+        str_pool = build str pool fns (field_names :: (field alt strs field_alts) :: (no match msgs fns) :: [gen tensor oob msg])
         rodata_str = pool rodata str_pool
         str_map = pool str map str_pool
         fn_tbl1 = build fn table fndefs fns 5 []
@@ -4444,7 +4568,7 @@ fn :: lower program to native RProgram [String] => RNativeProg
         fn_id_map = build fn id map fn_tbl StrIntEmpty
         fn_arity_map = build fn arity map fn_tbl StrIntEmpty
         heavy_set = compute heavy fn set fns
-        field_map = insert gagent ids gagent_names 0 (build field idx map field_tbl StrIntEmpty)
+        field_map = add field alts field_alts str_map (insert gagent ids gagent_names 0 (build field idx map field_tbl StrIntEmpty))
         disp_set0 = str list to set field_names (str list to set b_val_names StrSetEmpty)
         disp_set = collect disp fndefs fns fn_arity_map disp_set0
         borrow_excl = str list to set ([entry_name] :: gagent_names :: show_roots :: (borrow tail fns fns [])) disp_set
@@ -4456,7 +4580,7 @@ fn :: lower program to native RProgram [String] => RNativeProg
         call2_disp = NativeFn 3 "__rg_dispatch_call2" 3 call2_slots (build call2 dispatch instrs fn_tbl str_map disp_set 1 [])
         binop_disp = NativeFn 4 "__rg_dispatch_binop" 3 6 (build binop dispatch instrs fn_tbl str_map 1 [])
         user_native_fns = lower fndef list acc fns str_map fn_id_map fn_arity_map_b heavy_set field_map infos []
-        field_native_fns = lower field getter fns field_tbl fn_name_set fn_id_map []
+        field_native_fns = lower field getter fns field_tbl fn_name_set fn_id_map str_map field_map []
         all_native_fns = [main_wrapper, spawn_disp, call2_disp, binop_disp] :: user_native_fns :: field_native_fns
         NativeProg 1 2 3 4 (fill tail call fns all_native_fns (tail callee slots all_native_fns StrIntEmpty) []) rodata_str
 
@@ -4503,7 +4627,8 @@ fn :: lower library to native RProgram [String] => RNativeProg
         fn_names = collect fn names fns
         fn_name_set = str list to set fn_names StrSetEmpty
         field_names = collect field names field_tbl
-        str_pool = build str pool fns (field_names :: (no match msgs fns) :: [gen tensor oob msg])
+        field_alts = ambiguous field alts (collect field alts tys []) (collect field alts tys [])
+        str_pool = build str pool fns (field_names :: (field alt strs field_alts) :: (no match msgs fns) :: [gen tensor oob msg])
         rodata_str = pool rodata str_pool
         str_map = pool str map str_pool
         fn_tbl1 = build fn table fndefs fns 5 []
@@ -4511,7 +4636,7 @@ fn :: lower library to native RProgram [String] => RNativeProg
         fn_id_map = build fn id map fn_tbl StrIntEmpty
         fn_arity_map = build fn arity map fn_tbl StrIntEmpty
         heavy_set = compute heavy fn set fns
-        field_map = insert gagent ids gagent_names 0 (build field idx map field_tbl StrIntEmpty)
+        field_map = add field alts field_alts str_map (insert gagent ids gagent_names 0 (build field idx map field_tbl StrIntEmpty))
         disp_set = str list to set field_names fn_name_set
         entry_fid = lookup fn id map fn_id_map "main"
         main_wrapper = build lib entry wrapper entry_fid
@@ -4520,7 +4645,7 @@ fn :: lower library to native RProgram [String] => RNativeProg
         call2_disp = NativeFn 3 "__rg_dispatch_call2" 3 call2_slots (build call2 dispatch instrs fn_tbl str_map disp_set 1 [])
         binop_disp = NativeFn 4 "__rg_dispatch_binop" 3 6 (build binop dispatch instrs fn_tbl str_map 1 [])
         user_native_fns = lower fndef list acc fns str_map fn_id_map (add unit marks fns (add getter marks field_tbl fn_name_set fn_arity_map)) heavy_set field_map infos []
-        field_native_fns = lower field getter fns field_tbl fn_name_set fn_id_map []
+        field_native_fns = lower field getter fns field_tbl fn_name_set fn_id_map str_map field_map []
         all_native_fns = [main_wrapper, spawn_disp, call2_disp, binop_disp] :: user_native_fns :: field_native_fns
         NativeProg 1 2 3 4 (fill tail call fns all_native_fns (tail callee slots all_native_fns StrIntEmpty) []) rodata_str
 
