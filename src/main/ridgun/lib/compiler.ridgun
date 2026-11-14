@@ -29,6 +29,8 @@ import arm64
 import llvm
 import macho64
 import pe64
+import wasm32
+import wasm
 
 -- ── Local Variable Table Helpers ────────────────────────────
 
@@ -4710,6 +4712,8 @@ fn :: emit elf for target RNativeProg String           => [Int]
       emit elf for target nprog       "arm64-windows"  =  emit arm64 pe64 nprog
       emit elf for target nprog       "windows-arm64"  =  emit arm64 pe64 nprog
       emit elf for target nprog       "aarch64-windows" = emit arm64 pe64 nprog
+      emit elf for target nprog       "wasm32"         =  emit wasm module nprog
+      emit elf for target nprog       "wasm"           =  emit wasm module nprog
       emit elf for target nprog       _                =  emit x8664 elf nprog
 
 fn :: emit so elf for target RNativeProg String           => [Int]

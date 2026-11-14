@@ -161,3 +161,149 @@ fn :: wasm module bytes WasmModule => [Int]
         s10 = wasm section 10 (map (x => wasm code item x) funcs)
         s11 = wasm section 11 (map (x => wasm data item x) datas)
         wasm concat [wasm header, s1, s2, s3, s5, s6, s7, s10, s11]
+
+-- ── Instructions ─────────────────────────────────────────────
+-- Each gives the bytes of one instruction. Block types are empty (0x40).
+
+fn :: w unreachable => [Int]
+      w unreachable =  [0]
+
+fn :: w block => [Int]
+      w block =  [2, 64]
+
+fn :: w loop => [Int]
+      w loop =  [3, 64]
+
+fn :: w if => [Int]
+      w if =  [4, 64]
+
+fn :: w else => [Int]
+      w else =  [5]
+
+fn :: w end => [Int]
+      w end =  [11]
+
+fn :: w br Int => [Int]
+      w br d =  [12] :: (wasm uleb d)
+
+fn :: w br if Int => [Int]
+      w br if d =  [13] :: (wasm uleb d)
+
+-- `br_table`: the label depth for each value of the operand, then the default depth.
+fn :: w br table [Int] Int => [Int]
+      w br table targets default =  [14] :: ((wasm vec (map (t => wasm uleb t) targets)) :: (wasm uleb default))
+
+fn :: w return => [Int]
+      w return =  [15]
+
+fn :: w call Int => [Int]
+      w call f =  [16] :: (wasm uleb f)
+
+fn :: w drop => [Int]
+      w drop =  [26]
+
+fn :: w select => [Int]
+      w select =  [27]
+
+fn :: w local get Int => [Int]
+      w local get i =  [32] :: (wasm uleb i)
+
+fn :: w local set Int => [Int]
+      w local set i =  [33] :: (wasm uleb i)
+
+fn :: w local tee Int => [Int]
+      w local tee i =  [34] :: (wasm uleb i)
+
+fn :: w global get Int => [Int]
+      w global get i =  [35] :: (wasm uleb i)
+
+fn :: w global set Int => [Int]
+      w global set i =  [36] :: (wasm uleb i)
+
+-- Loads and stores at the address on the stack plus `off`, naturally aligned.
+fn :: w i64 load Int => [Int]
+      w i64 load off =  [41, 3] :: (wasm uleb off)
+
+fn :: w i64 store Int => [Int]
+      w i64 store off =  [55, 3] :: (wasm uleb off)
+
+fn :: w i32 const Int => [Int]
+      w i32 const v =  [65] :: (wasm sleb v)
+
+fn :: w i64 const Int => [Int]
+      w i64 const v =  [66] :: (wasm sleb v)
+
+fn :: w i32 eqz => [Int]
+      w i32 eqz =  [69]
+
+fn :: w i32 lt u => [Int]
+      w i32 lt u =  [73]
+
+fn :: w i64 eqz => [Int]
+      w i64 eqz =  [80]
+
+fn :: w i64 eq => [Int]
+      w i64 eq =  [81]
+
+fn :: w i64 ne => [Int]
+      w i64 ne =  [82]
+
+fn :: w i64 lt s => [Int]
+      w i64 lt s =  [83]
+
+fn :: w i64 gt s => [Int]
+      w i64 gt s =  [85]
+
+fn :: w i64 le s => [Int]
+      w i64 le s =  [87]
+
+fn :: w i64 ge s => [Int]
+      w i64 ge s =  [89]
+
+fn :: w i32 add => [Int]
+      w i32 add =  [106]
+
+fn :: w i32 sub => [Int]
+      w i32 sub =  [107]
+
+fn :: w i32 band => [Int]
+      w i32 band =  [113]
+
+fn :: w i32 bor => [Int]
+      w i32 bor =  [114]
+
+fn :: w i64 add => [Int]
+      w i64 add =  [124]
+
+fn :: w i64 sub => [Int]
+      w i64 sub =  [125]
+
+fn :: w i64 mul => [Int]
+      w i64 mul =  [126]
+
+fn :: w i64 div s => [Int]
+      w i64 div s =  [127]
+
+fn :: w i64 rem s => [Int]
+      w i64 rem s =  [129]
+
+fn :: w i64 band => [Int]
+      w i64 band =  [131]
+
+fn :: w i64 bor => [Int]
+      w i64 bor =  [132]
+
+fn :: w i64 bxor => [Int]
+      w i64 bxor =  [133]
+
+fn :: w i64 shift left => [Int]
+      w i64 shift left =  [134]
+
+fn :: w i64 shift right s => [Int]
+      w i64 shift right s =  [135]
+
+fn :: w i32 wrap => [Int]
+      w i32 wrap =  [167]
+
+fn :: w i64 extend u => [Int]
+      w i64 extend u =  [173]

@@ -1,0 +1,478 @@
+-- ============================================================
+-- src/main/ridgun/lib/wasm.ridgun
+-- Pure-Ridgun WebAssembly backend: NIR to a wasm32 module (ADR-0011)
+-- @implements FR-COMP-026
+-- ============================================================
+
+import elf64
+import wasm32
+
+-- ── Module layout ────────────────────────────────────────────
+-- Memory: bytes 0..1023 stay zero; the rodata starts at 1024; the shadow
+-- stack follows it and grows down from its top; the heap starts at that top.
+-- Ridgun values are i64 words, as on the native targets: a tagged Int
+-- (2n + 1), a Bool (6 or 2), Unit (0) or the address of a heap object.
+
+fn :: wasm rodata base => Int
+      wasm rodata base =  1024
+
+fn :: wasm stack size => Int
+      wasm stack size =  8388608
+
+-- Memory pages beyond the stack top at start, for the first heap objects.
+fn :: wasm heap pages => Int
+      wasm heap pages =  16
+
+-- Imported functions come first in the function index space (none yet).
+fn :: wasm import count => Int
+      wasm import count =  0
+
+-- Runtime functions: the 56 slots of the native runtimes (`rt` of x86_64 and
+-- arm64), then the instructions they encode inline (56..63) and the heap
+-- entry points (64..66).
+fn :: wasm rt count => Int
+      wasm rt count =  67
+
+fn :: wasm rt index Int => Int
+      wasm rt index k =  (wasm import count) + k
+
+fn :: wasm nir base => Int
+      wasm nir base =  (wasm import count) + (wasm rt count)
+
+-- Globals.
+fn :: wasm global sp => Int
+      wasm global sp =  0
+
+fn :: wasm global heap => Int
+      wasm global heap =  1
+
+fn :: wasm global stack low => Int
+      wasm global stack low =  2
+
+-- Types: 0 = NIR function (i32 arguments address) -> i64; 1 + n = n i64
+-- parameters -> i64 (n = 0..5); 7 = () -> ().
+fn :: wasm types => [WasmType]
+      wasm types =
+        a = wasm i32
+        v = wasm i64
+        [WasmType [a] [v], WasmType [] [v], WasmType [v] [v], WasmType [v, v] [v], WasmType [v, v, v] [v], WasmType [v, v, v, v] [v], WasmType [v, v, v, v, v] [v], WasmType [] []]
+
+-- ── NIR functions ────────────────────────────────────────────
+-- Locals of a NIR function: 0 = the arguments address (i32), 1 = the frame
+-- address (i32), 2 = the accumulator (i64), 3 = the next block (i32).
+-- Slot s of the frame is the i64 at frame + 8s.
+
+-- Slots, labels (label id -> block index) and functions (fid -> function index).
+type WasmCtx = WasmCtx Int [RLabelEntry] [RLabelEntry]
+
+fn :: wasm frame Int => [Int]
+      wasm frame s =  (w local get 1) :: (w i32 const (s * 8)) :: w i32 add :: w i64 extend u
+
+fn :: wasm fp64 => [Int]
+      wasm fp64 =  (w local get 1) :: w i64 extend u
+
+fn :: wasm peek Int => [Int]
+      wasm peek s =  (w local get 1) :: (w i64 load (s * 8))
+
+fn :: wasm acc => [Int]
+      wasm acc =  w local get 2
+
+fn :: wasm rt Int => [Int]
+      wasm rt k =  w call (wasm rt index k)
+
+-- Call runtime function k with the arguments already pushed; its result is the accumulator.
+fn :: wasm rt acc Int => [Int]
+      wasm rt acc k =  (wasm rt k) :: (w local set 2)
+
+fn :: wasm c Int => [Int]
+      wasm c v =  w i64 const v
+
+-- Continue at block j, `d` labels away from the dispatch loop.
+fn :: wasm goto Int Int => [Int]
+      wasm goto j d =  (w i32 const j) :: (w local set 3) :: (w br d)
+
+fn :: wasm label Int WasmCtx => Int
+      wasm label lid (WasmCtx _ lbls _) =  lookup label offset lbls lid
+
+-- One NIR instruction; `d` is the depth of the dispatch loop.
+fn :: wasm instr RNativeInstr Int Int WasmCtx => [Int]
+      wasm instr (NLabel _) _ _ _ = []
+      wasm instr (NJump lid) d _ ctx =
+        wasm goto (wasm label lid ctx) d
+      wasm instr (NJumpIfZero lid) d _ ctx =
+        wasm acc :: w i64 eqz :: w if :: (wasm goto (wasm label lid ctx) (d + 1)) :: w end
+      wasm instr (NJumpIfNonZero lid) d _ ctx =
+        wasm acc :: w i64 eqz :: w i32 eqz :: w if :: (wasm goto (wasm label lid ctx) (d + 1)) :: w end
+      wasm instr (NLoadImmInt n) _ _ _ =  (wasm c ((n * 2) + 1)) :: (w local set 2)
+      wasm instr (NLoadImmRaw raw) _ _ _ =  (wasm c raw) :: (w local set 2)
+      wasm instr (NLoadRealLit off len) _ ro _ =  (wasm c (ro + off)) :: (wasm c len) :: (wasm rt acc 11)
+      wasm instr (NLoadStrLit off len) _ ro _ =  (wasm c (ro + off)) :: (wasm c len) :: (wasm rt acc 12)
+      -- `sys os` and `sys arch`: the constructors `Linux` and `X86_64` of the rodata pool.
+      wasm instr (NLoadAdt0 -2 0) _ ro _ =  (wasm c (ro + 5)) :: (wasm c 5) :: (wasm rt acc 13)
+      wasm instr (NLoadAdt0 -1 0) _ ro _ =  (wasm c (ro + 22)) :: (wasm c 6) :: (wasm rt acc 13)
+      wasm instr (NLoadAdt0 off len) _ ro _ =  (wasm c (ro + off)) :: (wasm c len) :: (wasm rt acc 13)
+      wasm instr (NCloneSlot s) _ _ _ =  (wasm peek s) :: (wasm rt acc 5)
+      wasm instr (NPeekSlot s) _ _ _ =  (wasm peek s) :: (w local set 2)
+      wasm instr (NForgetSlot s) _ _ _ =  (w local get 1) :: (wasm c 0) :: (w i64 store (s * 8))
+      wasm instr (NMoveSlot s) _ _ _ =  (wasm frame s) :: (wasm rt acc 7)
+      wasm instr (NStoreSlot s) _ _ _ =  (wasm frame s) :: wasm acc :: (wasm rt acc 8)
+      wasm instr (NRebindSlot s) _ _ _ =  (wasm frame s) :: wasm acc :: (wasm rt acc 9)
+      wasm instr (NCmmDropSlot s) _ _ _ =  (wasm frame s) :: (wasm rt acc 10)
+      wasm instr NDropVal _ _ _ =  wasm acc :: (wasm rt acc 6)
+      wasm instr (NClearLocals s e) _ _ _ =  wasm fp64 :: (wasm c s) :: (wasm c e) :: (wasm rt acc 4)
+      wasm instr (NMatchInt s n) _ _ _ =  (wasm peek s) :: (wasm c n) :: (wasm rt acc 21)
+      wasm instr (NMatchReal s off len) _ ro _ =  (wasm peek s) :: (wasm c (ro + off)) :: (wasm c len) :: (wasm rt acc 22)
+      wasm instr (NMatchStr s off len) _ ro _ =  (wasm peek s) :: (wasm c (ro + off)) :: (wasm c len) :: (wasm rt acc 23)
+      wasm instr (NMatchBool s b) _ _ _ =  (wasm peek s) :: (wasm c b) :: (wasm rt acc 24)
+      wasm instr (NMatchEmpty s) _ _ _ =  (wasm peek s) :: (wasm rt acc 25)
+      wasm instr (NMatchNonEmpty s) _ _ _ =  (wasm peek s) :: (wasm rt acc 26)
+      wasm instr (NMatchTuple s ar) _ _ _ =  (wasm peek s) :: (wasm c ar) :: (wasm rt acc 29)
+      -- A negative arity names a fixed check (as on x86_64); the runtime does it.
+      wasm instr (NMatchAdt s off len ar) _ ro _ =  (wasm peek s) :: (wasm c (ro + off)) :: (wasm c len) :: (wasm c ar) :: (wasm rt acc 31)
+      wasm instr (NListHead s) _ _ _ =  (wasm peek s) :: (wasm rt acc 27)
+      wasm instr (NListTail s) _ _ _ =  (wasm peek s) :: (wasm rt acc 28)
+      wasm instr (NTupleGet s i) _ _ _ =  (wasm peek s) :: (wasm c i) :: (wasm rt acc 30)
+      wasm instr (NAdtField s i) _ _ _ =  (wasm peek s) :: (wasm c i) :: (wasm rt acc 32)
+      wasm instr (NPackSeq ar) _ _ _ =  wasm fp64 :: (wasm c ar) :: (wasm rt acc 19)
+      wasm instr NRealFromBits _ _ _ =  wasm acc :: (wasm rt acc 62)
+      wasm instr NRealToBits _ _ _ =  wasm acc :: (wasm rt acc 63)
+      wasm instr (NIsList s) _ _ _ =  (wasm peek s) :: (wasm rt acc 56)
+      wasm instr (NIsGen s) _ _ _ =  (wasm peek s) :: (wasm rt acc 57)
+      wasm instr (NListSet b i) _ _ _ =  (wasm frame b) :: (wasm peek i) :: wasm acc :: (wasm rt acc 58)
+      wasm instr (NListGet b i) _ _ _ =  (wasm peek b) :: (wasm peek i) :: (wasm rt acc 59)
+      wasm instr (NSortBy s mode) _ _ _ =  (wasm peek s) :: (wasm peek (s + 1)) :: (wasm c mode) :: (wasm rt acc 60)
+      wasm instr (NGtConv s mode) _ _ _ =  (wasm peek s) :: (wasm c mode) :: wasm acc :: (wasm rt acc 61)
+      -- `@` on Real tensors: no fast path; 0 makes the loops run (as on x86_64).
+      wasm instr (NEinsumReal _ _ _ _) _ _ _ =  (wasm c 0) :: (w local set 2)
+      wasm instr NAsBool _ _ _ =  wasm acc :: (wasm rt acc 20)
+      -- `not` of a tagged Int flips its bits and keeps the tag; others go to the runtime.
+      wasm instr NNot _ _ _ =
+        wasm acc :: (wasm c 1) :: w i64 band :: w i64 eqz :: w if :: wasm acc :: (wasm rt acc 34) :: w else :: wasm acc :: (wasm c (0 - 2)) :: w i64 bxor :: (w local set 2) :: w end
+      wasm instr NOut _ _ _ =  wasm acc :: (wasm rt acc 35)
+      wasm instr (NBinOp o lhs) _ _ _ =  (wasm c o) :: (wasm frame lhs) :: wasm acc :: (wasm rt acc 37)
+      wasm instr (NAdtSet r i) _ _ _ =  (wasm frame r) :: (wasm c i) :: wasm acc :: (wasm rt acc 33)
+      wasm instr (NMakeList s n) _ _ _ =  (wasm frame s) :: (wasm c n) :: (wasm rt acc 15)
+      wasm instr (NMakeTuple s n) _ _ _ =  (wasm frame s) :: (wasm c n) :: (wasm rt acc 16)
+      wasm instr (NMakeTensor s n) _ _ _ =  (wasm frame s) :: (wasm c n) :: (wasm rt acc 17)
+      wasm instr (NMakeAdt off len s n) _ ro _ =  (wasm c (ro + off)) :: (wasm c len) :: (wasm frame s) :: (wasm c n) :: (wasm rt acc 14)
+      wasm instr (NEcho s n) _ _ _ =  (wasm frame s) :: (wasm c n) :: (wasm rt acc 36)
+      wasm instr (NStrInterp s n) _ _ _ =  (wasm frame s) :: (wasm c n) :: (wasm rt acc 18)
+      -- A negative count is a borrowed base (as on x86_64); the runtime does it.
+      wasm instr (NIndex b i n) _ _ _ =  (wasm frame b) :: (wasm frame i) :: (wasm c n) :: (wasm rt acc 38)
+      wasm instr (NIndexSet b i n) _ _ _ =  (wasm frame b) :: (wasm frame i) :: (wasm c n) :: wasm acc :: (wasm rt acc 39)
+      wasm instr (NSeqSelect off len) _ ro _ =  wasm acc :: (wasm c (ro + off)) :: (wasm c len) :: (wasm rt acc 40)
+      wasm instr (NEinsum s n off len) _ ro _ =  (wasm frame s) :: (wasm c n) :: (wasm c (ro + off)) :: (wasm c len) :: (wasm rt acc 41)
+      wasm instr (NHadamard o lhs off len) _ ro _ =  (wasm c o) :: (wasm frame lhs) :: wasm acc :: (wasm c (ro + off)) :: (wasm c len) :: (wasm rt acc 42)
+      wasm instr NEnterRegion _ _ _ =  wasm rt acc 47
+      wasm instr (NExitRegion quota) _ _ _ =  (wasm c quota) :: wasm acc :: (wasm rt acc 48)
+      wasm instr (NCallFn fid s _) _ _ (WasmCtx _ _ fns) =
+        (w local get 1) :: (w i32 const (s * 8)) :: w i32 add :: (w call (lookup label offset fns fid)) :: (w local set 2)
+      -- Builtin ids with their own x86_64 routines are told apart by the runtime.
+      wasm instr (NCallBuiltin b s n) _ _ _ =  (wasm c b) :: (wasm frame s) :: (wasm c n) :: (wasm rt acc 55)
+      wasm instr (NCallIndirect1 f a) _ _ _ =  (wasm peek f) :: (wasm frame a) :: (wasm rt acc 53)
+      wasm instr (NCallIndirect2 f s) _ _ _ =  (wasm peek f) :: (wasm frame s) :: (wasm rt acc 54)
+      -- A self tail call moves the arguments to slots 0.. and starts the body again.
+      wasm instr (NTailCall s ar) d _ (WasmCtx ns _ _) =
+        wasm fp64 :: (wasm c s) :: (wasm c ar) :: (wasm c ns) :: (wasm rt acc 3) :: (wasm goto 0 d)
+      -- A tail call to another function is a call and a return (as on arm64).
+      wasm instr (NTailCallFn fid s n _) d ro ctx =
+        (wasm instr (NCallFn fid s n) d ro ctx) :: (wasm instr NReturn d ro ctx)
+      wasm instr NReturn _ _ (WasmCtx ns _ _) =
+        wasm fp64 :: (wasm c ns) :: wasm acc :: (wasm rt acc 2) :: (w local get 1) :: (w i32 const (ns * 8)) :: w i32 add :: (w global set (wasm global sp)) :: wasm acc :: w return
+
+fn :: wasm instrs [RNativeInstr] Int Int WasmCtx [Int] => [Int]
+      wasm instrs [] _ _ _ acc = acc
+      wasm instrs (i:is) d ro ctx acc = wasm instrs is d ro ctx (acc :: (wasm instr i d ro ctx))
+
+-- The blocks of a function: the instructions before the first label, then one per label.
+fn :: wasm blocks [RNativeInstr] [RNativeInstr] [[RNativeInstr]] => [[RNativeInstr]]
+      wasm blocks [] cur acc = acc :: [cur]
+      wasm blocks ((NLabel _):rest) cur acc = wasm blocks rest [] (acc :: [cur])
+      wasm blocks (i:rest) cur acc = wasm blocks rest (cur :: [i]) acc
+
+-- Label id -> block index (the first label starts block 1).
+fn :: wasm label table [RNativeInstr] Int [RLabelEntry] => [RLabelEntry]
+      wasm label table [] _ acc = acc
+      wasm label table ((NLabel lid):rest) k acc = wasm label table rest (k + 1) (acc :: [LabelEntry lid (k + 1)])
+      wasm label table (_:rest) k acc = wasm label table rest k acc
+
+-- Block k of n follows the end of its wasm block, inside the n - 1 - k outer ones.
+fn :: wasm blocks code [[RNativeInstr]] Int Int Int WasmCtx [Int] => [Int]
+      wasm blocks code [] _ _ _ _ acc = acc
+      wasm blocks code (b:bs) k n ro ctx acc =
+        code = wasm instrs b (n - 1 - k) ro ctx []
+        wasm blocks code bs (k + 1) n ro ctx (acc :: (w end) :: code)
+
+fn :: wasm repeat [Int] Int [Int] => [Int]
+      wasm repeat _ 0 acc = acc
+      wasm repeat xs n acc = wasm repeat xs (n - 1) (acc :: xs)
+
+fn :: wasm range Int Int [Int] => [Int]
+      wasm range lo hi acc
+        | lo >= hi = acc
+        | otherwise = wasm range (lo + 1) hi (acc :: [lo])
+
+-- Take a frame of `ns` slots from the shadow stack (stop when it is full) and
+-- move the `arity` arguments into it.
+fn :: wasm prologue Int Int => [Int]
+      wasm prologue arity ns =
+        take = (w global get (wasm global sp)) :: (w i32 const (ns * 8)) :: w i32 sub :: (w local tee 1) :: (w global set (wasm global sp))
+        check = (w local get 1) :: (w global get (wasm global stack low)) :: w i32 lt u :: w if :: w unreachable :: w end
+        init = wasm fp64 :: (w local get 0) :: w i64 extend u :: (wasm c arity) :: (wasm c ns) :: (wasm rt 1) :: w drop
+        take :: check :: init
+
+-- A NIR function: a loop around a `br_table` that selects the next block.
+fn :: wasm nir func RNativeFn [RLabelEntry] => WasmFunc
+      wasm nir func (NativeFn _ _ arity ns instrs) fns =
+        blocks = wasm blocks instrs [] []
+        n = list len blocks
+        ctx = WasmCtx ns (wasm label table instrs 0 []) fns
+        dispatch = (w local get 3) :: (w br table (wasm range 0 n []) (n - 1))
+        body = (wasm prologue arity ns) :: w loop :: (wasm repeat (w block) n []) :: dispatch :: (wasm blocks code blocks 0 n (wasm rodata base) ctx []) :: w end :: w unreachable
+        WasmFunc 0 [wasm i32, wasm i64, wasm i32] body
+
+-- fid -> function index, in the order of the functions.
+fn :: wasm fn table [RNativeFn] Int [RLabelEntry] => [RLabelEntry]
+      wasm fn table [] _ acc = acc
+      wasm fn table ((NativeFn fid _ _ _ _):rest) idx acc = wasm fn table rest (idx + 1) (acc :: [LabelEntry fid idx])
+
+-- ── Runtime ──────────────────────────────────────────────────
+-- Runtime function k takes `wasm rt arity k` i64 parameters and returns an i64.
+-- Addresses are passed as i64 and wrapped to i32 at each access.
+
+fn :: wasm rt arity Int => Int
+      wasm rt arity k
+        | k == 0 or k == 47 = 0
+        | k >= 43 and k <= 46 = 0
+        | k >= 49 and k <= 52 = 0
+        | k == 5 or k == 6 or k == 7 or k == 10 or k == 20 or k == 25 or k == 26 = 1
+        | k == 27 or k == 28 or k == 34 or k == 35 = 1
+        | k == 56 or k == 57 or k == 62 or k == 63 or k == 64 or k == 65 = 1
+        | k == 1 or k == 3 or k == 14 or k == 31 or k == 39 or k == 41 = 4
+        | k == 42 = 5
+        | k == 2 or k == 4 or k == 22 or k == 23 or k == 33 or k == 37 or k == 38 = 3
+        | k == 40 or k == 55 or k == 58 or k == 60 or k == 61 or k == 66 = 3
+        | otherwise = 2
+
+-- The address in i64 local `base` plus 8 times i64 local `i`, as an i32.
+fn :: wasm rt slot Int Int => [Int]
+      wasm rt slot base i =  (w local get base) :: (w local get i) :: (wasm c 3) :: w i64 shift left :: w i64 add :: w i32 wrap
+
+-- The i64 local as an i32 address.
+fn :: wasm rt addr Int => [Int]
+      wasm rt addr i =  (w local get i) :: w i32 wrap
+
+-- 1 (i32) when i64 local i holds a heap address: not 0 and the low 3 bits clear.
+fn :: wasm rt is heap Int => [Int]
+      wasm rt is heap i =  (w local get i) :: w i64 eqz :: w i32 eqz :: (w local get i) :: (wasm c 7) :: w i64 band :: w i64 eqz :: w i32 band
+
+-- The Bool word (6 or 2) of the i32 condition `cond`.
+fn :: wasm rt bool [Int] => [Int]
+      wasm rt bool cond =  (wasm c 6) :: (wasm c 2) :: cond :: w select
+
+-- A tagged Int from the untagged i64 on the stack.
+fn :: wasm rt tag => [Int]
+      wasm rt tag =  (wasm c 1) :: w i64 shift left :: (wasm c 1) :: w i64 bor
+
+fn :: wasm rt incr Int => [Int]
+      wasm rt incr i =  (w local get i) :: (wasm c 1) :: w i64 add :: (w local set i)
+
+-- while local i < local lim: body; i += 1
+fn :: wasm rt loop Int Int [Int] => [Int]
+      wasm rt loop i lim body =
+        w block :: w loop :: (w local get i) :: (w local get lim) :: w i64 ge s :: (w br if 1) :: body :: (wasm rt incr i) :: (w br 0) :: w end :: w end
+
+-- Store 0 in slot (base, i) and call drop on what it held.
+fn :: wasm rt clear slot Int Int Int => [Int]
+      wasm rt clear slot base i v =
+        (wasm rt slot base i) :: (w i64 load 0) :: (w local set v) :: (wasm rt slot base i) :: (wasm c 0) :: (w i64 store 0) :: (w local get v) :: (wasm rt 6) :: w drop
+
+-- rt 1, init frame (frame, args, arity, slots): move the arguments into the
+-- frame (clearing them at the source) and zero the other slots.
+fn :: wasm rt init frame => [Int]
+      wasm rt init frame =
+        no_args = (w local get 1) :: w i64 eqz :: w if :: (wasm c 0) :: (w local set 2) :: w end
+        move = (wasm rt slot 0 4) :: (wasm rt slot 1 4) :: (w i64 load 0) :: (w i64 store 0) :: (wasm rt slot 1 4) :: (wasm c 0) :: (w i64 store 0)
+        zero = (wasm rt slot 0 4) :: (wasm c 0) :: (w i64 store 0)
+        no_args :: (wasm rt loop 4 2 move) :: (wasm rt loop 4 3 zero) :: (wasm c 0)
+
+-- rt 2, epilogue (frame, slots, result): drop every slot, give the result.
+fn :: wasm rt epilogue => [Int]
+      wasm rt epilogue =  (w local get 0) :: (wasm c 0) :: (w local get 1) :: (wasm rt 4) :: w drop :: (w local get 2)
+
+-- rt 3, tail call copy (frame, start, arity, slots): drop the slots that are
+-- not arguments, then move the arguments down to slots 0..arity - 1.
+fn :: wasm rt tco copy => [Int]
+      wasm rt tco copy =
+        not_arg = (w local get 4) :: (w local get 1) :: w i64 lt s :: (w local get 4) :: (w local get 1) :: (w local get 2) :: w i64 add :: w i64 ge s :: w i32 bor
+        drop_others = wasm rt loop 4 3 (not_arg :: w if :: (wasm rt clear slot 0 4 5) :: w end)
+        src = (w local get 0) :: (w local get 1) :: (w local get 4) :: w i64 add :: (wasm c 3) :: w i64 shift left :: w i64 add :: w i32 wrap
+        move = src :: (w i64 load 0) :: (w local set 5) :: src :: (wasm c 0) :: (w i64 store 0) :: (wasm rt slot 0 4) :: (w local get 5) :: (w i64 store 0)
+        reset = (wasm c 0) :: (w local set 4)
+        moves = (w local get 1) :: w i64 eqz :: w i32 eqz :: w if :: (wasm rt loop 4 2 move) :: w end
+        drop_others :: reset :: moves :: (wasm c 0)
+
+-- rt 4, clear locals (frame, start, end): clear slots start..end - 1.
+fn :: wasm rt clear locals => [Int]
+      wasm rt clear locals =  (wasm rt loop 1 2 (wasm rt clear slot 0 1 3)) :: (wasm c 0)
+
+-- rt 5, clone (value): one more reference to a heap value.
+fn :: wasm rt clone => [Int]
+      wasm rt clone =  (wasm rt is heap 0) :: w if :: (w local get 0) :: (wasm rt 64) :: w drop :: w end :: (w local get 0)
+
+-- rt 6, drop (value): one reference less to a heap value.
+fn :: wasm rt drop => [Int]
+      wasm rt drop =  (wasm rt is heap 0) :: w if :: (w local get 0) :: (wasm rt 65) :: w drop :: w end :: (wasm c 0)
+
+-- rt 7, move (slot address): the value, and the slot cleared.
+fn :: wasm rt move => [Int]
+      wasm rt move =  (wasm rt addr 0) :: (w i64 load 0) :: (wasm rt addr 0) :: (wasm c 0) :: (w i64 store 0)
+
+-- rt 8, store (slot address, value): store, then drop the old value.
+fn :: wasm rt store => [Int]
+      wasm rt store =  (wasm rt addr 0) :: (w i64 load 0) :: (w local set 2) :: (wasm rt addr 0) :: (w local get 1) :: (w i64 store 0) :: (w local get 2) :: (wasm rt 6)
+
+-- rt 9, rebind (slot address, value): drop the old value as rt 10 does, then store.
+fn :: wasm rt rebind => [Int]
+      wasm rt rebind =  (w local get 0) :: (wasm rt 10) :: w drop :: (wasm rt addr 0) :: (w local get 1) :: (w i64 store 0) :: (wasm c 0)
+
+-- rt 10, drop slot (slot address): clear the slot and drop its value.
+fn :: wasm rt drop slot => [Int]
+      wasm rt drop slot =  (wasm rt addr 0) :: (w i64 load 0) :: (wasm rt addr 0) :: (wasm c 0) :: (w i64 store 0) :: (wasm rt 6)
+
+-- rt 20, as bool (value): 1 for True, else 0; the value is dropped.
+fn :: wasm rt as bool => [Int]
+      wasm rt as bool =  (w local get 0) :: (wasm c 6) :: w i64 eq :: w i64 extend u :: (w local get 0) :: (wasm rt 6) :: w drop
+
+-- rt 21, match int (value, n): 1 when the value is the tagged n.
+fn :: wasm rt match int => [Int]
+      wasm rt match int =  (w local get 0) :: (w local get 1) :: wasm rt tag :: w i64 eq :: w i64 extend u
+
+-- rt 24, match bool (value, b): 1 when the value is True for b /= 0, False for b = 0.
+fn :: wasm rt match bool => [Int]
+      wasm rt match bool =  (w local get 0) :: (wasm rt bool ((w local get 1) :: w i64 eqz :: w i32 eqz)) :: w i64 eq :: w i64 extend u
+
+-- rt 34, not (value): the other Bool. (A boxed Int is a heap value: TASK-0088.)
+fn :: wasm rt bool not => [Int]
+      wasm rt bool not =  (wasm rt is heap 0) :: w if :: w unreachable :: w end :: (wasm c 2) :: (wasm c 6) :: (w local get 0) :: (wasm c 6) :: w i64 eq :: w select
+
+-- rt 37, binary operator (op, lhs slot address, rhs). Locals: 3 lhs, 4 a, 5 b
+-- (a and b untagged). Scalars are done here; heap values go to rt 66.
+fn :: wasm rt binop => [Int]
+      wasm rt binop =
+        load = (wasm rt addr 1) :: (w i64 load 0) :: (w local set 3)
+        eq = (wasm rt opcode 5) :: w if :: (wasm rt bool ((w local get 3) :: (w local get 2) :: w i64 eq)) :: w return :: w end
+        ne = (wasm rt opcode 6) :: w if :: (wasm rt bool ((w local get 3) :: (w local get 2) :: w i64 ne)) :: w return :: w end
+        b_and = (wasm rt opcode 11) :: w if :: (w local get 3) :: (w local get 2) :: w i64 band :: w return :: w end
+        b_or = (wasm rt opcode 12) :: w if :: (w local get 3) :: (w local get 2) :: w i64 bor :: w return :: w end
+        b_xor = (wasm rt opcode 13) :: w if :: (w local get 3) :: (w local get 2) :: w i64 bxor :: (wasm c 2) :: w i64 bor :: w return :: w end
+        no_int = (w local get 3) :: (w local get 2) :: w i64 bor :: (wasm c 1) :: w i64 band :: w i64 eqz
+        bools = no_int :: w if :: b_and :: b_or :: b_xor :: w end
+        both_int = (w local get 3) :: (w local get 2) :: w i64 band :: (wasm c 1) :: w i64 band :: w i64 eqz :: w i32 eqz
+        untag = (w local get 3) :: (wasm c 1) :: w i64 shift right s :: (w local set 4) :: (w local get 2) :: (wasm c 1) :: w i64 shift right s :: (w local set 5)
+        ints = both_int :: w if :: untag :: (wasm rt int ops) :: w end
+        scalars = (wasm rt is heap 3) :: (wasm rt is heap 2) :: w i32 bor :: w i32 eqz :: w if :: eq :: ne :: bools :: ints :: w end
+        heap = (w local get 0) :: (w local get 1) :: (w local get 2) :: (wasm rt 66)
+        load :: scalars :: heap
+
+-- The Int operators, by a `br_table` on the op: each case returns; the others
+-- (concat, flat join, matmul, rotations) leave for the heap path.
+fn :: wasm rt int ops => [Int]
+      wasm rt int ops =
+        n = 14
+        -- op -> case: 0..4 -> 0..4, 7..13 -> 5..11, 17 -> 12, 18 -> 13; others -> 14 (out).
+        targets = [0, 1, 2, 3, 4, 14, 14, 5, 6, 7, 8, 9, 10, 11, 14, 14, 14, 12, 13, 14, 14]
+        dispatch = (w local get 0) :: w i32 wrap :: (w br table targets n)
+        cases = map (k => wasm rt int case k) (wasm range 0 n [])
+        w block :: (wasm repeat (w block) n []) :: dispatch :: (wasm rt cases cases []) :: w end
+
+-- Case k of the Int operators, from a and b (untagged) or lhs and rhs (tagged).
+fn :: wasm rt int case Int => [Int]
+      wasm rt int case 0  =  wasm rt ab :: w i64 add :: wasm rt tag
+      wasm rt int case 1  =  wasm rt ab :: w i64 sub :: wasm rt tag
+      wasm rt int case 2  =  wasm rt ab :: w i64 mul :: wasm rt tag
+      wasm rt int case 3  =  wasm rt ab :: w i64 div s :: wasm rt tag
+      wasm rt int case 4  =  wasm rt ab :: w i64 rem s :: wasm rt tag
+      wasm rt int case 5  =  wasm rt bool (wasm rt ab :: w i64 gt s)
+      wasm rt int case 6  =  wasm rt bool (wasm rt ab :: w i64 lt s)
+      wasm rt int case 7  =  wasm rt bool (wasm rt ab :: w i64 ge s)
+      wasm rt int case 8  =  wasm rt bool (wasm rt ab :: w i64 le s)
+      wasm rt int case 9  =  (w local get 3) :: (w local get 2) :: w i64 band
+      wasm rt int case 10 =  (w local get 3) :: (w local get 2) :: w i64 bor
+      wasm rt int case 11 =  (w local get 3) :: (w local get 2) :: w i64 bxor :: (wasm c 1) :: w i64 bor
+      wasm rt int case 12 =  wasm rt ab :: w i64 shift left :: wasm rt tag
+      wasm rt int case _  =  wasm rt ab :: w i64 shift right s :: wasm rt tag
+
+fn :: wasm rt ab => [Int]
+      wasm rt ab =  (w local get 4) :: (w local get 5)
+
+-- 1 (i32) when the op parameter (local 0) is o.
+fn :: wasm rt opcode Int => [Int]
+      wasm rt opcode o =  (w local get 0) :: (wasm c o) :: w i64 eq
+
+fn :: wasm rt cases [[Int]] [Int] => [Int]
+      wasm rt cases [] acc = acc
+      wasm rt cases (c:cs) acc = wasm rt cases cs (acc :: (w end) :: c :: w return)
+
+-- Runtime function k: its parameters, extra i64 locals and body. The slots
+-- left are the heap, PAL and agent functions (TASK-0088, TASK-0089): they stop.
+fn :: wasm rt func Int => WasmFunc
+      wasm rt func k =
+        params = wasm rt arity k
+        ty = 1 + params
+        v = wasm i64
+        wasm rt func body ty k v
+
+fn :: wasm rt func body Int Int Int => WasmFunc
+      wasm rt func body ty 0 _ =  WasmFunc ty [] (wasm c 0)
+      wasm rt func body ty 1 t =  WasmFunc ty [t] (wasm rt init frame)
+      wasm rt func body ty 2 _ =  WasmFunc ty [] (wasm rt epilogue)
+      wasm rt func body ty 3 t =  WasmFunc ty [t, t] (wasm rt tco copy)
+      wasm rt func body ty 4 t =  WasmFunc ty [t] (wasm rt clear locals)
+      wasm rt func body ty 5 _ =  WasmFunc ty [] (wasm rt clone)
+      wasm rt func body ty 6 _ =  WasmFunc ty [] (wasm rt drop)
+      wasm rt func body ty 7 _ =  WasmFunc ty [] (wasm rt move)
+      wasm rt func body ty 8 t =  WasmFunc ty [t] (wasm rt store)
+      wasm rt func body ty 9 _ =  WasmFunc ty [] (wasm rt rebind)
+      wasm rt func body ty 10 _ = WasmFunc ty [] (wasm rt drop slot)
+      wasm rt func body ty 20 _ = WasmFunc ty [] (wasm rt as bool)
+      wasm rt func body ty 21 _ = WasmFunc ty [] (wasm rt match int)
+      wasm rt func body ty 24 _ = WasmFunc ty [] (wasm rt match bool)
+      wasm rt func body ty 34 _ = WasmFunc ty [] (wasm rt bool not)
+      wasm rt func body ty 37 t = WasmFunc ty [t, t, t] (wasm rt binop)
+      wasm rt func body ty _ _ =  WasmFunc ty [] (w unreachable)
+
+fn :: wasm rt funcs Int [WasmFunc] => [WasmFunc]
+      wasm rt funcs k acc
+        | k >= wasm rt count = acc
+        | otherwise = wasm rt funcs (k + 1) (acc :: [wasm rt func k])
+
+-- ── Module ───────────────────────────────────────────────────
+
+fn :: wasm align16 Int => Int
+      wasm align16 v =  ((v + 15) / 16) * 16
+
+-- The module of a NIR program. Exports: the memory, `ridgun_main` (runs main,
+-- gives its value) and `_start` (runs main).
+fn :: emit wasm module RNativeProg => [Int]
+      emit wasm module (NativeProg main_fid _ _ _ fns rodata_str) =
+        ro = str to bytes rodata_str
+        stack_low = wasm align16 ((wasm rodata base) + (list len ro))
+        stack_top = stack_low + (wasm stack size)
+        pages = (stack_top / 65536) + 1 + (wasm heap pages)
+        fn_tbl = wasm fn table fns (wasm nir base) []
+        nir = map (f => wasm nir func f fn_tbl) fns
+        main_idx = (wasm nir base) + (list len fns)
+        call_main = (w global get (wasm global sp)) :: (w call (lookup label offset fn_tbl main_fid))
+        f_main = WasmFunc 1 [] call_main
+        f_start = WasmFunc 7 [] ((w call main_idx) :: w drop)
+        rt = wasm rt funcs 0 []
+        funcs = rt :: nir :: [f_main, f_start]
+        g_sp = WasmGlobal (wasm i32) True (w i32 const stack_top)
+        g_heap = WasmGlobal (wasm i32) True (w i32 const stack_top)
+        g_low = WasmGlobal (wasm i32) False (w i32 const stack_low)
+        e_mem = WasmExport "memory" (wasm export memory) 0
+        e_main = WasmExport "ridgun_main" (wasm export func) main_idx
+        e_start = WasmExport "_start" (wasm export func) (main_idx + 1)
+        datas = [WasmData (wasm rodata base) ro]
+        wasm module bytes (WasmModule (wasm types) [] funcs pages 0 [g_sp, g_heap, g_low] [e_mem, e_main, e_start] datas)

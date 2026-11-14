@@ -1,0 +1,43 @@
+-- ============================================================
+-- src/test/ridgun/test wasm backend.ridgun
+-- The WebAssembly backend runs NIR control flow and Int arithmetic
+-- (FR-COMP-026, ADR-0011). Needs wabt (wasm-validate, wasm-interp).
+-- @tests FR-COMP-026
+-- ============================================================
+import test
+import ast
+import lexer
+import parser
+import typecheck
+import compiler
+
+fn :: wasm test program => String
+      wasm test program =
+        p_fib = "fn :: fib Int => Int\n      fib n\n        | n < 2 = n\n        | otherwise = (fib (n - 1)) + (fib (n - 2))\n\n"
+        p_sum = "fn :: sum to Int Int => Int\n      sum to 0 acc = acc\n      sum to n acc = sum to (n - 1) (acc + n)\n\n"
+        p_col = "fn :: collatz Int Int => Int\n      collatz 1 steps = steps\n      collatz n steps\n        | n % 2 == 0 = collatz (n / 2) (steps + 1)\n        | otherwise = collatz ((3 * n) + 1) (steps + 1)\n\n"
+        p_pick = "fn :: pick Bool Int Int => Int\n      pick True a _ = a\n      pick False _ b = b\n\n"
+        p_main = "fn :: main => Int\n      main =\n        a = fib 20\n        b = sum to 100000 0\n        c = collatz 27 0\n        d = pick (a > b) 1 0\n        f = (0 - 17) % 5\n        (a * 1000000000) + (b % 1000000) + (c * 1000) + d + f\n"
+        p_fib + p_sum + p_col + p_pick + p_main
+
+-- AC3 (value part): recursion, guards, a self tail call over 100 000 rounds,
+-- Bool patterns and signed division give the Linux value 6765000160998.
+-- `ridgun_main` returns it as a tagged Int word (2n + 1).
+fn :: test wasm runs ints => ()
+      test wasm runs ints =
+        echo "--- wasm32: arithmetic, guards, recursion, tail calls ---"
+        shell exec "mkdir -p target/test_wasm" -> ()
+        src = "target/test_wasm/ints.ridgun"
+        out = "target/test_wasm/ints.wasm"
+        res = "target/test_wasm/ints.txt"
+        write file src (wasm test program)
+        assert equals (build native target executable src out "wasm32") 0
+        assert equals (shell exec ("wasm-validate " + out)) 0
+        assert equals (shell exec ("wasm-interp " + out + " -r ridgun_main > " + res + " 2>&1")) 0
+        assert equals (read file res) "ridgun_main() => i64:13530000321997\n"
+
+fn :: main => ()
+      main =
+        echo "test wasm backend: NIR to wasm"
+        test wasm runs ints
+        echo "test wasm backend: done"
