@@ -7,7 +7,7 @@ completed:
 requirements: []            # FR-*/NFR-* this task delivers or touches
 tests: []                   # TS-* to automate
 security: []                # VUL-* to address
-context_files: [docs/requirements/decisions/ADR-0011-webassembly-is-a-native-backend.md, docs/requirements/decisions/ADR-0012-the-playground-reads-libraries-from-a-virtual-file-system.md]
+context_files: [docs/requirements/decisions/ADR-0011-webassembly-is-a-native-backend.md, docs/requirements/decisions/ADR-0012-the-browser-compiler-reads-libraries-from-a-virtual-file-system.md]
 scope: []                   # paths/globs this task will change (aix task start warns when two going-on tasks overlap)
 owner:                      # the seat that holds it (agent-001 ...), signed by aix task start
 claimed:
@@ -22,13 +22,15 @@ The PAL (ADR-0008) has a wasm implementation: the module imports write, read, cl
 ## Plan
 - [ ] Define the import list (module `ridgun`), with types.
 - [ ] A WASI host: the imports mapped to WASI preview 1, for wasmtime and Node.
-- [ ] A browser host in JavaScript (about 200 lines), run in a Web Worker: stdout to the page; the virtual file system of ADR-0012 (`/home/play/.local/lib/ridgun/` read-only from the manifest, each file fetched on first read; `/work/` in memory; `HOME=/home/play`).
+- [ ] A browser host in JavaScript (about 200 lines), run in a Web Worker: stdout to the page; the virtual file system of ADR-0012 (`/lib/` read-only from the manifest, each file fetched from `ridgun.com/wasm/<version>/lib/` on first read; `/work/` in memory).
+- [ ] `ridgunc --libs <dir>`: the folder of the library bundles, searched first (ADR-0012). Remove the fixed path `/home/boogie/ridgun/ridgun/.stable/deps` from the library search in `parser.ridgun`.
 - [ ] The checker reports `net …` for the wasm32 target.
 
 ## Progress log (append-only, newest last)
 - 2026-11-12: Created with ADR-0011. Needs TASK-0088.
 
 - 2026-11-14: ADR-0012 fixes how the browser host serves files: a manifest and one fetch per library on first read.
+- 2026-11-14: ADR-0012 revised: files under `ridgun.com/wasm/<version>/`; the virtual folders are `/lib/` and `/work/`; `ridgunc --libs /lib` instead of imitating `HOME`.
 
 ## Exact next actions
 1. Define the import list (module `ridgun`), with types.

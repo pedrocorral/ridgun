@@ -7,7 +7,7 @@ completed:
 requirements: []            # FR-*/NFR-* this task delivers or touches
 tests: []                   # TS-* to automate
 security: []                # VUL-* to address
-context_files: [docs/requirements/decisions/ADR-0011-webassembly-is-a-native-backend.md, docs/requirements/decisions/ADR-0012-the-playground-reads-libraries-from-a-virtual-file-system.md]
+context_files: [docs/requirements/decisions/ADR-0011-webassembly-is-a-native-backend.md, docs/requirements/decisions/ADR-0012-the-browser-compiler-reads-libraries-from-a-virtual-file-system.md]
 scope: []                   # paths/globs this task will change (aix task start warns when two going-on tasks overlap)
 owner:                      # the seat that holds it (agent-001 ...), signed by aix task start
 claimed:
@@ -22,13 +22,13 @@ policy:                     # a cycle for this task only (hotfix, release, ...);
 ## Plan
 - [ ] Work in the www-ridgun repository: editor, the JavaScript host from TASK-0089, `ridgunc.wasm` served compressed.
 - [ ] Examples to start from; a share link that carries the code in the URL fragment (never sent to the server).
-- [ ] Publish under `ridgun.com/play/<ridgunc version>/`: `ridgunc.wasm`, the host, and `lib/` with the ridgun-libs bundles of the matching release and `lib/manifest.txt` (ADR-0012); immutable files, long cache life, compressed by the server.
+- [ ] Publish `ridgun.com/wasm/<ridgunc version>/`: `ridgunc.wasm`, the host, and `lib/` with the ridgun-libs bundles of the matching release and `lib/manifest.txt` (ADR-0012); immutable files, long cache life, compressed by the server. The page `ridgun.com/play` loads them from there.
 - [ ] No server-side compile or run.
 
 ## Progress log (append-only, newest last)
 - 2026-11-12: Created with ADR-0011. Needs TASK-0090.
 
-- 2026-11-14: ADR-0012: the libraries are files under `lib/` with a manifest, fetched on first read.
+- 2026-11-14: ADR-0012: the compiler, the host and the libraries live in `ridgun.com/wasm/<version>/`, apart from the page; the libraries are files under `lib/` with a manifest, fetched on first read.
 
 ## Exact next actions
 1. Work in the www-ridgun repository: editor, the JavaScript host from TASK-0089, `ridgunc.wasm` served compressed.
