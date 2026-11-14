@@ -1,0 +1,66 @@
+-- ============================================================
+-- src/test/ridgun/test wasm.ridgun
+-- The WebAssembly module writer (FR-COMP-026, ADR-0011)
+-- @tests FR-COMP-026
+-- ============================================================
+import test
+import wasm32
+
+-- AC1: LEB128 of known values.
+fn :: test leb128 => ()
+      test leb128 =
+        assert equals (wasm uleb 0) [0]
+        assert equals (wasm uleb 127) [127]
+        assert equals (wasm uleb 128) [128, 1]
+        assert equals (wasm uleb 624485) [229, 142, 38]
+        assert equals (wasm sleb 0) [0]
+        assert equals (wasm sleb 42) [42]
+        assert equals (wasm sleb 63) [63]
+        assert equals (wasm sleb 64) [192, 0]
+        assert equals (wasm sleb (0 - 1)) [127]
+        assert equals (wasm sleb (0 - 64)) [64]
+        assert equals (wasm sleb (0 - 65)) [191, 127]
+        assert equals (wasm sleb (0 - 123456)) [192, 187, 120]
+        assert equals (wasm sleb 1024) [128, 8]
+
+-- AC1: one function () -> i64 that returns 42, exported as `answer`.
+fn :: test answer module => ()
+      test answer module =
+        m = WasmModule [WasmType [] [wasm i64]] [] [WasmFunc 0 [] [66, 42]] 0 0 [] [WasmExport "answer" (wasm export func) 0] []
+        assert equals (wasm module bytes m) [0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 126, 3, 2, 1, 0, 7, 10, 1, 6, 97, 110, 115, 119, 101, 114, 0, 0, 10, 6, 1, 4, 0, 66, 42, 11]
+
+-- AC2: an import, a memory, a global, two exports, a data segment, and runs of locals.
+fn :: test full module => ()
+      test full module =
+        types   = [WasmType [wasm i32, wasm i64] [], WasmType [] [wasm i64]]
+        imports = [WasmImport "ridgun" "write" 0]
+        funcs   = [WasmFunc 1 [wasm i64, wasm i64, wasm i32] [66, 42]]
+        globals = [WasmGlobal (wasm i32) True [65, 128, 128, 4]]
+        exports = [WasmExport "memory" (wasm export memory) 0, WasmExport "answer" (wasm export func) 1]
+        datas   = [WasmData 1024 [104, 105]]
+        m = WasmModule types imports funcs 1 0 globals exports datas
+        header  = [0, 97, 115, 109, 1, 0, 0, 0]
+        s_type  = [1, 10, 2, 96, 2, 127, 126, 0, 96, 0, 1, 126]
+        s_imp   = [2, 16, 1, 6, 114, 105, 100, 103, 117, 110, 5, 119, 114, 105, 116, 101, 0, 0]
+        s_func  = [3, 2, 1, 1]
+        s_mem   = [5, 3, 1, 0, 1]
+        s_glob  = [6, 8, 1, 127, 1, 65, 128, 128, 4, 11]
+        s_exp   = [7, 19, 2, 6, 109, 101, 109, 111, 114, 121, 2, 0, 6, 97, 110, 115, 119, 101, 114, 0, 1]
+        s_code  = [10, 10, 1, 8, 2, 2, 126, 1, 127, 66, 42, 11]
+        s_data  = [11, 9, 1, 0, 65, 128, 8, 11, 2, 104, 105]
+        assert equals (wasm module bytes m) (header :: (s_type :: (s_imp :: (s_func :: (s_mem :: (s_glob :: (s_exp :: (s_code :: s_data))))))))
+
+-- The memory limits with a maximum.
+fn :: test limits => ()
+      test limits =
+        assert equals (wasm limits 1 0) [0, 1]
+        assert equals (wasm limits 2 300) [1, 2, 172, 2]
+
+fn :: main => ()
+      main =
+        echo "test wasm: module writer"
+        test leb128
+        test answer module
+        test full module
+        test limits
+        echo "test wasm: done"

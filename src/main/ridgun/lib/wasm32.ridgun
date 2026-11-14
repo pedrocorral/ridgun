@@ -1,0 +1,163 @@
+-- ============================================================
+-- src/main/ridgun/lib/wasm32.ridgun
+-- Pure-Ridgun WebAssembly 1.0 binary module writer (ADR-0011)
+-- @implements FR-COMP-026
+-- ============================================================
+
+import elf64
+
+-- ── Module description ───────────────────────────────────────
+
+-- Value types, as the binary format writes them.
+fn :: wasm i32 => Int
+      wasm i32 =  127
+
+fn :: wasm i64 => Int
+      wasm i64 =  126
+
+fn :: wasm f64 => Int
+      wasm f64 =  124
+
+-- Export kinds.
+fn :: wasm export func => Int
+      wasm export func =  0
+
+fn :: wasm export memory => Int
+      wasm export memory =  2
+
+-- A function type: parameter types, result types.
+type WasmType = WasmType [Int] [Int]
+
+-- An imported function: module, name, type index.
+type WasmImport = WasmImport String String Int
+
+-- A defined function: type index, the type of each local after the parameters, body
+-- (instructions without the final `end`).
+type WasmFunc = WasmFunc Int [Int] [Int]
+
+-- A global: value type, mutable, initial value (a constant instruction, without `end`).
+type WasmGlobal = WasmGlobal Int Bool [Int]
+
+-- An export: name, kind, index.
+type WasmExport = WasmExport String Int Int
+
+-- An active data segment of memory 0: offset, bytes.
+type WasmData = WasmData Int [Int]
+
+-- Types, imports, functions, memory minimum pages (0 = no memory), maximum pages (0 = none),
+-- globals, exports, data.
+type WasmModule = WasmModule [WasmType] [WasmImport] [WasmFunc] Int Int [WasmGlobal] [WasmExport] [WasmData]
+
+-- ── LEB128 ───────────────────────────────────────────────────
+
+-- Unsigned LEB128 of v >= 0.
+fn :: wasm uleb Int => [Int]
+      wasm uleb v
+        | v < 128   = [v]
+        | otherwise = [(v % 128) + 128] :: (wasm uleb (v / 128))
+
+-- Signed LEB128 of any Int. `low` is v mod 128 in 0..127 for either sign, so v - low divides exactly.
+fn :: wasm sleb Int => [Int]
+      wasm sleb v =
+        low  = ((v % 128) + 128) % 128
+        rest = (v - low) / 128
+        wasm sleb step low rest
+
+fn :: wasm sleb step Int Int => [Int]
+      wasm sleb step low rest
+        | rest == 0 and low < 64    = [low]
+        | rest == 0 - 1 and low >= 64 = [low]
+        | otherwise                 = [low + 128] :: (wasm sleb rest)
+
+-- ── Encoding helpers ─────────────────────────────────────────
+
+-- A vector: its length, then the bytes of its items.
+fn :: wasm vec [[Int]] => [Int]
+      wasm vec items =  (wasm uleb (list len items)) :: (wasm concat items)
+
+fn :: wasm concat [[Int]] => [Int]
+      wasm concat []     =  []
+      wasm concat (x:xs) =  x :: (wasm concat xs)
+
+-- A name: its byte length, then its UTF-8 bytes.
+fn :: wasm name String => [Int]
+      wasm name s =
+        bs = str to bytes s
+        (wasm uleb (list len bs)) :: bs
+
+-- A section: id, size, content. An empty vector of items gives no section at all.
+fn :: wasm section Int [[Int]] => [Int]
+      wasm section id []    =  []
+      wasm section id items =
+        body = wasm vec items
+        [id] :: ((wasm uleb (list len body)) :: body)
+
+-- ── Section items ────────────────────────────────────────────
+
+fn :: wasm type item WasmType => [Int]
+      wasm type item (WasmType ps rs) =  [96] :: ((wasm vec (map (t => [t]) ps)) :: (wasm vec (map (t => [t]) rs)))
+
+fn :: wasm import item WasmImport => [Int]
+      wasm import item (WasmImport m n ti) =  (wasm name m) :: ((wasm name n) :: ([0] :: (wasm uleb ti)))
+
+fn :: wasm func index item WasmFunc => [Int]
+      wasm func index item (WasmFunc ti _ _) =  wasm uleb ti
+
+fn :: wasm limits Int Int => [Int]
+      wasm limits lo 0  =  [0] :: (wasm uleb lo)
+      wasm limits lo hi =  [1] :: ((wasm uleb lo) :: (wasm uleb hi))
+
+fn :: wasm memory items Int Int => [[Int]]
+      wasm memory items 0  _  =  []
+      wasm memory items lo hi =  [wasm limits lo hi]
+
+fn :: wasm global item WasmGlobal => [Int]
+      wasm global item (WasmGlobal t is_mut init) =  [t, wasm bool byte is_mut] :: (init :: [11])
+
+fn :: wasm bool byte Bool => Int
+      wasm bool byte True  =  1
+      wasm bool byte False =  0
+
+fn :: wasm export item WasmExport => [Int]
+      wasm export item (WasmExport n k i) =  (wasm name n) :: ([k] :: (wasm uleb i))
+
+-- A function body: its size, then the locals grouped into runs of one type, the code and `end`.
+fn :: wasm code item WasmFunc => [Int]
+      wasm code item (WasmFunc _ locals code) =
+        body = (wasm vec (map (r => wasm local run r) (wasm runs locals))) :: (code :: [11])
+        (wasm uleb (list len body)) :: body
+
+fn :: wasm local run (Int Int) => [Int]
+      wasm local run (n, t) =  (wasm uleb n) :: [t]
+
+-- Consecutive equal types as (count, type) pairs.
+fn :: wasm runs [Int] => [(Int, Int)]
+      wasm runs []     =  []
+      wasm runs (t:ts) =  wasm runs from t 1 ts
+
+fn :: wasm runs from Int Int [Int] => [(Int, Int)]
+      wasm runs from t n [] =  [(n, t)]
+      wasm runs from t n (u:us)
+        | u == t    = wasm runs from t (n + 1) us
+        | otherwise = [(n, t)] :: (wasm runs from u 1 us)
+
+fn :: wasm data item WasmData => [Int]
+      wasm data item (WasmData off bs) =  [0, 65] :: ((wasm sleb off) :: ([11] :: ((wasm uleb (list len bs)) :: bs)))
+
+-- ── Module ───────────────────────────────────────────────────
+
+fn :: wasm header => [Int]
+      wasm header =  [0, 97, 115, 109, 1, 0, 0, 0]
+
+-- The binary module, sections in the order the format requires.
+fn :: wasm module bytes WasmModule => [Int]
+      wasm module bytes (WasmModule types imports funcs mlo mhi globals exports datas) =
+        s1  = wasm section 1 (map (x => wasm type item x) types)
+        s2  = wasm section 2 (map (x => wasm import item x) imports)
+        s3  = wasm section 3 (map (x => wasm func index item x) funcs)
+        s5  = wasm section 5 (wasm memory items mlo mhi)
+        s6  = wasm section 6 (map (x => wasm global item x) globals)
+        s7  = wasm section 7 (map (x => wasm export item x) exports)
+        s10 = wasm section 10 (map (x => wasm code item x) funcs)
+        s11 = wasm section 11 (map (x => wasm data item x) datas)
+        wasm concat [wasm header, s1, s2, s3, s5, s6, s7, s10, s11]
