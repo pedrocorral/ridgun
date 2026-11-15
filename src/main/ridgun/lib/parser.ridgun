@@ -4149,6 +4149,7 @@ fn :: is core compiler mod String      => Bool
       is core compiler mod "pe64"      =  True
       is core compiler mod "wasm32"    =  True
       is core compiler mod "wasm"      =  True
+      is core compiler mod "wasmrt"    =  True
       is core compiler mod "formatter" =  True
       is core compiler mod "prelude"   =  True
       is core compiler mod _           =  False

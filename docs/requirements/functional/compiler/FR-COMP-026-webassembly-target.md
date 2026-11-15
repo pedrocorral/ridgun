@@ -20,9 +20,11 @@ native targets (ADR-0011).
 
 ## Terms
 - **Module writer:** `src/main/ridgun/lib/wasm32.ridgun`. It encodes a module description into the binary format
-  of WebAssembly 1.0 (magic `\0asm`, version 1).
+  of WebAssembly (magic `\0asm`, version 1). The instructions are those of WebAssembly 1.0, plus `return_call`
+  (tail calls, WebAssembly 3.0).
 - **Backend:** `src/main/ridgun/lib/wasm.ridgun`. It translates the NIR and the runtime into that description.
 - **Host:** the code that runs the module and implements its imports: a WASI engine, or JavaScript in a browser.
+  The test host is `tests/wasm/wasi-host.c` (wasm2c and cc; `tests/wasm/run-wasm.sh`).
 - **Frame:** the slots of one NIR function call, 8 bytes each, on a shadow stack in linear memory.
 
 ## Requirements
@@ -34,16 +36,22 @@ native targets (ADR-0011).
 3. **Control flow.** Every NIR function SHALL become one wasm function. Jumps to NIR labels SHALL go through a
    `loop` and a `br_table` over the function's blocks. A NIR function takes the address of its arguments (`i32`)
    and returns the value (`i64`). Its frame comes from a shadow stack that starts after the rodata and grows down;
-   a call that would pass the stack's bottom SHALL stop the program (`unreachable`).
+   a call that would pass the stack's bottom SHALL stop the program (`unreachable`). A tail call to another
+  function (`NTailCallFn`) SHALL be a `return_call`: the arguments move to the base of a frame of the callee's
+  size whose top is the caller's top (runtime entry `tail_frame`), so mutual tail recursion runs in constant stack.
 4. **Runtime.** The runtime SHALL be wasm functions in the same module, one per runtime slot of the native targets,
    compiled by `llc` from the target-neutral LLVM IR runtime (ADR-0013) and embedded in `ridgunc`, so a build needs no LLVM,
    with the same arguments and result; the result of every runtime call is the new accumulator, as on x86-64. The allocator SHALL grow the memory with
    `memory.grow`. RMM rules SHALL not change.
-5. **System.** The module SHALL import its system operations from the module `ridgun` (write, read, clock, exit,
-   files, arguments, environment). It is one more PAL implementation (ADR-0008). A WASI host and a browser host
-   SHALL implement them.
+5. **System.** The module SHALL import its system operations from WASI preview 1 (module
+   `wasi_snapshot_preview1`: streams, clocks, `poll_oneoff`, arguments, environment, preopened directories, paths
+   and directories). The runtime's PAL for wasm32 (`src/main/runtime/pal/wasm32.ll`) is one more PAL implementation
+   (ADR-0008); it resolves paths against the preopened directories `/` and `.`. A WASI host and a browser host
+   SHALL implement these imports.
 6. **Agents.** Agents SHALL run on one thread: an agent's step runs when its message arrives.
 7. **Not available.** `net …` SHALL be rejected by the checker for `wasm32`, naming the builtin and the target.
+   WASI preview 1 has no processes: `sys call`, `sys execve` and `sys pipe` SHALL stop the program with
+   `runtime error: builtin N not available on this target` (exit status 1).
 8. **Self-build.** `ridgunc` SHALL compile itself with `--target wasm32`. The resulting `ridgunc.wasm`, run by a
    host, SHALL compile a program to the same module bytes as the Linux `ridgunc`.
 
@@ -54,7 +62,8 @@ native targets (ADR-0011).
   expected bytes, and runs of locals are grouped.
 - **AC3.** A program with arithmetic, guards and recursion, built with `--target wasm32`, runs under a WASI host
   and prints the same output as on Linux.
-- **AC4.** The promised behaviours of `tests/run.ridgun` pass on `wasm32`, except network and true parallelism.
+- **AC4.** The promised behaviours of `tests/run.ridgun` pass on `wasm32` (`tests/run.ridgun --wasm`), except
+  network, true parallelism and processes (`sys call`, `sys execve`, `sys pipe`).
 - **AC5.** A program that uses `net …` is rejected for `wasm32` with the builtin and the target named.
 - **AC6.** `ridgunc.wasm` builds a program to the same bytes as the Linux `ridgunc` with `--target wasm32`.
 - **AC7.** The module exports `ridgun_main`, which runs `main` and returns its value. A program with Int arithmetic,

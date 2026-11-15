@@ -199,6 +199,10 @@ fn :: w return => [Int]
 fn :: w call Int => [Int]
       w call f =  [16] :: (wasm uleb f)
 
+-- `return_call` (tail calls, WebAssembly 3.0).
+fn :: w return call Int => [Int]
+      w return call f =  [18] :: (wasm uleb f)
+
 fn :: w drop => [Int]
       w drop =  [26]
 
@@ -307,3 +311,134 @@ fn :: w i32 wrap => [Int]
 
 fn :: w i64 extend u => [Int]
       w i64 extend u =  [173]
+
+-- ── Linking a prebuilt module (ADR-0013) ─────────────────────
+-- The runtime is a linked wasm32 module built by LLVM. A program is linked to
+-- it by appending the program's items to the runtime's sections: no item of
+-- the runtime is decoded except its exports, globals and table.
+
+-- A section of a module: its id and its content (the bytes after the size).
+type WasmSection = WasmSection Int [Int]
+
+-- An export read from a module: its name (bytes), kind and index.
+type WasmLinkExport = WasmLinkExport [Int] Int Int
+
+fn :: wasm hex value Int => Int
+      wasm hex value c
+        | c <= 57 = c - 48
+        | otherwise = c - 87
+
+fn :: wasm hex chunk String Int Int [Int] => [Int]
+      wasm hex chunk s pos end acc
+        | pos >= end = acc
+        | otherwise = wasm hex chunk s (pos + 2) end (acc :: [((wasm hex value (str char at s pos)) * 16) + (wasm hex value (str char at s (pos + 1)))])
+
+fn :: wasm hex range String Int Int => [Int]
+      wasm hex range s start end
+        | (end - start) <= 64 = wasm hex chunk s start end []
+        | otherwise =
+          mid = start + (((end - start) / 4) * 2)
+          (wasm hex range s start mid) :: (wasm hex range s mid end)
+
+-- The bytes written in hex by a list of strings.
+fn :: wasm hex bytes [String] => [Int]
+      wasm hex bytes lines =  wasm concat (map (l => wasm hex range l 0 (str len l)) lines)
+
+-- The unsigned LEB128 at `pos`, and the number of bytes it takes.
+fn :: wasm uleb at [Int] Int => Int
+      wasm uleb at bs pos =  wasm uleb step bs pos 0 1 bs_(pos)
+
+fn :: wasm uleb step [Int] Int Int Int Int => Int
+      wasm uleb step bs pos acc mul b
+        | b < 128 = acc + (b * mul)
+        | otherwise = wasm uleb step bs (pos + 1) (acc + ((b - 128) * mul)) (mul * 128) bs_(pos + 1)
+
+fn :: wasm uleb len [Int] Int => Int
+      wasm uleb len bs pos
+        | bs_(pos) < 128 = 1
+        | otherwise = 1 + (wasm uleb len bs (pos + 1))
+
+-- The sections of a module, from the byte after the header.
+fn :: wasm sections [Int] Int [WasmSection] => [WasmSection]
+      wasm sections bs pos acc
+        | pos >= (list len bs) = acc
+        | otherwise =
+          size = wasm uleb at bs (pos + 1)
+          start = pos + 1 + (wasm uleb len bs (pos + 1))
+          content = list take (list drop bs start) size
+          wasm sections bs (start + size) (acc :: [WasmSection bs_(pos) content])
+
+fn :: wasm parse module [Int] => [WasmSection]
+      wasm parse module bs =  wasm sections bs 8 []
+
+-- The content of section `id` ([] when the module has none).
+fn :: wasm section of Int [WasmSection] => [Int]
+      wasm section of _ [] = []
+      wasm section of id ((WasmSection i c):rest)
+        | i == id = c
+        | otherwise = wasm section of id rest
+
+-- The item count of a vector section and its items as raw bytes.
+fn :: wasm count of [Int] => Int
+      wasm count of [] = 0
+      wasm count of c = wasm uleb at c 0
+
+fn :: wasm body of [Int] => [Int]
+      wasm body of [] = []
+      wasm body of c = list drop c (wasm uleb len c 0)
+
+-- A vector section from its count and raw items; none when the count is 0.
+fn :: wasm raw section Int Int [Int] => [Int]
+      wasm raw section _ 0 _ = []
+      wasm raw section id n items =
+        body = (wasm uleb n) :: items
+        [id] :: ((wasm uleb (list len body)) :: body)
+
+-- The exports of a module.
+fn :: wasm read exports [WasmSection] => [WasmLinkExport]
+      wasm read exports secs =
+        c = wasm section of 7 secs
+        wasm export items c (wasm uleb len c 0) (wasm count of c) []
+
+fn :: wasm export items [Int] Int Int [WasmLinkExport] => [WasmLinkExport]
+      wasm export items c pos n acc
+        | n <= 0 = acc
+        | otherwise =
+          nl = wasm uleb at c pos
+          p1 = pos + (wasm uleb len c pos)
+          k = p1 + nl
+          ip = k + 1
+          e = WasmLinkExport (list take (list drop c p1) nl) c_(k) (wasm uleb at c ip)
+          wasm export items c (ip + (wasm uleb len c ip)) (n - 1) (acc :: [e])
+
+-- The index of the export called `name` (-1 when there is none).
+fn :: wasm export index [WasmLinkExport] String => Int
+      wasm export index es name =  wasm export find es (str to bytes name)
+
+fn :: wasm export find [WasmLinkExport] [Int] => Int
+      wasm export find [] _ = 0 - 1
+      wasm export find ((WasmLinkExport n _ i):rest) want
+        | n == want = i
+        | otherwise = wasm export find rest want
+
+-- The value of the constant that initialises global `g` (an i32.const or an
+-- i64.const, as LLVM writes them).
+fn :: wasm global init [WasmSection] Int => Int
+      wasm global init secs g =
+        c = wasm section of 6 secs
+        wasm global skip c (wasm uleb len c 0) g
+
+fn :: wasm global skip [Int] Int Int => Int
+      wasm global skip c pos g
+        | g == 0 = wasm uleb at c (pos + 3)
+        | otherwise = wasm global skip c (pos + 3 + (wasm uleb len c (pos + 3)) + 1) (g - 1)
+
+-- The minimum size of the module's first table (0 when it has none).
+fn :: wasm table min [WasmSection] => Int
+      wasm table min secs =
+        c = wasm section of 4 secs
+        wasm table min of c
+
+fn :: wasm table min of [Int] => Int
+      wasm table min of [] = 0
+      wasm table min of c = wasm uleb at c 3

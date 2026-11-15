@@ -7,6 +7,8 @@
 --   ./bin/ridgunc run tests/run.ridgun --no-toolchain   (cases only)
 --   ./bin/ridgunc run tests/run.ridgun --llvm           (cases built only for LLVM)
 --   ./bin/ridgunc run tests/run.ridgun --x86            (cases built only with --target x86_64-elf)
+--   ./bin/ridgunc run tests/run.ridgun --wasm           (cases built only with --target wasm32; runs
+--                                                        them through tests/wasm/host-build.sh)
 -- Every case is built and run on both backends by default; tests/run_case.sh
 -- runs each case binary and measures its CPU time and peak resident memory.
 -- ============================================================
@@ -425,8 +427,16 @@ fn :: execute case with header String String String String String String CaseHea
         exe = work + "/target/case"
         hdr = backend header target (Header c_desc src has_out out_s has_berr berr_s has_ex ex_v has_ms ms_v has_rss rss_v has_cpu cpu_v libs prop)
         sflag = strict flag for case full_path
-        tflag = backend target flag target
-        finish case build label work exe hdr (run sh capture ("\"" + ridgunc + "\" build" + sflag + "main.ridgun -o \"" + exe + "\"" + tflag) work 600)
+        finish case build label work exe hdr (run sh capture (backend build command target ridgunc sflag exe) work 600)
+
+-- The build command of a case. A wasm32 program is turned into an executable of this machine
+-- after the build (tests/wasm/build-case.sh), so run_case.sh runs and measures it as any other.
+fn :: backend build command String String String String => String
+      backend build command "wasm32" ridgunc sflag exe =
+        script = (sys getcwd) + "/tests/wasm/build-case.sh"
+        "sh \"" + script + "\" \"" + ridgunc + "\" \"" + exe + "\"" + sflag + "main.ridgun"
+      backend build command target ridgunc sflag exe =
+        "\"" + ridgunc + "\" build" + sflag + "main.ridgun -o \"" + exe + "\"" + (backend target flag target)
 
 fn :: execute single case String String String String String String => CaseResult
       execute single case repo ridgunc libs_dir work_root target rel =
@@ -647,10 +657,11 @@ fn :: has flag String [String] => Bool
         | x == f = True
         | otherwise = has flag f xs
 
-fn :: select backends Bool Bool => [String]
-      select backends True False = [""]
-      select backends False True = ["x86_64-elf"]
-      select backends _ _ = ["", "x86_64-elf"]
+fn :: select backends Bool Bool Bool => [String]
+      select backends _ _ True = ["wasm32"]
+      select backends True False _ = [""]
+      select backends False True _ = ["x86_64-elf"]
+      select backends _ _ _ = ["", "x86_64-elf"]
 
 fn :: run case on backends String [String] String String String String [CaseResult] => [CaseResult]
       run case on backends _ [] _ _ _ _ acc = acc
@@ -711,20 +722,17 @@ fn :: exit by failed count Int => ()
       exit by failed count 0 = sys exit 0
       exit by failed count _ = sys exit 1
 
-fn :: same bool Bool Bool => Bool
-      same bool True True = True
-      same bool False False = True
-      same bool _ _ = False
+-- A row belongs to the backend of its label: " [target]" at the end of its name, none for LLVM.
+fn :: is backend row String String => Bool
+      is backend row name "" = not (str contains name " [")
+      is backend row name target = str contains name (backend label target)
 
-fn :: is x86 row String => Bool
-      is x86 row name = str contains name (backend label "x86_64-elf")
-
-fn :: backend tally [CaseResult] Bool Int Int => Int Int
+fn :: backend tally [CaseResult] String Int Int => Int Int
       backend tally [] _ total passed = (total, passed)
-      backend tally ((Result name ok prop _):rs) want_x86 total passed
-        | prop or (not (same bool (is x86 row name) want_x86)) = backend tally rs want_x86 total passed
-        | ok = backend tally rs want_x86 (total + 1) (passed + 1)
-        | otherwise = backend tally rs want_x86 (total + 1) passed
+      backend tally ((Result name ok prop _):rs) target total passed
+        | prop or (not (is backend row name target)) = backend tally rs target total passed
+        | ok = backend tally rs target (total + 1) (passed + 1)
+        | otherwise = backend tally rs target (total + 1) passed
 
 fn :: format tally String (Int, Int) => String
       format tally label (0, _) = label + " not run"
@@ -738,7 +746,7 @@ fn :: finish test run [CaseResult] => ()
         failed_c = list len failed
         passed_c = promised_c - failed_c
         echo ("\n" + (int to str passed_c) + " of " + (int to str promised_c) + " promised behaviours passed" + (format summary list failed))
-        echo ("by backend: " + (format tally "llvm" (backend tally rows False 0 0)) + "; " + (format tally "x86_64-elf" (backend tally rows True 0 0)))
+        echo ("by backend: " + (format tally "llvm" (backend tally rows "" 0 0)) + "; " + (format tally "x86_64-elf" (backend tally rows "x86_64-elf" 0 0)) + "; " + (format tally "wasm32" (backend tally rows "wasm32" 0 0)))
         report unmet unmet
         exit by failed count failed_c
 
@@ -756,7 +764,7 @@ fn :: main => ()
         raw_args = strip runner argv cli args
         no_tc = has no toolchain flag raw_args
         filters = non flag args raw_args
-        targets = select backends (has flag "--llvm" raw_args) (has flag "--x86" raw_args)
+        targets = select backends (has flag "--llvm" raw_args) (has flag "--x86" raw_args) (has flag "--wasm" raw_args)
         repo = sys getcwd
         ridgunc = resolve ridgunc path repo
         libs_dir = resolve libs bundles dir repo

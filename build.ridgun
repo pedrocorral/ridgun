@@ -12,7 +12,7 @@ fn :: strict mode => Bool
       strict mode =  True
 
 fn :: project version => String
-      project version =  "1.0.11"
+      project version =  "1.0.12"
 
 fn :: main entry => String
       main entry =  "src/main/ridgun/ridgunc/main.ridgun"
@@ -37,3 +37,6 @@ fn :: task verify docs => String
 
 fn :: task acceptance => String
       task acceptance =  "./bin/ridgunc run tests/run.ridgun"
+
+fn :: task wasm runtime => String
+      task wasm runtime =  "sh src/main/runtime/build-wasm32.sh"
