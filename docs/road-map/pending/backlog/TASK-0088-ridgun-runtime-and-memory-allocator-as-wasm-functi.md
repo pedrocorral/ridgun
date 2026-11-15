@@ -20,7 +20,7 @@ policy:                     # a cycle for this task only (hotfix, release, ...);
 Every runtime slot exists once, in target-neutral LLVM IR (ADR-0013), and the wasm32 backend runs the promised behaviours with it.
 
 ## Plan
-- [ ] Recover the semantics of each slot from the x86-64 base runtime (disassemble the byte lists of `x86_64.ridgun` with `llvm-mc`; they are source, not an ELF), `rtx.c` and the IR helpers of `llvm.ridgun`.
+- [ ] Write the runtime from scratch from its contract: the 55 runtime entries declared in `llvm.ridgun` (names and arguments), the value representation (`docs/etc/low_level_ridgun_runtime_design.md`), `rtx.c` and the FRs. No disassembly of the old bytes.
 - [ ] Write the IR: `i64` words, explicit pointer conversions, no inline assembly; system operations as PAL calls; page-0 variables as globals.
 - [ ] Allocator over one linear memory on wasm32 (`memory.grow` behind the PAL); RMM rules unchanged.
 - [ ] Compile the IR with `llc -march=wasm32` and embed the functions in the module that `wasm.ridgun` writes; delete the provisional scalar runtime of `wasm.ridgun`.
@@ -30,6 +30,7 @@ Every runtime slot exists once, in target-neutral LLVM IR (ADR-0013), and the wa
 ## Progress log (append-only, newest last)
 - 2026-11-12: Created with ADR-0011. Needs TASK-0087.
 - 2026-11-15: Redefined by ADR-0013: one runtime source in target-neutral LLVM IR for every target, instead of a runtime hand-written in wasm. Moving x86-64, ARM64 and Windows onto it are later tasks.
+- 2026-11-15: The runtime is written from scratch from its contract and the suite, not recovered from the old bytes.
 
 ## Exact next actions
-1. Disassemble the base runtime byte lists of `x86_64.ridgun` with `llvm-mc` and list the slots with their arguments and results.
+1. List the 55 runtime entries of `llvm.ridgun` with their arguments, results and meaning, from the code that calls them and the FRs.
