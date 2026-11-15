@@ -6,9 +6,9 @@ domain: compiler
 status: approved
 priority: should
 created: 2026-11-14
-updated: 2026-11-14
+updated: 2026-11-15
 depends_on: [FR-COMP-004, FR-COMP-015]
-related: [ADR-0008, ADR-0011]
+related: [ADR-0008, ADR-0011, ADR-0013]
 verified_by: [src/test/ridgun/test wasm.ridgun, src/test/ridgun/test wasm backend.ridgun]
 ---
 # FR-COMP-026 — WebAssembly Target (`wasm32`)
@@ -36,6 +36,7 @@ native targets (ADR-0011).
    and returns the value (`i64`). Its frame comes from a shadow stack that starts after the rodata and grows down;
    a call that would pass the stack's bottom SHALL stop the program (`unreachable`).
 4. **Runtime.** The runtime SHALL be wasm functions in the same module, one per runtime slot of the native targets,
+   compiled by `llc` from the target-neutral LLVM IR runtime (ADR-0013) and embedded in `ridgunc`, so a build needs no LLVM,
    with the same arguments and result; the result of every runtime call is the new accumulator, as on x86-64. The allocator SHALL grow the memory with
    `memory.grow`. RMM rules SHALL not change.
 5. **System.** The module SHALL import its system operations from the module `ridgun` (write, read, clock, exit,

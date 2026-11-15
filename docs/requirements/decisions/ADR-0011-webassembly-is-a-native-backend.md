@@ -23,7 +23,7 @@ Ridgun has no WebAssembly output today. `ridgunc` has three backends: x86-64 and
 ## Decision
 Option 5. WebAssembly is a fourth backend, with the same shape as ARM64:
 
-- **`wasm.ridgun`** translates the NIR to wasm instructions and holds the runtime (the `rt` slots of `arm64.ridgun`) as wasm functions.
+- **`wasm.ridgun`** translates the NIR to wasm instructions. The runtime comes from the target-neutral LLVM IR runtime compiled by `llc` (amended by ADR-0013); it was first planned here as hand-written wasm functions.
 - **`wasm32.ridgun`** writes the binary module (types, imports, functions, memory, exports, code, data), as `elf64.ridgun` writes ELF.
 - **`--target wasm32`** selects it, through `emit elf for target` like the other targets.
 
@@ -49,4 +49,4 @@ Option 3 (emulator) is not taken: with option 5 it is no longer needed.
 - Testing needs a wasm engine on this machine. None is installed (no wasmtime, no Node). wasmtime is a download of about 20 MB and needs the user's approval before the first test.
 - `tests/run.ridgun` runs the promised behaviours on the wasm backend too, except network and true parallelism.
 - The playground page lives in www-ridgun. It is static: `ridgunc.wasm`, a JavaScript host and the editor.
-- Work, in order: TASK-0086 (module writer), TASK-0087 (NIR to wasm), TASK-0088 (runtime and memory), TASK-0089 (PAL imports and hosts), TASK-0090 (`--target wasm32` end to end and `ridgunc.wasm`), TASK-0091 (playground page).
+- Work, in order: TASK-0086 (module writer), TASK-0087 (NIR to wasm), TASK-0088 (the IR runtime of ADR-0013, on wasm32 first), TASK-0089 (PAL imports and hosts), TASK-0090 (`--target wasm32` end to end and `ridgunc.wasm`), TASK-0091 (playground page).
