@@ -25,7 +25,6 @@ declare i64 @rg_vdata(i64)
 declare i64 @rg_vlen(i64)
 declare i64 @rg_vrc(i64)
 declare void @rg_vset_len(i64, i64)
-declare void @rg_vretain(i64)
 declare i64 @rg_vec_item(i64, i64)
 declare i64 @rg_str_data(i64)
 declare i64 @rg_str_len(i64)
@@ -644,65 +643,6 @@ no:
   ret i1 false
 }
 
-; 1 when the la items of List a are the very words just before List b's
-; start in b's vector: then a :: b is a view of that vector (list_tail
-; leaves those items there), as when `(a:b:rest)` is rebuilt as `(b:rest)`.
-define i1 @rg_same_prefix(i64 %a, i64 %b, i64 %la) {
-entry:
-  %s = call i64 @rg_w2(i64 %b)
-  %room = icmp sge i64 %s, %la
-  %some = icmp sgt i64 %la, 0
-  %ok = and i1 %room, %some
-  br i1 %ok, label %start, label %no
-start:
-  %h = call i64 @rg_w1(i64 %b)
-  %d = call i64 @rg_vdata(i64 %h)
-  %base = sub i64 %s, %la
-  br label %loop
-loop:
-  %i = phi i64 [ 0, %start ], [ %i1, %next ]
-  %more = icmp slt i64 %i, %la
-  br i1 %more, label %cmp, label %yes
-cmp:
-  %ea = call i64 @rg_list_at(i64 %a, i64 %i)
-  %e = call i64 @rg_ld(i64 %ea)
-  %k = add i64 %base, %i
-  %off = shl i64 %k, 3
-  %va = add i64 %d, %off
-  %v = call i64 @rg_ld(i64 %va)
-  %eq = icmp eq i64 %e, %v
-  br i1 %eq, label %next, label %no
-next:
-  %i1 = add i64 %i, 1
-  br label %loop
-yes:
-  ret i1 true
-no:
-  ret i1 false
-}
-
-; The view of List b's vector that starts la items earlier (b and a taken;
-; rg_same_prefix holds).
-define i64 @rg_view_back(i64 %a, i64 %b, i64 %la) {
-entry:
-  %s = call i64 @rg_w2(i64 %b)
-  %ns = sub i64 %s, %la
-  %x = call i64 @__rg_rt_drop_val(i64 %a)
-  %rc = call i64 @rg_rc(i64 %b)
-  %sole = icmp sle i64 %rc, 1
-  br i1 %sole, label %reuse, label %fresh
-reuse:
-  %bw2 = add i64 %b, 16
-  call void @rg_st(i64 %bw2, i64 %ns)
-  ret i64 %b
-fresh:
-  %h = call i64 @rg_w1(i64 %b)
-  call void @rg_vretain(i64 %h)
-  %o = call i64 @rg_obj(i64 2, i64 %h, i64 %ns)
-  %y = call i64 @__rg_rt_drop_val(i64 %b)
-  ret i64 %o
-}
-
 ; Drop the n values at address p and set them to 0.
 define void @rg_drop_words(i64 %p, i64 %n) {
 entry:
@@ -723,8 +663,7 @@ done:
   ret void
 }
 
-; List a :: b (both taken). When a's items are the words just before b's
-; start, the result is a view of b's vector (constant time). Appending to a List held only here with room
+; List a :: b (both taken). Appending to a List held only here with room
 ; after its end writes in place; so does prepending to a List held only
 ; here with room before its start. Otherwise a new List with twice the
 ; room: the room goes after the items when a is the longer side (an
@@ -734,12 +673,6 @@ define i64 @rg_list_concat(i64 %a, i64 %b) {
 entry:
   %la = call i64 @rg_list_len(i64 %a)
   %lb = call i64 @rg_list_len(i64 %b)
-  %same = call i1 @rg_same_prefix(i64 %a, i64 %b, i64 %la)
-  br i1 %same, label %view, label %tryback
-view:
-  %vw = call i64 @rg_view_back(i64 %a, i64 %b, i64 %la)
-  ret i64 %vw
-tryback:
   %grow = call i1 @rg_can_grow(i64 %a, i64 %lb)
   br i1 %grow, label %inplace, label %tryfront
 inplace:

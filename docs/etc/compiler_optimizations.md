@@ -37,6 +37,7 @@ Every optimization in `ridgunc` is assigned a stable `OPT-NNN` identifier and do
 | `OPT-018` | Borrowed Pattern Parameters | AST -> Native IR (`compiler.ridgun`, all backends) | Parameters that every clause matches with a constructor, tuple, `[]`, string or `_` pattern | The caller passes a local without a clone and the callee empties the slot without a drop (`NPeekSlot`, `NForgetSlot`) |
 | `OPT-019` | Tail Calls Between Different Functions | AST -> Native IR -> all backends (`compiler.ridgun`, `llvm.ridgun`, `x86_64.ridgun`) | A direct call to another function in tail position (`loop` -> `step` -> `loop`, unit functions calling unit functions) | Releases the caller's frame before the call: any number of rounds in constant stack and memory (was about 200 bytes per round, crash at 3 000 000) |
 | `OPT-020` | In-Place String Append in Tail Calls | AST -> Native IR -> runtime extension (`typecheck.ridgun`, `compiler.ridgun`, builtin 121) | `loop (n - 1) (acc + x)` and chains `acc + sep + x` in a tail position, `acc` a String | Moves `acc` on its last use and appends in place when it has one owner, with a doubling buffer: linear instead of quadratic (100 000 appends 2.3 s -> 3 ms) |
+| `OPT-021` | A Rebuilt Cons Pattern Is the Matched List | AST -> AST (`compiler.ridgun`, all backends) | `f (a:b:rest) = ... (b:rest)`: a clause rebuilds a list its cons pattern took apart | The rebuild reuses the matched list: constant time instead of a copy of `rest` (100 000-element ordered check: quadratic, out of memory on wasm32 -> linear) |
 
 ---
 
@@ -198,6 +199,16 @@ Every optimization in `ridgunc` is assigned a stable `OPT-NNN` identifier and do
   3. Builtin 121: when both values are Strings and the left String's header (`{capacity, data, length, rc}`) has rc 1, it copies the right bytes after the left ones, growing the buffer to `max(2 * capacity, needed, 32)` when needed (the old buffer is freed by dropping a String built around it), and returns the left String. Otherwise it returns 0 and leaves both slots alone.
 - **Safety**: a String that another variable, list or record still holds has rc > 1 (a clone adds one), so it is never changed. A local that is read again after the call is cloned, not moved. Borrowed parameters (`OPT-018`) are never bound to a name, so they cannot be the left operand.
 - **Effect**: 100 000 rounds of `rep "a" n ""`: 2.3 s -> 3 ms on both backends; 200 rounds of a 1 MB String stay under 64 MB. Regression test: `tests/cases/perf/string_append_in_tail_call.ridgun`.
+
+### `OPT-021` — A Rebuilt Cons Pattern Is the Matched List
+- **Location**: `share cons cases` and its helpers (`share cons expr`, `share cons pat`, `pat cons cands`) in `src/main/ridgun/lib/compiler.ridgun`, called by `lower fndef`; the `:as:` clauses of `lower pat cond`, `lower pat binds` and `borrow pat ok`.
+- **Problem Addressed**: The parser turns `(b:rest)` in an expression into `[b] :: rest`. In `ordered (a:b:rest) = (a <= b) and (ordered (b:rest))`, `rest` shares its vector with the matched list, so the concatenation copied `rest` on every round: quadratic time, and on wasm32 `sort_by_100k_elements` ran out of memory in its ordered check (TASK-0088).
+- **Transformation**:
+  1. For each clause, every cons node of a pattern whose heads and tail are all variables, `(h1: ... :hk:r)`, is a candidate. Its key is `:as:h1 ... hk r`.
+  2. A rebuild `[h1, ..., hk] :: r` (the same variables, in the same order) in a guard or the body becomes `EVar key`. A candidate is skipped when the clause binds one of its names again (`collect expr bound vars`).
+  3. Each candidate whose key is now read becomes `PatCtor ":as:" [PatVar key, node]`: its check is the node's check, and its binding clones the matched list into the local `key`, then binds the node.
+- **Safety**: the matched list and the rebuild hold the same items in the same order, and Lists are values, so reading the matched list is the same value. A name bound again in the body would make the rebuild a different list, so those clauses keep the concatenation.
+- **Effect**: a rebuild costs one reference count instead of a copy. 100 000-element walks run in linear time. Regression test: `tests/cases/perf/rebuilt_cons_pattern_is_the_matched_list.ridgun`.
 
 ### Rule: tail calls stay last
 Applies to every new or changed optimization.

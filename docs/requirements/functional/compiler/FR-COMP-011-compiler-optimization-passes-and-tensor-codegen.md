@@ -4,7 +4,7 @@ title: Compiler Optimization Catalog, O(N) Contiguous Tensor Allocation, In-Plac
 status: implemented
 priority: must
 created: 2026-10-24
-updated: 2026-11-09
+updated: 2026-11-15
 depends_on:
   - FR-COMP-002
   - FR-COMP-004
@@ -58,6 +58,9 @@ The `ridgunc` native compiler SHALL maintain a documented catalog of compile-tim
    - A direct call to another function in tail position SHALL compute its arguments, drop the caller's remaining values, release the caller's frame and then transfer control to the callee, which returns straight to the caller's caller (`NTailCallFn`). No work SHALL follow the call ("Rule: tail calls stay last" in `docs/etc/compiler_optimizations.md`).
    - On LLVM the register entry points `@__rg_fn_{fid}_reg` use the `tailcc` calling convention, so a `tail call` in tail position is always a jump; the targets of such calls have `weak_odr` linkage so the optimizer cannot replace the call's result by a constant and lose the tail position.
    - The limits per backend are listed in FR-COMP-004 §3.
+9. **OPT-021 — A Rebuilt Cons Pattern Is the Matched List (TASK-0097)**:
+   - When a clause rebuilds, in a guard or its body, a list that a cons pattern of that clause took apart (`(b:rest)` after the pattern `(a:b:rest)`, every head and the tail a variable), the rebuild SHALL be the list that the pattern node matched, with no copy.
+   - A clause that binds one of those names again keeps the concatenation.
 
 ## Rationale
 - High-performance library code in pure Ridgun (`crypto.ridgun`, `argon2id.ridgun`, numerical/scientific computing) must achieve sub-second throughput through legitimate compiler and runtime codegen optimizations rather than by embedding library algorithms (`pbkdf2`, `argon2id`) as compiler built-ins.
@@ -68,3 +71,4 @@ The `ridgunc` native compiler SHALL maintain a documented catalog of compile-tim
 2. **AC-2 ($\mathcal{O}(N)$ Large Tensor Allocation & In-Place Argument Mutation)**: Allocating `Tensor[U64 * 160000 * 16]` (~20 MiB) and mutating a `Tensor` inside a function returning `()` or `Int` succeed in `< 50 ms` and preserve mutations in the caller.
 3. **AC-3 (Cryptographic Hot-Loop Throughput in Pure Ridgun)**: 600,000 iterations of `sha256 raw (opad + (sha256 raw (ipad + u)))` (PBKDF2-HMAC-SHA256 core) and Argon2id / BlaMka tensor block compression execute in `< 1 s` in pure Ridgun.
 4. **AC-4 (Field Reads and Small Calls, TS-COMP-011)**: 10 000 000 field reads, 10 000 000 calls to a function that matches its record parameter, and 10 000 000 turns of an empty self tail call loop run in under 400 ms on LLVM (`tests/cases/perf/field_reads_and_small_calls.ridgun`); borrowed parameters give the same results as owned ones with locals, temporaries, the same record twice, multi-variant constructors, tuples, strings and lists, and leak no blocks (`tests/cases/functions/borrowed_pattern_parameters.ridgun`).
+5. **AC-5 (Rebuilt Cons Patterns, TS-COMP-011)**: walks of 100 000 elements that rebuild `(b:rest)` on each round run in under 1 s and 256 MB on every backend, and rebuilds in guards, with two heads, inside tuples and after a name is bound again give the same results as the concatenation (`tests/cases/perf/rebuilt_cons_pattern_is_the_matched_list.ridgun`).

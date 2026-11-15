@@ -2576,6 +2576,7 @@ fn :: lower borrow cleanup [RNativeInstr] Int Int RNativeCode => RNativeCode
 
 fn :: borrow pat ok RPattern => Bool
       borrow pat ok (PatCtor ":tensor-pat:" _) = False
+      borrow pat ok (PatCtor ":as:" _) = False
       borrow pat ok (PatCtor c _) = (prim type tag id c) <= 0
       borrow pat ok (PatTuple _) = True
       borrow pat ok PatWild = True
@@ -3531,6 +3532,7 @@ fn :: lower pat cond RNativeEnv RPattern Int Int Int RNativeCode => RNativeCode
         arity = list len ps
         st1 = nc emit list st [NMatchTuple slot arity, NJumpIfZero fail_lbl] sp
         lower tuple pat conds env ps slot 0 fail_lbl sp st1
+      lower pat cond env (PatCtor ":as:" (_:p:[])) slot fail_lbl sp st =  lower pat cond env p slot fail_lbl sp st
       lower pat cond env (PatCtor ":tensor-pat:" (t_pat:rank_pat:dim_pats)) slot fail_lbl sp st =
         lower tensor pat cond env (tensor pat mode env t_pat) t_pat rank_pat dim_pats slot fail_lbl sp st
       lower pat cond env (PatCtor c (sub_p:[])) slot fail_lbl sp st
@@ -3729,6 +3731,9 @@ fn :: lower pat binds RNativeEnv RPattern Int Bool Int RNativeCode => RNativeCod
         lower pat cons bind env t slot False sp st1
       lower pat binds env (PatTuple ps) slot _ sp st =
         lower tuple pat binds env ps slot 0 sp st
+      lower pat binds env (PatCtor ":as:" ((PatVar v):p:[])) slot move_ok sp st =
+        st1 = nc emit list st [NCloneSlot slot, NStoreSlot (env var slot env v)] sp
+        lower pat binds env p slot move_ok sp st1
       lower pat binds env (PatCtor ":tensor-pat:" (t_pat:rank_pat:dim_pats)) slot move_ok sp st =
         lower tensor pat binds env (tensor pat mode env t_pat) t_pat rank_pat dim_pats slot move_ok sp st
       lower pat binds env (PatCtor c (sub_p:[])) slot move_ok sp st
@@ -3891,6 +3896,149 @@ fn :: maybe wrap unit cases String String RStrIntMap [RFnCase] => [RFnCase]
         | is unit ret ret = wrap unit return cases name units cases
         | otherwise = cases
 
+-- ── A rebuilt cons pattern is the matched list (FR-COMP-024) ──
+-- `f (a:b:rest) = ... (b:rest)`: the clause rebuilds a list its pattern
+-- took apart. The parser makes `(b:rest)` the concatenation `[b] :: rest`,
+-- a new list built from `rest`. This pass names the list matched by every
+-- cons node `(h1: ... :hk:r)` (all of them variables) whose rebuild
+-- `[h1, ..., hk] :: r` occurs in the clause: the node becomes the pattern
+-- `:as:` (the name, then the node), and each rebuild becomes the name. The
+-- rebuild costs nothing and copies nothing. A clause that binds one of
+-- those names again in its body keeps the concatenation.
+
+fn :: share cons cases [RFnCase] => [RFnCase]
+      share cons cases [] =  []
+      share cons cases ((FnCase pats guards body):cs) =  [share cons case pats guards body] :: (share cons cases cs)
+
+fn :: share cons case [RPattern] [RGuard] RExpr => RFnCase
+      share cons case pats guards body =
+        bound = collect guard list bound vars guards (collect expr bound vars body [])
+        keys = share cons keys (pat list cons cands pats []) bound []
+        share cons apply pats guards body keys
+
+fn :: share cons apply [RPattern] [RGuard] RExpr [String] => RFnCase
+      share cons apply pats guards body [] =  FnCase pats guards body
+      share cons apply pats guards body keys =
+        guards2 = share cons guards guards keys
+        body2 = share cons expr body keys
+        used = cmm expr vars (EGuard guards2) (cmm expr vars body2 [])
+        FnCase (share cons pat list pats used) guards2 body2
+
+-- The names of an all-variable cons node, heads first, then the tail.
+fn :: cons node names RPattern [String] => [String]
+      cons node names (PatCons (PatVar h) (PatVar r)) acc =  acc :: [h, r]
+      cons node names (PatCons (PatVar h) t) acc =  cons node names t (acc :: [h])
+      cons node names _ _ =  []
+
+fn :: share cons key [String] => String
+      share cons key names =  ":as:" + (share cons join names)
+
+fn :: share cons join [String] => String
+      share cons join [] =  ""
+      share cons join (n:[]) =  n
+      share cons join (n:ns) =  n + " " + (share cons join ns)
+
+fn :: pat cons cands RPattern [[String]] => [[String]]
+      pat cons cands (PatCons h t) acc =  pat cons cands t (pat cons cands h (add cons cand (cons node names (PatCons h t) []) acc))
+      pat cons cands (PatTuple ps) acc =  pat list cons cands ps acc
+      pat cons cands (PatCtor _ args) acc =  pat list cons cands args acc
+      pat cons cands _ acc =  acc
+
+fn :: pat list cons cands [RPattern] [[String]] => [[String]]
+      pat list cons cands [] acc =  acc
+      pat list cons cands (p:ps) acc =  pat list cons cands ps (pat cons cands p acc)
+
+fn :: add cons cand [String] [[String]] => [[String]]
+      add cons cand [] acc =  acc
+      add cons cand names acc =  acc :: [names]
+
+-- The keys of the candidates none of whose names the body binds again.
+fn :: share cons keys [[String]] [String] [String] => [String]
+      share cons keys [] _ acc =  acc
+      share cons keys (names:rest) bound acc
+        | cons names rebound names bound = share cons keys rest bound acc
+        | otherwise = share cons keys rest bound (acc :: [share cons key names])
+
+fn :: cons names rebound [String] [String] => Bool
+      cons names rebound [] _ =  False
+      cons names rebound (n:ns) bound
+        | list contains bound n = True
+        | otherwise = cons names rebound ns bound
+
+-- The names of a rebuild `[h1, ..., hk] :: r` (variables only), or [].
+fn :: rebuild names [RExpr] String [String] => [String]
+      rebuild names [] r acc =  acc :: [r]
+      rebuild names ((EVar h):es) r acc =  rebuild names es r (acc :: [h])
+      rebuild names _ _ _ =  []
+
+fn :: rebuild key [RExpr] String => String
+      rebuild key [] _ =  ""
+      rebuild key elems r =  rebuild key of (rebuild names elems r [])
+
+fn :: rebuild key of [String] => String
+      rebuild key of [] =  ""
+      rebuild key of names =  share cons key names
+
+fn :: share cons pat RPattern [String] => RPattern
+      share cons pat (PatCons h t) used =  share cons wrap (cons node names (PatCons h t) []) (PatCons (share cons pat h used) (share cons pat t used)) used
+      share cons pat (PatTuple ps) used =  PatTuple (share cons pat list ps used)
+      share cons pat (PatCtor c args) used =  PatCtor c (share cons pat list args used)
+      share cons pat p _ =  p
+
+fn :: share cons pat list [RPattern] [String] => [RPattern]
+      share cons pat list [] _ =  []
+      share cons pat list (p:ps) used =  [share cons pat p used] :: (share cons pat list ps used)
+
+fn :: share cons wrap [String] RPattern [String] => RPattern
+      share cons wrap [] p _ =  p
+      share cons wrap names p used
+        | list contains used (share cons key names) = PatCtor ":as:" [PatVar (share cons key names), p]
+        | otherwise = p
+
+fn :: share cons expr RExpr [String] => RExpr
+      share cons expr (EBin OpConcat (EList elems) (EVar r)) keys
+        | list contains keys (rebuild key elems r) = EVar (rebuild key elems r)
+      share cons expr (ENot e) keys =  ENot (share cons expr e keys)
+      share cons expr (EOut e) keys =  EOut (share cons expr e keys)
+      share cons expr (EBin bop l r) keys =  EBin bop (share cons expr l keys) (share cons expr r keys)
+      share cons expr (ECall f args) keys =  ECall f (share cons exprs args keys)
+      share cons expr (EEcho args) keys =  EEcho (share cons exprs args keys)
+      share cons expr (EStrInterp parts) keys =  EStrInterp (share cons exprs parts keys)
+      share cons expr (EList es) keys =  EList (share cons exprs es keys)
+      share cons expr (ETuple es) keys =  ETuple (share cons exprs es keys)
+      share cons expr (ETensor es) keys =  ETensor (share cons exprs es keys)
+      share cons expr (EEinsum es subs) keys =  EEinsum (share cons exprs es keys) subs
+      share cons expr (EHadamard bop l ls r rs) keys =  EHadamard bop (share cons expr l keys) ls (share cons expr r keys) rs
+      share cons expr (EIndex b idxs) keys =  EIndex (share cons expr b keys) (share cons exprs idxs keys)
+      share cons expr (EIndexAssign t idxs v) keys =  EIndexAssign t (share cons exprs idxs keys) (share cons expr v keys)
+      share cons expr (ESeqSelect b m) keys =  ESeqSelect (share cons expr b keys) m
+      share cons expr (EBlock stmts) keys =  EBlock (share cons stmts stmts keys)
+      share cons expr (EGuard guards) keys =  EGuard (share cons guards guards keys)
+      share cons expr (EWhere body binds) keys =  EWhere (share cons expr body keys) (share cons wheres binds keys)
+      share cons expr (EParPipe es) keys =  EParPipe (share cons exprs es keys)
+      share cons expr (EWithCtx c v b) keys =  EWithCtx c (share cons expr v keys) (share cons expr b keys)
+      share cons expr (EWithRegion q b) keys =  EWithRegion q (share cons expr b keys)
+      share cons expr e _ =  e
+
+fn :: share cons exprs [RExpr] [String] => [RExpr]
+      share cons exprs [] _ =  []
+      share cons exprs (e:es) keys =  [share cons expr e keys] :: (share cons exprs es keys)
+
+fn :: share cons stmts [RStmt] [String] => [RStmt]
+      share cons stmts [] _ =  []
+      share cons stmts ((StmtLet v e):ss) keys =  [StmtLet v (share cons expr e keys)] :: (share cons stmts ss keys)
+      share cons stmts ((StmtMut v e):ss) keys =  [StmtMut v (share cons expr e keys)] :: (share cons stmts ss keys)
+      share cons stmts ((StmtExpr e):ss) keys =  [StmtExpr (share cons expr e keys)] :: (share cons stmts ss keys)
+      share cons stmts ((StmtIndexAssign t idxs e):ss) keys =  [StmtIndexAssign t (share cons exprs idxs keys) (share cons expr e keys)] :: (share cons stmts ss keys)
+
+fn :: share cons guards [RGuard] [String] => [RGuard]
+      share cons guards [] _ =  []
+      share cons guards ((GuardBranch c b):gs) keys =  [GuardBranch (share cons expr c keys) (share cons expr b keys)] :: (share cons guards gs keys)
+
+fn :: share cons wheres [RWhereBind] [String] => [RWhereBind]
+      share cons wheres [] _ =  []
+      share cons wheres ((WhereBind e v idxs):ws) keys =  [WhereBind (share cons expr e keys) v idxs] :: (share cons wheres ws keys)
+
 -- Marks unit functions in the arity map ("#u " + name), read by `unit tail call ok`.
 fn :: add unit marks [RFnDef] RStrIntMap => RStrIntMap
       add unit marks [] m = m
@@ -3900,7 +4048,7 @@ fn :: add unit marks [RFnDef] RStrIntMap => RStrIntMap
 
 fn :: lower fndef RFnDef RStrIntMap RStrIntMap RStrIntMap RStrSet RStrIntMap [String] => RNativeFn
       lower fndef (FnDef name params ret raw_cases) str_map fn_id_map fn_arity_map heavy_set field_map infos =
-        cases = maybe wrap unit cases name ret fn_arity_map raw_cases
+        cases = share cons cases (maybe wrap unit cases name ret fn_arity_map raw_cases)
         fid = lookup fn id map fn_id_map name
         arity = infer fndef arity params cases
         all_locals = collect cases all locals cases []
