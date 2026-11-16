@@ -18,11 +18,40 @@ module asm "  and $-16, %rsp"
 module asm "  call __rg_linux_start"
 module asm "  ud2"
 
+; A thread (ADR-0014): __rg_clone_thread(entry, arg, stack_top) starts
+; entry(arg) on the stack that ends at stack_top and gives the thread id, or
+; -errno. The thread ends when entry returns. clone flags: VM, FS, FILES,
+; SIGHAND, THREAD, SYSVSEM.
+module asm ".globl __rg_clone_thread"
+module asm "__rg_clone_thread:"
+module asm "  and $-16, %rdx"
+module asm "  sub $16, %rdx"
+module asm "  mov %rdi, (%rdx)"
+module asm "  mov %rsi, 8(%rdx)"
+module asm "  mov $0x50f00, %edi"
+module asm "  mov %rdx, %rsi"
+module asm "  xor %edx, %edx"
+module asm "  xor %r10d, %r10d"
+module asm "  xor %r8d, %r8d"
+module asm "  mov $56, %eax"
+module asm "  syscall"
+module asm "  test %rax, %rax"
+module asm "  jnz 1f"
+module asm "  pop %rax"
+module asm "  pop %rdi"
+module asm "  call *%rax"
+module asm "  mov $60, %eax"
+module asm "  xor %edi, %edi"
+module asm "  syscall"
+module asm "1:"
+module asm "  ret"
+
 declare void @rg_copy(i64, i64, i64)
 declare void @rg_fill(i64, i8, i64)
 declare i64 @rg_ld(i64)
 declare void @rg_st(i64, i64)
 declare i64 @__rg_rt_start(i64, i64, i64, i64, i64)
+declare i64 @__rg_clone_thread(i64, i64, i64)
 
 ; ── System calls ─────────────────────────────────────────────
 define internal i64 @rg_sys(i64 %nr, i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f) alwaysinline {
@@ -798,4 +827,49 @@ cut:
   %r = and i64 %b, %mask
   %d = bitcast i64 %r to double
   ret double %d
+}
+
+; ── Threads (ADR-0014) ───────────────────────────────────────
+define i64 @__rg_pal_thread_spawn(i64 %entry, i64 %arg, i64 %stack_top) {
+  %r = call i64 @__rg_clone_thread(i64 %entry, i64 %arg, i64 %stack_top)
+  ret i64 %r
+}
+
+define i64 @__rg_pal_thread_id() {
+  %r = call i64 @rg_sys(i64 186, i64 0, i64 0, i64 0, i64 0, i64 0, i64 0)
+  ret i64 %r
+}
+
+define void @__rg_pal_yield() {
+  %r = call i64 @rg_sys(i64 24, i64 0, i64 0, i64 0, i64 0, i64 0, i64 0)
+  ret void
+}
+
+; futex wait (address of an i32, the value it must still hold, timeout in ns,
+; negative: none): 0 when woken, -11 when the value had changed, -110 when
+; the time passed, -4 when interrupted.
+define i64 @__rg_pal_futex_wait(i64 %addr, i64 %expected, i64 %timeout_ns) {
+entry:
+  %ts = alloca [2 x i64], align 8
+  %tsa = ptrtoint ptr %ts to i64
+  %none = icmp slt i64 %timeout_ns, 0
+  br i1 %none, label %forever, label %timed
+forever:
+  %r0 = call i64 @rg_sys(i64 202, i64 %addr, i64 128, i64 %expected, i64 0, i64 0, i64 0)
+  ret i64 %r0
+timed:
+  %s = udiv i64 %timeout_ns, 1000000000
+  %n = urem i64 %timeout_ns, 1000000000
+  %p0 = getelementptr inbounds [2 x i64], ptr %ts, i64 0, i64 0
+  %p1 = getelementptr inbounds [2 x i64], ptr %ts, i64 0, i64 1
+  store i64 %s, ptr %p0, align 8
+  store i64 %n, ptr %p1, align 8
+  %r1 = call i64 @rg_sys(i64 202, i64 %addr, i64 128, i64 %expected, i64 %tsa, i64 0, i64 0)
+  ret i64 %r1
+}
+
+; futex wake (address, how many threads at most): the number woken.
+define i64 @__rg_pal_futex_wake(i64 %addr, i64 %count) {
+  %r = call i64 @rg_sys(i64 202, i64 %addr, i64 129, i64 %count, i64 0, i64 0, i64 0)
+  ret i64 %r
 }

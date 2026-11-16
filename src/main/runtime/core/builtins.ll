@@ -44,7 +44,7 @@ declare void @rg_buf_u64(i64, i64)
 declare i64 @rg_buf_str(i64)
 declare void @rg_copy(i64, i64, i64)
 
-@rg_live_blocks = external global i64
+declare i64 @rg_live_total()
 @rg_cond_spared = global i64 0
 @rg_cond_freed = global i64 0
 
@@ -471,7 +471,7 @@ entry:
                                 i64 61, label %fold
                                 i64 121, label %append ]
 live:
-  %lv = load i64, ptr @rg_live_blocks, align 8
+  %lv = call i64 @rg_live_total()
   %lr = call i64 @rg_int(i64 %lv)
   ret i64 %lr
 spared:

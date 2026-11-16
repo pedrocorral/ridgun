@@ -1122,3 +1122,26 @@ fok:
 zero:
   ret i64 0
 }
+
+; ── Threads (ADR-0014) ───────────────────────────────────────
+; wasm32 here has no threads: spawn is refused and the runtime runs every job
+; on the calling thread.
+define i64 @__rg_pal_thread_spawn(i64 %entry, i64 %arg, i64 %stack_top) {
+  ret i64 -38
+}
+
+define i64 @__rg_pal_thread_id() {
+  ret i64 1
+}
+
+define void @__rg_pal_yield() {
+  ret void
+}
+
+define i64 @__rg_pal_futex_wait(i64 %addr, i64 %expected, i64 %timeout_ns) {
+  ret i64 -11
+}
+
+define i64 @__rg_pal_futex_wake(i64 %addr, i64 %count) {
+  ret i64 0
+}

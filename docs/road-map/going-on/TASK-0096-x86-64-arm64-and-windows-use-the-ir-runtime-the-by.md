@@ -42,7 +42,9 @@ Order fixed on 2026-11-16 after reading both runtimes (see the log): the IR runt
 
 - 2026-11-16: ADR-0014 step (a) done (1.0.15): with the IR runtime (development switch) the LLVM backend's `__rg_builtin_job_spawn` calls builtin 57 instead of reading the old pool at address 4288300; jobs run at once. LLVM suite with the IR runtime: 153 of 153. Default runtime: native 306 of 306, wasm32 143 (unchanged).
 
+- 2026-11-16: ADR-0014 step (b) done (1.0.16). `core/threads.ll`: `rg_mt` flag, thread slot from the stack region (no TLS), futex mutex, atomic counts when the flag is set, per-slot live-block counters (one cache line each), `rg_thread_start`. Allocator sharded by slot (`heap.ll`); channel builtins under a lock (`agents.ll`); PAL thread interface on Linux (`clone` in assembly, futex, yield, thread id) and refusals on wasm32. `tests/runtime/threads.ll` + `run-threads.sh`: T1 shared counts, T2 mutex, T3 slots, T4 cross-thread free, T5 slot reuse, T6 channels (4 producers, 4 consumers); 100 rounds pass; each piece broken on purpose fails its test. LLVM suite on the IR runtime 153 of 153; default native 306, wasm 143, unit tests 10, libs 35.
+
 ## Exact next actions
-1. ADR-0014 steps (b)-(d): thread-safe counts, allocator and channels with the PAL thread interface; the pool; builtin 51.
+1. ADR-0014 step (c): the pool and parallel jobs (builtins 57-59, 96-99, `||map`, `||filter`), the backend helpers for channels and tagged replies removed; the Vonkeep benchmark (`/tmp/ridgunc-requests.md`, request 2) is the acceptance test. Then step (d) builtin 51, then the IR runtime becomes the default on x86-64.
 2. 0b: threads in the IR runtime.
 3. PAL functions and IR builtins for sockets, `execve`, pipes and `sys call`.

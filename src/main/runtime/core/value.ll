@@ -27,7 +27,10 @@ declare void @rg_copy(i64, i64, i64)
 declare i64 @__rg_pal_write(i64, i64, i64)
 declare void @__rg_pal_exit(i64)
 
-@rg_live_blocks = global i64 0
+declare void @rg_live_add(i64)
+declare void @rg_rc_inc(i64)
+declare i64 @rg_rc_dec(i64)
+declare void @rg_count_add(i64, i64)
 
 ; ── Words ────────────────────────────────────────────────────
 
@@ -144,9 +147,7 @@ define i64 @rg_obj(i64 %tagword, i64 %w1, i64 %w2) {
   call void @rg_st(i64 %a1, i64 %w1)
   %a2 = add i64 %o, 16
   call void @rg_st(i64 %a2, i64 %w2)
-  %n = load i64, ptr @rg_live_blocks, align 8
-  %n1 = add i64 %n, 1
-  store i64 %n1, ptr @rg_live_blocks, align 8
+  call void @rg_live_add(i64 1)
   ret i64 %o
 }
 
@@ -210,9 +211,7 @@ define i64 @rg_vrc(i64 %h) alwaysinline {
 
 define void @rg_vretain(i64 %h) {
   %a = add i64 %h, 24
-  %v = call i64 @rg_ld(i64 %a)
-  %v1 = add i64 %v, 1
-  call void @rg_st(i64 %a, i64 %v1)
+  call void @rg_rc_inc(i64 %a)
   ret void
 }
 
@@ -224,9 +223,7 @@ entry:
   br i1 %z, label %done, label %dec
 dec:
   %a = add i64 %h, 24
-  %rc = call i64 @rg_ld(i64 %a)
-  %rc1 = sub i64 %rc, 1
-  call void @rg_st(i64 %a, i64 %rc1)
+  %rc1 = call i64 @rg_rc_dec(i64 %a)
   %last = icmp sle i64 %rc1, 0
   br i1 %last, label %free, label %done
 free:
@@ -267,9 +264,7 @@ entry:
   br i1 %h, label %inc, label %done
 inc:
   %a = sub i64 %v, 8
-  %rc = call i64 @rg_ld(i64 %a)
-  %rc1 = add i64 %rc, 1
-  call void @rg_st(i64 %a, i64 %rc1)
+  call void @rg_rc_inc(i64 %a)
   br label %done
 done:
   ret i64 %v
@@ -283,9 +278,7 @@ entry:
   br i1 %h, label %dec, label %done
 dec:
   %a = sub i64 %v, 8
-  %rc = call i64 @rg_ld(i64 %a)
-  %rc1 = sub i64 %rc, 1
-  call void @rg_st(i64 %a, i64 %rc1)
+  %rc1 = call i64 @rg_rc_dec(i64 %a)
   %last = icmp sle i64 %rc1, 0
   br i1 %last, label %kids, label %done
 kids:
@@ -314,9 +307,7 @@ tensor:
   br label %free
 free:
   call void @rg_free(i64 %a)
-  %n = load i64, ptr @rg_live_blocks, align 8
-  %n1 = sub i64 %n, 1
-  store i64 %n1, ptr @rg_live_blocks, align 8
+  call void @rg_live_add(i64 -1)
   br label %done
 done:
   ret i64 0

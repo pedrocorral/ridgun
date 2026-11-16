@@ -12,9 +12,13 @@ declare i64 @__rg_pal_alloc_chunk(i64)
 declare void @rg_fatal(ptr, i64)
 declare i64 @llvm.ctlz.i64(i64, i1)
 
-@rg_bump = internal global i64 0
-@rg_bump_end = internal global i64 0
-@rg_free_lists = internal global [48 x i64] zeroinitializer
+; One shard per thread slot (threads.ll): its own bump region and free lists,
+; so the allocator takes no lock. A block freed by another thread joins the
+; free lists of the freeing thread's shard.
+@rg_bump = internal global [9 x i64] zeroinitializer
+@rg_bump_end = internal global [9 x i64] zeroinitializer
+@rg_free_lists = internal global [432 x i64] zeroinitializer
+declare i64 @rg_slot()
 @rg_msg_oom = private constant [13 x i8] c"out of memory"
 
 ; heap init (start, end): the first chunk is [start, end).
@@ -40,7 +44,10 @@ define internal i64 @rg_class(i64 %n) alwaysinline {
 define i64 @rg_alloc(i64 %n) {
 entry:
   %c = call i64 @rg_class(i64 %n)
-  %lp = getelementptr inbounds [48 x i64], ptr @rg_free_lists, i64 0, i64 %c
+  %s = call i64 @rg_slot()
+  %so = mul i64 %s, 48
+  %li = add i64 %so, %c
+  %lp = getelementptr inbounds [432 x i64], ptr @rg_free_lists, i64 0, i64 %li
   %head = load i64, ptr %lp, align 8
   %empty = icmp eq i64 %head, 0
   br i1 %empty, label %fresh, label %reuse
@@ -53,8 +60,10 @@ reuse:
   ret i64 %u
 fresh:
   %size = shl i64 1, %c
-  %b = load i64, ptr @rg_bump, align 8
-  %e = load i64, ptr @rg_bump_end, align 8
+  %bpp = getelementptr inbounds [9 x i64], ptr @rg_bump, i64 0, i64 %s
+  %epp = getelementptr inbounds [9 x i64], ptr @rg_bump_end, i64 0, i64 %s
+  %b = load i64, ptr %bpp, align 8
+  %e = load i64, ptr %epp, align 8
   %nb = add i64 %b, %size
   %fits = icmp ule i64 %nb, %e
   br i1 %fits, label %cut, label %grow
@@ -71,11 +80,11 @@ got:
   %chunk_end = add i64 %chunk, %want
   %contig = icmp eq i64 %chunk, %e
   %nstart = select i1 %contig, i64 %b, i64 %chunk
-  store i64 %nstart, ptr @rg_bump, align 8
-  store i64 %chunk_end, ptr @rg_bump_end, align 8
+  store i64 %nstart, ptr %bpp, align 8
+  store i64 %chunk_end, ptr %epp, align 8
   br label %fresh
 cut:
-  store i64 %nb, ptr @rg_bump, align 8
+  store i64 %nb, ptr %bpp, align 8
   %bp = inttoptr i64 %b to ptr
   store i64 %c, ptr %bp, align 8
   %r = add i64 %b, 8
@@ -87,7 +96,10 @@ define void @rg_free(i64 %p) {
   %blk = sub i64 %p, 8
   %bp = inttoptr i64 %blk to ptr
   %c = load i64, ptr %bp, align 8
-  %lp = getelementptr inbounds [48 x i64], ptr @rg_free_lists, i64 0, i64 %c
+  %s = call i64 @rg_slot()
+  %so = mul i64 %s, 48
+  %li = add i64 %so, %c
+  %lp = getelementptr inbounds [432 x i64], ptr @rg_free_lists, i64 0, i64 %li
   %head = load i64, ptr %lp, align 8
   %np = inttoptr i64 %p to ptr
   store i64 %head, ptr %np, align 8

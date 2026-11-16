@@ -416,7 +416,34 @@ out:
 }
 
 ; ── Dispatch ─────────────────────────────────────────────────
+; The channel builtins take the channel lock (ADR-0014): channels, the table
+; of global channels and the tagged replies are shared between threads.
+@rg_chan_lock = internal global i32 0
+declare void @rg_lock(i64)
+declare void @rg_unlock(i64)
+
 define i64 @rg_builtin_agents(i64 %id, i64 %slots, i64 %n) {
+entry:
+  switch i64 %id, label %direct [ i64 1, label %locked
+                                  i64 35, label %locked
+                                  i64 50, label %locked
+                                  i64 32, label %locked
+                                  i64 33, label %locked
+                                  i64 97, label %locked
+                                  i64 98, label %locked
+                                  i64 99, label %locked ]
+direct:
+  %rd = call i64 @rg_builtin_agents_run(i64 %id, i64 %slots, i64 %n)
+  ret i64 %rd
+locked:
+  %la = ptrtoint ptr @rg_chan_lock to i64
+  call void @rg_lock(i64 %la)
+  %rl = call i64 @rg_builtin_agents_run(i64 %id, i64 %slots, i64 %n)
+  call void @rg_unlock(i64 %la)
+  ret i64 %rl
+}
+
+define internal i64 @rg_builtin_agents_run(i64 %id, i64 %slots, i64 %n) {
 entry:
   switch i64 %id, label %next [ i64 1, label %new
                                 i64 35, label %new
