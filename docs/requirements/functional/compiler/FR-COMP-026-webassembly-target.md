@@ -6,7 +6,7 @@ domain: compiler
 status: approved
 priority: should
 created: 2026-11-14
-updated: 2026-11-15
+updated: 2026-11-16
 depends_on: [FR-COMP-004, FR-COMP-015]
 related: [ADR-0008, ADR-0011, ADR-0013]
 verified_by: [src/test/ridgun/test wasm.ridgun, src/test/ridgun/test wasm backend.ridgun]
@@ -35,8 +35,9 @@ native targets (ADR-0011).
 2. **Values and addresses.** Ridgun values SHALL be `i64`. Memory addresses SHALL be `i32` (one linear memory).
 3. **Control flow.** Every NIR function SHALL become one wasm function. Jumps to NIR labels SHALL go through a
    `loop` and a `br_table` over the function's blocks. A NIR function takes the address of its arguments (`i32`)
-   and returns the value (`i64`). Its frame comes from a shadow stack that starts after the rodata and grows down;
-   a call that would pass the stack's bottom SHALL stop the program (`unreachable`). A tail call to another
+   and returns the value (`i64`). Its frame comes from a shadow stack of 8 MiB at the start of linear memory
+   (before the runtime's data and the rodata), which grows down; a call that would pass the stack's bottom SHALL
+   stop the program (the address wraps below 0 and the access traps). A tail call to another
   function (`NTailCallFn`) SHALL be a `return_call`: the arguments move to the base of a frame of the callee's
   size whose top is the caller's top (runtime entry `tail_frame`), so mutual tail recursion runs in constant stack.
 4. **Runtime.** The runtime SHALL be wasm functions in the same module, one per runtime slot of the native targets,
@@ -69,3 +70,14 @@ native targets (ADR-0011).
 - **AC7.** The module exports `ridgun_main`, which runs `main` and returns its value. A program with Int arithmetic,
   guards, recursion, a self tail call of 100 000 rounds, Bool patterns and signed division, built with
   `--target wasm32`, validates, and `ridgun_main` returns the value the Linux build computes.
+
+## Known limitations
+- **Recursion depth.** A call that is not a tail call keeps its frame on the 8 MiB shadow stack, so wasm32
+  reaches fewer nested calls than the native targets. Example: `ordered (a:b:rest) = (a <= b) and (ordered (b:rest))`
+  (not a tail call, because of `and`) runs on 100 000 elements on every target, but on 200 000 it stops on wasm32
+  ("Out-of-bounds access in linear memory") while the native targets reach 1 000 000. Tail calls (self and to
+  other functions) run in constant stack on every target and are not limited.
+- A larger shadow stack would close the gap but reserve more memory when the module starts, also in the browser.
+  The size stays 8 MiB (decision of 2026-11-16). Programs that recurse deeply on wasm32 should use tail calls.
+- The size is set by `-z stack-size` in `src/main/runtime/build-wasm32.sh`; `wasm.ridgun` takes the stack top
+  from the runtime module's `__stack_pointer`.
