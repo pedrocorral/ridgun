@@ -1,12 +1,13 @@
 ---
-tool: agent
-user: gemini
+tool: claude
+user: claude
 host: solarfall
-pid: 4616
-session: bash-4616
-started: 2026-10-27T19:53:06Z
-heartbeat: 2026-11-03T19:29:00Z
-task: TASK-0053
+pid: 888666
+session: claude-888666
+started: 2026-11-14T16:09:53Z
+heartbeat: 2026-11-16T13:06:10Z
+task: TASK-0096
+took_over: claude claude@solarfall pid 484825: its process is gone (the session ended without releasing)
 ---
 # agent-001
-Seat taken by agent (gemini@solarfall). Released with `aix agent release`; stale seats are reported by `aix agent list` and `aix doctor`.
+Seat taken by claude (claude@solarfall). Released with `aix agent release`; stale seats are reported by `aix agent list` and `aix doctor`.

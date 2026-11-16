@@ -36,7 +36,9 @@ Order fixed on 2026-11-16 after reading both runtimes (see the log): the IR runt
 
 - 2026-11-16: 0a PAL written: `src/main/runtime/pal/linux-x86_64.ll` (the 21 `__rg_pal_*` functions on raw system calls, `_start`, first 64 MiB chunk by `mmap`, `trunc` on the bits because `llc` calls it without SSE4.1). Core + PAL link with no undefined symbol and compile with `llc -O2 -relocation-model=pic` (72 018 bytes of code, 2 048 of bss). Not run yet: it needs the flat-image build script and a backend that links it. Also found: the IR runtime has no builtins for sockets, `execve`, pipes and `sys call` (the 6 behaviours wasm32 excludes by AC4), which native Linux has; they need new PAL functions (socket, fork/exec, pipe, raw syscall) and IR builtins before the 310 behaviours can pass on x86-64.
 
+- 2026-11-16: Measured the IR runtime on the LLVM backend for Linux x86-64 (candidate compiler with the development switch `RIDGUN_IR_RT=<object>`, object from `src/main/runtime/build-linux-x86_64.sh`: core + `abi/llvm.ll` + `pal/linux-x86_64.ll`): `--llvm` suite 139 of 149. Failures: 4 agent cases (timeouts: the backend's own job helper starts threads through the old blob), `sys call` builtin 116 (2 cases), net x2, `clocks_through_the_vdso`, `execve_passes_the_whole_argv`. `abi/llvm.ll` gives the entry points the backend's helpers call in the old blob (`alloc_buf`, `box_rc_vec`, `box_rval`, `pop_i64`, `alloc_str`, `drop_slot`, `ext`, `pal_dispatch`). The switch itself (llvm.ridgun) is not committed yet: it goes with the next compiler change and the version bump.
+
 ## Exact next actions
-1. 0a (rest): a script that links core + PAL, runs `llc` for x86-64 PIC and writes the flat image at the fixed address; link it in the LLVM backend behind an environment switch and run the single-thread part of the suite on it.
+1. Remaining 10 cases: builtin 116 and `sys call`, sockets, `execve`, the vdso clock case, then threads (agents).
 2. 0b: threads in the IR runtime.
 3. PAL functions and IR builtins for sockets, `execve`, pipes and `sys call`.

@@ -14,7 +14,7 @@ agent_runtime: claude
 
 ## Last verified facts (tests green? migrations applied? env?)
 - All 113 cases on LLVM and x86-64: only the known failures (`rg113_int64_literals` on x86-64, three `names/` cases under `--strict`).
-- `ridgunc run tests/run.rg` → 117/119; the two failures are the `stable deps` harness bugs fixed by TASK-0060 on its branch.
+- `ridgunc run tests/run.ridgun` → 117/119; the two failures are the `stable deps` harness bugs fixed by TASK-0060 on its branch.
 - `aix docs validate` → 0 errors.
 
 ## Immediate next action
