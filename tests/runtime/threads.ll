@@ -10,6 +10,11 @@
 ;   T4 blocks allocated by one thread and freed by another keep their
 ;      contents and the live count returns to its start
 ;   T5 threads start, end and their slots are reused in 50 rounds
+;   T6 channel builtins from 4 producers and 4 consumers: nothing lost, nothing
+;      twice, FIFO per producer
+;   T7 jobs on worker threads: 40 jobs give 2 * x, some ran on a worker, poll
+;      sees the end, handles dropped before the end leak nothing, a job
+;      started on a worker runs inline
 ; Run: sh tests/runtime/run-threads.sh  (exit 0 and "all passed")
 ; ============================================================
 
@@ -35,7 +40,7 @@ declare i64 @__rg_rt_adt_field(i64, i64)
 
 declare i64 @rg_live_total()
 
-@drv_page0 = global { ptr, ptr, ptr, ptr, [3936 x i8] } { ptr @drv_main, ptr @drv_main, ptr @drv_main, ptr @drv_main, [3936 x i8] zeroinitializer }, section ".rg_page0", align 8
+@drv_page0 = global { ptr, ptr, ptr, ptr, [3936 x i8] } { ptr @drv_main, ptr @drv_spawn, ptr @drv_main, ptr @drv_main, [3936 x i8] zeroinitializer }, section ".rg_page0", align 8
 
 ; Shared state of one test: [0] object, [1] done counter, [2] lock word,
 ; [3] total, [4] the slot table (9 words), [14] mailbox (64 words).
@@ -512,6 +517,171 @@ entry:
   ret i1 %all
 }
 
+; ── T7 ──────────────────────────────────────────────────────
+; The spawn dispatcher of this program: args = [function, argument]. The
+; argument is a tagged Int x: the job busies itself a little, counts itself
+; (words 8 and 9: jobs done, jobs that ran on a worker) and gives 2 * x; for
+; x >= 1000 it starts another job (x - 1000) itself and adds its answer.
+define i64 @drv_spawn(ptr %args) {
+entry:
+  %xp = getelementptr inbounds i64, ptr %args, i64 1
+  %xt = load i64, ptr %xp, align 8
+  %x = ashr i64 %xt, 1
+  br label %busy
+busy:
+  %i = phi i64 [ 0, %entry ], [ %i1, %busy ]
+  %acc = phi i64 [ 0, %entry ], [ %acc1, %busy ]
+  %acc1 = add i64 %acc, %i
+  %i1 = add i64 %i, 1
+  %more = icmp slt i64 %i1, 20000
+  br i1 %more, label %busy, label %count
+count:
+  %slot = call i64 @rg_slot()
+  %onw = icmp ne i64 %slot, 0
+  %inc = zext i1 %onw to i64
+  %w9 = getelementptr inbounds [128 x i64], ptr @st, i64 0, i64 9
+  %o9 = atomicrmw add ptr %w9, i64 %inc monotonic
+  %big = icmp sge i64 %x, 1000
+  br i1 %big, label %nested, label %plain
+nested:
+  %inner = sub i64 %x, 1000
+  %it = shl i64 %inner, 1
+  %iv = or i64 %it, 1
+  %ss = alloca [2 x i64], align 8
+  %ssa = ptrtoint ptr %ss to i64
+  store i64 1, ptr %ss, align 8
+  %s1 = getelementptr inbounds [2 x i64], ptr %ss, i64 0, i64 1
+  store i64 %iv, ptr %s1, align 8
+  %h = call i64 @__rg_rt_builtin(i64 57, i64 %ssa, i64 2)
+  store i64 %h, ptr %ss, align 8
+  %r = call i64 @__rg_rt_builtin(i64 59, i64 %ssa, i64 1)
+  %rv = ashr i64 %r, 1
+  %sum = add i64 %rv, %inner
+  %sumt = shl i64 %sum, 1
+  %sumv = or i64 %sumt, 1
+  call void @job_end()
+  ret i64 %sumv
+plain:
+  %d = shl i64 %x, 1
+  %dt = shl i64 %d, 1
+  %dv = or i64 %dt, 1
+  call void @job_end()
+  ret i64 %dv
+}
+
+define internal void @job_end() {
+  %w8 = getelementptr inbounds [128 x i64], ptr @st, i64 0, i64 8
+  %o8 = atomicrmw add ptr %w8, i64 1 release
+  ret void
+}
+
+define internal i1 @t7() {
+entry:
+  call void @reset()
+  %live0 = call i64 @rg_live_total()
+  %hs = alloca [40 x i64], align 8
+  %ss = alloca [2 x i64], align 8
+  %ssa = ptrtoint ptr %ss to i64
+  %s1 = getelementptr inbounds [2 x i64], ptr %ss, i64 0, i64 1
+  br label %spawn
+spawn:
+  %i = phi i64 [ 0, %entry ], [ %i1, %spawnb ]
+  %m = icmp slt i64 %i, 40
+  br i1 %m, label %spawnb, label %collect
+spawnb:
+  %it = shl i64 %i, 1
+  %iv = or i64 %it, 1
+  store i64 1, ptr %ss, align 8
+  store i64 %iv, ptr %s1, align 8
+  %h = call i64 @__rg_rt_builtin(i64 57, i64 %ssa, i64 2)
+  %hp = getelementptr inbounds [40 x i64], ptr %hs, i64 0, i64 %i
+  store i64 %h, ptr %hp, align 8
+  %i1 = add i64 %i, 1
+  br label %spawn
+collect:
+  br label %cl
+cl:
+  %j = phi i64 [ 0, %collect ], [ %j1, %clb ]
+  %okc = phi i1 [ true, %collect ], [ %okc2, %clb ]
+  %jm = icmp slt i64 %j, 40
+  br i1 %jm, label %clb, label %polled
+clb:
+  %jp = getelementptr inbounds [40 x i64], ptr %hs, i64 0, i64 %j
+  %jh = load i64, ptr %jp, align 8
+  store i64 %jh, ptr %ss, align 8
+  %r = call i64 @__rg_rt_builtin(i64 59, i64 %ssa, i64 1)
+  %want0 = shl i64 %j, 2
+  %want = or i64 %want0, 1
+  %same = icmp eq i64 %r, %want
+  %okc2 = and i1 %okc, %same
+  %j1 = add i64 %j, 1
+  br label %cl
+polled:
+  ; poll: a job is seen to end; the handle is cloned for the poll (it takes one)
+  store i64 1, ptr %ss, align 8
+  store i64 201, ptr %s1, align 8
+  %ph = call i64 @__rg_rt_builtin(i64 57, i64 %ssa, i64 2)
+  br label %ploop
+ploop:
+  %pc = call i64 @__rg_rt_clone_slot(i64 %ph)
+  store i64 %pc, ptr %ss, align 8
+  %pr = call i64 @__rg_rt_builtin(i64 58, i64 %ssa, i64 1)
+  %ended = icmp eq i64 %pr, 6
+  br i1 %ended, label %pdone, label %pyield
+pyield:
+  call void @__rg_pal_yield()
+  br label %ploop
+pdone:
+  store i64 %ph, ptr %ss, align 8
+  %pa = call i64 @__rg_rt_builtin(i64 59, i64 %ssa, i64 1)
+  %pok = icmp eq i64 %pa, 401
+  ; handles dropped before the end of 20 jobs
+  br label %dl
+dl:
+  %k = phi i64 [ 0, %pdone ], [ %k1, %dlb ]
+  %km = icmp slt i64 %k, 20
+  br i1 %km, label %dlb, label %waitd
+dlb:
+  %kt = shl i64 %k, 1
+  %kv = or i64 %kt, 1
+  store i64 1, ptr %ss, align 8
+  store i64 %kv, ptr %s1, align 8
+  %dh = call i64 @__rg_rt_builtin(i64 57, i64 %ssa, i64 2)
+  %dd = call i64 @__rg_rt_drop_val(i64 %dh)
+  %k1 = add i64 %k, 1
+  br label %dl
+waitd:
+  ; 40 + 1 + 20 jobs in all
+  br label %wl
+wl:
+  %w8 = getelementptr inbounds [128 x i64], ptr @st, i64 0, i64 8
+  %dn = load atomic i64, ptr %w8 acquire, align 8
+  %all = icmp sge i64 %dn, 61
+  br i1 %all, label %nest, label %wy
+wy:
+  call void @__rg_pal_yield()
+  br label %wl
+nest:
+  ; a job started from the main thread that starts another inside it
+  store i64 1, ptr %ss, align 8
+  store i64 2011, ptr %s1, align 8
+  %nh = call i64 @__rg_rt_builtin(i64 57, i64 %ssa, i64 2)
+  store i64 %nh, ptr %ss, align 8
+  %nr = call i64 @__rg_rt_builtin(i64 59, i64 %ssa, i64 1)
+  ; x = 1005: the inner job (x - 1000 = 5) gives 2 * 5 = 10, the sum with 5 is 15, tagged 31
+  %nok = icmp eq i64 %nr, 31
+  %onw = getelementptr inbounds [128 x i64], ptr @st, i64 0, i64 9
+  %ran = load i64, ptr %onw, align 8
+  %ranok = icmp sgt i64 %ran, 0
+  %live1 = call i64 @rg_live_total()
+  %liveok = icmp eq i64 %live0, %live1
+  %a = and i1 %okc, %pok
+  %b = and i1 %a, %ranok
+  %c0 = and i1 %b, %liveok
+  %c = and i1 %c0, %nok
+  ret i1 %c
+}
+
 ; ── T5 ───────────────────────────────────────────────────────
 define void @t5_worker(i64 %id) {
   %p = getelementptr inbounds [128 x i64], ptr @st, i64 0, i64 3
@@ -596,12 +766,22 @@ f6:
   call void @say(ptr @msg_fail, i64 8, i64 6)
   call void @__rg_pal_exit(i64 1)
   unreachable
+n7:
+  %r7 = call i1 @t7()
+  br i1 %r7, label %o7, label %f7
+o7:
+  call void @say(ptr @msg_ok, i64 4, i64 7)
+  br label %end
+f7:
+  call void @say(ptr @msg_fail, i64 8, i64 7)
+  call void @__rg_pal_exit(i64 1)
+  unreachable
 n5:
   %r5 = call i1 @t5()
   br i1 %r5, label %o5, label %f5
 o5:
   call void @say(ptr @msg_ok, i64 4, i64 5)
-  br label %end
+  br label %n7
 f5:
   call void @say(ptr @msg_fail, i64 8, i64 5)
   call void @__rg_pal_exit(i64 1)

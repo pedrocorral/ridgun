@@ -1,9 +1,9 @@
 ---
 id: TASK-0098
 title: A field of a record that is read at the last use of the record moves out instead of being cloned (OPT-022); Vonkeep request 1
-status: going-on
+status: completed
 created: 2026-11-16
-completed:
+completed: 2026-11-16
 requirements: [FR-COMP-011]            # FR-*/NFR-* this task delivers or touches
 tests: []                   # TS-* to automate
 security: []                # VUL-* to address

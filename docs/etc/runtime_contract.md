@@ -562,10 +562,12 @@ The slow path is rt 37 (`llvm.ridgun:107`). The x86 comments list: Int fast path
 ### 7.4 Agents, channels, jobs
 
 - Agents use builtins 1, 32, 33, 50, 57, 59, 96, 98, 99 (`compiler.ridgun:2157-2329`). Language rules: `spec.md:960-990`; `FR-COMP-009`.
-- Channel operations are not atomic in the runtime. Backends wrap 1, 32, 33 and 50 in a spin lock (cmpxchg, `sched_yield` = syscall 24 while waiting) (`llvm.ridgun:119`; `gentensor.md:590`).
+- Channel operations are not atomic in the old x86-64 runtime: the backends wrap 1, 32, 33 and 50 in a spin lock (cmpxchg, `sched_yield` = syscall 24 while waiting) (`llvm.ridgun:119`; `gentensor.md:590`). The IR runtime takes its own channel lock inside the builtins 1, 32, 33, 35, 50 and 97-99 (ADR-0014).
+- **Channel arguments are borrowed.** Builtins 32, 33 and 50 never consume the channel they are given (slot 0 for 32 and 33, slot 1 for 50): it stays in its slot and the caller empties it. The value argument of 50 is taken, and 33 and 32 give the item. The backends' blocking receive and the tagged receive call 33 again and again with the same channel reference; a builtin that dropped it would free the channel while others still use it (found with real worker threads, 2026-11-16).
 - Blocking receive loops on try-receive (33) until it gets `Ok`, then takes field 0 (`llvm.ridgun:119`).
 - Jobs:
-  - Spawn (57): on a worker thread (thread id ≠ process id) it runs fid 2 inline and returns the tuple `(-999999, result)`. On the main thread it waits (`nanosleep` 100 µs) until one of 8 pool entries at `4288300 + 16*i` is free (i32 0 = free), then calls builtin 57 with `rsi` = the address of fid 2 (`llvm.ridgun:121`; `gentensor.md:591`; `x86_64.ridgun:457-499`).
+  - IR runtime (ADR-0014 step c): a job goes to an idle worker, or to a new worker thread while there is a free slot (up to 8 threads), or runs on the calling thread; a job started from a worker thread runs on that thread. A job that ran at once gives the tuple `(-999999, result)`; a job on a worker gives a heap value with tag 7 (word 1: the address of its cell, 0 once awaited; word 2: the result once awaited). Poll (58) gives True (6) when the job has ended; await (59) waits, can be repeated and gives a copy of the result; dropping the last reference to a handle of a running job lets the worker free the result.
+  - Old runtime, spawn (57): on a worker thread (thread id ≠ process id) it runs fid 2 inline and returns the tuple `(-999999, result)`. On the main thread it waits (`nanosleep` 100 µs) until one of 8 pool entries at `4288300 + 16*i` is free (i32 0 = free), then calls builtin 57 with `rsi` = the address of fid 2 (`llvm.ridgun:121`; `gentensor.md:591`; `x86_64.ridgun:457-499`).
   - Poll (58): a tuple means finished (True 6); else builtin 58 (`llvm.ridgun:121`).
   - Await (59): a tuple gives field 1; else builtin 59 (`llvm.ridgun:121`).
 - **UNKNOWN**:

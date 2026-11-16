@@ -28,6 +28,7 @@ declare i64 @__rg_pal_write(i64, i64, i64)
 declare void @__rg_pal_exit(i64)
 
 declare void @rg_live_add(i64)
+declare void @rg_job_drop(i64, i64)
 declare void @rg_rc_inc(i64)
 declare i64 @rg_rc_dec(i64)
 declare void @rg_count_add(i64, i64)
@@ -290,7 +291,8 @@ kids:
                                i64 3, label %vals
                                i64 4, label %adt
                                i64 5, label %tensor
-                               i64 6, label %vals ]
+                               i64 6, label %vals
+                               i64 7, label %job ]
 bytes:
   call void @rg_vrelease(i64 %w1, i1 false)
   br label %free
@@ -304,6 +306,9 @@ adt:
 tensor:
   call void @rg_vrelease(i64 %w1, i1 false)
   call void @rg_vrelease(i64 %w2, i1 false)
+  br label %free
+job:
+  call void @rg_job_drop(i64 %w1, i64 %w2)
   br label %free
 free:
   call void @rg_free(i64 %a)
