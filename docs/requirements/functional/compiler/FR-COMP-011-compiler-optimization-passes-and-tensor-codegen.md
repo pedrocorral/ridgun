@@ -4,7 +4,7 @@ title: Compiler Optimization Catalog, O(N) Contiguous Tensor Allocation, In-Plac
 status: implemented
 priority: must
 created: 2026-10-24
-updated: 2026-11-15
+updated: 2026-11-16
 depends_on:
   - FR-COMP-002
   - FR-COMP-004
@@ -61,6 +61,9 @@ The `ridgunc` native compiler SHALL maintain a documented catalog of compile-tim
 9. **OPT-021 — A Rebuilt Cons Pattern Is the Matched List (TASK-0097)**:
    - When a clause rebuilds, in a guard or its body, a list that a cons pattern of that clause took apart (`(b:rest)` after the pattern `(a:b:rest)`, every head and the tail a variable), the rebuild SHALL be the list that the pattern node matched, with no copy.
    - A clause that binds one of those names again keeps the concatenation.
+10. **OPT-022 — A Record Field Read at the Last Use of the Record Moves Out (TASK-0098)**:
+   - When a function owns a record parameter and a branch of a clause uses it only through field reads, a read of a list or `String` field that happens once in that branch SHALL move the field out of the record, so the value has one holder and a prepend or append on it is in place.
+   - A record that anything else still holds (the caller, a second name) SHALL keep all its fields; a field read twice, or a record used whole in the same branch, keeps the clone.
 
 ## Rationale
 - High-performance library code in pure Ridgun (`crypto.ridgun`, `argon2id.ridgun`, numerical/scientific computing) must achieve sub-second throughput through legitimate compiler and runtime codegen optimizations rather than by embedding library algorithms (`pbkdf2`, `argon2id`) as compiler built-ins.
@@ -72,3 +75,4 @@ The `ridgunc` native compiler SHALL maintain a documented catalog of compile-tim
 3. **AC-3 (Cryptographic Hot-Loop Throughput in Pure Ridgun)**: 600,000 iterations of `sha256 raw (opad + (sha256 raw (ipad + u)))` (PBKDF2-HMAC-SHA256 core) and Argon2id / BlaMka tensor block compression execute in `< 1 s` in pure Ridgun.
 4. **AC-4 (Field Reads and Small Calls, TS-COMP-011)**: 10 000 000 field reads, 10 000 000 calls to a function that matches its record parameter, and 10 000 000 turns of an empty self tail call loop run in under 400 ms on LLVM (`tests/cases/perf/field_reads_and_small_calls.ridgun`); borrowed parameters give the same results as owned ones with locals, temporaries, the same record twice, multi-variant constructors, tuples, strings and lists, and leak no blocks (`tests/cases/functions/borrowed_pattern_parameters.ridgun`).
 5. **AC-5 (Rebuilt Cons Patterns, TS-COMP-011)**: walks of 100 000 elements that rebuild `(b:rest)` on each round run in under 1 s and 256 MB on every backend, and rebuilds in guards, with two heads, inside tuples and after a name is bound again give the same results as the concatenation (`tests/cases/perf/rebuilt_cons_pattern_is_the_matched_list.ridgun`).
+6. **AC-6 (Record Field Taken at the Last Use, TS-COMP-011)**: a list in a field of a record rebuilt at each step costs the same per step at 1 000 and 200 000 elements (200 000 steps under 1.5 s and 256 MB on every backend), and a record that is still used elsewhere keeps every field (`tests/cases/perf/list_in_a_rebuilt_record_is_not_copied.ridgun`, `tests/cases/lists/record_fields_stay_intact_when_a_field_is_taken.ridgun`).

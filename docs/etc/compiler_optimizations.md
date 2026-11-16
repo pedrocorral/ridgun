@@ -38,6 +38,7 @@ Every optimization in `ridgunc` is assigned a stable `OPT-NNN` identifier and do
 | `OPT-019` | Tail Calls Between Different Functions | AST -> Native IR -> all backends (`compiler.ridgun`, `llvm.ridgun`, `x86_64.ridgun`) | A direct call to another function in tail position (`loop` -> `step` -> `loop`, unit functions calling unit functions) | Releases the caller's frame before the call: any number of rounds in constant stack and memory (was about 200 bytes per round, crash at 3 000 000) |
 | `OPT-020` | In-Place String Append in Tail Calls | AST -> Native IR -> runtime extension (`typecheck.ridgun`, `compiler.ridgun`, builtin 121) | `loop (n - 1) (acc + x)` and chains `acc + sep + x` in a tail position, `acc` a String | Moves `acc` on its last use and appends in place when it has one owner, with a doubling buffer: linear instead of quadratic (100 000 appends 2.3 s -> 3 ms) |
 | `OPT-021` | A Rebuilt Cons Pattern Is the Matched List | AST -> AST (`compiler.ridgun`, all backends) | `f (a:b:rest) = ... (b:rest)`: a clause rebuilds a list its cons pattern took apart | The rebuild reuses the matched list: constant time instead of a copy of `rest` (100 000-element ordered check: quadratic, out of memory on wasm32 -> linear) |
+| `OPT-022` | A Record Field Read at the Last Use of the Record Moves Out | AST -> AST + one lowering clause (`compiler.ridgun`, all backends) | `in_record i n acc = ... Acc ([i] :: (a_list acc)) ...`: a list or String field of a record that is rebuilt at each step | The field is taken out of the record instead of cloned, so the list has one holder and the prepend is in place: constant cost per step instead of a copy of the whole list (16 000 elements: 52 250 ns per element -> 1 125 ns) |
 
 ---
 
@@ -209,6 +210,16 @@ Every optimization in `ridgunc` is assigned a stable `OPT-NNN` identifier and do
   3. Each candidate whose key is now read becomes `PatCtor ":as:" [PatVar key, node]`: its check is the node's check, and its binding clones the matched list into the local `key`, then binds the node.
 - **Safety**: the matched list and the rebuild hold the same items in the same order, and Lists are values, so reading the matched list is the same value. A name bound again in the body would make the rebuild a different list, so those clauses keep the concatenation.
 - **Effect**: a rebuild costs one reference count instead of a copy. 100 000-element walks run in linear time. Regression test: `tests/cases/perf/rebuilt_cons_pattern_is_the_matched_list.ridgun`.
+
+### `OPT-022` — A Record Field Read at the Last Use of the Record Moves Out
+- **Location**: `take field cases` and its helpers (`take reads expr`, `take expr`, `take body one`) in `src/main/ridgun/lib/compiler.ridgun`, called by `lower fndef`; the marks `#fb f` of `add big field marks`; the `#take ` clause of `lower expr` (`lower take field`).
+- **Problem Addressed**: `a_list acc` reads the field with a clone, so the list is held by the record and by the new value: its reference count is 2 and the prepend `[i] :: list` (or the append) copies it. Rebuilt at each step, a record made the cost of a step grow with the size of the list (quadratic in total).
+- **Transformation**:
+  1. A field of a record type is large when its type is a list or `String` (`#fb`). A getter is takeable when it is the plain accessor of such a field with one position.
+  2. For each variable parameter `r` of a clause that the function owns (its bit in the borrow mask `#b` is 0) and that the body does not bind again, each guard branch body, and the clause body, is looked at on its own (one of them runs). It is rewritten when `r` appears there only as the argument of getters and no takeable field is read twice. Conditions are never rewritten.
+  3. A takeable read `g r` becomes `#take g` applied to `r`. Lowering reads the field, stores zero in its place with `NAdtSet`, puts the record back in its slot and gives the field value: `NAdtField, NStoreSlot, NLoadImmRaw 0, NAdtSet, NStoreSlot, NMoveSlot`.
+- **Safety**: a record that something else still holds is copied by `adt_set` before the change, so the caller or a second name for the record never sees a zero field; borrowed parameters are skipped; a branch that returns the record whole (`| done = acc`) is not rewritten and does not stop the branch that rebuilds it. Regression tests: `tests/cases/lists/record_fields_stay_intact_when_a_field_is_taken.ridgun` (correctness) and `tests/cases/perf/list_in_a_rebuilt_record_is_not_copied.ridgun` (200 000 steps).
+- **Effect**: Vonkeep reproducer (list in a record, 16 000 elements): 52 250 ns -> 1 125 ns per element; the bare list costs 625-1 000. Not covered: a `String` grown with `+` inside a constructor argument is not in tail position, so `+` still copies (OPT-020 only handles tail position).
 
 ### Rule: tail calls stay last
 Applies to every new or changed optimization.

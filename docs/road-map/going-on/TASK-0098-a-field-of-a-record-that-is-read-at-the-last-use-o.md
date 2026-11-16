@@ -26,7 +26,8 @@ A list (or any heap value) held in a field of a record that is rebuilt at each s
 - [ ] Test in `tests/cases/perf` with the reproducer (cost per element equal at 1000 and 16000 within 2x) on every backend; correctness cases where the record IS used afterwards (the fields must stay).
 
 ## Progress log (append-only, newest last)
-- 2026-11-16: Created from the Vonkeep request. Reproduced on 1.0.15 with the same numbers as the report (1.0.10). Cause not yet confirmed in the code.
+- 2026-11-16: Created from the Vonkeep request. Reproduced on 1.0.15 with the same numbers as the report (1.0.10).
+- 2026-11-16: Cause confirmed: `lower named field read` reads a field with `NAdtField`, which clones it, so the list has two holders and the prepend copies. Fixed as OPT-022 (1.0.17): `take field cases` rewrites a takeable field read (list or String field, owned parameter, record used only through getters in that branch, each such field read once) to `#take g`, lowered as read, zero in place with `NAdtSet`, put the record back, give the value. A first version looked at the whole clause and was stopped by the branch that returns the record (`| done = acc`): bodies are now judged one by one. Vonkeep reproducer: 9000 / 18500 / 52250 ns per element -> 1000 / 1250 / 1125 (bare list 625-1000). Tests: `perf/list_in_a_rebuilt_record_is_not_copied` (200 000 steps, 0.3 s) and `lists/record_fields_stay_intact_when_a_field_is_taken` (same output with and without the optimization). Native 310 of 310, wasm 145, unit 10, libs 35. A String grown with `+` inside a constructor argument still copies: `+` is only in place in tail position (OPT-020), a separate matter.
 
 ## Exact next actions
 1. Read the lowering of field reads (`compiler.ridgun`) and the ownership of `acc` in `in_record`.

@@ -1,0 +1,19 @@
+-- @tests TS-COMP-011
+-- case: a list held in a field of a record that is rebuilt at each step grows without being copied: 200 000 steps stay linear, as with the bare list (TASK-0098, Vonkeep request 1)
+-- source: FR-COMP-011 requirement 10 (OPT-022)
+-- expect-output:
+--   200000 200000
+-- max-ms: 1500
+-- max-rss-mb: 256
+
+type Acc = a_list: [Int], a_n: Int, a_err: String
+
+fn :: in record Int Int Acc => Acc
+      in record i n acc
+        | i >= n = acc
+        | otherwise = in record (i + 1) n (Acc ([i] :: (a_list acc)) ((a_n acc) + 1) (a_err acc))
+
+fn :: main => ()
+      main =
+        r = in record 0 200000 (Acc [] 0 "")
+        echo (list len (a_list r)) (a_n r)

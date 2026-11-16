@@ -1,0 +1,71 @@
+-- @tests TS-COMP-011
+-- case: a record field read at the last use of the record may move out of it (OPT-022), but never when anything else can still see the record: the caller's record, a second name for the record, a later read of the same field, and a branch that returns the record whole all keep their values (TASK-0098)
+-- source: FR-COMP-011 requirement 10 (OPT-022)
+-- expect-output:
+--   [3, 2, 1] 3 hello
+--   [2, 1] 2 hello
+--   [2, 1] 2 hello
+--   [2, 1] 2 hello
+--   [2, 1] 2 hello
+--   [9, 2, 1] 3 hello
+--   [9, 2, 1] 3 hello
+--   [9, 2, 1] 3 hello world
+--   [5] 1 ab
+--   [5, 1] 1 a
+--   6 [3, 2, 1] 3
+
+type Acc = items: [Int], count: Int, label: String
+
+fn :: show Acc => ()
+      show a =  echo (items a) (count a) (label a)
+
+-- not tail recursive: the argument is borrowed, so the caller's record must not change
+fn :: grow once Acc => [Int]
+      grow once a =  [(count a) + 100] :: (items a)
+
+fn :: bump Acc => Acc
+      bump a =  Acc ([(count a) + 1] :: (items a)) ((count a) + 1) (label a)
+
+-- a field read twice: both reads see the list
+fn :: read twice Acc => Int
+      read twice a =  (list len (items a)) + (list len (items a))
+
+-- a branch returns the record whole, another rebuilds it
+fn :: loop Int Int Acc => Acc
+      loop i n a
+        | i >= n = a
+        | otherwise = loop (i + 1) n (Acc ([i] :: (items a)) ((count a) + 1) (label a))
+
+fn :: with label Acc String => Acc
+      with label a s =  Acc (items a) (count a) ((label a) + s)
+
+fn :: tail loop String Int Acc => Acc
+      tail loop s 0 a =  a
+      tail loop s k a =  tail loop s (k - 1) (Acc (items a) (count a) ((label a) + s))
+
+fn :: main => ()
+      main =
+        a = Acc [2, 1] 2 "hello"
+        b = Acc ([3] :: (items a)) 3 (label a)
+        show b
+        -- a was not changed by building b from its fields
+        show a
+        -- borrowed argument: a is intact after the call
+        x = grow once a
+        show a
+        -- a second name for the same record
+        c = a
+        d = bump a
+        show c
+        show a
+        e = loop 0 0 (Acc [9, 2, 1] 3 "hello")
+        show e
+        f = with label e " world"
+        show e
+        echo (items f) (count f) (label f)
+        g = tail loop "b" 1 (Acc [5] 1 "a")
+        echo (items g) (count g) (label g)
+        h = Acc [5, 1] 1 "a"
+        i = tail loop "b" 1 h
+        echo (items h) (count h) (label h)
+        echo (read twice (Acc [1, 2, 3] 0 "")) (items d) (count d)

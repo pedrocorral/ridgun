@@ -2770,6 +2770,8 @@ fn :: lower adt ctor call RNativeEnv [RExpr] [String] Int Int Int Int RNativeCod
         nc emit st1 (NMakeAdt off slen sp count) (sp + count + 1)
 
 fn :: lower expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
+      lower expr env (ECall fname ((EVar tr):[])) bound_locals sp st
+        | str starts with fname "#take " = lower take field env (str slice fname 6 (str len fname)) tr sp st
       lower expr _ (EInt n) _ sp st =
         lower int lit n sp st
       lower expr env (EReal r) _ sp st =
@@ -4039,6 +4041,196 @@ fn :: share cons wheres [RWhereBind] [String] => [RWhereBind]
       share cons wheres [] _ =  []
       share cons wheres ((WhereBind e v idxs):ws) keys =  [WhereBind (share cons expr e keys) v idxs] :: (share cons wheres ws keys)
 
+-- ── OPT-022: a record field read at the last use of the record moves out ──
+-- `in_record i n acc = ... Acc ([i] :: (a_list acc)) ...` read the list with a
+-- field read, which clones it: the list was held twice (by the record and by
+-- the new value), so the prepend copied it at every step. When a parameter
+-- that the function owns is used in a clause only through field reads, and
+-- each field of a large type (a list or a String) is read once, the read
+-- takes the field out of the record: the record keeps a zero word in its
+-- place and the value has one holder. A record that is still shared is
+-- copied by the runtime, so a caller never sees the change.
+
+-- Marks "#fb f" in the field map for a field whose type is a list or a String.
+fn :: add big field marks [RTypeDef] RStrIntMap => RStrIntMap
+      add big field marks [] mp =  mp
+      add big field marks ((TypeDef _ _ fields):ts) mp =
+        add big field marks ts (add big field marks of fields mp)
+
+fn :: add big field marks of [RField] RStrIntMap => RStrIntMap
+      add big field marks of [] mp =  mp
+      add big field marks of ((TypeField fname ftype):fs) mp
+        | is big field type ftype = add big field marks of fs (str int map insert mp ("#fb " + fname) 1)
+        | otherwise = add big field marks of fs mp
+
+fn :: is big field type String => Bool
+      is big field type ftype =  ftype == "String" or ((str len ftype) >= 2 and (str slice ftype 0 1) == "[")
+
+-- A getter whose field can be taken: a plain accessor of a large field with one position.
+fn :: take field ok String RStrIntMap RStrIntMap => Bool
+      take field ok g fam fm =  (str int map lookup fam ("#g " + g)) == 1 and (str int map lookup fm ("#fb " + g)) == 1 and (non neg int (str int map lookup fm ("#fa " + g))) == 0
+
+fn :: take field cases [RFnCase] String RStrIntMap RStrIntMap => [RFnCase]
+      take field cases [] _ _ _ =  []
+      take field cases (c:cs) name fam fm =  [take field case c name fam fm] :: (take field cases cs name fam fm)
+
+fn :: take field case RFnCase String RStrIntMap RStrIntMap => RFnCase
+      take field case (FnCase pats guards body) name fam fm =
+        rebound = collect guard list bound vars guards (collect expr bound vars body [])
+        mask = non neg int (str int map lookup fam ("#b " + name))
+        take field params (FnCase pats guards body) pats 0 mask rebound fam fm
+
+fn :: take field params RFnCase [RPattern] Int Int [String] RStrIntMap RStrIntMap => RFnCase
+      take field params c [] _ _ _ _ _ =  c
+      take field params c ((PatVar r):ps) i mask rebound fam fm
+        | (borrow bit mask i) or (list contains rebound r) = take field params c ps (i + 1) mask rebound fam fm
+        | otherwise = take field params (take field var c r fam fm) ps (i + 1) mask rebound fam fm
+      take field params c (_:ps) i mask rebound fam fm =  take field params c ps (i + 1) mask rebound fam fm
+
+-- Each branch body of a clause, and the clause body, is looked at on its own:
+-- only one of them runs, so a branch that returns the record whole (`| done = acc`)
+-- does not stop the branch that rebuilds it. The conditions are not rewritten.
+fn :: take field var RFnCase String RStrIntMap RStrIntMap => RFnCase
+      take field var (FnCase pats guards body) r fam fm =
+        FnCase pats (take branches guards r fam fm) (take body one body r fam fm)
+
+fn :: take branches [RGuard] String RStrIntMap RStrIntMap => [RGuard]
+      take branches [] _ _ _ =  []
+      take branches ((GuardBranch c b):gs) r fam fm =
+        [GuardBranch c (take body one b r fam fm)] :: (take branches gs r fam fm)
+
+fn :: take body one RExpr String RStrIntMap RStrIntMap => RExpr
+      take body one e r fam fm =  take body pick e (take reads expr e r fam fm []) r fam fm
+
+fn :: take body pick RExpr [String] String RStrIntMap RStrIntMap => RExpr
+      take body pick e reads r fam fm
+        | (take reads ok reads []) and (take reads some reads) = take expr e r fam fm
+        | otherwise = e
+
+fn :: take reads some [String] => Bool
+      take reads some [] =  False
+      take reads some (x:xs)
+        | x == "#get" or x == "#other" = take reads some xs
+        | otherwise = True
+
+-- The reads of the variable r in an expression: the name of each takeable
+-- getter applied to r, "#get" for any other getter, and "#other" for every
+-- other mention of r (passed whole, matched, updated).
+fn :: take reads expr RExpr String RStrIntMap RStrIntMap [String] => [String]
+      take reads expr (ECall g ((EVar r2):[])) r fam fm acc
+        | r2 == r and (take field ok g fam fm) = acc :: [g]
+        | r2 == r and (str int map lookup fam ("#g " + g)) == 1 = acc :: ["#get"]
+      take reads expr (EVar r2) r _ _ acc
+        | r2 == r = acc :: ["#other"]
+        | otherwise = acc
+      take reads expr (ENot e) r fam fm acc =  take reads expr e r fam fm acc
+      take reads expr (EOut e) r fam fm acc =  take reads expr e r fam fm acc
+      take reads expr (EBin _ l x) r fam fm acc =  take reads expr x r fam fm (take reads expr l r fam fm acc)
+      take reads expr (ECall _ args) r fam fm acc =  take reads exprs args r fam fm acc
+      take reads expr (EEcho args) r fam fm acc =  take reads exprs args r fam fm acc
+      take reads expr (EStrInterp parts) r fam fm acc =  take reads exprs parts r fam fm acc
+      take reads expr (EList es) r fam fm acc =  take reads exprs es r fam fm acc
+      take reads expr (ETuple es) r fam fm acc =  take reads exprs es r fam fm acc
+      take reads expr (ETensor es) r fam fm acc =  take reads exprs es r fam fm acc
+      take reads expr (EEinsum es _) r fam fm acc =  take reads exprs es r fam fm acc
+      take reads expr (EHadamard _ l _ x _) r fam fm acc =  take reads expr x r fam fm (take reads expr l r fam fm acc)
+      take reads expr (EIndex b idxs) r fam fm acc =  take reads exprs idxs r fam fm (take reads expr b r fam fm acc)
+      take reads expr (EIndexAssign t idxs v) r fam fm acc
+        | t == r = acc :: ["#other"]
+        | otherwise = take reads expr v r fam fm (take reads exprs idxs r fam fm acc)
+      take reads expr (ESeqSelect b _) r fam fm acc =  take reads expr b r fam fm acc
+      take reads expr (EBlock stmts) r fam fm acc =  take reads stmts stmts r fam fm acc
+      take reads expr (EGuard guards) r fam fm acc =  take reads guards guards r fam fm acc
+      take reads expr (EWhere body binds) r fam fm acc =  take reads wheres binds r fam fm (take reads expr body r fam fm acc)
+      take reads expr (EParPipe es) r fam fm acc =  take reads exprs es r fam fm acc
+      take reads expr (EWithCtx _ v b) r fam fm acc =  take reads expr b r fam fm (take reads expr v r fam fm acc)
+      take reads expr (EWithRegion _ b) r fam fm acc =  take reads expr b r fam fm acc
+      take reads expr _ _ _ _ acc =  acc
+
+fn :: take reads exprs [RExpr] String RStrIntMap RStrIntMap [String] => [String]
+      take reads exprs [] _ _ _ acc =  acc
+      take reads exprs (e:es) r fam fm acc =  take reads exprs es r fam fm (take reads expr e r fam fm acc)
+
+fn :: take reads stmts [RStmt] String RStrIntMap RStrIntMap [String] => [String]
+      take reads stmts [] _ _ _ acc =  acc
+      take reads stmts ((StmtLet _ e):ss) r fam fm acc =  take reads stmts ss r fam fm (take reads expr e r fam fm acc)
+      take reads stmts ((StmtMut v e):ss) r fam fm acc
+        | v == r = acc :: ["#other"]
+        | otherwise = take reads stmts ss r fam fm (take reads expr e r fam fm acc)
+      take reads stmts ((StmtExpr e):ss) r fam fm acc =  take reads stmts ss r fam fm (take reads expr e r fam fm acc)
+      take reads stmts ((StmtIndexAssign t idxs e):ss) r fam fm acc
+        | t == r = acc :: ["#other"]
+        | otherwise = take reads stmts ss r fam fm (take reads expr e r fam fm (take reads exprs idxs r fam fm acc))
+
+fn :: take reads guards [RGuard] String RStrIntMap RStrIntMap [String] => [String]
+      take reads guards [] _ _ _ acc =  acc
+      take reads guards ((GuardBranch c b):gs) r fam fm acc =  take reads guards gs r fam fm (take reads expr b r fam fm (take reads expr c r fam fm acc))
+
+fn :: take reads wheres [RWhereBind] String RStrIntMap RStrIntMap [String] => [String]
+      take reads wheres [] _ _ _ acc =  acc
+      take reads wheres ((WhereBind e _ _):ws) r fam fm acc =  take reads wheres ws r fam fm (take reads expr e r fam fm acc)
+
+-- True when no mention of r is outside a getter and no takeable field is read twice.
+fn :: take reads ok [String] [String] => Bool
+      take reads ok [] _ =  True
+      take reads ok (x:xs) seen
+        | x == "#other" = False
+        | x == "#get" = take reads ok xs seen
+        | list contains seen x = False
+        | otherwise = take reads ok xs ([x] :: seen)
+
+-- The rewrite: `g r` for a takeable getter becomes `#take g` applied to r.
+fn :: take expr RExpr String RStrIntMap RStrIntMap => RExpr
+      take expr (ECall g ((EVar r2):[])) r fam fm
+        | r2 == r and (take field ok g fam fm) = ECall ("#take " + g) [EVar r]
+      take expr (ENot e) r fam fm =  ENot (take expr e r fam fm)
+      take expr (EOut e) r fam fm =  EOut (take expr e r fam fm)
+      take expr (EBin bop l x) r fam fm =  EBin bop (take expr l r fam fm) (take expr x r fam fm)
+      take expr (ECall f args) r fam fm =  ECall f (take exprs args r fam fm)
+      take expr (EEcho args) r fam fm =  EEcho (take exprs args r fam fm)
+      take expr (EStrInterp parts) r fam fm =  EStrInterp (take exprs parts r fam fm)
+      take expr (EList es) r fam fm =  EList (take exprs es r fam fm)
+      take expr (ETuple es) r fam fm =  ETuple (take exprs es r fam fm)
+      take expr (ETensor es) r fam fm =  ETensor (take exprs es r fam fm)
+      take expr (EEinsum es subs) r fam fm =  EEinsum (take exprs es r fam fm) subs
+      take expr (EHadamard bop l ls x xs) r fam fm =  EHadamard bop (take expr l r fam fm) ls (take expr x r fam fm) xs
+      take expr (EIndex b idxs) r fam fm =  EIndex (take expr b r fam fm) (take exprs idxs r fam fm)
+      take expr (EIndexAssign t idxs v) r fam fm =  EIndexAssign t (take exprs idxs r fam fm) (take expr v r fam fm)
+      take expr (ESeqSelect b m) r fam fm =  ESeqSelect (take expr b r fam fm) m
+      take expr (EBlock stmts) r fam fm =  EBlock (take stmts stmts r fam fm)
+      take expr (EGuard guards) r fam fm =  EGuard (take guards guards r fam fm)
+      take expr (EWhere body binds) r fam fm =  EWhere (take expr body r fam fm) (take wheres binds r fam fm)
+      take expr (EParPipe es) r fam fm =  EParPipe (take exprs es r fam fm)
+      take expr (EWithCtx c v b) r fam fm =  EWithCtx c (take expr v r fam fm) (take expr b r fam fm)
+      take expr (EWithRegion q b) r fam fm =  EWithRegion q (take expr b r fam fm)
+      take expr e _ _ _ =  e
+
+fn :: take exprs [RExpr] String RStrIntMap RStrIntMap => [RExpr]
+      take exprs [] _ _ _ =  []
+      take exprs (e:es) r fam fm =  [take expr e r fam fm] :: (take exprs es r fam fm)
+
+fn :: take stmts [RStmt] String RStrIntMap RStrIntMap => [RStmt]
+      take stmts [] _ _ _ =  []
+      take stmts ((StmtLet v e):ss) r fam fm =  [StmtLet v (take expr e r fam fm)] :: (take stmts ss r fam fm)
+      take stmts ((StmtMut v e):ss) r fam fm =  [StmtMut v (take expr e r fam fm)] :: (take stmts ss r fam fm)
+      take stmts ((StmtExpr e):ss) r fam fm =  [StmtExpr (take expr e r fam fm)] :: (take stmts ss r fam fm)
+      take stmts ((StmtIndexAssign t idxs e):ss) r fam fm =  [StmtIndexAssign t (take exprs idxs r fam fm) (take expr e r fam fm)] :: (take stmts ss r fam fm)
+
+fn :: take guards [RGuard] String RStrIntMap RStrIntMap => [RGuard]
+      take guards [] _ _ _ =  []
+      take guards ((GuardBranch c b):gs) r fam fm =  [GuardBranch (take expr c r fam fm) (take expr b r fam fm)] :: (take guards gs r fam fm)
+
+fn :: take wheres [RWhereBind] String RStrIntMap RStrIntMap => [RWhereBind]
+      take wheres [] _ _ _ =  []
+      take wheres ((WhereBind e v idxs):ws) r fam fm =  [WhereBind (take expr e r fam fm) v idxs] :: (take wheres ws r fam fm)
+
+-- Lowering of the marker: read the field, put zero in its place, give the value.
+fn :: lower take field RNativeEnv String String Int RNativeCode => RNativeCode
+      lower take field env g r sp st =
+        slot = env var slot env r
+        idx = env field idx env g
+        nc emit list st [NAdtField slot idx, NStoreSlot sp, NLoadImmRaw 0, NAdtSet slot idx, NStoreSlot slot, NMoveSlot sp] (sp + 1)
+
 -- Marks unit functions in the arity map ("#u " + name), read by `unit tail call ok`.
 fn :: add unit marks [RFnDef] RStrIntMap => RStrIntMap
       add unit marks [] m = m
@@ -4048,7 +4240,8 @@ fn :: add unit marks [RFnDef] RStrIntMap => RStrIntMap
 
 fn :: lower fndef RFnDef RStrIntMap RStrIntMap RStrIntMap RStrSet RStrIntMap [String] => RNativeFn
       lower fndef (FnDef name params ret raw_cases) str_map fn_id_map fn_arity_map heavy_set field_map infos =
-        cases = share cons cases (maybe wrap unit cases name ret fn_arity_map raw_cases)
+        cases1 = share cons cases (maybe wrap unit cases name ret fn_arity_map raw_cases)
+        cases = take field cases cases1 name fn_arity_map field_map
         fid = lookup fn id map fn_id_map name
         arity = infer fndef arity params cases
         all_locals = collect cases all locals cases []
@@ -4718,7 +4911,7 @@ fn :: lower program to native RProgram [String] => RNativeProg
         fn_id_map = build fn id map fn_tbl StrIntEmpty
         fn_arity_map = build fn arity map fn_tbl StrIntEmpty
         heavy_set = compute heavy fn set fns
-        field_map = add field alts field_alts str_map (insert gagent ids gagent_names 0 (build field idx map field_tbl StrIntEmpty))
+        field_map = add big field marks tys (add field alts field_alts str_map (insert gagent ids gagent_names 0 (build field idx map field_tbl StrIntEmpty)))
         disp_set0 = str list to set field_names (str list to set b_val_names StrSetEmpty)
         disp_set = collect disp fndefs fns fn_arity_map disp_set0
         borrow_excl = str list to set ([entry_name] :: gagent_names :: show_roots :: (borrow tail fns fns [])) disp_set
@@ -4786,7 +4979,7 @@ fn :: lower library to native RProgram [String] => RNativeProg
         fn_id_map = build fn id map fn_tbl StrIntEmpty
         fn_arity_map = build fn arity map fn_tbl StrIntEmpty
         heavy_set = compute heavy fn set fns
-        field_map = add field alts field_alts str_map (insert gagent ids gagent_names 0 (build field idx map field_tbl StrIntEmpty))
+        field_map = add big field marks tys (add field alts field_alts str_map (insert gagent ids gagent_names 0 (build field idx map field_tbl StrIntEmpty)))
         disp_set = str list to set field_names fn_name_set
         entry_fid = lookup fn id map fn_id_map "main"
         main_wrapper = build lib entry wrapper entry_fid
