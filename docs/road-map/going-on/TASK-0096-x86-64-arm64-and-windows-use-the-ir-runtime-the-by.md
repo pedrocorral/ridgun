@@ -7,7 +7,7 @@ completed:
 requirements: [FR-COMP-022, FR-COMP-023]  # FR-*/NFR-* this task delivers or touches
 tests: []                   # TS-* to automate
 security: []                # VUL-* to address
-context_files: [docs/requirements/decisions/ADR-0013-the-whole-runtime-is-target-neutral-llvm-ir.md, docs/etc/runtime_ext.md]  # THE ONLY files an agent must read to work on this task
+context_files: [docs/requirements/decisions/ADR-0013-the-whole-runtime-is-target-neutral-llvm-ir.md, docs/requirements/decisions/ADR-0014-threads-in-the-ir-runtime.md, docs/etc/runtime_ext.md]  # THE ONLY files an agent must read to work on this task
 scope: []                   # paths/globs this task will change (aix task start warns when two going-on tasks overlap)
 owner: agent-001
 claimed: 2026-11-16T13:06:10Z
@@ -21,7 +21,7 @@ x86-64 (pure and LLVM), ARM64 and Windows run on the target-neutral IR runtime o
 ## Plan
 Order fixed on 2026-11-16 after reading both runtimes (see the log): the IR runtime is single-threaded today and the pure encoder calls internals of the old blob, so those two come before any switch.
 - [ ] 0a (PAL written, flat-image script pending). Linux x86-64 PAL in IR (`src/main/runtime/pal/linux-x86_64.ll`): the 21 `__rg_pal_*` functions with inline-assembly system calls, `memcpy`/`memmove`/`memset`; build script producing the flat position-independent runtime at the fixed address.
-- [ ] 0b. Threads in the IR runtime (ADR-0013 rule 2): atomic reference counts on shared values, a heap that is safe across threads, channels under a lock, `clone`/`futex` in the PAL, the `||` worker pool and agent jobs on threads; single-threaded targets (wasm32) keep the same IR with the thread hooks as no-ops.
+- [ ] 0b. Threads in the IR runtime (ADR-0014; order: backend calls builtin 57 so jobs run synchronously, thread-safe counts/allocator/channels with the PAL thread interface, the pool, builtin 51): atomic reference counts on shared values, a heap that is safe across threads, channels under a lock, `clone`/`futex` in the PAL, the `||` worker pool and agent jobs on threads; single-threaded targets (wasm32) keep the same IR with the thread hooks as no-ops.
 - [ ] 0c. The rt jump table slots of the old blob map to `__rg_rt_*` symbols; the inline routines of `x86_64.ridgun` that call old-blob internals by absolute address (gt conv, sort by, list get, locked builtin, tensor bounds, index set) call the IR functions instead.
 - [ ] x86-64 pure encoder: embed the runtime compiled by `llc` as position-independent code at a fixed address, as `rtx.c` is today.
 - [ ] LLVM backend: link the same IR; keep the hot functions inlinable; drop the linker-script blob and the duplicated helpers of `llvm.ridgun`.
@@ -41,6 +41,6 @@ Order fixed on 2026-11-16 after reading both runtimes (see the log): the IR runt
 - 2026-11-16: Block A done in the IR runtime (1.0.14). New `src/main/runtime/posix/posix.ll`: `sys call` (83, 116), `sys exec` (62), `execve` (120), `shell exec` (17), pipe, waitpid, kill, terminate, chmod, getpid, getuid, getgid, the users and groups builtins (25-30), `read pass` (31) and the TCP sockets (125-135, with /etc/hosts, localhost and DNS over UDP). `core/system.ll` builds the child environment (ours, then `sys setenv`, then the given list; a later entry wins), as the old runtime does. The Linux PAL reads the clocks through the vDSO. Each builtin was compared with the old runtime on the same program (identical output), except `sys username (-5)` (old: `root`, a quirk; new: `-5`). Tests added: `runtime/sys_call_numbers_buffers_and_errors`, `runtime/processes_exec_wait_pipe_kill_and_chmod`, `runtime/users_groups_shell_and_ids`, `net/tcp_argument_errors_partial_reads_and_options`. With `RIDGUN_IR_RT` the LLVM suite gives 147 of 153; the 6 that fail need threads (4 agent cases, `syscall_variadic_padding_and_agent_dce`, and the proposal `perf/parallel_agents_not_slower`). Default runtime: native suite 306 of 306 (153 on each backend), wasm32 143 (the same cases as before fail: they need a POSIX system). Not tested here: DNS over UDP (no network), `read pass` on a real terminal. Builtin 51 (`receive_from_timeout`) is the only id without an IR implementation; it belongs to block B.
 
 ## Exact next actions
-1. Block B: threads in the IR runtime (ADR first), builtin 51, the 6 cases that need them.
+1. Block B step (a): with the IR runtime the LLVM backend calls builtin 57 instead of the old pool at address 4288300 (jobs synchronous); the 6 cases must pass. Then steps (b)-(d) of ADR-0014.
 2. 0b: threads in the IR runtime.
 3. PAL functions and IR builtins for sockets, `execve`, pipes and `sys call`.
