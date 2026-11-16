@@ -1,0 +1,69 @@
+-- @tests TS-VM-003
+-- case: every net builtin checks its arguments (-22 for a bad port, backlog or buffer range, -9 for a bad descriptor), reads and writes move whole blocks of 100 000 bytes with a matching checksum, a short read leaves the rest for the next call, and every option name is accepted (TASK-0096)
+-- source: FR-VM-003 AC1-AC4
+-- expect-output:
+--   bad port: -22 -22
+--   bad backlog: -22
+--   bad host: -2
+--   empty send: 0
+--   bad fd: -9 -9 -9
+--   bad range: -22 -22 -9
+--   not a socket: -88 
+--   sent: 100000
+--   received: 100000 True
+--   short: 3 4 7
+--   options: 0 0 0 0 0 0
+--   closed: 0 0
+
+fn :: sum bytes Tensor[U8] Int Int Int => Int
+      sum bytes t i n acc
+        | i >= n = acc
+        | otherwise = sum bytes t (i + 1) n ((acc + t_(i)) % 1000003)
+
+fn :: fill block Tensor[U8] Int Int => Tensor[U8]
+      fill block t i n
+        | i >= n = t
+        | otherwise =
+          t_(i) = (i * 7 + 3) % 256
+          fill block t (i + 1) n
+
+fn :: drain Int Tensor[U8] Int Int => Int
+      drain fd t got want
+        | got >= want = got
+        | otherwise =
+          k = net recv into fd t got (want - got) 2000
+          drain fd t (drain next got k want) want
+
+fn :: drain next Int Int Int => Int
+      drain next got k want
+        | k > 0 = got + k
+        | otherwise = want
+
+fn :: main => ()
+      main =
+        l = net listen "127.0.0.1" 0 4
+        port = net local port l
+        echo "bad port:" (net listen "127.0.0.1" 70000 4) (net connect "127.0.0.1" (0 - 1) 100)
+        echo "bad backlog:" (net listen "127.0.0.1" 0 0)
+        echo "bad host:" (net connect "" 80 100)
+        c = net connect "127.0.0.1" port 2000
+        a = net accept l 2000
+        echo "empty send:" (net send c "" 100)
+        echo "bad fd:" (net send 9999 "x" 100) (net shutdown 9999 1) (net local port 9999)
+        small = tensor u8 from list [1, 2, 3]
+        echo "bad range:" (net recv into a small 2 5 100) (net recv into a small (0 - 1) 1 100) (net send 9999 small 100)
+        nul = sys open "/dev/null" 0 0
+        echo "not a socket:" (net local port nul) (net peer ip nul)
+        sys close nul
+        big = fill block (Tensor[U8 * 100000]) 0 100000
+        echo "sent:" (net send c big 2000)
+        got = Tensor[U8 * 100000]
+        n = drain a got 0 100000
+        echo "received:" n ((sum bytes got 0 100000 0) == (sum bytes big 0 100000 0))
+        net send c "abcdefg" 1000
+        first = net recv a 3 1000
+        second = net recv a 4 1000
+        echo "short:" (str len first) (str len second) (str len (first + second))
+        echo "options:" (net option c "nodelay" 1) (net option c "keepalive" 1) (net option c "reuseport" 1) (net option c "broadcast" 1) (net option c "rcvbuf" 65536) (net option c "sndbuf" 65536)
+        echo "closed:" (sys close c) (sys close a)
+        sys close l

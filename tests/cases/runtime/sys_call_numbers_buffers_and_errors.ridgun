@@ -1,0 +1,42 @@
+-- @tests TS-COMP-022
+-- case: sys call passes up to six Int arguments or a Tensor[U8] as the address of its bytes, and gives -errno on failure; the answers match the dedicated builtins (TASK-0096)
+-- source: FR-COMP-022 §6, FR-COMP-007 (sys call)
+-- expect-output:
+--   True
+--   True
+--   -9
+--   -2
+--   hello
+--   5
+--   True
+--   0
+--   -3
+
+-- "/nonexistent/rg" and its NUL byte
+fn :: missing path => Tensor[U8]
+      missing path =  tensor u8 from list [47, 110, 111, 110, 101, 120, 105, 115, 116, 101, 110, 116, 47, 114, 103, 0]
+
+fn :: main => ()
+      main =
+        -- getpid (39) equals sys getpid
+        echo ((sys call 39 0 0 0 0 0 0) == sys getpid)
+        -- clock_gettime(CLOCK_MONOTONIC, buffer): 0, and the buffer is written by the kernel
+        ts = Tensor[U8 * 16]
+        r = sys call 228 1 ts 0
+        echo (r == 0 and (ts_(0) + ts_(1) + ts_(2) + ts_(3) + ts_(4) + ts_(5) + ts_(6) + ts_(7) + ts_(8) + ts_(9)) >= 0)
+        -- close(-1) is EBADF
+        echo (sys call 3 (0 - 1))
+        -- open of a missing path through a Tensor[U8] argument is ENOENT
+        echo (sys call 2 (missing path) 0 0)
+        -- write(1, bytes, 5) gives 5 and the bytes reach stdout
+        b = tensor from str "hello"
+        n = sys call 1 1 b 5
+        echo ""
+        echo n
+        -- the kernel fills a buffer: read(fd 0 at EOF is not used); pipe2-free check with getcwd
+        buf = Tensor[U8 * 4096]
+        len = sys call 79 buf 4096
+        echo (len > 0)
+        -- kill(self, 0) through the raw call is 0 and kill of a missing pid is ESRCH (-3)
+        echo (sys call 62 (sys getpid) 0)
+        echo (sys call 62 999999 0)

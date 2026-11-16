@@ -16,6 +16,7 @@ declare i64 @rg_ldb(i64)
 declare i1 @rg_has_tag(i64, i64)
 declare i64 @rg_alloc(i64)
 declare void @rg_free(i64)
+declare void @rg_stb(i64, i64)
 declare void @rg_copy(i64, i64, i64)
 declare i64 @rg_str_from(i64, i64)
 declare i64 @rg_str_data(i64)
@@ -644,7 +645,7 @@ build:
 @rg_deadlines = internal global [64 x i64] zeroinitializer
 @rg_ndeadlines = internal global i64 0
 
-define internal i64 @rg_now_ms() {
+define i64 @rg_now_ms() {
   %ns = call i64 @__rg_pal_clock_ns(i64 0)
   %ms = sdiv i64 %ns, 1000000
   ret i64 %ms
@@ -938,4 +939,220 @@ rename:
   %e124 = call i64 @__rg_rt_drop_val(i64 %q124)
   %r124 = call i64 @rg_int(i64 %c124)
   ret i64 %r124
+}
+
+; ── The environment of a child process ───────────────────────
+; The variables a child gets: the ones this process started with, then the
+; ones `sys setenv` changed, then `extra` (a list of KEY=VAL Strings): a
+; later entry replaces an earlier one with the same name. The result is a
+; block with a NUL-terminated table of C strings (the strings follow the
+; table); the caller frees the block with rg_free.
+
+; The length of the name in a KEY=VAL entry (all of it when there is no '=').
+define internal i64 @rg_envx_key(i64 %d, i64 %n) {
+entry:
+  br label %loop
+loop:
+  %i = phi i64 [ 0, %entry ], [ %i1, %next ]
+  %end = icmp sge i64 %i, %n
+  br i1 %end, label %done, label %body
+body:
+  %a = add i64 %d, %i
+  %c = call i64 @rg_ldb(i64 %a)
+  %eq = icmp eq i64 %c, 61
+  br i1 %eq, label %done, label %next
+next:
+  %i1 = add i64 %i, 1
+  br label %loop
+done:
+  ret i64 %i
+}
+
+define internal i1 @rg_envx_same(i64 %a, i64 %b) {
+  %ad = call i64 @rg_str_data(i64 %a)
+  %al = call i64 @rg_str_len(i64 %a)
+  %bd = call i64 @rg_str_data(i64 %b)
+  %bl = call i64 @rg_str_len(i64 %b)
+  %ka = call i64 @rg_envx_key(i64 %ad, i64 %al)
+  %kb = call i64 @rg_envx_key(i64 %bd, i64 %bl)
+  %eqk = icmp eq i64 %ka, %kb
+  %e = call i1 @rg_bytes_eq(i64 %ad, i64 %bd, i64 %ka)
+  %r = and i1 %eqk, %e
+  ret i1 %r
+}
+
+; "key=value" as a String from the Strings k and v (both left alone).
+define internal i64 @rg_envx_join(i64 %k, i64 %v) {
+  %kd = call i64 @rg_str_data(i64 %k)
+  %kl = call i64 @rg_str_len(i64 %k)
+  %vd = call i64 @rg_str_data(i64 %v)
+  %vl = call i64 @rg_str_len(i64 %v)
+  %t = add i64 %kl, %vl
+  %n = add i64 %t, 1
+  %b = call i64 @rg_alloc(i64 %n)
+  call void @rg_copy(i64 %b, i64 %kd, i64 %kl)
+  %eqp = add i64 %b, %kl
+  call void @rg_stb(i64 %eqp, i64 61)
+  %vp0 = add i64 %eqp, 1
+  call void @rg_copy(i64 %vp0, i64 %vd, i64 %vl)
+  %s = call i64 @rg_str_from(i64 %b, i64 %n)
+  call void @rg_free(i64 %b)
+  ret i64 %s
+}
+
+; The list of every entry, in order (a new list that owns its Strings).
+define internal i64 @rg_envx_all(i64 %extra) {
+entry:
+  %nb = alloca i64, align 8
+  %b = call i64 @rg_pal_bytes(i64 1, ptr %nb)
+  %len = load i64, ptr %nb, align 8
+  %host = call i64 @rg_cstr_list(i64 %b, i64 %len)
+  call void @rg_free(i64 %b)
+  %set = load i64, ptr @rg_env_set, align 8
+  %hasset = icmp ne i64 %set, 0
+  br i1 %hasset, label %sized, label %nosize
+sized:
+  %nsv = call i64 @rg_list_len(i64 %set)
+  br label %counted
+nosize:
+  br label %counted
+counted:
+  %ns = phi i64 [ %nsv, %sized ], [ 0, %nosize ]
+  %nh = call i64 @rg_list_len(i64 %host)
+  %ne = call i64 @rg_list_len(i64 %extra)
+  %t1 = add i64 %nh, %ns
+  %tot = add i64 %t1, %ne
+  %all = call i64 @rg_list_alloc(i64 %tot, i64 %tot)
+  %dst = call i64 @rg_list_at(i64 %all, i64 0)
+  %src = call i64 @rg_list_at(i64 %host, i64 0)
+  %hb = shl i64 %nh, 3
+  call void @rg_copy(i64 %dst, i64 %src, i64 %hb)
+  %hh = call i64 @rg_w1x(i64 %host)
+  call void @rg_vset_len(i64 %hh, i64 0)
+  %dh = call i64 @__rg_rt_drop_val(i64 %host)
+  br label %ov
+ov:
+  %i = phi i64 [ 0, %counted ], [ %i1, %ovb ]
+  %om = icmp slt i64 %i, %ns
+  br i1 %om, label %ovb, label %ex
+ovb:
+  %ea = call i64 @rg_list_at(i64 %set, i64 %i)
+  %t = call i64 @rg_ld(i64 %ea)
+  %kv = call i64 @__rg_rt_tuple_get(i64 %t, i64 0)
+  %vv = call i64 @__rg_rt_tuple_get(i64 %t, i64 1)
+  %s = call i64 @rg_envx_join(i64 %kv, i64 %vv)
+  %d1 = call i64 @__rg_rt_drop_val(i64 %kv)
+  %d2 = call i64 @__rg_rt_drop_val(i64 %vv)
+  %at = add i64 %nh, %i
+  %sa = call i64 @rg_list_at(i64 %all, i64 %at)
+  call void @rg_st(i64 %sa, i64 %s)
+  %i1 = add i64 %i, 1
+  br label %ov
+ex:
+  %j = phi i64 [ 0, %ov ], [ %j1, %exb ]
+  %em = icmp slt i64 %j, %ne
+  br i1 %em, label %exb, label %done
+exb:
+  %xa = call i64 @rg_list_at(i64 %extra, i64 %j)
+  %xv = call i64 @rg_ld(i64 %xa)
+  %xc = call i64 @__rg_rt_clone_slot(i64 %xv)
+  %at2 = add i64 %t1, %j
+  %sb = call i64 @rg_list_at(i64 %all, i64 %at2)
+  call void @rg_st(i64 %sb, i64 %xc)
+  %j1 = add i64 %j, 1
+  br label %ex
+done:
+  ret i64 %all
+}
+
+define i64 @rg_env_table(i64 %extra) {
+entry:
+  %all = call i64 @rg_envx_all(i64 %extra)
+  %n = call i64 @rg_list_len(i64 %all)
+  %keep = call i64 @rg_alloc(i64 %n)
+  br label %kl
+kl:
+  %i = phi i64 [ 0, %entry ], [ %i1, %kn ]
+  %cnt = phi i64 [ 0, %entry ], [ %cnt2, %kn ]
+  %sz = phi i64 [ 0, %entry ], [ %sz2, %kn ]
+  %im = icmp slt i64 %i, %n
+  br i1 %im, label %kb, label %build
+kb:
+  %ia = call i64 @rg_list_at(i64 %all, i64 %i)
+  %iv = call i64 @rg_ld(i64 %ia)
+  br label %jl
+jl:
+  %j = phi i64 [ 1, %kb ], [ %j1, %jn ]
+  %jx = add i64 %i, %j
+  %jm = icmp slt i64 %jx, %n
+  br i1 %jm, label %jb, label %kept
+jb:
+  %ja = call i64 @rg_list_at(i64 %all, i64 %jx)
+  %jv = call i64 @rg_ld(i64 %ja)
+  %same = call i1 @rg_envx_same(i64 %iv, i64 %jv)
+  br i1 %same, label %dropped, label %jn
+jn:
+  %j1 = add i64 %j, 1
+  br label %jl
+kept:
+  %kp = add i64 %keep, %i
+  call void @rg_stb(i64 %kp, i64 1)
+  %il = call i64 @rg_str_len(i64 %iv)
+  %il1 = add i64 %il, 1
+  %sz1 = add i64 %sz, %il1
+  %cnt1 = add i64 %cnt, 1
+  br label %kn
+dropped:
+  %dp = add i64 %keep, %i
+  call void @rg_stb(i64 %dp, i64 0)
+  br label %kn
+kn:
+  %cnt2 = phi i64 [ %cnt1, %kept ], [ %cnt, %dropped ]
+  %sz2 = phi i64 [ %sz1, %kept ], [ %sz, %dropped ]
+  %i1 = add i64 %i, 1
+  br label %kl
+build:
+  %tb = shl i64 %cnt, 3
+  %tb1 = add i64 %tb, 8
+  %total = add i64 %tb1, %sz
+  %blk = call i64 @rg_alloc(i64 %total)
+  %s0 = add i64 %blk, %tb1
+  br label %fl
+fl:
+  %f = phi i64 [ 0, %build ], [ %f1, %fn ]
+  %slot = phi i64 [ 0, %build ], [ %slot2, %fn ]
+  %cur = phi i64 [ %s0, %build ], [ %cur2, %fn ]
+  %fm = icmp slt i64 %f, %n
+  br i1 %fm, label %fb, label %fin
+fb:
+  %fp = add i64 %keep, %f
+  %fk = call i64 @rg_ldb(i64 %fp)
+  %isk = icmp ne i64 %fk, 0
+  br i1 %isk, label %put, label %fn
+put:
+  %fa = call i64 @rg_list_at(i64 %all, i64 %f)
+  %fv = call i64 @rg_ld(i64 %fa)
+  %fd = call i64 @rg_str_data(i64 %fv)
+  %fl2 = call i64 @rg_str_len(i64 %fv)
+  call void @rg_copy(i64 %cur, i64 %fd, i64 %fl2)
+  %fe = add i64 %cur, %fl2
+  call void @rg_stb(i64 %fe, i64 0)
+  %so = shl i64 %slot, 3
+  %sp = add i64 %blk, %so
+  call void @rg_st(i64 %sp, i64 %cur)
+  %curp = add i64 %fe, 1
+  %slotp = add i64 %slot, 1
+  br label %fn
+fn:
+  %cur2 = phi i64 [ %curp, %put ], [ %cur, %fb ]
+  %slot2 = phi i64 [ %slotp, %put ], [ %slot, %fb ]
+  %f1 = add i64 %f, 1
+  br label %fl
+fin:
+  %eo = shl i64 %cnt, 3
+  %ep = add i64 %blk, %eo
+  call void @rg_st(i64 %ep, i64 0)
+  call void @rg_free(i64 %keep)
+  %da = call i64 @__rg_rt_drop_val(i64 %all)
+  ret i64 %blk
 }

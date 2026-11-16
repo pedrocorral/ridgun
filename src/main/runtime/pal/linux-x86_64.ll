@@ -30,6 +30,23 @@ define internal i64 @rg_sys(i64 %nr, i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64
   ret i64 %r
 }
 
+; The raw system call (TASK-0096): the primitive under sys call, the process
+; builtins, execve and the sockets of posix/posix.ll.
+define i64 @__rg_pal_syscall(i64 %nr, i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f) {
+  %r = call i64 @rg_sys(i64 %nr, i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f)
+  ret i64 %r
+}
+
+; The address of the array of environment pointers the program started with.
+define i64 @__rg_pal_envp() {
+  %sp = load i64, ptr @rg_sp, align 8
+  %argc = call i64 @rg_ld(i64 %sp)
+  %n8 = shl i64 %argc, 3
+  %e0 = add i64 %sp, %n8
+  %e = add i64 %e0, 16
+  ret i64 %e
+}
+
 ; ── Start ────────────────────────────────────────────────────
 @rg_sp = internal global i64 0
 @rg_heap_end = internal global i64 0
@@ -37,6 +54,7 @@ define internal i64 @rg_sys(i64 %nr, i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64
 ; 64 MiB first chunk (mapped lazily by the system).
 define void @__rg_linux_start(i64 %sp) noreturn {
   store i64 %sp, ptr @rg_sp, align 8
+  call void @rg_vdso_init()
   ; mmap(0, 64 MiB, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS|MAP_NORESERVE)
   %m = call i64 @rg_sys(i64 9, i64 0, i64 67108864, i64 3, i64 16418, i64 -1, i64 0)
   %bad = icmp ult i64 %m, -4095
@@ -109,13 +127,212 @@ define ptr @memset(ptr %d, i32 %v, i64 %n) {
 }
 
 ; ── Clocks and sleep ─────────────────────────────────────────
+; The vDSO function clock_gettime (0 until found, -1 when the system has none):
+; the kernel maps a small ELF image into every process and gives its address
+; in the auxiliary vector (AT_SYSINFO_EHDR); its dynamic symbol table names
+; `__vdso_clock_gettime`. Reading a clock then needs no system call.
+@rg_vdso_clock = internal global i64 0
+@rg_vdso_name = private constant [21 x i8] c"__vdso_clock_gettime\00"
+
+define internal void @rg_vdso_init() {
+entry:
+  %sp = load i64, ptr @rg_sp, align 8
+  %argc = call i64 @rg_ld(i64 %sp)
+  %n8 = shl i64 %argc, 3
+  %e0 = add i64 %sp, %n8
+  %envp = add i64 %e0, 16
+  br label %skipenv
+skipenv:
+  %p = phi i64 [ %envp, %entry ], [ %p1, %skipenv ]
+  %w = call i64 @rg_ld(i64 %p)
+  %p1 = add i64 %p, 8
+  %zero = icmp eq i64 %w, 0
+  br i1 %zero, label %aux, label %skipenv
+aux:
+  br label %auxloop
+auxloop:
+  %a = phi i64 [ %p1, %aux ], [ %a2, %auxnext ]
+  %tag = call i64 @rg_ld(i64 %a)
+  %av = add i64 %a, 8
+  %val = call i64 @rg_ld(i64 %av)
+  %end = icmp eq i64 %tag, 0
+  br i1 %end, label %none, label %test
+test:
+  %isv = icmp eq i64 %tag, 33
+  br i1 %isv, label %found, label %auxnext
+auxnext:
+  %a2 = add i64 %a, 16
+  br label %auxloop
+none:
+  store i64 -1, ptr @rg_vdso_clock, align 8
+  ret void
+found:
+  %fn = call i64 @rg_vdso_find(i64 %val)
+  %ok = icmp ne i64 %fn, 0
+  %r = select i1 %ok, i64 %fn, i64 -1
+  store i64 %r, ptr @rg_vdso_clock, align 8
+  ret void
+}
+
+; 16-bit and 32-bit loads from an address.
+define internal i64 @rg_ld32(i64 %a) {
+  %p = inttoptr i64 %a to ptr
+  %v = load i32, ptr %p, align 1
+  %z = zext i32 %v to i64
+  ret i64 %z
+}
+
+define internal i64 @rg_ld16(i64 %a) {
+  %p = inttoptr i64 %a to ptr
+  %v = load i16, ptr %p, align 1
+  %z = zext i16 %v to i64
+  ret i64 %z
+}
+
+; The address of __vdso_clock_gettime in the image at `base`, or 0.
+define internal i64 @rg_vdso_find(i64 %base) {
+entry:
+  %poff_a = add i64 %base, 32
+  %poff = call i64 @rg_ld(i64 %poff_a)
+  %pnum_a = add i64 %base, 56
+  %pnum = call i64 @rg_ld16(i64 %pnum_a)
+  %ph = add i64 %base, %poff
+  br label %phloop
+phloop:
+  %i = phi i64 [ 0, %entry ], [ %i1, %phnext ]
+  %bias = phi i64 [ 0, %entry ], [ %bias2, %phnext ]
+  %dyn = phi i64 [ 0, %entry ], [ %dyn2, %phnext ]
+  %m = icmp slt i64 %i, %pnum
+  br i1 %m, label %phbody, label %phdone
+phbody:
+  %off = mul i64 %i, 56
+  %e = add i64 %ph, %off
+  %type = call i64 @rg_ld32(i64 %e)
+  %va = add i64 %e, 16
+  %vaddr = call i64 @rg_ld(i64 %va)
+  %isload = icmp eq i64 %type, 1
+  %isdyn = icmp eq i64 %type, 2
+  %nb = sub i64 %base, %vaddr
+  %first = icmp eq i64 %bias, 0
+  %takeb = and i1 %isload, %first
+  %bias1 = select i1 %takeb, i64 %nb, i64 %bias
+  %dyn1 = select i1 %isdyn, i64 %vaddr, i64 %dyn
+  br label %phnext
+phnext:
+  %bias2 = phi i64 [ %bias1, %phbody ]
+  %dyn2 = phi i64 [ %dyn1, %phbody ]
+  %i1 = add i64 %i, 1
+  br label %phloop
+phdone:
+  %hasdyn = icmp ne i64 %dyn, 0
+  br i1 %hasdyn, label %dynscan, label %fail
+dynscan:
+  %d0 = add i64 %dyn, %bias
+  br label %dloop
+dloop:
+  %d = phi i64 [ %d0, %dynscan ], [ %d2, %dnext ]
+  %hash = phi i64 [ 0, %dynscan ], [ %hash2, %dnext ]
+  %str = phi i64 [ 0, %dynscan ], [ %str2, %dnext ]
+  %sym = phi i64 [ 0, %dynscan ], [ %sym2, %dnext ]
+  %dt = call i64 @rg_ld(i64 %d)
+  %dva = add i64 %d, 8
+  %dv = call i64 @rg_ld(i64 %dva)
+  %dend = icmp eq i64 %dt, 0
+  br i1 %dend, label %dfin, label %dcase
+dcase:
+  %isH = icmp eq i64 %dt, 4
+  %isS = icmp eq i64 %dt, 5
+  %isY = icmp eq i64 %dt, 6
+  %dvb = add i64 %dv, %bias
+  %hash1 = select i1 %isH, i64 %dvb, i64 %hash
+  %str1 = select i1 %isS, i64 %dvb, i64 %str
+  %sym1 = select i1 %isY, i64 %dvb, i64 %sym
+  br label %dnext
+dnext:
+  %hash2 = phi i64 [ %hash1, %dcase ]
+  %str2 = phi i64 [ %str1, %dcase ]
+  %sym2 = phi i64 [ %sym1, %dcase ]
+  %d2 = add i64 %d, 16
+  br label %dloop
+dfin:
+  %okh = icmp ne i64 %hash, 0
+  %oks = icmp ne i64 %str, 0
+  %oky = icmp ne i64 %sym, 0
+  %o1 = and i1 %okh, %oks
+  %o2 = and i1 %o1, %oky
+  br i1 %o2, label %symscan, label %fail
+symscan:
+  %nch_a = add i64 %hash, 4
+  %nchain = call i64 @rg_ld32(i64 %nch_a)
+  br label %sloop
+sloop:
+  %k = phi i64 [ 0, %symscan ], [ %k1, %snext ]
+  %km = icmp slt i64 %k, %nchain
+  br i1 %km, label %sbody, label %fail
+sbody:
+  %so = mul i64 %k, 24
+  %se = add i64 %sym, %so
+  %nm = call i64 @rg_ld32(i64 %se)
+  %nmp = add i64 %str, %nm
+  %same = call i1 @rg_vdso_name_is(i64 %nmp)
+  %shn_a = add i64 %se, 6
+  %shn = call i64 @rg_ld16(i64 %shn_a)
+  %defd = icmp ne i64 %shn, 0
+  %hit = and i1 %same, %defd
+  br i1 %hit, label %got, label %snext
+snext:
+  %k1 = add i64 %k, 1
+  br label %sloop
+got:
+  %va2 = add i64 %se, 8
+  %sv = call i64 @rg_ld(i64 %va2)
+  %addr = add i64 %sv, %bias
+  ret i64 %addr
+fail:
+  ret i64 0
+}
+
+define internal i1 @rg_vdso_name_is(i64 %p) {
+entry:
+  %lit = ptrtoint ptr @rg_vdso_name to i64
+  br label %loop
+loop:
+  %i = phi i64 [ 0, %entry ], [ %i1, %next ]
+  %a = add i64 %p, %i
+  %b = add i64 %lit, %i
+  %ca = call i64 @rg_ldb(i64 %a)
+  %cb = call i64 @rg_ldb(i64 %b)
+  %eq = icmp eq i64 %ca, %cb
+  br i1 %eq, label %next, label %no
+next:
+  %z = icmp eq i64 %cb, 0
+  %i1 = add i64 %i, 1
+  br i1 %z, label %yes, label %loop
+yes:
+  ret i1 true
+no:
+  ret i1 false
+}
+
 ; clock ns (kind): 0 the monotonic clock, 1 the wall clock, in ns.
 define i64 @__rg_pal_clock_ns(i64 %kind) {
+entry:
   %ts = alloca [2 x i64], align 8
   %wall = icmp ne i64 %kind, 0
   %id = select i1 %wall, i64 0, i64 1
   %a = ptrtoint ptr %ts to i64
+  %fn = load i64, ptr @rg_vdso_clock, align 8
+  %has = icmp sgt i64 %fn, 0
+  br i1 %has, label %fast, label %slow
+fast:
+  %fp = inttoptr i64 %fn to ptr
+  %id32 = trunc i64 %id to i32
+  %fr = call i32 %fp(i32 %id32, ptr %ts)
+  br label %read
+slow:
   %e = call i64 @rg_sys(i64 228, i64 %id, i64 %a, i64 0, i64 0, i64 0, i64 0)
+  br label %read
+read:
   %sp = getelementptr inbounds [2 x i64], ptr %ts, i64 0, i64 0
   %ns = getelementptr inbounds [2 x i64], ptr %ts, i64 0, i64 1
   %s = load i64, ptr %sp, align 8

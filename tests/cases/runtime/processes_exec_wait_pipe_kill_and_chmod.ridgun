@@ -1,0 +1,76 @@
+-- @tests TS-VM-002
+-- case: sys exec runs a program without a shell and gives its exit code (the status byte, 0 when it was killed by a signal; 127 when the program cannot be started; a name without '/' is searched in PATH; the environment is ours plus sys setenv plus the given list), sys pipe, sys waitpid, sys kill, sys terminate and sys chmod answer as documented, with -errno for failures (TASK-0096)
+-- source: FR-VM-002 §2, FR-COMP-007 AC-2
+-- expect-output:
+--   7
+--   0
+--   0
+--   a b;c $HOME *
+--   0
+--   127
+--   3
+--   44
+--   0
+--   0
+--   pipe-msg
+--   True
+--   0
+--   True
+--   -3
+--   True
+--   42
+--   True
+--   -1
+
+fn :: tuple fst (Int Int) => Int
+      tuple fst (a, _)    =  a
+
+fn :: tuple snd (Int Int) => Int
+      tuple snd (_, b)    =  b
+
+fn :: wait child exit Int => Int Int
+      wait child exit 0 =
+        sys exit 42
+        (0, 0)
+      wait child exit pid =  sys waitpid pid 0
+
+fn :: main => ()
+      main =
+        -- exit codes: normal, by signal (128 + 9), zero
+        echo (sys exec "/bin/sh" ["-c", "exit 7"] [])
+        echo (sys exec "/bin/sh" ["-c", "kill -9 $$"] [])
+        echo (sys exec "/bin/true" [] [])
+        -- no shell: metacharacters stay one argument
+        st = sys exec "/usr/bin/printf" ["%s\n", "a b;c $HOME *"] []
+        echo st
+        -- a program that does not exist; a name without '/' is searched in PATH; the status byte is kept
+        echo (sys exec "/nonexistent/prog" [] [])
+        echo (sys exec "sh" ["-c", "exit 3"] [])
+        echo (sys exec "/bin/sh" ["-c", "exit 300"] [])
+        -- the environment of the child: ours, plus sys setenv, plus the given list (a later entry wins)
+        sys setenv "RG_TEST_INH" "yes"
+        echo (sys exec "/bin/sh" ["-c", "test \"$RG_TEST_INH\" = yes"] [])
+        echo (sys exec "/bin/sh" ["-c", "test \"$RG_TEST_INH-$RG_TEST_V\" = no-ok"] ["RG_TEST_V=ok", "RG_TEST_INH=no"])
+        -- pipe, write, read
+        fds = sys pipe
+        r = tuple fst fds
+        w = tuple snd fds
+        sys write fd w "pipe-msg"
+        sys close w
+        echo (sys read fd r 32)
+        echo ((sys close r) == 0)
+        -- kill and terminate
+        me = sys getpid
+        echo (sys kill me 0)
+        echo ((sys terminate (0 - 999999) False) < 0)
+        echo (sys kill 999999 0)
+        -- waitpid: a forked child exits 42
+        child = sys call 57 0 0 0 0 0 0
+        res = wait child exit child
+        echo (tuple fst res == child)
+        echo (tuple snd res)
+        -- chmod
+        f = "target/rg_chmod_case.txt"
+        write file f "x"
+        echo ((sys chmod f 384) == 0)
+        echo (sys chmod "target/rg_missing_chmod.txt" 384)

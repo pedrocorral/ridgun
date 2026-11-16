@@ -1082,6 +1082,13 @@ fromlist:
   call void @rg_drop_slots(i64 %slots, i64 %n)
   ret i64 %r13
 none:
+  %rp = call i64 @rg_builtin_posix(i64 %id, i64 %slots, i64 %n)
+  ret i64 %rp
+}
+
+; The builtins that need a POSIX system (sys call, processes, execve): posix/
+; posix.ll has them; a target without one keeps this weak stub.
+define weak i64 @rg_builtin_posix(i64 %id, i64 %slots, i64 %n) {
   call void @rg_no_builtin(i64 %id)
   unreachable
 }

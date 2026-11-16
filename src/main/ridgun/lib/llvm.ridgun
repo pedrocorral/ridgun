@@ -694,8 +694,30 @@ fn :: check host llc fd Int => Bool
 fn :: has host llvm toolchain => Bool
       has host llvm toolchain =  check host llc fd (sys open "/usr/bin/llc" 0 0)
 
+-- TASK-0096 (development switch, removed when the IR runtime is embedded):
+-- when RIDGUN_IR_RT names an object built from src/main/runtime (core + PAL
+-- for Linux x86-64), the program links against it in place of the cached
+-- runtime blob and its linker script.
+fn :: ir runtime linker script => String
+      ir runtime linker script =
+        "ENTRY(_start)\nPHDRS {{\n  all PT_LOAD FILEHDR PHDRS FLAGS(7);\n}}\nSECTIONS {{\n  . = 0x400080;\n  .rg_page0 : {{ KEEP(*(.rg_page0)) }} :all\n  . = 0x401000;\n  .text : ALIGN(16) {{ *(.text .text.*) }} :all\n  .rodata : ALIGN(16) {{ *(.rodata .rodata.*) }} :all\n  .data : ALIGN(16) {{ *(.data .data.*) }} :all\n  .bss : ALIGN(16) {{ *(.bss .bss.* COMMON) }} :all\n  /DISCARD/ : {{ *(.note*) *(.eh_frame*) *(.comment*) }}\n}}\n"
+
+fn :: build llvm ir runtime executable RNativeProg String String => Int
+      build llvm ir runtime executable nprog output_bin rt_obj =
+        pid_s = int to str (sys getpid)
+        tmp_base = "/tmp/__rg_llvm_" + pid_s
+        ll_path = tmp_base + ".ll"
+        bc_path = tmp_base + ".bc"
+        obj_path = tmp_base + ".o"
+        lds_path = tmp_base + ".lds"
+        nprog -> emit llvm ir -> write file ll_path _
+        ir runtime linker script -> write file lds_path _
+        cmd = "/usr/bin/opt -O2 \"" + ll_path + "\" -o \"" + bc_path + "\" && /usr/bin/llc -O2 -filetype=obj \"" + bc_path + "\" -o \"" + obj_path + "\" && /usr/bin/ld -n --no-warn-rwx-segments --unresolved-symbols=ignore-all -T \"" + lds_path + "\" \"" + obj_path + "\" \"" + rt_obj + "\" -o \"" + output_bin + "\""
+        shell exec cmd -> finish llvm link output_bin tmp_base
+
 fn :: build llvm x8664 executable RNativeProg String     => Int
       build llvm x8664 executable nprog       output_bin
+        | (str len (sys getenv "RIDGUN_IR_RT")) > 0 and (has host llvm toolchain) = build llvm ir runtime executable nprog output_bin (sys getenv "RIDGUN_IR_RT")
         | not (has host llvm toolchain) =
           nprog -> emit x8664 elf -> write elf64 executable output_bin _
         | otherwise =
