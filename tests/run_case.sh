@@ -18,17 +18,23 @@ peak_kb=0
 running=1
 
 # Reads State and VmHWM of process $1; clears `running` when it has exited (zombie or reaped).
+# The file is read whole (mapfile) and split without `read`: a `read` loop left at
+# VmHWM kept the rest of the file in Bash's read buffer, and under load those lines
+# (RssAnon: ...) came out of the next `read` of the times file, which stopped the script with status 1.
 sample() {
-  local key val rest state=""
-  if ! { while read -r key val rest; do
-           case $key in
-             State:) state=$val ;;
-             VmHWM:) (( val > peak_kb )) && peak_kb=$val; break ;;
-           esac
-         done < "/proc/$1/status"; } 2>/dev/null; then
+  local line state=""
+  local -a st_lines=() f=()
+  { mapfile -t st_lines < "/proc/$1/status"; } 2>/dev/null
+  if (( ${#st_lines[@]} == 0 )); then
     running=0
     return
   fi
+  for line in "${st_lines[@]}"; do
+    case $line in
+      State:*) f=($line); state=${f[1]:-} ;;
+      VmHWM:*) f=($line); (( ${f[1]:-0} > peak_kb )) && peak_kb=${f[1]}; break ;;
+    esac
+  done
   [[ $state == Z || -z $state ]] && running=0
 }
 
@@ -41,10 +47,11 @@ to_ms() {
 
 # Sets `user_ms` and `sys_ms` from the children line of a `times` snapshot file.
 children_cpu() {
-  local u s
-  { read -r _ _; read -r u s; } < "$1"
-  to_ms "$u"; user_ms=$ms
-  to_ms "$s"; sys_ms=$ms
+  local -a tl=() f=()
+  mapfile -t tl < "$1"
+  f=(${tl[1]:-0m0.000s 0m0.000s})
+  to_ms "${f[0]}"; user_ms=$ms
+  to_ms "${f[1]}"; sys_ms=$ms
 }
 
 times > "$work/.times0"
