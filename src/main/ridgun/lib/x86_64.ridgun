@@ -1171,8 +1171,6 @@ fn :: emit x8664 elf kind Int RNativeProg => [Int]
 fn :: emit x8664 elf RNativeProg => [Int]
       emit x8664 elf nprog       =  emit x8664 elf kind 2 nprog
 
-fn :: emit x8664 so elf RNativeProg => [Int]
-      emit x8664 so elf nprog       =  emit x8664 elf kind 3 nprog
 
 -- ── GenTensor list conversions (FR-COMP-020 §9) ──────────────
 -- `NGtConv slot mode` takes the value in `slot` and leaves the result in

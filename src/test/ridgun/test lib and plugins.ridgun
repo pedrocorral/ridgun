@@ -1,6 +1,6 @@
 -- ============================================================
 -- src/test/ridgun/test lib and plugins.ridgun
--- Automated Verification of Library Compilation (.ridgunlib & ELF64 .so)
+-- Automated Verification of Library Compilation (.ridgunlib)
 -- and Comprehensive `stable` Build System, Scaffolding, Deps,
 -- Formatting, Compile, Clean, Custom Tasks & Plugins
 -- @tests FR-COMP-006
@@ -78,7 +78,7 @@ fn :: main => ()
         root_dir = sys getcwd
         stable_bin = root_dir + "/" + (resolve stable bin)
         ridgunc_bin = root_dir + "/" + (resolve ridgunc bin)
-        echo "=== FR-COMP-006: Reusable Library Compilation (.ridgunlib & ELF64 ET_DYN .so) ==="
+        echo "=== FR-COMP-006: Reusable Library Compilation (.ridgunlib; no .so, ADR-0016) ==="
         shell exec "rm -rf target/test_lib_work && mkdir -p target/test_lib_work"
         lib_src = "-- Reusable math & shape library (no main function)\ntype Shape = Circle Int | Rect Int Int\n\nfn :: math cube Int => Int\n      math cube x   =  x * x * x\n\nfn :: shape area Shape        => Int\n      shape area (Circle r)   =  3 * r * r\n      shape area (Rect   w h) =  w * h\n"
         write file "target/test_lib_work/geom_lib.ridgun" lib_src
@@ -87,15 +87,8 @@ fn :: main => ()
         rglib_text = read file "target/test_lib_work/geom_lib.ridgunlib"
         assert ok (str starts with rglib_text "-- RIDGUNLIB1")
         assert ok (str contains rglib_text "math cube")
-        so_bytes = tensor to list (read bytes "target/test_lib_work/geom_lib.so")
-        -- ELF64 magic: 0x7F 'E' 'L' 'F' (127, 69, 76, 70)
-        assert int equals (byte at so_bytes 0) 127 "ELF64 magic 0"
-        assert int equals (byte at so_bytes 1) 69 "ELF64 magic E"
-        assert int equals (byte at so_bytes 2) 76 "ELF64 magic L"
-        assert int equals (byte at so_bytes 3) 70 "ELF64 magic F"
-        -- ELF64 e_type at offset 16..17: ET_DYN = 3 (little-endian: 3, 0)
-        assert int equals (byte at so_bytes 16) 3 "ELF64 ET_DYN low byte"
-        assert int equals (byte at so_bytes 17) 0 "ELF64 ET_DYN high byte"
+        -- ADR-0016: no ELF shared object is written next to the bundle
+        assert ok (not (is file "target/test_lib_work/geom_lib.so"))
         -- Consumer program importing the bundle by its old name: `geom_lib.rglib` finds `geom_lib.ridgunlib` (ADR-0010)
         app_src = "import \"target/test_lib_work/geom_lib.rglib\"\n\nfn :: check eq Int Int => ()\n      check eq a   b\n        | a == b = ()\n        | otherwise = sys exit 1\n\nfn :: main => ()\n      main =\n        check eq (math cube 4) 64\n        check eq (shape area (Rect 5 8)) 40\n        check eq (shape area (Circle 3)) 27\n"
         write file "target/test_lib_work/consumer_app.ridgun" app_src
@@ -188,10 +181,7 @@ fn :: main => ()
         st_built_lib = shell exec ("cd target/test_lib_work/mathkit && \"" + stable_bin + "\" built lib")
         assert int equals st_built_lib 0 "stable built lib mathkit"
         assert ok (is file "target/test_lib_work/mathkit/target/mathkit.ridgunlib")
-        assert ok (is file "target/test_lib_work/mathkit/target/libmathkit.so")
-        mathkit_so = tensor to list (read bytes "target/test_lib_work/mathkit/target/libmathkit.so")
-        assert int equals (byte at mathkit_so 0) 127 "ELF64 magic byte 0"
-        assert int equals (byte at mathkit_so 16) 3 "ELF64 ET_DYN e_type"
+        assert ok (not (is file "target/test_lib_work/mathkit/target/libmathkit.so"))
         -- Add `mathkit` to `hello_app` by package name via `stable add` & `stable deps`; an omni.lock entry stands in for `omni install mathkit` (ADR-0003)
         write file "target/test_lib_work/hello_app/omni.lock" "fn :: locked packages => [String]\n      locked packages =  [\"mathkit|mathkit||0.1.0||../mathkit\"]\n"
         st_add_path = shell exec ("cd target/test_lib_work/hello_app && \"" + stable_bin + "\" add ../mathkit > add_path.txt 2>&1")

@@ -618,5 +618,3 @@ fn :: emit arm64 elf kind Int RNativeProg => [Int]
 fn :: emit arm64 elf RNativeProg => [Int]
       emit arm64 elf nprog       =  emit arm64 elf kind 2 nprog
 
-fn :: emit arm64 so elf RNativeProg => [Int]
-      emit arm64 so elf nprog       =  emit arm64 elf kind 3 nprog

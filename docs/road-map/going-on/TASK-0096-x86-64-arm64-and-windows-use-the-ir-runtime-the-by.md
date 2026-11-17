@@ -24,6 +24,7 @@ Order fixed on 2026-11-16 after reading both runtimes (see the log): the IR runt
 - [ ] 0b. Threads in the IR runtime (ADR-0014; order: backend calls builtin 57 so jobs run synchronously, thread-safe counts/allocator/channels with the PAL thread interface, the pool, builtin 51): atomic reference counts on shared values, a heap that is safe across threads, channels under a lock, `clone`/`futex` in the PAL, the `||` worker pool and agent jobs on threads; single-threaded targets (wasm32) keep the same IR with the thread hooks as no-ops.
 - [ ] 0c. The rt jump table slots of the old blob map to `__rg_rt_*` symbols; the inline routines of `x86_64.ridgun` that call old-blob internals by absolute address (gt conv, sort by, list get, locked builtin, tensor bounds, index set) call the IR functions instead.
 - [ ] x86-64 pure encoder: embed the runtime compiled by `llc` as position-independent code at a fixed address, as `rtx.c` is today.
+- [x] Shared libraries: the Linux `.so` was removed (ADR-0016; it had no dynamic section and exported nothing). The old blob now serves only the pure x86-64 encoder.
 - [ ] LLVM backend: link the same IR; keep the hot functions inlinable; drop the linker-script blob and the duplicated helpers of `llvm.ridgun`.
 - [ ] Linux and Windows PAL in IR plus small inline-assembly parts (system calls, `clone`); delete `x86 rt ext`, `win rt ext` and their C sources.
 - [ ] ARM64: replace the stubs of `arm64.ridgun` with the runtime compiled for aarch64.
@@ -52,3 +53,4 @@ Order fixed on 2026-11-16 after reading both runtimes (see the log): the IR runt
 1. `||map` and `||filter` on the pool, builtin 51. The pure x86-64 encoder and the shared libraries still use the old blob: move them (0c of the plan), then delete the blob and the C sources.
 2. 0b: threads in the IR runtime.
 3. PAL functions and IR builtins for sockets, `execve`, pipes and `sys call`.
+- 2026-11-17: Request 3 fixed (1.0.23, a245c39). Checked the shared libraries: the .so had no dynamic section (dlopen: "object file has no dynamic section"), exported no library function, nobody loads it; ADR-0016 removes it (1.0.24). Next: the pure x86-64 encoder.

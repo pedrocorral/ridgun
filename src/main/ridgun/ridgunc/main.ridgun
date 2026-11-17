@@ -1,6 +1,6 @@
 -- ============================================================
 -- src/main/ridgun/ridgunc/main.ridgun
--- Self-Hosted Ridgun Compiler CLI Driver (ridgunc v1.0.23)
+-- Self-Hosted Ridgun Compiler CLI Driver (ridgunc v1.0.24)
 -- Shared Library (`src/main/ridgun/lib/`): ast, lexer, parser,
 -- analyzer, typecheck, compiler, elf64, x86_64, arm64, llvm,
 -- macho64, pe64 (each a `.ridgun` file)
@@ -144,9 +144,7 @@ fn :: run cli build lib Bool String String String => ()
         | otherwise =
           verify strict if enabled strict_mode input_path
           rglib_out = output_out + ".ridgunlib"
-          so_out = output_out + (shared ext for target target_arch)
           emit rglib file input_path rglib_out -> report rglib status input_path rglib_out _
-          build native target so library input_path so_out target_arch -> report so status input_path so_out _
 
 fn :: run cli build so Bool String String String => ()
       run cli build so strict_mode input_path output_so target_arch =
@@ -232,7 +230,7 @@ fn :: exec built run Int String [String] => ()
 
 fn :: run cli version => ()
       run cli version =
-        echo "ridgunc 1.0.23 (self-hosted Ridgun compiler, {host triple (host os)})"
+        echo "ridgunc 1.0.24 (self-hosted Ridgun compiler, {host triple (host os)})"
 
 fn :: host triple SysOs => String
       host triple Windows = "x86_64-pc-windows"
@@ -248,7 +246,7 @@ fn :: run cli help => ()
         echo "  check   <file.ridgun>                              Typecheck and analyze static strategies"
         echo "  build   <file.ridgun> [-o binary] [--target arch]  Build standalone native executable (ELF64, Mach-O 64, PE32+)"
         echo "          [--quiet]                                  No line for a successful build"
-        echo "  build   --lib <file.ridgun> [-o out.ridgunlib]     Build reusable Ridgun library (.ridgunlib & .so/.dylib/.dll)"
+        echo "  build   --lib <file.ridgun> [-o out.ridgunlib]     Build reusable Ridgun library (.ridgunlib)"
         echo "  build   --so  <file.ridgun> [-o out.so]            Build native shared library (.so, .dylib, .dll)"
         echo "  prelude                                            Print the prelude: helpers every program calls without import"
         echo "  version | -v | --version                           Show compiler version"

@@ -5059,10 +5059,6 @@ fn :: emit elf for target RNativeProg String           => [Int]
       emit elf for target nprog       _                =  emit x8664 elf nprog
 
 fn :: emit so elf for target RNativeProg String           => [Int]
-      emit so elf for target nprog       "arm64"          =  emit arm64 so elf nprog
-      emit so elf for target nprog       "arm64-linux"    =  emit arm64 so elf nprog
-      emit so elf for target nprog       "aarch64"        =  emit arm64 so elf nprog
-      emit so elf for target nprog       "aarch64-linux"  =  emit arm64 so elf nprog
       emit so elf for target nprog       "x86_64-macos"   =  emit x8664 dylib macho64 nprog
       emit so elf for target nprog       "macos-x86_64"   =  emit x8664 dylib macho64 nprog
       emit so elf for target nprog       "macos"          =  emit x8664 dylib macho64 nprog
@@ -5079,7 +5075,7 @@ fn :: emit so elf for target RNativeProg String           => [Int]
       emit so elf for target nprog       "arm64-windows"  =  emit arm64 dll pe64 nprog
       emit so elf for target nprog       "windows-arm64"  =  emit arm64 dll pe64 nprog
       emit so elf for target nprog       "aarch64-windows" = emit arm64 dll pe64 nprog
-      emit so elf for target nprog       _                =  emit x8664 so elf nprog
+      emit so elf for target nprog       _                =  []
 
 fn :: build native target for arch RNativeProg String String => Int
       build native target for arch nprog output_bin "x86_64" =
@@ -5091,15 +5087,19 @@ fn :: build native target for arch RNativeProg String String => Int
       build native target for arch nprog output_bin target_arch =
         emit elf for target nprog target_arch -> write elf64 executable output_bin _
 
+-- Only the Mach-O and PE targets still emit a shared library here. A Linux
+-- shared object was removed (ADR-0016): the ELF file had no dynamic section and
+-- exported nothing a program could call.
 fn :: build native so for arch RNativeProg String String => Int
-      build native so for arch nprog output_so "x86_64" =
-        build llvm x8664 so library nprog output_so
-      build native so for arch nprog output_so "x86_64-linux" =
-        build llvm x8664 so library nprog output_so
-      build native so for arch nprog output_so "linux" =
-        build llvm x8664 so library nprog output_so
       build native so for arch nprog output_so target_arch =
-        emit so elf for target nprog target_arch -> write elf64 executable output_so _
+        write so bytes (emit so elf for target nprog target_arch) output_so target_arch
+
+fn :: write so bytes [Int] String String => Int
+      write so bytes [] _ target_arch =
+        echo "[ridgunc build --so] Error: shared libraries for {target_arch} are not supported (ADR-0016); use a .ridgunlib"
+        1
+      write so bytes bytes output_so _ =
+        write elf64 executable output_so bytes
 
 fn :: build native target executable String String String => Int
       build native target executable input_path output_bin target_arch =

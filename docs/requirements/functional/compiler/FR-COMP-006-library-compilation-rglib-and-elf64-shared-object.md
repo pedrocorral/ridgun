@@ -4,16 +4,19 @@ title: Library Compilation (.ridgunlib Package Bundles and ELF64 Shared Objects 
 status: implemented
 priority: must
 created: 2026-10-21
-updated: 2026-11-12
+updated: 2026-11-17
 depends_on:
   - FR-COMP-004
   - FR-COMP-005
 related:
   - ADR-0001
   - ADR-0010
+  - ADR-0016
 verified_by: []
 ---
-# FR-COMP-006 — Library Compilation (`.ridgunlib` Package Bundles and ELF64 Shared Objects `.so`) Without Requiring `main`
+# FR-COMP-006 — Library Compilation (`.ridgunlib` Package Bundles) Without Requiring `main`
+
+> 2026-11-17 (ADR-0016): the Linux ELF64 `.so` output was removed; it could not be loaded and exported nothing. Every mention of `.so` below is superseded.
 
 ## Statement
 The `ridgunc` compiler (`src/main/ridgun/ridgunc/main.ridgun`, `src/main/ridgun/lib/compiler.ridgun`, `src/main/ridgun/lib/elf64.ridgun`) and the `stable` project manager (`src/main/ridgun/stable/main.ridgun`) SHALL support compiling Ridgun modules and projects as reusable libraries (in addition to standalone executables):
