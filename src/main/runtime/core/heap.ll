@@ -19,6 +19,10 @@ declare i64 @llvm.ctlz.i64(i64, i1)
 @rg_bump_end = internal global [9 x i64] zeroinitializer
 @rg_free_lists = internal global [432 x i64] zeroinitializer
 declare i64 @rg_slot()
+
+; The bytes this thread's shard has handed out, for the quota of `with region`
+; (tensor.ll). One counter per slot, changed only by its owner.
+@rg_alloc_bytes = global [9 x i64] zeroinitializer
 @rg_msg_oom = private constant [13 x i8] c"out of memory"
 
 ; heap init (start, end): the first chunk is [start, end).
@@ -45,6 +49,10 @@ define i64 @rg_alloc(i64 %n) {
 entry:
   %c = call i64 @rg_class(i64 %n)
   %s = call i64 @rg_slot()
+  %abp = getelementptr inbounds [9 x i64], ptr @rg_alloc_bytes, i64 0, i64 %s
+  %abv = load i64, ptr %abp, align 8
+  %abn = add i64 %abv, %n
+  store i64 %abn, ptr %abp, align 8
   %so = mul i64 %s, 48
   %li = add i64 %so, %c
   %lp = getelementptr inbounds [432 x i64], ptr @rg_free_lists, i64 0, i64 %li

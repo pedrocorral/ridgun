@@ -1052,14 +1052,69 @@ pass:
 
 ; ── Regions ──────────────────────────────────────────────────
 
-; `with region q do` body: the runtime has one heap, so a region is the
-; body itself; exit gives the block's value.
+; `with region q do` body (FR-COMP-002): enter notes how many bytes this
+; thread has allocated; exit gives `Ok value` when the body allocated no more
+; than q bytes (q = 0: no limit) and `QuotaExceeded` (the value dropped) when it
+; did. The runtime has one heap, so nothing is released at exit; regions nest
+; up to 16 deep per thread.
+@rg_region_base = internal global [144 x i64] zeroinitializer
+@rg_region_depth = internal global [9 x i64] zeroinitializer
+@rg_nm_ok = private constant [2 x i8] c"Ok"
+@rg_nm_quota = private constant [13 x i8] c"QuotaExceeded"
+declare i64 @rg_slot()
+declare i64 @__rg_rt_make_adt(i64, i64, i64, i64)
+declare i64 @__rg_rt_load_adt0(i64, i64)
+@rg_alloc_bytes = external global [9 x i64]
+
 define i64 @__rg_rt_enter_region() {
+entry:
+  %s = call i64 @rg_slot()
+  %dp = getelementptr inbounds [9 x i64], ptr @rg_region_depth, i64 0, i64 %s
+  %d = load i64, ptr %dp, align 8
+  %room = icmp slt i64 %d, 16
+  br i1 %room, label %push, label %done
+push:
+  %ab = getelementptr inbounds [9 x i64], ptr @rg_alloc_bytes, i64 0, i64 %s
+  %av = load i64, ptr %ab, align 8
+  %so = mul i64 %s, 16
+  %i = add i64 %so, %d
+  %bp = getelementptr inbounds [144 x i64], ptr @rg_region_base, i64 0, i64 %i
+  store i64 %av, ptr %bp, align 8
+  br label %done
+done:
+  %d1 = add i64 %d, 1
+  store i64 %d1, ptr %dp, align 8
   ret i64 0
 }
 
 define i64 @__rg_rt_exit_region(i64 %quota, i64 %v) {
-  ret i64 %v
+entry:
+  %s = call i64 @rg_slot()
+  %dp = getelementptr inbounds [9 x i64], ptr @rg_region_depth, i64 0, i64 %s
+  %d0 = load i64, ptr %dp, align 8
+  %d = sub i64 %d0, 1
+  store i64 %d, ptr %dp, align 8
+  %ab = getelementptr inbounds [9 x i64], ptr @rg_alloc_bytes, i64 0, i64 %s
+  %av = load i64, ptr %ab, align 8
+  %so = mul i64 %s, 16
+  %i = add i64 %so, %d
+  %bp = getelementptr inbounds [144 x i64], ptr @rg_region_base, i64 0, i64 %i
+  %base = load i64, ptr %bp, align 8
+  %used = sub i64 %av, %base
+  %limited = icmp sgt i64 %quota, 0
+  %over = icmp sgt i64 %used, %quota
+  %fail = and i1 %limited, %over
+  br i1 %fail, label %exceeded, label %ok
+exceeded:
+  %dr = call i64 @__rg_rt_drop_val(i64 %v)
+  %q = call i64 @__rg_rt_load_adt0(i64 ptrtoint (ptr @rg_nm_quota to i64), i64 13)
+  ret i64 %q
+ok:
+  %vals = alloca [1 x i64], align 8
+  store i64 %v, ptr %vals, align 8
+  %va = ptrtoint ptr %vals to i64
+  %r = call i64 @__rg_rt_make_adt(i64 ptrtoint (ptr @rg_nm_ok to i64), i64 2, i64 %va, i64 1)
+  ret i64 %r
 }
 
 ; ── Builtins ─────────────────────────────────────────────────

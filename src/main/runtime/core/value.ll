@@ -887,6 +887,15 @@ which:
   %m1 = icmp eq i64 %i, -1
   br i1 %m1, label %len1, label %w2q
 len1:
+  ; the length of a List is what is left after its start (a tail shares the
+  ; vector of the list it came from); of a tensor, the length of its shape
+  %isl = call i1 @rg_has_tag(i64 %v, i64 2)
+  br i1 %isl, label %len1list, label %len1vec
+len1list:
+  %ln = call i64 @rg_list_len(i64 %v)
+  %lr = call i64 @rg_int(i64 %ln)
+  ret i64 %lr
+len1vec:
   %h1 = call i64 @rg_w1(i64 %v)
   %l1 = call i64 @rg_vlen(i64 %h1)
   %r1 = call i64 @rg_int(i64 %l1)

@@ -22,6 +22,22 @@ module asm "  ud2"
 ; entry(arg) on the stack that ends at stack_top and gives the thread id, or
 ; -errno. The thread ends when entry returns. clone flags: VM, FS, FILES,
 ; SIGHAND, THREAD, SYSVSEM.
+; The program runs on a stack of its own (1 GiB of address space, mapped
+; when used): the system's stack is 8 MiB, and a program that recurses 1 000 000
+; times without a tail call needs more. __rg_switch_stack(top, fn, arg) calls
+; fn(arg) with the stack pointer at top and comes back to the old stack.
+module asm ".globl __rg_switch_stack"
+module asm "__rg_switch_stack:"
+module asm "  mov %rsp, %rax"
+module asm "  and $-16, %rdi"
+module asm "  mov %rdi, %rsp"
+module asm "  sub $16, %rsp"
+module asm "  mov %rax, (%rsp)"
+module asm "  mov %rdx, %rdi"
+module asm "  call *%rsi"
+module asm "  mov (%rsp), %rsp"
+module asm "  ret"
+
 module asm ".globl __rg_clone_thread"
 module asm "__rg_clone_thread:"
 module asm "  and $-16, %rdx"
@@ -52,6 +68,7 @@ declare i64 @rg_ld(i64)
 declare void @rg_st(i64, i64)
 declare i64 @__rg_rt_start(i64, i64, i64, i64, i64)
 declare i64 @__rg_clone_thread(i64, i64, i64)
+declare i64 @__rg_switch_stack(i64, i64, i64)
 
 ; ── System calls ─────────────────────────────────────────────
 define internal i64 @rg_sys(i64 %nr, i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f) alwaysinline {
@@ -94,13 +111,28 @@ fail:
 ok:
   %end = add i64 %m, 67108864
   store i64 %end, ptr @rg_heap_end, align 8
+  %st = call i64 @rg_sys(i64 9, i64 0, i64 1073741824, i64 3, i64 16418, i64 -1, i64 0)
+  %stbad = icmp ult i64 %st, -4095
+  br i1 %stbad, label %onstack, label %direct
+onstack:
+  %top = add i64 %st, 1073741824
+  %r = call i64 @__rg_switch_stack(i64 %top, i64 ptrtoint (ptr @rg_run_program to i64), i64 %m)
+  call void @__rg_pal_exit(i64 0)
+  unreachable
+direct:
+  %r2 = call i64 @rg_run_program(i64 %m)
+  call void @__rg_pal_exit(i64 0)
+  unreachable
+}
+
+; Runs the program with its heap starting at `heap`.
+define i64 @rg_run_program(i64 %heap) {
   %main = call i64 @rg_ld(i64 4194432)
   %spawn = call i64 @rg_ld(i64 4194440)
   %call2 = call i64 @rg_ld(i64 4194448)
   %binop = call i64 @rg_ld(i64 4194456)
-  %r = call i64 @__rg_rt_start(i64 %m, i64 %main, i64 %spawn, i64 %call2, i64 %binop)
-  call void @__rg_pal_exit(i64 0)
-  unreachable
+  %r = call i64 @__rg_rt_start(i64 %heap, i64 %main, i64 %spawn, i64 %call2, i64 %binop)
+  ret i64 %r
 }
 
 ; ── Input, output, exit, memory ──────────────────────────────

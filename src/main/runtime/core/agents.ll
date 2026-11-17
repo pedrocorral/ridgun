@@ -120,8 +120,12 @@ get:
   %made = icmp ne i64 %c, 0
   br i1 %made, label %have, label %make
 make:
+  ; a channel named by an Int is a global agent's: the compiler's start-up
+  ; code (`build gagent chan instrs`) sends Int 0 to the channel it creates
+  ; for it, meaning "no sink yet", and flush and `with agent` read that first
   %c2 = call i64 @rg_chan_new()
   call void @rg_st(i64 %a, i64 %c2)
+  call void @rg_chan_put(i64 %c2, i64 1)
   ret i64 %c2
 have:
   ret i64 %c
@@ -298,6 +302,11 @@ declare void @rg_thread_release(i64)
 declare i64 @__rg_pal_futex_wait(i64, i64, i64)
 declare i64 @__rg_pal_futex_wake(i64, i64)
 
+; Jobs on worker threads that have not ended. A receive on an empty channel
+; waits while some other thread may still send, and only stops with the
+; deadlock message when nothing else can run.
+@rg_jobs_active = internal global i64 0
+
 @rg_w_state = internal global [9 x i32] zeroinitializer
 @rg_w_flag = internal global [9 x i32] zeroinitializer
 @rg_w_box = internal global [9 x i64] zeroinitializer
@@ -329,10 +338,12 @@ entry:
   br i1 %ok, label %wake, label %detached
 wake:
   %w = call i64 @__rg_pal_futex_wake(i64 %cell, i64 2147483647)
+  %o1 = atomicrmw sub ptr @rg_jobs_active, i64 1 release
   ret void
 detached:
   %d = call i64 @__rg_rt_drop_val(i64 %result)
   call void @rg_free(i64 %cell)
+  %o2 = atomicrmw sub ptr @rg_jobs_active, i64 1 release
   ret void
 }
 
@@ -413,6 +424,7 @@ cell:
   call void @rg_st(i64 %xa, i64 %x)
   %ra = add i64 %c, 24
   call void @rg_st(i64 %ra, i64 0)
+  %a0 = atomicrmw add ptr @rg_jobs_active, i64 1 acquire
   %posted = call i1 @rg_job_post(i64 %c)
   br i1 %posted, label %handle, label %start
 start:
@@ -420,6 +432,7 @@ start:
   %ok = icmp sgt i64 %t, 0
   br i1 %ok, label %handle, label %free
 free:
+  %a1 = atomicrmw sub ptr @rg_jobs_active, i64 1 release
   call void @rg_free(i64 %c)
   br label %inline
 handle:
@@ -656,6 +669,7 @@ out:
 @rg_chan_lock = internal global i32 0
 declare void @rg_lock(i64)
 declare void @rg_unlock(i64)
+declare void @__rg_pal_yield()
 
 define i64 @rg_builtin_agents(i64 %id, i64 %slots, i64 %n) {
 entry:
@@ -672,9 +686,17 @@ direct:
   ret i64 %rd
 locked:
   %la = ptrtoint ptr @rg_chan_lock to i64
+  br label %again
+again:
   call void @rg_lock(i64 %la)
   %rl = call i64 @rg_builtin_agents_run(i64 %id, i64 %slots, i64 %n)
   call void @rg_unlock(i64 %la)
+  %retry = icmp eq i64 %rl, -8
+  br i1 %retry, label %wait, label %out
+wait:
+  call void @__rg_pal_yield()
+  br label %again
+out:
   ret i64 %rl
 }
 
@@ -726,7 +748,20 @@ recv_take:
   ret i64 %v32
 recv_empty:
   %wait = icmp ne i64 %n, 0
-  br i1 %wait, label %deadlock, label %recv_none
+  br i1 %wait, label %recv_wait, label %recv_none
+recv_wait:
+  ; another thread may still send: ask the caller to try again (-8), or stop
+  ; when no other job runs
+  ; (a worker always waits: the main thread may still send; the main thread
+  ; waits while some job runs)
+  %act = load atomic i64, ptr @rg_jobs_active acquire, align 8
+  %rs = call i64 @rg_slot()
+  %onw = icmp ne i64 %rs, 0
+  %busy = icmp sgt i64 %act, 0
+  %more = or i1 %onw, %busy
+  br i1 %more, label %recv_retry, label %deadlock
+recv_retry:
+  ret i64 -8
 recv_none:
   ret i64 0
 deadlock:

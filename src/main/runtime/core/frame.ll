@@ -139,10 +139,30 @@ define i64 @__rg_rt_store_slot(i64 %slot, i64 %v) {
 }
 
 ; cmm_drop_slot (slot address): clear the slot and drop its value.
+; The counters of builtins 6 and 7 (`cmm cond spared`, `cmm cond freed`): a
+; static last-use drop of a value that another name still holds spares the
+; block; one that was the last holder frees it.
+@rg_cond_spared = external global i64
+@rg_cond_freed = external global i64
+declare i1 @rg_is_heap(i64)
+declare i64 @rg_rc(i64)
+declare void @rg_count_add(i64, i64)
+
 define i64 @__rg_rt_cmm_drop_slot(i64 %slot) {
+entry:
   %p = inttoptr i64 %slot to ptr
   %v = load i64, ptr %p, align 8
   store i64 0, ptr %p, align 8
+  %h = call i1 @rg_is_heap(i64 %v)
+  br i1 %h, label %count, label %drop
+count:
+  %rc = call i64 @rg_rc(i64 %v)
+  %shared = icmp sgt i64 %rc, 1
+  %ctr = select i1 %shared, ptr @rg_cond_spared, ptr @rg_cond_freed
+  %ca = ptrtoint ptr %ctr to i64
+  call void @rg_count_add(i64 %ca, i64 1)
+  br label %drop
+drop:
   %r = call i64 @__rg_rt_drop_val(i64 %v)
   ret i64 %r
 }
