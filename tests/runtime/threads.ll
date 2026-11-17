@@ -765,10 +765,29 @@ entry:
   store i64 %ch, ptr %ss, align 8
   %r3 = call i64 @__rg_rt_builtin(i64 98, i64 %ssa, i64 1)
   %none3 = icmp eq i64 %r3, 0
+  ; a reply this thread sends to itself (97) is found by its own address (98,
+  ; no fallback), the addressed-to-another one stays
+  store i64 43, ptr %ss, align 8
+  store i64 %ch, ptr %s1, align 8
+  %p4 = call i64 @__rg_rt_builtin(i64 97, i64 %ssa, i64 2)
+  store i64 %ch, ptr %ss, align 8
+  %r4 = call i64 @__rg_rt_builtin(i64 98, i64 %ssa, i64 0)
+  %got4 = icmp ne i64 %r4, 0
+  %pay4 = call i64 @__rg_rt_tuple_get(i64 %r4, i64 1)
+  %ok4 = icmp eq i64 %pay4, 43
+  ; builtin 96 gives this thread's address: odd (a tagged Int), not Int 1
+  %tid96 = call i64 @__rg_rt_builtin(i64 96, i64 %ssa, i64 0)
+  %odd96 = and i64 %tid96, 1
+  %is96 = icmp eq i64 %odd96, 1
+  %not1 = icmp ne i64 %tid96, 3
   %a = and i1 %none1, %got2
   %b = and i1 %a, %ok2
   %c = and i1 %b, %none3
-  ret i1 %c
+  %d = and i1 %c, %got4
+  %e = and i1 %d, %ok4
+  %f = and i1 %e, %is96
+  %g = and i1 %f, %not1
+  ret i1 %g
 }
 
 declare i64 @__rg_rt_make_tuple(i64, i64)

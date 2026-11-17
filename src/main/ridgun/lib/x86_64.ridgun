@@ -9,6 +9,8 @@
 -- ============================================================
 
 import elf64
+import x86rt
+import x86flat
 
 -- ── Low-Level x86_64 Instruction Encoders ────────────────────
 
@@ -41,6 +43,10 @@ fn :: x86 lea slot rsi Int  => [Int]
 
 fn :: x86 lea slot rdx Int  => [Int]
       x86 lea slot rdx slot =  [72, 141, 148, 36] :: (i32 le (slot * 8))
+
+-- A call of a fixed address through rax: the same bytes wherever the code sits.
+fn :: x86 call abs Int => [Int]
+      x86 call abs addr =  (x86 mov imm64 rax addr) :: [255, 208]
 
 fn :: x86 call rel Int          Int        => [Int]
       x86 call rel target_vaddr next_vaddr =  [232] :: (i32 le (target_vaddr - next_vaddr))
@@ -203,7 +209,7 @@ fn :: x8664 instr size RNativeInstr       => Int
         | idx <= -10 = 25
         | otherwise = 23
       x8664 instr size (NPackSeq _)       =  18
-      x8664 instr size NRealFromBits      =  96
+      x8664 instr size NRealFromBits      =  103
       x8664 instr size NRealToBits        =  115
       x8664 instr size (NIsList _)        =  34
       x8664 instr size (NIsGen _)         =  38
@@ -235,6 +241,8 @@ fn :: x8664 instr size RNativeInstr       => Int
       x8664 instr size NEnterRegion       =  5
       x8664 instr size (NExitRegion _)    =  18
       x8664 instr size (NCallFn _ _ _)    =  13
+      x8664 instr size (NCallBuiltin b_id _ _)
+        | b_id >= 10000 = 33
       x8664 instr size (NCallBuiltin 36 _ _) = 101
       x8664 instr size (NCallBuiltin 88 _ _) = 303
       x8664 instr size (NCallBuiltin 86 _ _) = 63
@@ -258,7 +266,9 @@ fn :: x8664 instr size RNativeInstr       => Int
       x8664 instr size (NCallBuiltin 57 _ _) = 18 + (x86 builtin size 57)
       x8664 instr size (NCallBuiltin 58 _ _) = 8 + (x86 builtin size 58)
       x8664 instr size (NCallBuiltin 59 _ _) = 8 + (x86 builtin size 59)
-      x8664 instr size (NCallBuiltin _ _ _) = 33
+      x8664 instr size (NCallBuiltin b_id _ _)
+        | b_id >= 70 = 40
+        | otherwise = 33
       x8664 instr size (NCallIndirect1 _ _) = 21
       x8664 instr size (NCallIndirect2 _ _) = 21
       x8664 instr size (NTailCall _ _)    =  43
@@ -384,7 +394,7 @@ fn :: x8664 encode instr RNativeInstr Int Int Int Int [RLabelEntry] [RLabelEntry
       -- FR-COMP-020: a Real in acc becomes the Int with the same 64 bits (tensor literals).
       x8664 encode instr NRealToBits _ _ _ _ _ _ =  x86 real to int bits
       x8664 encode instr NRealFromBits cur_vaddr _ _ _ _ _ =
-        [72, 131, 236, 32, 168, 1, 116, 5, 72, 209, 248, 235, 49, 72, 133, 192, 116, 44, 168, 7, 117, 70, 72, 139, 8, 72, 186, 0, 0, 0, 0, 0, 0, 0, 128, 72, 57, 209, 117, 52, 72, 139, 72, 8, 72, 137, 76, 36, 24, 72, 137, 199] :: (x86 call rt 6 (cur_vaddr + 57)) :: [72, 139, 68, 36, 24, 72, 137, 68, 36, 8, 72, 199, 4, 36, 0, 0, 0, 0, 72, 199, 68, 36, 16, 0, 0, 0, 0, 72, 137, 231] :: (x86 call rel 4209847 (cur_vaddr + 92)) :: [72, 131, 196, 32]
+        [72, 131, 236, 32, 168, 1, 116, 5, 72, 209, 248, 235, 49, 72, 133, 192, 116, 44, 168, 7, 117, 70, 72, 139, 8, 72, 186, 0, 0, 0, 0, 0, 0, 0, 128, 72, 57, 209, 117, 52, 72, 139, 72, 8, 72, 137, 76, 36, 24, 72, 137, 199] :: (x86 call rt 6 (cur_vaddr + 57)) :: [72, 139, 68, 36, 24, 72, 137, 68, 36, 8, 72, 199, 4, 36, 0, 0, 0, 0, 72, 199, 68, 36, 16, 0, 0, 0, 0, 72, 137, 231] :: (x86 call abs 4209847) :: [72, 131, 196, 32]
       -- FR-COMP-020: acc = True (6) when slot holds a List RVal (tag 2), else False (2).
       x8664 encode instr (NIsList slot) _ _ _ _ _ _ =
         [72, 139, 132, 36] :: (i32 le (slot * 8)) :: [72, 133, 192, 116, 16, 168, 7, 117, 12, 131, 56, 2, 117, 7, 184, 6, 0, 0, 0, 235, 5, 184, 2, 0, 0, 0]
@@ -454,6 +464,10 @@ fn :: x8664 encode instr RNativeInstr Int Int Int Int [RLabelEntry] [RLabelEntry
       x8664 encode instr (NCallFn fid start_slot _) cur_vaddr _ _ _ _ fn_table =
         target_fn = lookup label offset fn_table fid
         (x86 lea slot rdi start_slot) :: (x86 call rel target_fn (cur_vaddr + 13))
+      -- A builtin the Linux emitter marked (id + 10000): the runtime's own entry.
+      x8664 encode instr (NCallBuiltin b_id start_slot count) cur_vaddr _ _ _ _ _
+        | b_id >= 10000 =
+          (x86 mov imm64 rdi (b_id - 10000)) :: (x86 lea slot rsi start_slot) :: (x86 mov imm64 rdx count) :: (x86 call rt 55 (cur_vaddr + 33))
       x8664 encode instr (NCallBuiltin 36 start_slot count) cur_vaddr _ _ _ _ _ =
         x86 sha256 raw call start_slot count cur_vaddr
       x8664 encode instr (NCallBuiltin 89 start_slot _) cur_vaddr _ _ _ _ _ =
@@ -492,9 +506,9 @@ fn :: x8664 encode instr RNativeInstr Int Int Int Int [RLabelEntry] [RLabelEntry
         | b_id >= 90 and b_id <= 99 =
           (x86 lea slot rdi start_slot) :: (x86 builtin bytes b_id)
         | b_id >= 100 =
-          (x86 mov imm64 rdi b_id) :: (x86 lea slot rsi start_slot) :: (x86 mov imm64 rdx count) :: (x86 call rel (x86 rt ext addr) (cur_vaddr + 33))
+          (x86 mov imm64 rdi b_id) :: (x86 lea slot rsi start_slot) :: (x86 mov imm64 rdx count) :: (x86 call abs (x86 rt ext addr))
         | b_id >= 70 =
-          (x86 mov imm64 rdi b_id) :: (x86 lea slot rsi start_slot) :: (x86 mov imm64 rdx count) :: (x86 call rel 4286080 (cur_vaddr + 33))
+          (x86 mov imm64 rdi b_id) :: (x86 lea slot rsi start_slot) :: (x86 mov imm64 rdx count) :: (x86 call abs 4286080)
         | otherwise =
           (x86 mov imm64 rdi b_id) :: (x86 lea slot rsi start_slot) :: (x86 mov imm64 rdx count) :: (x86 call rt 55 (cur_vaddr + 33))
       x8664 encode instr (NCallIndirect1 fn_slot arg_slot) cur_vaddr _ _ _ _ _ =
@@ -1152,16 +1166,109 @@ fn :: build x8664 rt base => [Int]
 
 -- ── Public x86_64 ELF64 Image Builder ────────────────────────
 
+-- The runtime of an image: the old blob, or (the default) the IR runtime
+-- (ADR-0013). RIDGUN_RUNTIME=old brings the blob back. Only the Linux ELF
+-- emitter asks; the Windows and macOS emitters keep the blob.
+fn :: use ir runtime => Bool
+      use ir runtime =  (sys getenv "RIDGUN_RUNTIME") != "old"
+
+-- The IR runtime as the image's first region: the jump table of 56 slots
+-- (slot 0 enters `_start`), then the runtime linked at `x86 flat base`,
+-- padded to 16 bytes.
+fn :: build x8664 ir image => [Int]
+      build x8664 ir image =
+        jt = x86 ir jump table 0 []
+        body = x86 flat bytes
+        used = (list len jt) + (list len body)
+        jt :: body :: (zero bytes ((16 - (used % 16)) % 16))
+
+fn :: x86 ir jump table Int [Int] => [Int]
+      x86 ir jump table idx acc
+        | idx >= 56 = acc
+        | otherwise = x86 ir jump table (idx + 1) (acc :: (x86 ir slot entry idx))
+
+fn :: x86 ir slot entry Int => [Int]
+      x86 ir slot entry idx
+        | idx == 0 = (x86 jmp rel (x86 flat start) 4198405) :: [15, 31, 0]
+        | otherwise = (x86 jmp rel (x86 flat slot target idx) (4198400 + (idx * 8) + 5)) :: [15, 31, 0]
+
+-- With the IR runtime these builtins go through the runtime's own entry (it
+-- takes the channel lock, starts the jobs and keeps the tagged replies): the
+-- instruction is marked (id + 10000) and the encoder emits the generic call.
+fn :: x86 mark ir builtin RNativeInstr => RNativeInstr
+      x86 mark ir builtin (NCallBuiltin 57 slot _) =  NCallBuiltin 10057 slot 2
+      x86 mark ir builtin (NCallBuiltin b_id slot count)
+        | x86 ir builtin id b_id = NCallBuiltin (b_id + 10000) slot count
+        | otherwise = NCallBuiltin b_id slot count
+      x86 mark ir builtin ins =  ins
+
+fn :: x86 ir builtin id Int => Bool
+      x86 ir builtin id 1  =  True
+      x86 ir builtin id 32 =  True
+      x86 ir builtin id 33 =  True
+      x86 ir builtin id 50 =  True
+      x86 ir builtin id 58 =  True
+      x86 ir builtin id 59 =  True
+      x86 ir builtin id 96 =  True
+      x86 ir builtin id 97 =  True
+      x86 ir builtin id 98 =  True
+      x86 ir builtin id 99 =  True
+      x86 ir builtin id _  =  False
+
+fn :: x86 mark ir instrs [RNativeInstr] [RNativeInstr] => [RNativeInstr]
+      x86 mark ir instrs [] acc = acc
+      x86 mark ir instrs (i:is) acc =  x86 mark ir instrs is (acc :: [x86 mark ir builtin i])
+
+fn :: x86 mark ir fns [RNativeFn] [RNativeFn] => [RNativeFn]
+      x86 mark ir fns [] acc = acc
+      x86 mark ir fns ((NativeFn fid name arity nslots instrs):fs) acc =
+        x86 mark ir fns fs (acc :: [NativeFn fid name arity nslots (x86 mark ir instrs instrs [])])
+
+-- Hand-assembled routines of this file call the old blob by address
+-- (`mov rax, <address>` then `call rax` or `jmp rax`). In an IR image each
+-- address becomes the address of the IR function that does the same.
+-- Transitional (TASK-0096): each routine is replaced by a call of an IR helper,
+-- then this goes.
+fn :: x86 reloc code [Int] [Int] => [Int]
+      x86 reloc code [] acc = acc
+      x86 reloc code (72:184:a:b:c:0:0:0:0:0:255:opc:rest) acc
+        | (opc == 208) or (opc == 224) =
+          x86 reloc code rest (acc :: ([72, 184] :: (u64 le (x86 reloc addr (a + (b * 256) + (c * 65536)))) :: [255, opc]))
+        | otherwise = x86 reloc code (184:a:b:c:0:0:0:0:0:255:opc:rest) (acc :: [72])
+      x86 reloc code (x:rest) acc =  x86 reloc code rest (acc :: [x])
+
+-- The address of the IR function that replaces the old one at `old`.
+fn :: x86 reloc addr Int => Int
+      x86 reloc addr 4205566 =  x86 flat symbol 1
+      x86 reloc addr 4208821 =  x86 flat symbol 2
+      x86 reloc addr 4209847 =  x86 flat symbol 3
+      x86 reloc addr 4212364 =  x86 flat symbol 4
+      x86 reloc addr 4212489 =  x86 flat symbol 5
+      x86 reloc addr 4200437 =  x86 flat symbol 6
+      x86 reloc addr 4286080 =  x86 flat symbol 7
+      x86 reloc addr 4289168 =  x86 flat symbol 8
+      x86 reloc addr old     =  x86 reloc slot addr old 1
+
+fn :: x86 reloc slot addr Int Int => Int
+      x86 reloc slot addr old n
+        | n > 55 = old
+        | (x86 rt slot target n) == old = x86 flat slot target n
+        | otherwise = x86 reloc slot addr old (n + 1)
+
 fn :: emit x8664 elf kind Int RNativeProg => [Int]
-      emit x8664 elf kind e_type (NativeProg main_fid spawn_fid call2_fid binop_fid fns rodata_str) =
-        rt_bytes = build x8664 rt kernel
+      emit x8664 elf kind e_type nprog =  emit x8664 elf with runtime (use ir runtime) e_type nprog
+
+fn :: emit x8664 elf with runtime Bool Int RNativeProg => [Int]
+      emit x8664 elf with runtime ir e_type (NativeProg main_fid spawn_fid call2_fid binop_fid fns0 rodata_str) =
+        fns = x86 pick fns ir fns0
+        rt_bytes = x86 pick image ir
         rt_len = list len rt_bytes
         region2_vaddr = 4198400 + rt_len
         sr = x8664 scan fns fns region2_vaddr []
         rodata_vaddr = x86 rodata vaddr (scan offset sr)
         fn_table = scan labels sr
         code_len = rodata_vaddr - region2_vaddr
-        code_bytes = x86 code with lock (x8664 encode fns fns rodata_vaddr fn_table [])
+        code_bytes = x86 pick code ir (x86 code with lock (x8664 encode fns fns rodata_vaddr fn_table []))
         main_vaddr = lookup label offset fn_table main_fid
         spawn_vaddr = lookup label offset fn_table spawn_fid
         call2_vaddr = lookup label offset fn_table call2_fid
@@ -1256,3 +1363,15 @@ fn :: x86 builtin bytes Int => [Int]
       x86 builtin bytes 58 =  [83, 72, 137, 251, 72, 139, 59, 190, 2, 0, 0, 0, 72, 184, 178, 87, 64, 0, 0, 0, 0, 0, 255, 208, 72, 133, 192, 116, 22, 72, 137, 223, 72, 184, 245, 23, 64, 0, 0, 0, 0, 0, 255, 208, 184, 6, 0, 0, 0, 235, 25, 191, 58, 0, 0, 0, 72, 137, 222, 186, 1, 0, 0, 0, 72, 184, 75, 183, 64, 0, 0, 0, 0, 0, 255, 208, 91]
       x86 builtin bytes 59 =  [83, 65, 84, 72, 131, 236, 8, 72, 137, 251, 72, 139, 59, 190, 2, 0, 0, 0, 72, 184, 178, 87, 64, 0, 0, 0, 0, 0, 255, 208, 72, 133, 192, 116, 43, 72, 139, 59, 190, 1, 0, 0, 0, 72, 184, 249, 87, 64, 0, 0, 0, 0, 0, 255, 208, 73, 137, 196, 72, 137, 223, 72, 184, 245, 23, 64, 0, 0, 0, 0, 0, 255, 208, 76, 137, 224, 235, 25, 191, 59, 0, 0, 0, 72, 137, 222, 186, 1, 0, 0, 0, 72, 184, 75, 183, 64, 0, 0, 0, 0, 0, 255, 208, 72, 131, 196, 8, 65, 92, 91]
       x86 builtin bytes _ = []
+
+fn :: x86 pick fns Bool [RNativeFn] => [RNativeFn]
+      x86 pick fns True  fns =  x86 mark ir fns fns []
+      x86 pick fns False fns =  fns
+
+fn :: x86 pick image Bool => [Int]
+      x86 pick image True  =  build x8664 ir image
+      x86 pick image False =  build x8664 rt kernel
+
+fn :: x86 pick code Bool [Int] => [Int]
+      x86 pick code True  code =  x86 reloc code code []
+      x86 pick code False code =  code

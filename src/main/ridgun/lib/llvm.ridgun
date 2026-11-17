@@ -725,9 +725,6 @@ fn :: has host llvm toolchain => Bool
 -- 0x400080, code from 0x401000). Four agents on the Vonkeep benchmark run
 -- 4.6 times faster than on the old blob. Shared libraries and the other
 -- targets still use the blob.
-fn :: use ir runtime => Bool
-      use ir runtime =  (sys getenv "RIDGUN_RUNTIME") != "old"
-
 fn :: ir runtime linker script => String
       ir runtime linker script =
         "ENTRY(_start)\nPHDRS {{\n  all PT_LOAD FILEHDR PHDRS FLAGS(7);\n}}\nSECTIONS {{\n  . = 0x400080;\n  .rg_page0 : {{ KEEP(*(.rg_page0)) }} :all\n  . = 0x401000;\n  .text : ALIGN(16) {{ *(.text .text.*) }} :all\n  .rodata : ALIGN(16) {{ *(.rodata .rodata.*) }} :all\n  .data : ALIGN(16) {{ *(.data .data.*) }} :all\n  .bss : ALIGN(16) {{ *(.bss .bss.* COMMON) }} :all\n  /DISCARD/ : {{ *(.note*) *(.eh_frame*) *(.comment*) }}\n}}\n"

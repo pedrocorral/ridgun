@@ -864,8 +864,19 @@ fin:
 
 ; ── Tagged replies ───────────────────────────────────────────
 
+; The address of a reply for this thread: its system thread id as a tagged
+; Int. A reply put by `ask` carries it, and only that thread takes it (an item
+; whose tag is Int 3 is a plain reply that any thread may take).
+define internal i64 @rg_my_tid() {
+entry:
+  %t = call i64 @__rg_pal_thread_id()
+  %s = shl i64 %t, 1
+  %o = or i64 %s, 1
+  ret i64 %o
+}
+
 ; The index of the first waiting item of c that is a pair tagged with this
-; thread (Int 1), or -1.
+; thread, or -1.
 define internal i64 @rg_find_mine(i64 %c) {
 entry:
   %n = call i64 @rg_chan_count(i64 %c)
@@ -887,7 +898,8 @@ body:
   br i1 %t, label %tid, label %next
 tid:
   %x = call i64 @__rg_rt_tuple_get(i64 %v, i64 0)
-  %mine = icmp eq i64 %x, 3
+  %me = call i64 @rg_my_tid()
+  %mine = icmp eq i64 %x, %me
   br i1 %mine, label %found, label %next
 found:
   ret i64 %i
@@ -981,7 +993,8 @@ fbody:
   br i1 %t, label %ftid, label %fnext
 ftid:
   %x = call i64 @__rg_rt_tuple_get(i64 %v, i64 0)
-  %mine = icmp eq i64 %x, 3
+  %me = call i64 @rg_my_tid()
+  %mine = icmp eq i64 %x, %me
   br i1 %mine, label %pick, label %fnext
 fnext:
   %i1 = add i64 %i, 1
@@ -1105,6 +1118,7 @@ none:
 declare void @rg_lock(i64)
 declare void @rg_unlock(i64)
 declare void @__rg_pal_yield()
+declare i64 @__rg_pal_thread_id()
 
 define i64 @rg_builtin_agents(i64 %id, i64 %slots, i64 %n) {
 entry:
@@ -1259,13 +1273,15 @@ await_get:
 await_self:
   ret i64 %j59
 tid:
-  ret i64 3
+  %mytid = call i64 @rg_my_tid()
+  ret i64 %mytid
 sendtag:
   ; like 50: the value is taken, the channel stays with the caller
   %v97 = call i64 @rg_arg(i64 %slots, i64 0)
   %s97 = add i64 %slots, 8
   %ch97 = call i64 @rg_ld(i64 %s97)
-  %p97 = call i64 @rg_pair(i64 3, i64 %v97)
+  %me97 = call i64 @rg_my_tid()
+  %p97 = call i64 @rg_pair(i64 %me97, i64 %v97)
   %c97 = call i64 @rg_chan_of(i64 %ch97)
   %ok97 = icmp ne i64 %c97, 0
   br i1 %ok97, label %sendtag_put, label %sendtag_drop
