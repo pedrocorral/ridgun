@@ -59,3 +59,12 @@ Add a function to `tests/segments/run.sh` with a name, a limit and a command. Th
 - `runtime-threads` fails on `Tn`: the piece named in the header of `tests/runtime/threads.ll` is wrong (T1 counts, T2 mutex, T3 slots, T4 allocator, T6 channels, T7 jobs, T8 timeout).
 - `runtime-scaling` fails: threads are slowed by something they share. Look for per-thread data that sit on one cache line, or a lock on a hot path (this is how the allocator regression of 2026-11-17 showed: four agents used five times the CPU).
 - `cases-<group>` fails: read the case, then bisect inside the group.
+
+## The groups of cases, with their logs
+`sh tests/run-groups.sh` runs the folders of `tests/cases` one by one (all of them, or the ones named) and prints one line per group. It keeps the whole log of each group in a folder (`LOGS=dir`, or a new folder in `/tmp` whose path it prints) and, for a group that fails, shows every `FAIL` line with the reason under it.
+
+Two rules that come from 2026-11-17, when three failures were seen once each and only the names of the cases had been kept:
+1. **A run always leaves its whole output on disk.** Never cut the output of a suite to a count or to its first lines: a failure that happens once must leave its reason behind.
+2. **Do not run the cases under `nice`.** Some cases have a limit of wall time and are heavy on CPU (the pure x86-64 encoder spends 7.8 s of CPU on `agents/agent_replies_mixed_send_receive`); on a loaded machine a low priority makes them pass the limit.
+
+What those failures were: `tests/run_case.sh` read `/proc/<pid>/status` with a `read` loop that it left early, and under load the rest of that file came out of the next `read`, so the script ended with status 1 on a case that had passed (11 of 200 runs with 16 busy processes; none of 300 after the fix).

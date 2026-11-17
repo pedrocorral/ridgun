@@ -4,6 +4,8 @@ This page states the contract between compiled Ridgun code and the Ridgun runtim
 
 The page uses only readable sources: Ridgun source, comments, LLVM IR text in `llvm.ridgun`, and the docs. No machine code was decoded. Every fact has a source as `file:line`. **UNKNOWN** marks a fact that the sources do not decide; the text says what is missing. **CONFLICT** marks two sources that disagree.
 
+> **2026-11-17 (1.0.28).** The helpers this page cites as `llvm.ridgun:<line>` no longer live in `llvm.ridgun`: they are IR files of the runtime, `src/main/runtime/abi/inline.ll` (the inline ones) and `src/main/runtime/abi/helpers.ll` (the others), under the same function names. Find a helper there by its name; the line numbers into `llvm.ridgun` on this page are of the version before that change. The channel, job and reply helpers (`__rg_builtin_chan_*`, `__rg_builtin_job_*`, `__rg_builtin_gettid`, `__rg_builtin_list_extract_tid`) are gone: builtins 1, 32, 33, 50, 57 to 59 and 96 to 99 of the IR runtime do that work (`src/main/runtime/core/agents.ll`).
+
 ## 0. Sources and short names
 
 | Short name | Path |
