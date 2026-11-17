@@ -1460,6 +1460,12 @@ fn :: builtin call id String             => Int
       builtin call id "net_local_port" = 133
       builtin call id "net_peer_ip" = 134
       builtin call id "net_resolve" = 135
+      -- FR-COMP-027: conversions between Int and Real
+      builtin call id "int_to_real" = 136
+      builtin call id "real_to_int" = 137
+      builtin call id "real_round" = 138
+      builtin call id "real_floor" = 139
+      builtin call id "real_ceil" = 140
       builtin call id "sys_getpid"       =  70
       builtin call id "sys_time_ms"      =  102
       builtin call id "sys_time_ns"      =  100

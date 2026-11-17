@@ -749,7 +749,12 @@ entry:
                                 i64 102, label %ms
                                 i64 122, label %rmfile
                                 i64 123, label %rmdir
-                                i64 124, label %rename ]
+                                i64 124, label %rename
+                                i64 136, label %i2r
+                                i64 137, label %r2i
+                                i64 138, label %rround
+                                i64 139, label %rfloor
+                                i64 140, label %rceil ]
 next:
   %r = call i64 @rg_builtin_agents(i64 %id, i64 %slots, i64 %n)
   ret i64 %r
@@ -927,6 +932,26 @@ rmdir:
   %d123 = call i64 @__rg_rt_drop_val(i64 %p123)
   %r123 = call i64 @rg_int(i64 %c123)
   ret i64 %r123
+i2r:
+  ; 136 `int to real`: the Real nearest to the Int
+  %v136 = call i64 @rg_arg(i64 %slots, i64 0)
+  %n136 = call i64 @rg_int_of(i64 %v136)
+  %d136 = call i64 @__rg_rt_drop_val(i64 %v136)
+  %f136 = sitofp i64 %n136 to double
+  %r136 = call i64 @rg_real(double %f136)
+  ret i64 %r136
+r2i:
+  %r137 = call i64 @rg_real_to_int(i64 %slots, i64 0)
+  ret i64 %r137
+rround:
+  %r138 = call i64 @rg_real_to_int(i64 %slots, i64 1)
+  ret i64 %r138
+rfloor:
+  %r139 = call i64 @rg_real_to_int(i64 %slots, i64 2)
+  ret i64 %r139
+rceil:
+  %r140 = call i64 @rg_real_to_int(i64 %slots, i64 3)
+  ret i64 %r140
 rename:
   %p124 = call i64 @rg_sarg(i64 %slots, i64 0)
   %q124 = call i64 @rg_sarg(i64 %slots, i64 1)
@@ -1155,4 +1180,53 @@ fin:
   call void @rg_free(i64 %keep)
   %da = call i64 @__rg_rt_drop_val(i64 %all)
   ret i64 %blk
+}
+
+; ── Real to Int (FR-COMP-027) ────────────────────────────────
+; Builtins 137 to 140: the Real in slot 0 as an Int. mode 0 drops the
+; fraction, 1 rounds to the nearest (a half goes away from zero), 2 is floor,
+; 3 is ceil. Total: out of range gives the nearest end of the Int range, a
+; value that is not a number gives 0. Above 2^53 every Real is whole, so the
+; fraction is only looked at below that.
+declare i64 @rg_real(double)
+declare double @rg_real_of(i64)
+declare i64 @llvm.fptosi.sat.i64.f64(double)
+declare double @llvm.fabs.f64(double)
+
+define internal i64 @rg_real_to_int(i64 %slots, i64 %mode) {
+entry:
+  %v = call i64 @rg_arg(i64 %slots, i64 0)
+  %x = call double @rg_real_of(i64 %v)
+  %d = call i64 @__rg_rt_drop_val(i64 %v)
+  %t = call i64 @llvm.fptosi.sat.i64.f64(double %x)
+  %tf = sitofp i64 %t to double
+  %ax = call double @llvm.fabs.f64(double %x)
+  %small = fcmp olt double %ax, 9007199254740992.0
+  %diff = fsub double %x, %tf
+  switch i64 %mode, label %done [ i64 1, label %round
+                                  i64 2, label %floor
+                                  i64 3, label %ceil ]
+round:
+  %up = fcmp oge double %diff, 0.5
+  %dn = fcmp ole double %diff, -0.5
+  %r1 = select i1 %up, i64 1, i64 0
+  %r2 = select i1 %dn, i64 -1, i64 %r1
+  br label %adj
+floor:
+  %neg = fcmp olt double %diff, 0.0
+  %f1 = select i1 %neg, i64 -1, i64 0
+  br label %adj
+ceil:
+  %pos = fcmp ogt double %diff, 0.0
+  %c1 = select i1 %pos, i64 1, i64 0
+  br label %adj
+adj:
+  %delta = phi i64 [ %r2, %round ], [ %f1, %floor ], [ %c1, %ceil ]
+  %use = select i1 %small, i64 %delta, i64 0
+  %t2 = add i64 %t, %use
+  br label %done
+done:
+  %res = phi i64 [ %t, %entry ], [ %t2, %adj ]
+  %r = call i64 @rg_box_int(i64 %res)
+  ret i64 %r
 }

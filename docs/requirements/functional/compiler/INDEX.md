@@ -28,3 +28,4 @@
 | `FR-COMP-024-the-prelude.md` | Generic list and string helpers (`list reverse`, `list take`, `str join`…) every program calls without `import`, at the lowest lookup priority | Adding or changing a prelude helper, or module name lookup |
 | `FR-COMP-025-opaque-types.md` | `opaque type`: other modules name, hold and compare the type's values, but cannot build, match, read or update them | Adding or changing type declarations, module visibility or constructor resolution |
 | `FR-COMP-026-webassembly-target.md` | `--target wasm32`: `ridgunc` writes a WebAssembly module itself, runtime included; system calls are imports (ADR-0011) | Working on the wasm backend, the module writer or the playground |
+| `FR-COMP-027-conversions-between-int-and-real.md` | `int to real`, `real to int`, `real round`, `real floor`, `real ceil`: explicit, total conversions (builtins 136-140 of the IR runtime) | Converting numbers, adding a numeric builtin |

@@ -1,0 +1,8 @@
+-- @tests TS-COMP-027
+-- case: an Int where a Real is asked is a type error; there is no implicit conversion
+-- source: FR-COMP-027 AC-6
+-- expect-build-error: function 'real_to_int' arg #0 has type Int, expected Real
+
+fn :: main => ()
+      main =
+        echo (int to str (real to int 3))

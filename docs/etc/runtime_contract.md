@@ -614,3 +614,6 @@ The slow path is rt 37 (`llvm.ridgun:107`). The x86 comments list: Int fast path
 10. cmm counter rules: what counts as a tracked block, when each counter changes.
 11. The einsum spec grammar, the `seq_select` mask grammar, the hadamard broadcast rules, and the register arguments of rt 38/39.
 12. The meaning of the inline `NMatchAdt` arities -1..-5, and the runtime action on a pattern match failure.
+
+## Conversions between Int and Real (FR-COMP-027)
+Builtins 136 to 140 of the IR runtime (`core/system.ll`): 136 `int_to_real` (`Int => Real`), 137 `real_to_int` (toward zero), 138 `real_round` (a half goes away from zero), 139 `real_floor`, 140 `real_ceil` (`Real => Int`). The four that give an Int saturate at the ends of the Int range and give 0 for a value that is not a number. The old runtime blob (Windows, macOS) does not have them.

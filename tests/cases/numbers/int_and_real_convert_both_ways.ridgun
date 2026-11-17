@@ -1,0 +1,36 @@
+-- @tests TS-COMP-027
+-- case: int to real, real to int, real round, real floor and real ceil convert as FR-COMP-027 says; out of range saturates
+-- source: FR-COMP-027 AC-1 to AC-5
+-- expect-output:
+--   7.0 -3.0
+--   2 -2
+--   3 -3 2
+--   -3 3 4 -4
+--   9223372036854775807 -9223372036854775808
+--   10
+
+fn :: half Int => Real
+      half n =  (int to real n) / 2.0
+
+fn :: main => ()
+      main =
+        a = int to real 7
+        b = int to real (0 - 3)
+        echo "{a} {b}"
+        c = real to int 2.9
+        d = real to int (0.0 - 2.9)
+        echo "{c} {d}"
+        e = real round 2.5
+        f = real round (0.0 - 2.5)
+        g = real round 2.4
+        echo "{e} {f} {g}"
+        h = real floor (0.0 - 2.1)
+        i = real ceil 2.1
+        j = real floor 4.0
+        k = real ceil (0.0 - 4.0)
+        echo "{h} {i} {j} {k}"
+        big = 1000000000000000.0 * 1000000000000000.0
+        m = real to int big
+        n = real to int (0.0 - big)
+        echo "{m} {n}"
+        echo (int to str (real round ((half 7) * 3.0 - 0.5)))
