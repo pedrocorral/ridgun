@@ -898,16 +898,52 @@ none:
   ret i64 -1
 }
 
+; The index of the first waiting item of c that is not addressed to a thread:
+; a value that is not a pair, or a pair whose tag is Int 3 (the plain reply of
+; `send`), or -1. A thread never takes a reply addressed to another thread
+; (Vonkeep request 3: answers reached the wrong caller).
+define internal i64 @rg_find_plain(i64 %c) {
+entry:
+  %n = call i64 @rg_chan_count(i64 %c)
+  %h = call i64 @rg_w1(i64 %c)
+  %d = call i64 @rg_vdata(i64 %h)
+  %head = call i64 @rg_w2(i64 %c)
+  br label %loop
+loop:
+  %i = phi i64 [ 0, %entry ], [ %i1, %next ]
+  %more = icmp slt i64 %i, %n
+  br i1 %more, label %body, label %none
+body:
+  %k = add i64 %head, %i
+  %off = shl i64 %k, 3
+  %a = add i64 %d, %off
+  %v = call i64 @rg_ld(i64 %a)
+  %ist = call i64 @__rg_rt_match_tuple(i64 %v, i64 2)
+  %t = icmp ne i64 %ist, 0
+  br i1 %t, label %tag, label %found
+tag:
+  %x = call i64 @__rg_rt_tuple_get(i64 %v, i64 0)
+  %plain = icmp eq i64 %x, 7
+  br i1 %plain, label %found, label %next
+found:
+  ret i64 %i
+next:
+  %i1 = add i64 %i, 1
+  br label %loop
+none:
+  ret i64 -1
+}
+
 ; 98: (3, value) for this thread's reply, or 0.
 define internal i64 @rg_recv_mine(i64 %c, i1 %fallback) {
 entry:
   %i0 = call i64 @rg_find_mine(i64 %c)
   %none = icmp slt i64 %i0, 0
-  %n = call i64 @rg_chan_count(i64 %c)
-  %any = icmp sgt i64 %n, 0
+  %ip = call i64 @rg_find_plain(i64 %c)
+  %anyp = icmp sge i64 %ip, 0
   %usefb = and i1 %none, %fallback
-  %fb = and i1 %usefb, %any
-  %i = select i1 %fb, i64 0, i64 %i0
+  %fb = and i1 %usefb, %anyp
+  %i = select i1 %fb, i64 %ip, i64 %i0
   %got = icmp sge i64 %i, 0
   br i1 %got, label %take, label %nothing
 nothing:
@@ -1225,32 +1261,31 @@ await_self:
 tid:
   ret i64 3
 sendtag:
+  ; like 50: the value is taken, the channel stays with the caller
   %v97 = call i64 @rg_arg(i64 %slots, i64 0)
-  %ch97 = call i64 @rg_arg(i64 %slots, i64 1)
+  %s97 = add i64 %slots, 8
+  %ch97 = call i64 @rg_ld(i64 %s97)
   %p97 = call i64 @rg_pair(i64 3, i64 %v97)
   %c97 = call i64 @rg_chan_of(i64 %ch97)
   %ok97 = icmp ne i64 %c97, 0
   br i1 %ok97, label %sendtag_put, label %sendtag_drop
 sendtag_put:
   call void @rg_chan_put(i64 %c97, i64 %p97)
-  %d97 = call i64 @__rg_rt_drop_val(i64 %ch97)
   ret i64 0
 sendtag_drop:
   %e97 = call i64 @__rg_rt_drop_val(i64 %p97)
-  %f97 = call i64 @__rg_rt_drop_val(i64 %ch97)
   ret i64 0
 recvtag:
-  %ch98 = call i64 @rg_arg(i64 %slots, i64 0)
+  ; like 33: the channel stays with the caller
+  %ch98 = call i64 @rg_ld(i64 %slots)
   %c98 = call i64 @rg_chan_of(i64 %ch98)
   %ok98 = icmp ne i64 %c98, 0
   br i1 %ok98, label %recvtag_do, label %recvtag_none
 recvtag_do:
   %fb = icmp ne i64 %n, 0
   %r98 = call i64 @rg_recv_mine(i64 %c98, i1 %fb)
-  %d98 = call i64 @__rg_rt_drop_val(i64 %ch98)
   ret i64 %r98
 recvtag_none:
-  %e98 = call i64 @__rg_rt_drop_val(i64 %ch98)
   ret i64 0
 takejob:
   %xs99 = call i64 @rg_arg(i64 %slots, i64 0)

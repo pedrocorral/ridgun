@@ -722,6 +722,58 @@ entry:
   ret i1 %c
 }
 
+; ── T9 ──────────────────────────────────────────────────────
+; Builtin 98 (receive this thread's reply, with the fallback): an item addressed
+; to another thread (a pair whose tag is neither this thread's nor Int 3) is
+; never taken; a plain reply (tag Int 3) and a value that is not a pair are
+; (Vonkeep request 3: answers reached the wrong caller).
+define internal i1 @t9() {
+entry:
+  %cs = alloca [2 x i64], align 8
+  %csa = ptrtoint ptr %cs to i64
+  %ss = alloca [2 x i64], align 8
+  %ssa = ptrtoint ptr %ss to i64
+  %s1 = getelementptr inbounds [2 x i64], ptr %ss, i64 0, i64 1
+  %vals = alloca [2 x i64], align 8
+  %va = ptrtoint ptr %vals to i64
+  %v1 = getelementptr inbounds [2 x i64], ptr %vals, i64 0, i64 1
+  %ch = call i64 @__rg_rt_builtin(i64 1, i64 %csa, i64 0)
+  ; an item addressed to another thread: tag Int 123456 (tagged), payload 9
+  store i64 246913, ptr %vals, align 8
+  store i64 19, ptr %v1, align 8
+  %other = call i64 @__rg_rt_make_tuple(i64 %va, i64 2)
+  store i64 %other, ptr %ss, align 8
+  store i64 %ch, ptr %s1, align 8
+  %p1 = call i64 @__rg_rt_builtin(i64 50, i64 %ssa, i64 2)
+  ; fallback receive (count 1): nothing may be taken
+  store i64 %ch, ptr %ss, align 8
+  %r1 = call i64 @__rg_rt_builtin(i64 98, i64 %ssa, i64 1)
+  %none1 = icmp eq i64 %r1, 0
+  ; now a plain reply (tag Int 3, payload 5): it is taken, not the other one
+  store i64 7, ptr %vals, align 8
+  store i64 11, ptr %v1, align 8
+  %plain = call i64 @__rg_rt_make_tuple(i64 %va, i64 2)
+  store i64 %plain, ptr %ss, align 8
+  store i64 %ch, ptr %s1, align 8
+  %p2 = call i64 @__rg_rt_builtin(i64 50, i64 %ssa, i64 2)
+  store i64 %ch, ptr %ss, align 8
+  %r2 = call i64 @__rg_rt_builtin(i64 98, i64 %ssa, i64 1)
+  %got2 = icmp ne i64 %r2, 0
+  %pay2 = call i64 @__rg_rt_tuple_get(i64 %r2, i64 1)
+  %ok2 = icmp eq i64 %pay2, 11
+  ; the addressed one is still there: a second fallback receive finds nothing
+  store i64 %ch, ptr %ss, align 8
+  %r3 = call i64 @__rg_rt_builtin(i64 98, i64 %ssa, i64 1)
+  %none3 = icmp eq i64 %r3, 0
+  %a = and i1 %none1, %got2
+  %b = and i1 %a, %ok2
+  %c = and i1 %b, %none3
+  ret i1 %c
+}
+
+declare i64 @__rg_rt_make_tuple(i64, i64)
+declare i64 @__rg_rt_tuple_get(i64, i64)
+
 ; ── T5 ───────────────────────────────────────────────────────
 define void @t5_worker(i64 %id) {
   %p = getelementptr inbounds [128 x i64], ptr @st, i64 0, i64 3
@@ -821,9 +873,19 @@ n8:
   br i1 %r8, label %o8, label %f8
 o8:
   call void @say(ptr @msg_ok, i64 4, i64 8)
-  br label %n5
+  br label %n9
 f8:
   call void @say(ptr @msg_fail, i64 8, i64 8)
+  call void @__rg_pal_exit(i64 1)
+  unreachable
+n9:
+  %r9 = call i1 @t9()
+  br i1 %r9, label %o9, label %f9
+o9:
+  call void @say(ptr @msg_ok, i64 4, i64 9)
+  br label %n5
+f9:
+  call void @say(ptr @msg_fail, i64 8, i64 9)
   call void @__rg_pal_exit(i64 1)
   unreachable
 n5:
