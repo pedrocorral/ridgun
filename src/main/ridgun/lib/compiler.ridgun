@@ -27,6 +27,7 @@ import elf64
 import x86_64
 import arm64
 import llvm
+import timing
 import macho64
 import pe64
 import wasm32
@@ -5102,15 +5103,26 @@ fn :: build native so for arch RNativeProg String String => Int
 
 fn :: build native target executable String String String => Int
       build native target executable input_path output_bin target_arch =
-        input_path -> load rg with libs -> build native target loaded input_path output_bin target_arch _
+        t0 = timing now
+        raw_src = load rg with libs input_path
+        timing report "load source and imports" t0 timing now
+        build native target loaded input_path output_bin target_arch raw_src
 
 fn :: build native target loaded String String String String => Int
       build native target loaded input_path _ _ "" =
         echo "[ridgunc build] Error: empty or missing source file: {input_path}"
         1
       build native target loaded _ output_bin target_arch raw_src =
-        raw_src -> tokenize src -> parse tokens -> prog
+        t0 = timing now
+        toks = tokenize src raw_src
+        t1 = timing now
+        prog = parse tokens toks
+        t2 = timing now
         all_errs = typecheck program all prog
+        t3 = timing now
+        timing report "tokenize" t0 t1
+        timing report "parse" t1 t2
+        timing report "typecheck and analysis" t2 t3
         build native target after check prog output_bin target_arch (drop tensor infos all_errs []) (tensor infos of all_errs [])
 
 fn :: build native target after check RProgram String String [RTypeError] [String] => Int
@@ -5119,7 +5131,10 @@ fn :: build native target after check RProgram String String [RTypeError] [Strin
           echo "[ridgunc build] Error: no functions found in source"
           1
         | otherwise =
-          build native target for arch (lower program to native prog infos) output_bin target_arch
+          t0 = timing now
+          nprog = lower program to native prog infos
+          timing report "lower to native code" t0 timing now
+          build native target for arch nprog output_bin target_arch
       build native target after check _ _ _ errs _ =
         echo (format type errors errs)
         1

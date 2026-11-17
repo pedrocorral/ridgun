@@ -15,6 +15,7 @@
 import elf64
 import x86_64
 import x86rt
+import timing
 
 -- ── Tree-Based O(N log N) String Concatenation ──────────────
 
@@ -797,10 +798,15 @@ fn :: build llvm ir runtime executable RNativeProg String => Int
         script = ir build script location
         ensure ir runtime object rt_obj
         ensure ir build script file script
+        t0 = timing now
         emit llvm ir with runtime nprog "x86_64-linux" True -> write file ll_path _
         ir runtime linker script -> write file lds_path _
+        timing report "write the LLVM IR" t0 timing now
+        t1 = timing now
         cmd = "sh \"" + script + "\" \"" + ll_path + "\" \"" + output_bin + "\" \"" + lds_path + "\" \"" + rt_obj + "\" \"" + tmp_base + "\""
-        shell exec cmd -> finish llvm link output_bin tmp_base
+        status = shell exec cmd
+        timing report "LLVM: split, opt, llc, link" t1 timing now
+        finish llvm link status output_bin tmp_base
 
 fn :: build llvm x8664 executable RNativeProg String     => Int
       build llvm x8664 executable nprog       output_bin

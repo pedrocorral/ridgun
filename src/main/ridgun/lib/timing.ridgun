@@ -1,0 +1,20 @@
+-- ============================================================
+-- src/main/ridgun/lib/timing.ridgun
+-- The time of each phase of a build, printed with `ridgunc build --timings`
+-- (TASK-0099, docs/etc/testing_in_segments.md): so a project, and the
+-- segment tests, can see which phase costs.
+-- ============================================================
+
+fn :: timings on => Bool
+      timings on =  list contains (cli args) "--timings"
+
+-- The clock, in ns.
+fn :: timing now => Int
+      timing now =  sys time ns
+
+-- Prints "[ridgunc timings] name: N ms" for the phase that ran from t0 to t1,
+-- when --timings is on.
+fn :: timing report String Int Int => ()
+      timing report name t0 t1
+        | timings on = echo ("[ridgunc timings] " + name + ": " + (int to str ((t1 - t0) / 1000000)) + " ms")
+        | otherwise = ()

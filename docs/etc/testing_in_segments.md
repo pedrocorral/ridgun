@@ -39,7 +39,7 @@ From 2026-11-17 on, this is how every analysis proceeds. The aim is to know *whe
 | `compiler-build` | the whole pipeline (`ridgunc build`) on a program of 300 and 600 functions called from one `main`; the ratio stays under 3 | 240 s | no |
 | `cases-<group>` | one folder of `tests/cases/` on the installed compiler (`lists`, `agents`, `perf`, ...) | 300 s | no |
 
-Segments for the compiler phases (lexer, parser, analyzer, type checker, lowering, LLVM IR emission, `opt`, `llc`, `ld`) are TASK-0099. They need `ridgunc build --timings`, which prints the milliseconds of each phase.
+`ridgunc build --timings` prints the milliseconds of each phase (load and imports, tokenize, parse, typecheck and analysis, lowering, writing the LLVM IR, LLVM). Measured on the self-build of 1.0.22 (52 s): load 0.4 s, tokenize 0.8 s, **parse 18.9 s**, typecheck and analysis 5.4 s, **lowering 18.4 s**, IR 2.2 s, LLVM 5.7 s (warm cache). Parse and lowering are the next targets (TASK-0099).
 
 ## Baseline found on 2026-11-17
 
