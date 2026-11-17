@@ -45,6 +45,10 @@ Segments for the compiler phases (lexer, parser, analyzer, type checker, lowerin
 
 `compiler-frontend` fails: a program of 1 500 functions called from one `main` takes 1 086 ms and 3 000 take 3 680 ms (ratio 3.3). One function with n statements, `ridgunc check`: 500 statements 26 ms, 1 000 53 ms, 2 000 160 ms, 4 000 597 ms. The time doubles up to 1 000 statements and then grows by 3 and 3.7 times: a phase of the front end is quadratic in the size of one function body. This is the first thing the segments found; the cause is not yet located (TASK-0099).
 
+## After ADR-0015 (1.0.21)
+
+The self-build takes about 1 minute (it took 2 min 50 s) and the 22 groups of `tests/cases` take about 2 minutes per backend, so a full confirmation is now a few minutes, not an hour. The rule stays: segments first, full runs at the end.
+
 ## Adding a segment
 
 Add a function to `tests/segments/run.sh` with a name, a limit and a command. The command must exit 0 on success and must not need a rebuild of the compiler. Write down in this table what the segment checks and its limit.

@@ -97,6 +97,38 @@ seg_compiler_frontend() { scaling check_cmd 1500; }
 # the whole pipeline: front end, lowering, LLVM IR, opt, llc, ld (`build`)
 seg_compiler_build() { scaling build_cmd 300; }
 
+# The LLVM IR the compiler writes is a function of the source: two builds of
+# the same program give the same IR text (the base of the chunk cache,
+# ADR-0015). The IR file is deleted after the build, so it is copied while the
+# build runs.
+capture_ir() {
+  out=$1; src=$2
+  "${RIDGUNC:-bin/ridgunc}" build "$src" -o "$out.bin" --quiet > /dev/null 2>&1 &
+  pid=$!
+  # the temporary IR is named after the compiler's own process id
+  i=0
+  while [ "$i" -lt 400 ]; do
+    f=/tmp/__rg_llvm_$pid.ll
+    if [ -s "$f" ]; then
+      a=$(stat -c %s "$f"); sleep 0.3; b=$(stat -c %s "$f")
+      if [ "$a" = "$b" ]; then cp "$f" "$out"; break; fi
+    fi
+    i=$((i + 1)); sleep 0.05
+  done
+  wait "$pid" 2> /dev/null
+  [ -s "$out" ]
+}
+
+seg_ir_deterministic() {
+  tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+  gen_program 200 > "$tmp/p.ridgun"
+  capture_ir "$tmp/a.ll" "$tmp/p.ridgun" || { echo "no IR captured (first build)"; return 1; }
+  capture_ir "$tmp/b.ll" "$tmp/p.ridgun" || { echo "no IR captured (second build)"; return 1; }
+  ha=$(md5sum < "$tmp/a.ll" | cut -d' ' -f1); hb=$(md5sum < "$tmp/b.ll" | cut -d' ' -f1)
+  echo "IR $(stat -c %s "$tmp/a.ll") bytes, hash $ha and $hb"
+  [ "$ha" = "$hb" ] || { echo "two builds of the same source give different IR; first difference:"; cmp "$tmp/a.ll" "$tmp/b.ll" | head -1; return 1; }
+}
+
 if [ "${1:-}" = "__inner" ]; then
   "$2"
   exit $?
@@ -108,6 +140,7 @@ quick() {
   run runtime-scaling 120 seg seg_runtime_scaling
   run compiler-frontend 120 seg seg_compiler_frontend
   run compiler-build 240 seg seg_compiler_build
+  run ir-deterministic 60 seg seg_ir_deterministic
 }
 
 case "${1:-all}" in
@@ -117,6 +150,7 @@ case "${1:-all}" in
   runtime-scaling) run runtime-scaling 120 seg seg_runtime_scaling ;;
   compiler-frontend) run compiler-frontend 120 seg seg_compiler_frontend ;;
   compiler-build) run compiler-build 240 seg seg_compiler_build ;;
+  ir-deterministic) run ir-deterministic 60 seg seg_ir_deterministic ;;
   cases-*) g=${1#cases-}; run "$1" 300 bin/ridgunc run tests/run.ridgun --no-toolchain "$g/" ;;
   *) echo "unknown segment: $1"; exit 2 ;;
 esac
