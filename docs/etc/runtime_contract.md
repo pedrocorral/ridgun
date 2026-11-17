@@ -383,7 +383,7 @@ At HEAD the wasm backend names runtime functions 56..66 for work the native enco
 | 48 | `sys_setenv` | `String String => Int` | `compiler.ridgun:1551` | `FR-VM-002:36` |
 | 49 | `cmm_same_ptr` | `A A => Bool` | `compiler.ridgun:1552` | `cmm_architecture.md:109` |
 | 50 | `send_through`, `chan_send` | send (count 2) | `compiler.ridgun:1553-1554` | `llvm.ridgun:119` |
-| 51 | `receive_from_timeout` | **UNKNOWN** | `compiler.ridgun:1555` | — |
+| 51 | `receive_from_timeout` | channel, ticks → `Ok v` when an item is there or arrives within `ticks` ms, else `Err Timeout`; the channel is left to the caller. The old runtime gave the same answers but returned at once without waiting; the IR runtime waits (tests/cases/agents/receive_from_timeout_gives_ok_or_err_timeout.ridgun) | `compiler.ridgun:1555` | book chapter 7 |
 | 53 | `map`, `seq_map` | sequential map | `compiler.ridgun:1556-1557` | `FR-COMP-001`; `spec.md:1146` |
 | 54 | `\|\|map`, `par_map` | parallel map; also `"__rg_par_eval__"` for `\|\|` DAGs | `compiler.ridgun:1558-1559`, `:2938`, `:3111` | `x86_64.ridgun:1009` |
 | 55 | `filter`, `seq_filter` | sequential filter | `compiler.ridgun:1560-1561` | `FR-COMP-001` |

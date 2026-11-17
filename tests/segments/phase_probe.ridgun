@@ -1,0 +1,30 @@
+-- Times the phases of the front end on one source file (tests/segments,
+-- docs/etc/testing_in_segments.md): tokenize, parse, typecheck, analyze, in ms.
+-- Build once; run with the path of a .ridgun file.
+import ast
+import lexer
+import parser
+import analyzer
+import typecheck
+
+fn :: ms Int Int => Int
+      ms t0 t1 =  (t1 - t0) / 1000000
+
+fn :: main => ()
+      main =
+        path = list nth or (cli args) 1 ""
+        text = read file path
+        t0 = sys time ns
+        toks = tokenize src text
+        n_toks = list len toks
+        t1 = sys time ns
+        prog = parse tokens toks
+        n_fns = count fn defs prog
+        t2 = sys time ns
+        errs = typecheck program prog
+        n_errs = list len errs
+        t3 = sys time ns
+        summaries = analyze rprogram prog
+        n_sum = list len summaries
+        t4 = sys time ns
+        echo "tokens" n_toks "tokenize ms" (ms t0 t1) "| parse ms" (ms t1 t2) "| typecheck ms" (ms t2 t3) "| analyze ms" (ms t3 t4) "| functions" n_fns "errors" n_errs

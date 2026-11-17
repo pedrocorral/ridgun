@@ -15,14 +15,18 @@ declare i64 @llvm.ctlz.i64(i64, i1)
 ; One shard per thread slot (threads.ll): its own bump region and free lists,
 ; so the allocator takes no lock. A block freed by another thread joins the
 ; free lists of the freeing thread's shard.
-@rg_bump = internal global [9 x i64] zeroinitializer
-@rg_bump_end = internal global [9 x i64] zeroinitializer
-@rg_free_lists = internal global [432 x i64] zeroinitializer
+; Every per-slot word sits on a cache line of its own (8 words apart, arrays
+; aligned to 64 bytes): threads that allocate at the same time must not write
+; to the same line, or the allocator costs more than the work (found with the
+; Vonkeep benchmark: four agents used five times the CPU of one).
+@rg_bump = internal global [72 x i64] zeroinitializer, align 64
+@rg_bump_end = internal global [72 x i64] zeroinitializer, align 64
+@rg_free_lists = internal global [432 x i64] zeroinitializer, align 64
 declare i64 @rg_slot()
 
 ; The bytes this thread's shard has handed out, for the quota of `with region`
 ; (tensor.ll). One counter per slot, changed only by its owner.
-@rg_alloc_bytes = global [9 x i64] zeroinitializer
+@rg_alloc_bytes = global [72 x i64] zeroinitializer, align 64
 @rg_msg_oom = private constant [13 x i8] c"out of memory"
 
 ; heap init (start, end): the first chunk is [start, end).
@@ -49,7 +53,8 @@ define i64 @rg_alloc(i64 %n) {
 entry:
   %c = call i64 @rg_class(i64 %n)
   %s = call i64 @rg_slot()
-  %abp = getelementptr inbounds [9 x i64], ptr @rg_alloc_bytes, i64 0, i64 %s
+  %sl = shl i64 %s, 3
+  %abp = getelementptr inbounds [72 x i64], ptr @rg_alloc_bytes, i64 0, i64 %sl
   %abv = load i64, ptr %abp, align 8
   %abn = add i64 %abv, %n
   store i64 %abn, ptr %abp, align 8
@@ -68,8 +73,9 @@ reuse:
   ret i64 %u
 fresh:
   %size = shl i64 1, %c
-  %bpp = getelementptr inbounds [9 x i64], ptr @rg_bump, i64 0, i64 %s
-  %epp = getelementptr inbounds [9 x i64], ptr @rg_bump_end, i64 0, i64 %s
+  %sl2 = shl i64 %s, 3
+  %bpp = getelementptr inbounds [72 x i64], ptr @rg_bump, i64 0, i64 %sl2
+  %epp = getelementptr inbounds [72 x i64], ptr @rg_bump_end, i64 0, i64 %sl2
   %b = load i64, ptr %bpp, align 8
   %e = load i64, ptr %epp, align 8
   %nb = add i64 %b, %size

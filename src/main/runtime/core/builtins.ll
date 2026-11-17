@@ -347,6 +347,9 @@ define i1 @rg_sole(i64 %xs) {
 }
 
 ; map (f, xs): [f x | x <- xs]; f and xs are taken.
+declare i64 @rg_par_map(i64, i64)
+declare i64 @rg_par_filter(i64, i64)
+
 define i64 @rg_map(i64 %f, i64 %xs) {
 entry:
   %n = call i64 @rg_list_len(i64 %xs)
@@ -464,9 +467,9 @@ entry:
                                 i64 43, label %contains
                                 i64 49, label %same
                                 i64 53, label %map
-                                i64 54, label %map
+                                i64 54, label %pmap
                                 i64 55, label %filter
-                                i64 56, label %filter
+                                i64 56, label %pfilter
                                 i64 60, label %slice
                                 i64 61, label %fold
                                 i64 121, label %append ]
@@ -566,6 +569,16 @@ map:
   %xs53 = call i64 @rg_arg(i64 %slots, i64 1)
   %r53 = call i64 @rg_map(i64 %f53, i64 %xs53)
   ret i64 %r53
+pmap:
+  %f54 = call i64 @rg_arg(i64 %slots, i64 0)
+  %xs54 = call i64 @rg_arg(i64 %slots, i64 1)
+  %r54 = call i64 @rg_par_map(i64 %f54, i64 %xs54)
+  ret i64 %r54
+pfilter:
+  %f56 = call i64 @rg_arg(i64 %slots, i64 0)
+  %xs56 = call i64 @rg_arg(i64 %slots, i64 1)
+  %r56 = call i64 @rg_par_filter(i64 %f56, i64 %xs56)
+  ret i64 %r56
 filter:
   %f55 = call i64 @rg_arg(i64 %slots, i64 0)
   %xs55 = call i64 @rg_arg(i64 %slots, i64 1)

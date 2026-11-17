@@ -1,0 +1,57 @@
+-- @tests TS-COMP-001
+-- case: ||map and ||filter give the same lists as map and filter, in the same order, for empty, short, exactly 8, odd and long lists, with closures, strings, a nested ||map inside a ||map, and a list that is used again afterwards (TASK-0096, the worker pool)
+-- source: FR-COMP-001
+-- expect-output:
+--   [] [] [] []
+--   True True True True
+--   True True
+--   True True
+--   True 1000 500
+--   True
+--   [[0, 1, 2], [1, 2, 3], [2, 3, 4]]
+--   [2, 4, 6, 8, 10, 12] [1, 2, 3]
+--   True
+
+fn :: range Int Int [Int] => [Int]
+      range i n acc
+        | i >= n = acc
+        | otherwise = range (i + 1) n (acc :: [i])
+
+fn :: sq Int => Int
+      sq x =  x * x + 1
+
+fn :: even Int => Bool
+      even x =  x % 2 == 0
+
+fn :: label Int => String
+      label x =  "n" + (int to str x)
+
+fn :: row Int => [Int]
+      row k =  ||map (x => x + k) [0, 1, 2]
+
+fn :: same map Int => Bool
+      same map n =
+        xs = range 0 n []
+        (||map sq xs) == (map sq xs)
+
+fn :: same filter Int => Bool
+      same filter n =
+        xs = range 0 n []
+        (||filter even xs) == (filter even xs)
+
+fn :: main => ()
+      main =
+        echo (||map sq []) (||filter even []) (||map sq []) (||filter even [])
+        echo (same map 1) (same map 7) (same map 8) (same map 9)
+        echo (same filter 3) (same filter 8)
+        echo (same filter 9) (same map 100)
+        big = range 0 1000 []
+        echo ((||map label big) == (map label big)) (list len (||map sq big)) (list len (||filter even big))
+        k = 3
+        echo ((||map (x => x + k) big) == (map (x => x + k) big))
+        echo (||map row [0, 1, 2])
+        echo (||filter even [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]) (||filter (x => x < 4) [1, 2, 3, 4, 5, 6, 7, 8, 9])
+        again = range 0 50 []
+        a = ||map sq again
+        b = ||map sq again
+        echo (a == b)

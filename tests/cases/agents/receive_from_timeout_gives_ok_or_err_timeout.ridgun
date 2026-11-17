@@ -1,0 +1,22 @@
+-- @tests TS-COMP-009
+-- case: receive from timeout gives Ok v when an item is in the channel (at once or within the time) and Err Timeout when the time passes first, and a wait is not longer than a second (TASK-0096, builtin 51; that the wait lasts the time asked is tested in tests/runtime/threads.ll, T8: the pure x86-64 backend still uses the old runtime, which returns at once)
+-- source: FR-COMP-009 and the book (`receive from timeout ch ticks`: Ok v or Err Timeout after the time); the old runtime gave the same answers but did not wait
+-- expect-output:
+--   (Err Timeout)
+--   (Ok 7)
+--   (Ok 8)
+--   (Err Timeout)
+--   waited not too long: True
+
+fn :: main => ()
+      main =
+        ch = new channel
+        echo (receive from timeout ch 30)
+        send 7 through ch
+        echo (receive from timeout ch 30)
+        send 8 through ch
+        echo (receive from timeout ch 0)
+        t0 = sys time ms
+        echo (receive from timeout ch 80)
+        t1 = sys time ms
+        echo "waited not too long:" ((t1 - t0) < 1000)

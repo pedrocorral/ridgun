@@ -311,12 +311,25 @@ declare i64 @__rg_pal_futex_wake(i64, i64)
 @rg_w_flag = internal global [9 x i32] zeroinitializer
 @rg_w_box = internal global [9 x i64] zeroinitializer
 
-; Runs the job of a cell: its result.
+; Runs the job of a cell: its result. A cell whose function is -1 is a task
+; of the runtime itself (a chunk of a parallel map): its argument is the
+; address of [function, argument], an IR function of one word.
 define internal i64 @rg_job_run(i64 %cell) {
+entry:
   %fa = add i64 %cell, 8
   %f = call i64 @rg_ld(i64 %fa)
   %xa = add i64 %cell, 16
   %x = call i64 @rg_ld(i64 %xa)
+  %istask = icmp eq i64 %f, -1
+  br i1 %istask, label %task, label %job
+task:
+  %fn = call i64 @rg_ld(i64 %x)
+  %ta = add i64 %x, 8
+  %arg = call i64 @rg_ld(i64 %ta)
+  %fp = inttoptr i64 %fn to ptr
+  call void %fp(i64 %arg)
+  ret i64 0
+job:
   %args = alloca [2 x i64], align 8
   store i64 %f, ptr %args, align 8
   %p1 = getelementptr inbounds [2 x i64], ptr %args, i64 0, i64 1
@@ -407,6 +420,24 @@ post:
   ret i1 true
 none:
   ret i1 false
+}
+
+; Gives a filled cell to a worker: an idle one, or a new thread. 1 when it
+; went to a worker, 0 when the caller has to run it.
+define internal i1 @rg_job_dispatch(i64 %c) {
+entry:
+  %a0 = atomicrmw add ptr @rg_jobs_active, i64 1 acquire
+  %posted = call i1 @rg_job_post(i64 %c)
+  br i1 %posted, label %yes, label %start
+start:
+  %t = call i64 @rg_thread_start(i64 ptrtoint (ptr @rg_worker_main to i64), i64 %c)
+  %ok = icmp sgt i64 %t, 0
+  br i1 %ok, label %yes, label %no
+no:
+  %a1 = atomicrmw sub ptr @rg_jobs_active, i64 1 release
+  ret i1 false
+yes:
+  ret i1 true
 }
 
 ; spawn (function, argument), both taken: a job handle.
@@ -523,6 +554,312 @@ ended:
   br label %done
 done:
   ret void
+}
+
+
+; ── Parallel map and filter (||map, ||filter) ────────────────
+declare i64 @rg_ldb(i64)
+; The list is split into chunks (up to 8); the chunks after the first go to
+; workers as tasks, the first runs on the calling thread, and the caller waits
+; for all of them. Short lists, and calls made from a worker, run in order.
+; Every chunk works on its own indices, so the results keep the order.
+;
+; A chunk descriptor: [function value, list, out, own (0 or 1), start, end,
+; remaining (address of the counter the caller waits on), flags (filter)].
+
+declare i64 @rg_apply1(i64, i64)
+declare i64 @rg_map(i64, i64)
+declare i64 @rg_filter(i64, i64)
+declare i1 @rg_sole(i64)
+
+; Chunk of a map: out[i] = f xs[i] for i in [start, end).
+define void @rg_pmap_chunk(i64 %d) {
+entry:
+  %f = call i64 @rg_ld(i64 %d)
+  %xa = add i64 %d, 8
+  %xs = call i64 @rg_ld(i64 %xa)
+  %oa0 = add i64 %d, 16
+  %out = call i64 @rg_ld(i64 %oa0)
+  %na = add i64 %d, 24
+  %own = call i64 @rg_ld(i64 %na)
+  %sa = add i64 %d, 32
+  %start = call i64 @rg_ld(i64 %sa)
+  %ea = add i64 %d, 40
+  %end = call i64 @rg_ld(i64 %ea)
+  br label %loop
+loop:
+  %i = phi i64 [ %start, %entry ], [ %i1, %call ]
+  %more = icmp slt i64 %i, %end
+  br i1 %more, label %body, label %done
+body:
+  %ia = call i64 @rg_list_at(i64 %xs, i64 %i)
+  %v = call i64 @rg_ld(i64 %ia)
+  %isown = icmp ne i64 %own, 0
+  br i1 %isown, label %take, label %clone
+take:
+  call void @rg_st(i64 %ia, i64 0)
+  br label %call
+clone:
+  %c = call i64 @__rg_rt_clone_slot(i64 %v)
+  br label %call
+call:
+  %x = phi i64 [ %v, %take ], [ %c, %clone ]
+  %y = call i64 @rg_apply1(i64 %f, i64 %x)
+  %oa = call i64 @rg_list_at(i64 %out, i64 %i)
+  call void @rg_st(i64 %oa, i64 %y)
+  %i1 = add i64 %i, 1
+  br label %loop
+done:
+  call void @rg_pchunk_done(i64 %d)
+  ret void
+}
+
+; Chunk of a filter: flags[i] = 1 when f xs[i] is True.
+define void @rg_pfilter_chunk(i64 %d) {
+entry:
+  %f = call i64 @rg_ld(i64 %d)
+  %xa = add i64 %d, 8
+  %xs = call i64 @rg_ld(i64 %xa)
+  %sa = add i64 %d, 32
+  %start = call i64 @rg_ld(i64 %sa)
+  %ea = add i64 %d, 40
+  %end = call i64 @rg_ld(i64 %ea)
+  %fa = add i64 %d, 56
+  %flags = call i64 @rg_ld(i64 %fa)
+  br label %loop
+loop:
+  %i = phi i64 [ %start, %entry ], [ %i1, %body ]
+  %more = icmp slt i64 %i, %end
+  br i1 %more, label %body, label %done
+body:
+  %ia = call i64 @rg_list_at(i64 %xs, i64 %i)
+  %v = call i64 @rg_ld(i64 %ia)
+  %xc = call i64 @__rg_rt_clone_slot(i64 %v)
+  %t = call i64 @rg_apply1(i64 %f, i64 %xc)
+  %keep = icmp eq i64 %t, 6
+  %dt = call i64 @__rg_rt_drop_val(i64 %t)
+  %fl = add i64 %flags, %i
+  %kv = zext i1 %keep to i64
+  call void @rg_stb(i64 %fl, i64 %kv)
+  %i1 = add i64 %i, 1
+  br label %loop
+done:
+  call void @rg_pchunk_done(i64 %d)
+  ret void
+}
+
+declare void @rg_stb(i64, i64)
+
+; A chunk is finished: one less on the caller's counter, and wake it.
+define internal void @rg_pchunk_done(i64 %d) {
+  %ra = add i64 %d, 48
+  %rem = call i64 @rg_ld(i64 %ra)
+  %p = inttoptr i64 %rem to ptr
+  %o = atomicrmw sub ptr %p, i64 1 release
+  %w = call i64 @__rg_pal_futex_wake(i64 %rem, i64 2147483647)
+  ret void
+}
+
+; Runs the chunks [lo, hi) of n in `chunks` pieces: descriptors in `descs`
+; (chunks * 64 bytes), tasks in `tasks` (chunks * 16 bytes); `fn` runs a chunk.
+; The first chunk runs here; the others go to workers or run here too when no
+; worker takes them. Waits for all.
+define internal void @rg_pfor(i64 %descs, i64 %tasks, i64 %chunks, i64 %fn, i64 %counter) {
+entry:
+  call void @rg_st(i64 %counter, i64 %chunks)
+  br label %post
+post:
+  %k = phi i64 [ 1, %entry ], [ %k1, %posted ]
+  %m = icmp slt i64 %k, %chunks
+  br i1 %m, label %one, label %first
+one:
+  %do = mul i64 %k, 64
+  %d = add i64 %descs, %do
+  %to = shl i64 %k, 4
+  %t = add i64 %tasks, %to
+  call void @rg_st(i64 %t, i64 %fn)
+  %ta = add i64 %t, 8
+  call void @rg_st(i64 %ta, i64 %d)
+  %c = call i64 @rg_alloc(i64 32)
+  call void @rg_st(i64 %c, i64 2)
+  %cf = add i64 %c, 8
+  call void @rg_st(i64 %cf, i64 -1)
+  %cx = add i64 %c, 16
+  call void @rg_st(i64 %cx, i64 %t)
+  %cr = add i64 %c, 24
+  call void @rg_st(i64 %cr, i64 0)
+  %sent = call i1 @rg_job_dispatch(i64 %c)
+  br i1 %sent, label %posted, label %inline
+inline:
+  call void @rg_free(i64 %c)
+  %fp = inttoptr i64 %fn to ptr
+  call void %fp(i64 %d)
+  br label %posted
+posted:
+  %k1 = add i64 %k, 1
+  br label %post
+first:
+  %fp0 = inttoptr i64 %fn to ptr
+  call void %fp0(i64 %descs)
+  br label %wait
+wait:
+  %cp = inttoptr i64 %counter to ptr
+  %v = load atomic i64, ptr %cp acquire, align 8
+  %z = icmp eq i64 %v, 0
+  br i1 %z, label %done, label %sleep
+sleep:
+  %w = call i64 @__rg_pal_futex_wait(i64 %counter, i64 %v, i64 -1)
+  br label %wait
+done:
+  ret void
+}
+
+; How many chunks for n items: 1 (run in order) below 8 items or on a worker.
+define internal i64 @rg_pchunks(i64 %n) {
+entry:
+  %slot = call i64 @rg_slot()
+  %onw = icmp ne i64 %slot, 0
+  %small = icmp slt i64 %n, 8
+  %seq = or i1 %onw, %small
+  br i1 %seq, label %one, label %many
+one:
+  ret i64 1
+many:
+  %half = sdiv i64 %n, 2
+  %big = icmp sgt i64 %half, 8
+  %c = select i1 %big, i64 8, i64 %half
+  ret i64 %c
+}
+
+; Fills the descriptors of `chunks` chunks over [0, n).
+define internal void @rg_pfill(i64 %descs, i64 %chunks, i64 %n, i64 %f, i64 %xs, i64 %out, i64 %own, i64 %counter, i64 %flags) {
+entry:
+  br label %loop
+loop:
+  %k = phi i64 [ 0, %entry ], [ %k1, %body ]
+  %m = icmp slt i64 %k, %chunks
+  br i1 %m, label %body, label %done
+body:
+  %do = mul i64 %k, 64
+  %d = add i64 %descs, %do
+  call void @rg_st(i64 %d, i64 %f)
+  %a1 = add i64 %d, 8
+  call void @rg_st(i64 %a1, i64 %xs)
+  %a2 = add i64 %d, 16
+  call void @rg_st(i64 %a2, i64 %out)
+  %a3 = add i64 %d, 24
+  call void @rg_st(i64 %a3, i64 %own)
+  %lo = mul i64 %k, %n
+  %start = sdiv i64 %lo, %chunks
+  %k2 = add i64 %k, 1
+  %hi = mul i64 %k2, %n
+  %end = sdiv i64 %hi, %chunks
+  %a4 = add i64 %d, 32
+  call void @rg_st(i64 %a4, i64 %start)
+  %a5 = add i64 %d, 40
+  call void @rg_st(i64 %a5, i64 %end)
+  %a6 = add i64 %d, 48
+  call void @rg_st(i64 %a6, i64 %counter)
+  %a7 = add i64 %d, 56
+  call void @rg_st(i64 %a7, i64 %flags)
+  %k1 = add i64 %k, 1
+  br label %loop
+done:
+  ret void
+}
+
+; ||map (f, xs): like map, with the chunks on the pool; both taken.
+define i64 @rg_par_map(i64 %f, i64 %xs) {
+entry:
+  %n = call i64 @rg_list_len(i64 %xs)
+  %chunks = call i64 @rg_pchunks(i64 %n)
+  %seq = icmp sle i64 %chunks, 1
+  br i1 %seq, label %sequential, label %parallel
+sequential:
+  %r0 = call i64 @rg_map(i64 %f, i64 %xs)
+  ret i64 %r0
+parallel:
+  %own = call i1 @rg_sole(i64 %xs)
+  %ownw = zext i1 %own to i64
+  %out = call i64 @rg_list_alloc(i64 %n, i64 %n)
+  %db = mul i64 %chunks, 64
+  %descs = call i64 @rg_alloc(i64 %db)
+  %tb = shl i64 %chunks, 4
+  %tasks = call i64 @rg_alloc(i64 %tb)
+  %counter = call i64 @rg_alloc(i64 8)
+  call void @rg_pfill(i64 %descs, i64 %chunks, i64 %n, i64 %f, i64 %xs, i64 %out, i64 %ownw, i64 %counter, i64 0)
+  call void @rg_pfor(i64 %descs, i64 %tasks, i64 %chunks, i64 ptrtoint (ptr @rg_pmap_chunk to i64), i64 %counter)
+  call void @rg_free(i64 %descs)
+  call void @rg_free(i64 %tasks)
+  call void @rg_free(i64 %counter)
+  %d1 = call i64 @__rg_rt_drop_val(i64 %xs)
+  %d2 = call i64 @__rg_rt_drop_val(i64 %f)
+  ret i64 %out
+}
+
+; ||filter (f, xs): the flags are computed on the pool, the list is built in
+; order here; both taken.
+define i64 @rg_par_filter(i64 %f, i64 %xs) {
+entry:
+  %n = call i64 @rg_list_len(i64 %xs)
+  %chunks = call i64 @rg_pchunks(i64 %n)
+  %seq = icmp sle i64 %chunks, 1
+  br i1 %seq, label %sequential, label %parallel
+sequential:
+  %r0 = call i64 @rg_filter(i64 %f, i64 %xs)
+  ret i64 %r0
+parallel:
+  %db = mul i64 %chunks, 64
+  %descs = call i64 @rg_alloc(i64 %db)
+  %tb = shl i64 %chunks, 4
+  %tasks = call i64 @rg_alloc(i64 %tb)
+  %counter = call i64 @rg_alloc(i64 8)
+  %flags = call i64 @rg_alloc(i64 %n)
+  call void @rg_pfill(i64 %descs, i64 %chunks, i64 %n, i64 %f, i64 %xs, i64 0, i64 0, i64 %counter, i64 %flags)
+  call void @rg_pfor(i64 %descs, i64 %tasks, i64 %chunks, i64 ptrtoint (ptr @rg_pfilter_chunk to i64), i64 %counter)
+  %out = call i64 @rg_list_alloc(i64 0, i64 %n)
+  %h = call i64 @rg_w1(i64 %out)
+  %own = call i1 @rg_sole(i64 %xs)
+  br label %build
+build:
+  %i = phi i64 [ 0, %parallel ], [ %i1, %next ]
+  %k = phi i64 [ 0, %parallel ], [ %k2, %next ]
+  %more = icmp slt i64 %i, %n
+  br i1 %more, label %body, label %fin
+body:
+  %fa = add i64 %flags, %i
+  %fv = call i64 @rg_ldb(i64 %fa)
+  %keep = icmp ne i64 %fv, 0
+  br i1 %keep, label %put, label %next
+put:
+  %ia = call i64 @rg_list_at(i64 %xs, i64 %i)
+  %v = call i64 @rg_ld(i64 %ia)
+  br i1 %own, label %movev, label %clonev
+movev:
+  call void @rg_st(i64 %ia, i64 0)
+  br label %store
+clonev:
+  %c = call i64 @__rg_rt_clone_slot(i64 %v)
+  br label %store
+store:
+  %x = phi i64 [ %v, %movev ], [ %c, %clonev ]
+  %oa = call i64 @rg_list_at(i64 %out, i64 %k)
+  call void @rg_st(i64 %oa, i64 %x)
+  %kp = add i64 %k, 1
+  call void @rg_vset_len(i64 %h, i64 %kp)
+  br label %next
+next:
+  %k2 = phi i64 [ %kp, %store ], [ %k, %body ]
+  %i1 = add i64 %i, 1
+  br label %build
+fin:
+  call void @rg_free(i64 %descs)
+  call void @rg_free(i64 %tasks)
+  call void @rg_free(i64 %counter)
+  call void @rg_free(i64 %flags)
+  %d1 = call i64 @__rg_rt_drop_val(i64 %xs)
+  %d2 = call i64 @__rg_rt_drop_val(i64 %f)
+  ret i64 %out
 }
 
 ; ── Tagged replies ───────────────────────────────────────────
@@ -664,6 +1001,68 @@ out:
 }
 
 ; ── Dispatch ─────────────────────────────────────────────────
+; 51 receive from timeout (channel, ticks): `Ok v` when an item arrives within
+; `ticks` milliseconds, else `Err Timeout` (as the old runtime and the book
+; give it). The channel stays with the caller like for 32 and 33; the time is
+; taken.
+declare i64 @__rg_pal_clock_ns(i64)
+declare void @__rg_pal_sleep_ns(i64)
+declare i64 @__rg_rt_make_adt(i64, i64, i64, i64)
+declare i64 @rg_int_of(i64)
+declare i64 @__rg_rt_load_adt0(i64, i64)
+@rg_nm_err = private constant [3 x i8] c"Err"
+@rg_nm_timeout = private constant [7 x i8] c"Timeout"
+
+define internal i64 @rg_recv_timeout(i64 %slots) {
+entry:
+  %ch = call i64 @rg_ld(i64 %slots)
+  %ta = add i64 %slots, 8
+  %tv = call i64 @rg_ld(i64 %ta)
+  %ms = call i64 @rg_int_of(i64 %tv)
+  %t0 = call i64 @__rg_pal_clock_ns(i64 0)
+  %span = mul i64 %ms, 1000000
+  %deadline = add i64 %t0, %span
+  %la = ptrtoint ptr @rg_chan_lock to i64
+  br label %try
+try:
+  call void @rg_lock(i64 %la)
+  %c = call i64 @rg_chan_of(i64 %ch)
+  %ok = icmp ne i64 %c, 0
+  br i1 %ok, label %count, label %nochan
+nochan:
+  call void @rg_unlock(i64 %la)
+  br label %none
+count:
+  %k = call i64 @rg_chan_count(i64 %c)
+  %has = icmp sgt i64 %k, 0
+  br i1 %has, label %take, label %wait
+take:
+  %v = call i64 @rg_chan_take(i64 %c, i64 0)
+  call void @rg_unlock(i64 %la)
+  %vals = alloca [1 x i64], align 8
+  store i64 %v, ptr %vals, align 8
+  %va = ptrtoint ptr %vals to i64
+  %some = call i64 @rg_ok(i64 %v)
+  call void @rg_st(i64 %ta, i64 0)
+  ret i64 %some
+wait:
+  call void @rg_unlock(i64 %la)
+  %now = call i64 @__rg_pal_clock_ns(i64 0)
+  %late = icmp sge i64 %now, %deadline
+  br i1 %late, label %none, label %nap
+nap:
+  call void @__rg_pal_sleep_ns(i64 100000)
+  br label %try
+none:
+  call void @rg_st(i64 %ta, i64 0)
+  %tm = call i64 @__rg_rt_load_adt0(i64 ptrtoint (ptr @rg_nm_timeout to i64), i64 7)
+  %ev = alloca [1 x i64], align 8
+  store i64 %tm, ptr %ev, align 8
+  %ea = ptrtoint ptr %ev to i64
+  %n = call i64 @__rg_rt_make_adt(i64 ptrtoint (ptr @rg_nm_err to i64), i64 3, i64 %ea, i64 1)
+  ret i64 %n
+}
+
 ; The channel builtins take the channel lock (ADR-0014): channels, the table
 ; of global channels and the tagged replies are shared between threads.
 @rg_chan_lock = internal global i32 0
@@ -673,7 +1072,8 @@ declare void @__rg_pal_yield()
 
 define i64 @rg_builtin_agents(i64 %id, i64 %slots, i64 %n) {
 entry:
-  switch i64 %id, label %direct [ i64 1, label %locked
+  switch i64 %id, label %direct [ i64 51, label %timed
+                                  i64 1, label %locked
                                   i64 35, label %locked
                                   i64 50, label %locked
                                   i64 32, label %locked
@@ -684,6 +1084,9 @@ entry:
 direct:
   %rd = call i64 @rg_builtin_agents_run(i64 %id, i64 %slots, i64 %n)
   ret i64 %rd
+timed:
+  %rt = call i64 @rg_recv_timeout(i64 %slots)
+  ret i64 %rt
 locked:
   %la = ptrtoint ptr @rg_chan_lock to i64
   br label %again

@@ -682,6 +682,46 @@ nest:
   ret i1 %c
 }
 
+; ── T8 ──────────────────────────────────────────────────────
+; Builtin 51 (receive with timeout) on an empty channel waits about the time
+; asked and gives Err; with an item it gives Ok at once.
+declare i64 @__rg_pal_clock_ns(i64)
+@str_Ok2 = private constant [2 x i8] c"Ok"
+
+define internal i1 @t8() {
+entry:
+  %ss = alloca [2 x i64], align 8
+  %ssa = ptrtoint ptr %ss to i64
+  %s1 = getelementptr inbounds [2 x i64], ptr %ss, i64 0, i64 1
+  %cs = alloca [2 x i64], align 8
+  %csa = ptrtoint ptr %cs to i64
+  %ch = call i64 @__rg_rt_builtin(i64 1, i64 %csa, i64 0)
+  ; 60 ms on an empty channel
+  store i64 %ch, ptr %ss, align 8
+  store i64 121, ptr %s1, align 8
+  %t0 = call i64 @__rg_pal_clock_ns(i64 0)
+  %r0 = call i64 @__rg_rt_builtin(i64 51, i64 %ssa, i64 2)
+  %t1 = call i64 @__rg_pal_clock_ns(i64 0)
+  %el = sub i64 %t1, %t0
+  %long = icmp sge i64 %el, 50000000
+  %short = icmp slt i64 %el, 1000000000
+  %isok0 = call i64 @__rg_rt_match_adt(i64 %r0, ptr @str_Ok2, i64 2, i64 1)
+  %notok = icmp eq i64 %isok0, 0
+  ; an item in the channel: Ok at once
+  store i64 15, ptr %ss, align 8
+  store i64 %ch, ptr %s1, align 8
+  %sent = call i64 @__rg_rt_builtin(i64 50, i64 %ssa, i64 2)
+  store i64 %ch, ptr %ss, align 8
+  store i64 121, ptr %s1, align 8
+  %r1 = call i64 @__rg_rt_builtin(i64 51, i64 %ssa, i64 2)
+  %isok1 = call i64 @__rg_rt_match_adt(i64 %r1, ptr @str_Ok2, i64 2, i64 1)
+  %ok1 = icmp ne i64 %isok1, 0
+  %a = and i1 %long, %short
+  %b = and i1 %a, %notok
+  %c = and i1 %b, %ok1
+  ret i1 %c
+}
+
 ; ── T5 ───────────────────────────────────────────────────────
 define void @t5_worker(i64 %id) {
   %p = getelementptr inbounds [128 x i64], ptr @st, i64 0, i64 3
@@ -761,7 +801,7 @@ n6:
   br i1 %r6, label %o6, label %f6
 o6:
   call void @say(ptr @msg_ok, i64 4, i64 6)
-  br label %n5
+  br label %n8
 f6:
   call void @say(ptr @msg_fail, i64 8, i64 6)
   call void @__rg_pal_exit(i64 1)
@@ -774,6 +814,16 @@ o7:
   br label %end
 f7:
   call void @say(ptr @msg_fail, i64 8, i64 7)
+  call void @__rg_pal_exit(i64 1)
+  unreachable
+n8:
+  %r8 = call i1 @t8()
+  br i1 %r8, label %o8, label %f8
+o8:
+  call void @say(ptr @msg_ok, i64 4, i64 8)
+  br label %n5
+f8:
+  call void @say(ptr @msg_fail, i64 8, i64 8)
   call void @__rg_pal_exit(i64 1)
   unreachable
 n5:

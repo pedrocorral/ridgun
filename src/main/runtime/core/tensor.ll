@@ -1058,23 +1058,25 @@ pass:
 ; did. The runtime has one heap, so nothing is released at exit; regions nest
 ; up to 16 deep per thread.
 @rg_region_base = internal global [144 x i64] zeroinitializer
-@rg_region_depth = internal global [9 x i64] zeroinitializer
+@rg_region_depth = internal global [72 x i64] zeroinitializer, align 64
 @rg_nm_ok = private constant [2 x i8] c"Ok"
 @rg_nm_quota = private constant [13 x i8] c"QuotaExceeded"
 declare i64 @rg_slot()
 declare i64 @__rg_rt_make_adt(i64, i64, i64, i64)
 declare i64 @__rg_rt_load_adt0(i64, i64)
-@rg_alloc_bytes = external global [9 x i64]
+@rg_alloc_bytes = external global [72 x i64]
 
 define i64 @__rg_rt_enter_region() {
 entry:
   %s = call i64 @rg_slot()
-  %dp = getelementptr inbounds [9 x i64], ptr @rg_region_depth, i64 0, i64 %s
+  %sl = shl i64 %s, 3
+  %dp = getelementptr inbounds [72 x i64], ptr @rg_region_depth, i64 0, i64 %sl
   %d = load i64, ptr %dp, align 8
   %room = icmp slt i64 %d, 16
   br i1 %room, label %push, label %done
 push:
-  %ab = getelementptr inbounds [9 x i64], ptr @rg_alloc_bytes, i64 0, i64 %s
+  %sl2 = shl i64 %s, 3
+  %ab = getelementptr inbounds [72 x i64], ptr @rg_alloc_bytes, i64 0, i64 %sl2
   %av = load i64, ptr %ab, align 8
   %so = mul i64 %s, 16
   %i = add i64 %so, %d
@@ -1090,11 +1092,13 @@ done:
 define i64 @__rg_rt_exit_region(i64 %quota, i64 %v) {
 entry:
   %s = call i64 @rg_slot()
-  %dp = getelementptr inbounds [9 x i64], ptr @rg_region_depth, i64 0, i64 %s
+  %sl = shl i64 %s, 3
+  %dp = getelementptr inbounds [72 x i64], ptr @rg_region_depth, i64 0, i64 %sl
   %d0 = load i64, ptr %dp, align 8
   %d = sub i64 %d0, 1
   store i64 %d, ptr %dp, align 8
-  %ab = getelementptr inbounds [9 x i64], ptr @rg_alloc_bytes, i64 0, i64 %s
+  %sl2 = shl i64 %s, 3
+  %ab = getelementptr inbounds [72 x i64], ptr @rg_alloc_bytes, i64 0, i64 %sl2
   %av = load i64, ptr %ab, align 8
   %so = mul i64 %s, 16
   %i = add i64 %so, %d
