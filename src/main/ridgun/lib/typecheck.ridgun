@@ -1868,17 +1868,6 @@ fn :: tc refs rec args [RExpr] RStrSet [String] => RStrSet [String]
 
 fn :: tc refs expr RExpr RStrSet [String] => RStrSet [String]
       tc refs expr (EVar v) seen acc = tc add ref v seen acc
-      tc refs expr (EStrInterp parts) seen acc = tc refs expr list parts seen acc
-      tc refs expr (ENot inner) seen acc = tc refs expr inner seen acc
-      tc refs expr (EOut inner) seen acc = tc refs expr inner seen acc
-      tc refs expr (EWithCtx _ v b) seen acc =
-        r1 = tc refs expr v seen acc
-        tc refs expr b (tc fst set r1) (tc snd list r1)
-      tc refs expr (EWithRegion _ b) seen acc = tc refs expr b seen acc
-      tc refs expr (EEinsum es _) seen acc = tc refs expr list es seen acc
-      tc refs expr (EHadamard _ l _ r _) seen acc =
-        r1 = tc refs expr l seen acc
-        tc refs expr r (tc fst set r1) (tc snd list r1)
       tc refs expr (EBin bop l r) seen acc =
         r0 = tc add ref (binop symbol bop) seen acc
         r1 = tc refs expr l (tc fst set r0) (tc snd list r0)
@@ -1889,24 +1878,7 @@ fn :: tc refs expr RExpr RStrSet [String] => RStrSet [String]
       tc refs expr (ECall callee args) seen acc =
         r1 = tc add ref callee seen acc
         tc refs expr list args (tc fst set r1) (tc snd list r1)
-      tc refs expr (EEcho args) seen acc = tc refs expr list args seen acc
-      tc refs expr (EList elems) seen acc = tc refs expr list elems seen acc
-      tc refs expr (ETuple elems) seen acc = tc refs expr list elems seen acc
-      tc refs expr (ETensor elems) seen acc = tc refs expr list elems seen acc
-      tc refs expr (EIndex b idxs) seen acc =
-        r1 = tc refs expr b seen acc
-        tc refs expr list idxs (tc fst set r1) (tc snd list r1)
-      tc refs expr (EIndexAssign _ idxs v) seen acc =
-        r1 = tc refs expr list idxs seen acc
-        tc refs expr v (tc fst set r1) (tc snd list r1)
-      tc refs expr (ESeqSelect b _) seen acc = tc refs expr b seen acc
-      tc refs expr (EWhere b wbs) seen acc =
-        r1 = tc refs expr b seen acc
-        tc refs where list wbs (tc fst set r1) (tc snd list r1)
-      tc refs expr (EParPipe bs) seen acc = tc refs expr list bs seen acc
-      tc refs expr (EGuard gs) seen acc = tc refs guard list gs seen acc
-      tc refs expr (EBlock ss) seen acc = tc refs stmt list ss seen acc
-      tc refs expr _ seen acc = (seen, acc)
+      tc refs expr e seen acc = tc refs expr list (expr kids e) seen acc
 
 fn :: tc refs expr list [RExpr] RStrSet [String] => RStrSet [String]
       tc refs expr list [] seen acc = (seen, acc)
@@ -1914,34 +1886,12 @@ fn :: tc refs expr list [RExpr] RStrSet [String] => RStrSet [String]
         r1 = tc refs expr e seen acc
         tc refs expr list es (tc fst set r1) (tc snd list r1)
 
-fn :: tc refs where list [RWhereBind] RStrSet [String] => RStrSet [String]
-      tc refs where list [] seen acc = (seen, acc)
-      tc refs where list ((WhereBind e _ _):wbs) seen acc =
-        r1 = tc refs expr e seen acc
-        tc refs where list wbs (tc fst set r1) (tc snd list r1)
-
 fn :: tc refs guard list [RGuard] RStrSet [String] => RStrSet [String]
       tc refs guard list [] seen acc = (seen, acc)
       tc refs guard list ((GuardBranch c b):gs) seen acc =
         r1 = tc refs expr c seen acc
         r2 = tc refs expr b (tc fst set r1) (tc snd list r1)
         tc refs guard list gs (tc fst set r2) (tc snd list r2)
-
-fn :: tc refs stmt list [RStmt] RStrSet [String] => RStrSet [String]
-      tc refs stmt list [] seen acc = (seen, acc)
-      tc refs stmt list ((StmtLet _ e):ss) seen acc =
-        r1 = tc refs expr e seen acc
-        tc refs stmt list ss (tc fst set r1) (tc snd list r1)
-      tc refs stmt list ((StmtMut _ e):ss) seen acc =
-        r1 = tc refs expr e seen acc
-        tc refs stmt list ss (tc fst set r1) (tc snd list r1)
-      tc refs stmt list ((StmtExpr e):ss) seen acc =
-        r1 = tc refs expr e seen acc
-        tc refs stmt list ss (tc fst set r1) (tc snd list r1)
-      tc refs stmt list ((StmtIndexAssign _ idxs e):ss) seen acc =
-        r1 = tc refs expr list idxs seen acc
-        r2 = tc refs expr e (tc fst set r1) (tc snd list r1)
-        tc refs stmt list ss (tc fst set r2) (tc snd list r2)
 
 fn :: tc refs cases [RFnCase] RStrSet [String] => RStrSet [String]
       tc refs cases [] seen acc = (seen, acc)
@@ -2115,82 +2065,23 @@ fn :: strict ident call err String String => [RTypeError]
 fn :: strict expr errors RExpr String => [RTypeError]
       strict expr errors (EVar v) fn_name =
         strict ident call err fn_name v
-      strict expr errors (ENot inner) fn_name =
-        strict expr errors inner fn_name
-      strict expr errors (EOut inner) fn_name =
-        strict expr errors inner fn_name
-      strict expr errors (EBin _ l r) fn_name =
-        (strict expr errors l fn_name) :: (strict expr errors r fn_name)
       strict expr errors (ECall "__lambda__" args) fn_name =
         strict expr list errors args fn_name
       strict expr errors (ECall "__record_update__" (base_e:rest)) fn_name =
         (strict expr errors base_e fn_name) :: (strict expr list errors rest fn_name)
       strict expr errors (ECall callee args) fn_name =
         (strict ident call err fn_name callee) :: (strict expr list errors args fn_name)
-      strict expr errors (EEcho args) fn_name =
-        strict expr list errors args fn_name
-      strict expr errors (EStrInterp parts) fn_name =
-        strict expr list errors parts fn_name
-      strict expr errors (EList elems) fn_name =
-        strict expr list errors elems fn_name
-      strict expr errors (ETuple elems) fn_name =
-        strict expr list errors elems fn_name
-      strict expr errors (ETensor elems) fn_name =
-        strict expr list errors elems fn_name
-      strict expr errors (EEinsum es _) fn_name =
-        strict expr list errors es fn_name
-      strict expr errors (EHadamard _ l _ r _) fn_name =
-        (strict expr errors l fn_name) :: (strict expr errors r fn_name)
-      strict expr errors (EIndex base idxs) fn_name =
-        (strict expr errors base fn_name) :: (strict expr list errors idxs fn_name)
-      strict expr errors (EIndexAssign _ idxs v) fn_name =
-        (strict expr list errors idxs fn_name) :: (strict expr errors v fn_name)
-      strict expr errors (ESeqSelect b _) fn_name =
-        strict expr errors b fn_name
-      strict expr errors (EBlock stmts) fn_name =
-        strict stmt list errors stmts fn_name
-      strict expr errors (EGuard gs) fn_name =
-        strict guard list errors gs fn_name
-      strict expr errors (EWhere b wbs) fn_name =
-        (strict expr errors b fn_name) :: (strict where list errors wbs fn_name)
-      strict expr errors (EParPipe bs) fn_name =
-        strict expr list errors bs fn_name
-      strict expr errors (EWithCtx _ v b) fn_name =
-        (strict expr errors v fn_name) :: (strict expr errors b fn_name)
-      strict expr errors (EWithRegion _ b) fn_name =
-        strict expr errors b fn_name
-      strict expr errors _ _ = []
+      strict expr errors e fn_name =  strict expr list errors (expr kids e) fn_name
 
 fn :: strict expr list errors [RExpr] String => [RTypeError]
       strict expr list errors [] _ = []
       strict expr list errors (e:es) fn_name =
         (strict expr errors e fn_name) :: (strict expr list errors es fn_name)
 
-fn :: strict stmt list errors [RStmt] String => [RTypeError]
-      strict stmt list errors [] _ = []
-      strict stmt list errors ((StmtLet _ e):ss) fn_name =
-        (strict expr errors e fn_name) :: (strict stmt list errors ss fn_name)
-      strict stmt list errors ((StmtMut _ e):ss) fn_name =
-        (strict expr errors e fn_name) :: (strict stmt list errors ss fn_name)
-      strict stmt list errors ((StmtExpr e):ss) fn_name =
-        (strict expr errors e fn_name) :: (strict stmt list errors ss fn_name)
-      strict stmt list errors ((StmtIndexAssign _ idxs e):ss) fn_name =
-        (strict expr list errors idxs fn_name) :: (strict expr errors e fn_name) :: (strict stmt list errors ss fn_name)
-
-fn :: strict guard list errors [RGuard] String => [RTypeError]
-      strict guard list errors [] _ = []
-      strict guard list errors ((GuardBranch c b):gs) fn_name =
-        (strict expr errors c fn_name) :: (strict expr errors b fn_name) :: (strict guard list errors gs fn_name)
-
-fn :: strict where list errors [RWhereBind] String => [RTypeError]
-      strict where list errors [] _ = []
-      strict where list errors ((WhereBind e _ _):wbs) fn_name =
-        (strict expr errors e fn_name) :: (strict where list errors wbs fn_name)
-
 fn :: strict case list errors [RFnCase] String => [RTypeError]
       strict case list errors [] _ = []
       strict case list errors ((FnCase _ gs body):cs) fn_name =
-        (strict guard list errors gs fn_name) :: (strict expr errors body fn_name) :: (strict case list errors cs fn_name)
+        (strict expr list errors (guard kids gs []) fn_name) :: (strict expr errors body fn_name) :: (strict case list errors cs fn_name)
 
 fn :: has strict err for fn [RTypeError] String => Bool
       has strict err for fn [] _ = False

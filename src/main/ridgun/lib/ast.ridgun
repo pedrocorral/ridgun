@@ -70,3 +70,50 @@ type RInstr = BPushInt Int | BPushReal String | BPushStr String | BStrInterp Int
 type RCompiledFn = CompiledFn String Int [RInstr]
 
 type RCompiledProg = CompiledProg [RCompiledFn]
+
+-- 14. Generic traversal of expressions
+-- `expr kids e`: the direct sub-expressions of e, in evaluation order (the
+-- expressions of the statements, guards and where-bindings of e included).
+-- A pass that only does something of its own on a few constructors writes
+-- those clauses and ends with one clause over `expr kids`; it then needs no
+-- helper for statements, guards or where-bindings.
+-- A pass that must see binders (the names a statement or a where-binding
+-- introduces), or that must not descend into some constructor, keeps its own
+-- clauses for those.
+fn :: expr kids RExpr => [RExpr]
+      expr kids (EStrInterp es)        =  es
+      expr kids (ENot e)               =  [e]
+      expr kids (EOut e)               =  [e]
+      expr kids (EBin _ a b)           =  [a, b]
+      expr kids (ECall _ args)         =  args
+      expr kids (EEcho es)             =  es
+      expr kids (EList es)             =  es
+      expr kids (ETuple es)            =  es
+      expr kids (ETensor es)           =  es
+      expr kids (EEinsum es _)         =  es
+      expr kids (EHadamard _ a _ b _)  =  [a, b]
+      expr kids (EIndex e es)          =  [e] :: es
+      expr kids (EIndexAssign _ es e)  =  es :: [e]
+      expr kids (ESeqSelect e _)       =  [e]
+      expr kids (EBlock ss)            =  stmt kids ss []
+      expr kids (EGuard gs)            =  guard kids gs []
+      expr kids (EWhere e ws)          =  where kids ws [e]
+      expr kids (EParPipe es)          =  es
+      expr kids (EWithCtx _ a b)       =  [a, b]
+      expr kids (EWithRegion _ e)      =  [e]
+      expr kids _                      =  []
+
+fn :: stmt kids [RStmt] [RExpr] => [RExpr]
+      stmt kids [] acc = acc
+      stmt kids ((StmtLet _ e):ss) acc =  stmt kids ss (acc :: [e])
+      stmt kids ((StmtMut _ e):ss) acc =  stmt kids ss (acc :: [e])
+      stmt kids ((StmtExpr e):ss) acc  =  stmt kids ss (acc :: [e])
+      stmt kids ((StmtIndexAssign _ es e):ss) acc =  stmt kids ss (acc :: es :: [e])
+
+fn :: guard kids [RGuard] [RExpr] => [RExpr]
+      guard kids [] acc = acc
+      guard kids ((GuardBranch c e):gs) acc =  guard kids gs (acc :: [c, e])
+
+fn :: where kids [RWhereBind] [RExpr] => [RExpr]
+      where kids [] acc = acc
+      where kids ((WhereBind e _ _):ws) acc =  where kids ws (acc :: [e])

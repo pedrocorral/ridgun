@@ -901,55 +901,22 @@ fn :: collect expr strs RExpr              RStrPoolAcc => RStrPoolAcc
       collect expr strs (EReal r)          acc      =  pool add str r acc
       collect expr strs (EStr s)           acc      =  pool add str s acc
       collect expr strs (EVar v)           acc      =  add ctor str v acc
-      collect expr strs (ENot inner)       acc      =  collect expr strs inner acc
-      collect expr strs (EOut inner)       acc      =  collect expr strs inner acc
-      collect expr strs (EBin _ l r)       acc      =  collect expr strs r (collect expr strs l acc)
       collect expr strs (ECall fname args) acc      =  collect expr list strs args (add ctor str fname acc)
-      collect expr strs (EEcho args)       acc      =  collect expr list strs args acc
-      collect expr strs (EStrInterp parts) acc      =  collect expr list strs parts acc
-      collect expr strs (EList elems)      acc      =  collect expr list strs elems acc
-      collect expr strs (ETuple elems)     acc      =  collect expr list strs elems acc
-      collect expr strs (ETensor elems)    acc      =  collect expr list strs elems acc
       collect expr strs (EEinsum es subs)  acc      =  collect expr list strs es (pool add str (str join subs ",") acc)
       collect expr strs (EHadamard _ l s1 r s2) acc =  collect expr strs r (collect expr strs l (pool add str (s1 + "," + s2) acc))
-      collect expr strs (EIndex base idxs) acc      =  collect expr list strs idxs (collect expr strs base acc)
-      collect expr strs (EIndexAssign _ idxs v) acc =  collect expr strs v (collect expr list strs idxs acc)
       collect expr strs (ESeqSelect b m)   acc      =  collect expr strs b (pool add str m acc)
-      collect expr strs (EBlock stmts)     acc      =  collect stmt list strs stmts acc
-      collect expr strs (EGuard guards)    acc      =  collect guard list strs guards acc
-      collect expr strs (EWhere body binds) acc     =  collect where list strs binds (collect expr strs body acc)
-      collect expr strs (EParPipe branches) acc     =  collect expr list strs branches acc
       collect expr strs (EWithCtx c v b)   acc      =  collect expr strs b (collect expr strs v (pool add str c acc))
-      collect expr strs (EWithRegion _ b)  acc      =  collect expr strs b acc
-      collect expr strs _                  acc      =  acc
+      collect expr strs e                  acc      =  collect expr list strs (expr kids e) acc
 
 fn :: collect expr list strs [RExpr] RStrPoolAcc => RStrPoolAcc
       collect expr list strs [] acc = acc
       collect expr list strs (e:es) acc = collect expr list strs es (collect expr strs e acc)
 
-fn :: collect stmt list strs [RStmt] RStrPoolAcc => RStrPoolAcc
-      collect stmt list strs [] acc = acc
-      collect stmt list strs ((StmtLet _ e):ss) acc = collect stmt list strs ss (collect expr strs e acc)
-      collect stmt list strs ((StmtMut _ e):ss) acc = collect stmt list strs ss (collect expr strs e acc)
-      collect stmt list strs ((StmtExpr e):ss) acc = collect stmt list strs ss (collect expr strs e acc)
-      collect stmt list strs ((StmtIndexAssign _ idxs e):ss) acc =
-        collect stmt list strs ss (collect expr strs e (collect expr list strs idxs acc))
-
-fn :: collect where list strs [RWhereBind] RStrPoolAcc => RStrPoolAcc
-      collect where list strs [] acc = acc
-      collect where list strs ((WhereBind e _ _):wbs) acc =
-        collect where list strs wbs (collect expr strs e acc)
-
-fn :: collect guard list strs [RGuard] RStrPoolAcc => RStrPoolAcc
-      collect guard list strs [] acc = acc
-      collect guard list strs ((GuardBranch c b):gs) acc =
-        collect guard list strs gs (collect expr strs b (collect expr strs c acc))
-
 fn :: collect case list strs [RFnCase] RStrPoolAcc => RStrPoolAcc
       collect case list strs [] acc = acc
       collect case list strs ((FnCase pats guards body):cs) acc =
         a1 = collect pat list strs pats acc
-        a2 = collect guard list strs guards a1
+        a2 = collect expr list strs (guard kids guards []) a1
         collect case list strs cs (collect expr strs body a2)
 
 fn :: collect fndef list strs [RFnDef] RStrPoolAcc => RStrPoolAcc
@@ -1278,27 +1245,10 @@ fn :: add bound var String [String] => [String]
       add bound var v      acc      =  add unique str v acc
 
 fn :: collect expr bound vars RExpr [String] => [String]
-      collect expr bound vars (ENot inner) acc = collect expr bound vars inner acc
-      collect expr bound vars (EOut inner) acc = collect expr bound vars inner acc
-      collect expr bound vars (EBin _ l r) acc = collect expr bound vars r (collect expr bound vars l acc)
-      collect expr bound vars (ECall _ args) acc = collect expr list bound vars args acc
-      collect expr bound vars (EEcho args) acc = collect expr list bound vars args acc
-      collect expr bound vars (EStrInterp parts) acc = collect expr list bound vars parts acc
-      collect expr bound vars (EList elems) acc = collect expr list bound vars elems acc
-      collect expr bound vars (ETuple elems) acc = collect expr list bound vars elems acc
-      collect expr bound vars (ETensor elems) acc = collect expr list bound vars elems acc
-      collect expr bound vars (EEinsum es _) acc = collect expr list bound vars es acc
-      collect expr bound vars (EHadamard _ l _ r _) acc = collect expr bound vars r (collect expr bound vars l acc)
-      collect expr bound vars (EIndex base idxs) acc = collect expr list bound vars idxs (collect expr bound vars base acc)
       collect expr bound vars (EIndexAssign t idxs v) acc = collect expr bound vars v (collect expr list bound vars idxs (add bound var t acc))
-      collect expr bound vars (ESeqSelect b _) acc = collect expr bound vars b acc
       collect expr bound vars (EBlock stmts) acc = collect stmt list bound vars stmts acc
-      collect expr bound vars (EGuard guards) acc = collect guard list bound vars guards acc
       collect expr bound vars (EWhere body binds) acc = collect where list bound vars binds (collect expr bound vars body acc)
-      collect expr bound vars (EParPipe branches) acc = collect expr list bound vars branches acc
-      collect expr bound vars (EWithCtx _ v b) acc = collect expr bound vars b (collect expr bound vars v acc)
-      collect expr bound vars (EWithRegion _ b) acc = collect expr bound vars b acc
-      collect expr bound vars _ acc = acc
+      collect expr bound vars e acc = collect expr list bound vars (expr kids e) acc
 
 fn :: collect expr list bound vars [RExpr] [String] => [String]
       collect expr list bound vars [] acc = acc
@@ -1320,50 +1270,24 @@ fn :: collect where list bound vars [RWhereBind] [String] => [String]
       collect where list bound vars ((WhereBind e v _):wbs) acc =
         collect where list bound vars wbs (add bound var v (collect expr bound vars e acc))
 
-fn :: collect guard list bound vars [RGuard] [String] => [String]
-      collect guard list bound vars [] acc = acc
-      collect guard list bound vars ((GuardBranch c b):gs) acc =
-        collect guard list bound vars gs (collect expr bound vars b (collect expr bound vars c acc))
-
 fn :: collect cases all locals [RFnCase] [String] => [String]
       collect cases all locals [] acc = acc
       collect cases all locals ((FnCase pats guards body):cs) acc =
         a1 = collect pat list vars pats acc
-        a2 = collect guard list bound vars guards a1
+        a2 = collect expr list bound vars (guard kids guards []) a1
         collect cases all locals cs (collect expr bound vars body a2)
 
 fn :: cmm expr vars RExpr              [String] => [String]
       cmm expr vars (EVar name)        acc      =  add unique str name acc
-      cmm expr vars (ENot inner)       acc      =  cmm expr vars inner acc
-      cmm expr vars (EOut inner)       acc      =  cmm expr vars inner acc
-      cmm expr vars (EBin _ l r)       acc      =  cmm expr vars r (cmm expr vars l acc)
       cmm expr vars (ECall "__record_update__" (base_e:rest_args)) acc =
         cmm expr list vars rest_args (cmm expr vars base_e acc)
       cmm expr vars (ECall "__unpack2__" (_:single_arg:[])) acc =
         cmm expr vars single_arg acc
       cmm expr vars (ECall fname args) acc      =  cmm expr list vars args (add unique str fname acc)
-      cmm expr vars (EEcho args)       acc      =  cmm expr list vars args acc
-      cmm expr vars (EStrInterp parts) acc      =  cmm expr list vars parts acc
-      cmm expr vars (EList elems)      acc      =  cmm expr list vars elems acc
-      cmm expr vars (ETuple elems)     acc      =  cmm expr list vars elems acc
-      cmm expr vars (ETensor elems)    acc      =  cmm expr list vars elems acc
-      cmm expr vars (EEinsum es _)     acc      =  cmm expr list vars es acc
-      cmm expr vars (EHadamard _ l _ r _) acc   =  cmm expr vars r (cmm expr vars l acc)
-      cmm expr vars (EIndex base idxs) acc      =  cmm expr list vars idxs (cmm expr vars base acc)
       cmm expr vars (EIndexAssign t idxs v) acc =  cmm expr vars v (cmm expr list vars idxs (add unique str t acc))
-      cmm expr vars (ESeqSelect b _)   acc      =  cmm expr vars b acc
       cmm expr vars (EBlock stmts)     acc      =  cmm stmts vars stmts acc
-      cmm expr vars (EGuard guards)    acc      =  cmm guards vars guards acc
       cmm expr vars (EWhere body binds) acc     =  cmm where vars binds body acc
-      cmm expr vars (EParPipe branches) acc     =  cmm expr list vars branches acc
-      cmm expr vars (EWithCtx _ v b)   acc      =  cmm expr vars b (cmm expr vars v acc)
-      cmm expr vars (EWithRegion _ b)  acc      =  cmm expr vars b acc
-      cmm expr vars _                  acc      =  acc
-
-fn :: cmm guards vars [RGuard] [String] => [String]
-      cmm guards vars []       acc      =  acc
-      cmm guards vars ((GuardBranch c b):gs) acc =
-        cmm guards vars gs (cmm expr vars b (cmm expr vars c acc))
+      cmm expr vars e                  acc      =  cmm expr list vars (expr kids e) acc
 
 fn :: cmm expr list vars [RExpr] [String] => [String]
       cmm expr list vars [] acc = acc
@@ -3915,7 +3839,7 @@ fn :: share cons cases [RFnCase] => [RFnCase]
 
 fn :: share cons case [RPattern] [RGuard] RExpr => RFnCase
       share cons case pats guards body =
-        bound = collect guard list bound vars guards (collect expr bound vars body [])
+        bound = collect expr list bound vars (guard kids guards []) (collect expr bound vars body [])
         keys = share cons keys (pat list cons cands pats []) bound []
         share cons apply pats guards body keys
 
@@ -4077,7 +4001,7 @@ fn :: take field cases [RFnCase] String RStrIntMap RStrIntMap => [RFnCase]
 
 fn :: take field case RFnCase String RStrIntMap RStrIntMap => RFnCase
       take field case (FnCase pats guards body) name fam fm =
-        rebound = collect guard list bound vars guards (collect expr bound vars body [])
+        rebound = collect expr list bound vars (guard kids guards []) (collect expr bound vars body [])
         mask = non neg int (str int map lookup fam ("#b " + name))
         take field params (FnCase pats guards body) pats 0 mask rebound fam fm
 
@@ -4327,56 +4251,21 @@ fn :: field getter fn Int String Int RNativeEnv => RNativeFn
 
 fn :: collect refs expr RExpr              [String] => [String]
       collect refs expr (EVar name)        acc      =  add unique str name acc
-      collect refs expr (ENot inner)       acc      =  collect refs expr inner acc
-      collect refs expr (EOut inner)       acc      =  collect refs expr inner acc
       collect refs expr (EBin bop l r)     acc      =  acc -> add unique str (binop op tag bop) _ -> collect refs expr l _ -> collect refs expr r _
       collect refs expr (ECall ":typed-tensor:" ((EStr ty):rest)) acc
         | is poly elem name ty = acc -> add unique str ":typed-tensor:" _ -> add unique str "__rg_gt_poly" _ -> collect refs expr list rest _
         | otherwise = acc -> add unique str ":typed-tensor:" _ -> collect refs expr list rest _
       collect refs expr (ECall fname args) acc      =  acc -> add unique str fname _ -> collect refs expr list args _
-      collect refs expr (EEcho args)       acc      =  collect refs expr list args acc
-      collect refs expr (EStrInterp parts) acc      =  collect refs expr list parts acc
-      collect refs expr (EList elems)      acc      =  collect refs expr list elems acc
-      collect refs expr (ETuple elems)     acc      =  collect refs expr list elems acc
-      collect refs expr (ETensor elems)    acc      =  collect refs expr list elems acc
-      collect refs expr (EEinsum es _)     acc      =  collect refs expr list es acc
-      collect refs expr (EHadamard _ l _ r _) acc   =  acc -> collect refs expr l _ -> collect refs expr r _
-      collect refs expr (EIndex base idxs) acc      =  acc -> collect refs expr base _ -> collect refs expr list idxs _
-      collect refs expr (EIndexAssign _ idxs v) acc =  acc -> collect refs expr list idxs _ -> collect refs expr v _
-      collect refs expr (ESeqSelect b _)   acc      =  collect refs expr b acc
-      collect refs expr (EBlock stmts)     acc      =  collect refs stmts stmts acc
-      collect refs expr (EGuard guards)    acc      =  collect refs guards guards acc
-      collect refs expr (EWhere body binds) acc     =  acc -> collect refs expr body _ -> collect refs where binds _
-      collect refs expr (EParPipe branches) acc     =  collect refs expr list branches acc
-      collect refs expr (EWithCtx _ v b)   acc      =  acc -> collect refs expr v _ -> collect refs expr b _
-      collect refs expr (EWithRegion _ b)  acc      =  collect refs expr b acc
-      collect refs expr _                  acc      =  acc
+      collect refs expr e                  acc      =  collect refs expr list (expr kids e) acc
 
 fn :: collect refs expr list [RExpr] [String] => [String]
       collect refs expr list [] acc = acc
       collect refs expr list (e:es) acc = acc -> collect refs expr e _ -> collect refs expr list es _
 
-fn :: collect refs stmts [RStmt]            [String] => [String]
-      collect refs stmts []                 acc      =  acc
-      collect refs stmts ((StmtLet _ e):ss) acc      =  acc -> collect refs expr e _ -> collect refs stmts ss _
-      collect refs stmts ((StmtMut _ e):ss) acc      =  acc -> collect refs expr e _ -> collect refs stmts ss _
-      collect refs stmts ((StmtExpr e):ss)  acc      =  acc -> collect refs expr e _ -> collect refs stmts ss _
-      collect refs stmts ((StmtIndexAssign _ idxs e):ss) acc =
-        acc -> collect refs expr list idxs _ -> collect refs expr e _ -> collect refs stmts ss _
-
-fn :: collect refs where [RWhereBind] [String] => [String]
-      collect refs where []           acc      =  acc
-      collect refs where ((WhereBind e _ _):wbs) acc = acc -> collect refs expr e _ -> collect refs where wbs _
-
-fn :: collect refs guards [RGuard] [String] => [String]
-      collect refs guards []       acc      =  acc
-      collect refs guards ((GuardBranch c b):gs) acc =
-        acc -> collect refs expr c _ -> collect refs expr b _ -> collect refs guards gs _
-
 fn :: collect refs cases [RFnCase] [String] => [String]
       collect refs cases []        acc      =  acc
       collect refs cases ((FnCase _ guards body):cs) acc =
-        acc -> collect refs guards guards _ -> collect refs expr body _ -> collect refs cases cs _
+        acc -> collect refs expr list (guard kids guards []) _ -> collect refs expr body _ -> collect refs cases cs _
 
 type RFnRefsMap = FnRefsEmpty | FnRefsNode String [String] RFnRefsMap RFnRefsMap
 
@@ -4437,44 +4326,19 @@ fn :: collect disp par items [RExpr] RStrIntMap RStrSet => RStrSet
 fn :: collect disp expr RExpr RStrIntMap RStrSet => RStrSet
       collect disp expr (EStr s) _ acc = str set add acc s
       collect disp expr (EVar v) _ acc = str set add acc v
-      collect disp expr (ENot inner) ar_map acc = collect disp expr inner ar_map acc
-      collect disp expr (EOut inner) ar_map acc = collect disp expr inner ar_map acc
-      collect disp expr (EBin _ l r) ar_map acc = collect disp expr r ar_map (collect disp expr l ar_map acc)
       collect disp expr (ECall "__unpack2__" ((EVar fn_target):args)) ar_map acc =
         collect disp expr list args ar_map (str set add acc fn_target)
       collect disp expr (ECall fname args) ar_map acc
         | (list len args) > 0 and (str int map lookup ar_map fname) > (list len args) =
           collect disp expr list args ar_map (str set add acc fname)
         | otherwise = collect disp expr list args ar_map acc
-      collect disp expr (EEcho args) ar_map acc = collect disp expr list args ar_map acc
-      collect disp expr (EStrInterp parts) ar_map acc = collect disp expr list parts ar_map acc
-      collect disp expr (EList elems) ar_map acc = collect disp expr list elems ar_map acc
-      collect disp expr (ETuple elems) ar_map acc = collect disp expr list elems ar_map acc
-      collect disp expr (ETensor elems) ar_map acc = collect disp expr list elems ar_map acc
-      collect disp expr (EEinsum es _) ar_map acc = collect disp expr list es ar_map acc
-      collect disp expr (EHadamard _ l _ r _) ar_map acc = collect disp expr r ar_map (collect disp expr l ar_map acc)
-      collect disp expr (EIndex base idxs) ar_map acc = collect disp expr list idxs ar_map (collect disp expr base ar_map acc)
-      collect disp expr (EIndexAssign _ idxs v) ar_map acc = collect disp expr v ar_map (collect disp expr list idxs ar_map acc)
-      collect disp expr (ESeqSelect b _) ar_map acc = collect disp expr b ar_map acc
-      collect disp expr (EBlock stmts) ar_map acc = collect disp stmts stmts ar_map acc
-      collect disp expr (EGuard guards) ar_map acc = collect disp guards guards ar_map acc
       collect disp expr (EWhere body binds) ar_map acc = collect disp where binds ar_map (collect disp expr body ar_map acc)
       collect disp expr (EParPipe branches) ar_map acc = collect disp par items branches ar_map acc
-      collect disp expr (EWithCtx _ v b) ar_map acc = collect disp expr b ar_map (collect disp expr v ar_map acc)
-      collect disp expr (EWithRegion _ b) ar_map acc = collect disp expr b ar_map acc
-      collect disp expr _ _ acc = acc
+      collect disp expr e ar_map acc = collect disp expr list (expr kids e) ar_map acc
 
 fn :: collect disp expr list [RExpr] RStrIntMap RStrSet => RStrSet
       collect disp expr list [] _ acc = acc
       collect disp expr list (e:es) ar_map acc = collect disp expr list es ar_map (collect disp expr e ar_map acc)
-
-fn :: collect disp stmts [RStmt] RStrIntMap RStrSet => RStrSet
-      collect disp stmts [] _ acc = acc
-      collect disp stmts ((StmtLet _ e):ss) ar_map acc = collect disp stmts ss ar_map (collect disp expr e ar_map acc)
-      collect disp stmts ((StmtMut _ e):ss) ar_map acc = collect disp stmts ss ar_map (collect disp expr e ar_map acc)
-      collect disp stmts ((StmtExpr e):ss) ar_map acc = collect disp stmts ss ar_map (collect disp expr e ar_map acc)
-      collect disp stmts ((StmtIndexAssign _ idxs e):ss) ar_map acc =
-        collect disp stmts ss ar_map (collect disp expr e ar_map (collect disp expr list idxs ar_map acc))
 
 fn :: collect disp where [RWhereBind] RStrIntMap RStrSet => RStrSet
       collect disp where [] _ acc = acc
@@ -4483,15 +4347,10 @@ fn :: collect disp where [RWhereBind] RStrIntMap RStrSet => RStrSet
       collect disp where ((WhereBind e _ _):wbs) ar_map acc =
         collect disp where wbs ar_map (collect disp expr e ar_map acc)
 
-fn :: collect disp guards [RGuard] RStrIntMap RStrSet => RStrSet
-      collect disp guards [] _ acc = acc
-      collect disp guards ((GuardBranch c b):gs) ar_map acc =
-        collect disp guards gs ar_map (collect disp expr b ar_map (collect disp expr c ar_map acc))
-
 fn :: collect disp cases [RFnCase] RStrIntMap RStrSet => RStrSet
       collect disp cases [] _ acc = acc
       collect disp cases ((FnCase _ gs b):cs) ar_map acc =
-        collect disp cases cs ar_map (collect disp expr b ar_map (collect disp guards gs ar_map acc))
+        collect disp cases cs ar_map (collect disp expr b ar_map (collect disp expr list (guard kids gs []) ar_map acc))
 
 fn :: collect disp fndefs [RFnDef] RStrIntMap RStrSet => RStrSet
       collect disp fndefs [] _ acc = acc
@@ -4614,56 +4473,20 @@ fn :: collect builtin val expr RExpr [String] => [String]
       collect builtin val expr (EVar name) acc
         | is wrapable builtin fn name = add unique str name acc
         | otherwise = acc
-      collect builtin val expr (ENot inner) acc = collect builtin val expr inner acc
-      collect builtin val expr (EOut inner) acc = collect builtin val expr inner acc
-      collect builtin val expr (EBin _ l r) acc = collect builtin val expr r (collect builtin val expr l acc)
       collect builtin val expr (ECall fname args) acc
         | (is wrapable builtin fn fname) and (list len args) > 0 and (list len args) < (std builtin arity fname) =
           collect builtin val expr list args (add unique str fname acc)
         | otherwise = collect builtin val expr list args acc
-      collect builtin val expr (EEcho args) acc = collect builtin val expr list args acc
-      collect builtin val expr (EStrInterp parts) acc = collect builtin val expr list parts acc
-      collect builtin val expr (EList elems) acc = collect builtin val expr list elems acc
-      collect builtin val expr (ETuple elems) acc = collect builtin val expr list elems acc
-      collect builtin val expr (ETensor elems) acc = collect builtin val expr list elems acc
-      collect builtin val expr (EEinsum es _) acc = collect builtin val expr list es acc
-      collect builtin val expr (EHadamard _ l _ r _) acc = collect builtin val expr r (collect builtin val expr l acc)
-      collect builtin val expr (EIndex base idxs) acc = collect builtin val expr list idxs (collect builtin val expr base acc)
-      collect builtin val expr (EIndexAssign _ idxs v) acc = collect builtin val expr v (collect builtin val expr list idxs acc)
-      collect builtin val expr (ESeqSelect b _) acc = collect builtin val expr b acc
-      collect builtin val expr (EBlock stmts) acc = collect builtin val stmts stmts acc
-      collect builtin val expr (EGuard guards) acc = collect builtin val guards guards acc
-      collect builtin val expr (EWhere body binds) acc = collect builtin val where binds (collect builtin val expr body acc)
-      collect builtin val expr (EParPipe branches) acc = collect builtin val expr list branches acc
-      collect builtin val expr (EWithCtx _ v b) acc = collect builtin val expr b (collect builtin val expr v acc)
-      collect builtin val expr (EWithRegion _ b) acc = collect builtin val expr b acc
-      collect builtin val expr _ acc = acc
+      collect builtin val expr e acc =  collect builtin val expr list (expr kids e) acc
 
 fn :: collect builtin val expr list [RExpr] [String] => [String]
       collect builtin val expr list [] acc = acc
       collect builtin val expr list (e:es) acc = collect builtin val expr list es (collect builtin val expr e acc)
 
-fn :: collect builtin val stmts [RStmt] [String] => [String]
-      collect builtin val stmts [] acc = acc
-      collect builtin val stmts ((StmtLet _ e):ss) acc = collect builtin val stmts ss (collect builtin val expr e acc)
-      collect builtin val stmts ((StmtMut _ e):ss) acc = collect builtin val stmts ss (collect builtin val expr e acc)
-      collect builtin val stmts ((StmtExpr e):ss) acc = collect builtin val stmts ss (collect builtin val expr e acc)
-      collect builtin val stmts ((StmtIndexAssign _ idxs e):ss) acc =
-        collect builtin val stmts ss (collect builtin val expr e (collect builtin val expr list idxs acc))
-
-fn :: collect builtin val where [RWhereBind] [String] => [String]
-      collect builtin val where [] acc = acc
-      collect builtin val where ((WhereBind e _ _):wbs) acc = collect builtin val where wbs (collect builtin val expr e acc)
-
-fn :: collect builtin val guards [RGuard] [String] => [String]
-      collect builtin val guards [] acc = acc
-      collect builtin val guards ((GuardBranch c b):gs) acc =
-        collect builtin val guards gs (collect builtin val expr b (collect builtin val expr c acc))
-
 fn :: collect builtin val cases [RFnCase] [String] => [String]
       collect builtin val cases [] acc = acc
       collect builtin val cases ((FnCase _ gs b):cs) acc =
-        collect builtin val cases cs (collect builtin val expr b (collect builtin val guards gs acc))
+        collect builtin val cases cs (collect builtin val expr b (collect builtin val expr list (guard kids gs []) acc))
 
 fn :: collect builtin val fndefs [RFnDef] [String] => [String]
       collect builtin val fndefs [] acc = acc

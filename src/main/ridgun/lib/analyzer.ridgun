@@ -100,53 +100,19 @@ fn :: collect mutated call args [RExpr] [RParamEffect] Int [String] => [String]
 -- ── Expression Effect & Self-Call Collection ────────────────
 
 fn :: count expr self calls String RExpr => Int
-      count expr self calls fn_name (ENot inner) = count expr self calls fn_name inner
-      count expr self calls fn_name (EOut inner) = count expr self calls fn_name inner
-      count expr self calls fn_name (EBin _ l r) = (count expr self calls fn_name l) + (count expr self calls fn_name r)
       count expr self calls fn_name (ECall callee args)
         | callee == fn_name = 1 + (count expr list calls fn_name args)
         | otherwise = count expr list calls fn_name args
-      count expr self calls fn_name (EEcho args) = count expr list calls fn_name args
-      count expr self calls fn_name (EStrInterp args) = count expr list calls fn_name args
-      count expr self calls fn_name (EList elems) = count expr list calls fn_name elems
-      count expr self calls fn_name (ETuple elems) = count expr list calls fn_name elems
-      count expr self calls fn_name (ETensor elems) = count expr list calls fn_name elems
-      count expr self calls fn_name (EEinsum es _) = count expr list calls fn_name es
-      count expr self calls fn_name (EHadamard _ l _ r _) = (count expr self calls fn_name l) + (count expr self calls fn_name r)
-      count expr self calls fn_name (EIndex b idxs) = (count expr self calls fn_name b) + (count expr list calls fn_name idxs)
-      count expr self calls fn_name (EIndexAssign _ idxs v) = (count expr list calls fn_name idxs) + (count expr self calls fn_name v)
-      count expr self calls fn_name (ESeqSelect b _) = count expr self calls fn_name b
-      count expr self calls fn_name (EBlock stmts) = count stmt list calls fn_name stmts
-      count expr self calls fn_name (EGuard guards) = count guard calls fn_name guards
-      count expr self calls fn_name (EWhere body binds) = (count expr self calls fn_name body) + (count where calls fn_name binds)
-      count expr self calls fn_name (EParPipe branches) = count expr list calls fn_name branches
-      count expr self calls fn_name (EWithCtx _ v b) = (count expr self calls fn_name v) + (count expr self calls fn_name b)
-      count expr self calls fn_name (EWithRegion _ b) = count expr self calls fn_name b
-      count expr self calls _ _ = 0
+      count expr self calls fn_name e = count expr list calls fn_name (expr kids e)
 
 fn :: count expr list calls String [RExpr] => Int
       count expr list calls _ [] = 0
       count expr list calls fn_name (e:es) = (count expr self calls fn_name e) + (count expr list calls fn_name es)
 
-fn :: count stmt list calls String [RStmt] => Int
-      count stmt list calls _ [] = 0
-      count stmt list calls fn_name ((StmtLet _ e):ss) = (count expr self calls fn_name e) + (count stmt list calls fn_name ss)
-      count stmt list calls fn_name ((StmtMut _ e):ss) = (count expr self calls fn_name e) + (count stmt list calls fn_name ss)
-      count stmt list calls fn_name ((StmtExpr e):ss) = (count expr self calls fn_name e) + (count stmt list calls fn_name ss)
-      count stmt list calls fn_name ((StmtIndexAssign _ idxs e):ss) = (count expr list calls fn_name idxs) + (count expr self calls fn_name e) + (count stmt list calls fn_name ss)
-
-fn :: count where calls String  [RWhereBind] => Int
-      count where calls _       []           =  0
-      count where calls fn_name ((WhereBind e _ _):wbs) = (count expr self calls fn_name e) + (count where calls fn_name wbs)
-
-fn :: count guard calls String  [RGuard] => Int
-      count guard calls _       []       =  0
-      count guard calls fn_name ((GuardBranch c b):gs) = (count expr self calls fn_name c) + (count expr self calls fn_name b) + (count guard calls fn_name gs)
-
 fn :: count case calls String  [RFnCase] => Int
       count case calls _       []        =  0
       count case calls fn_name ((FnCase _ gs b):cs) =
-        c_here = (count guard calls fn_name gs) + (count expr self calls fn_name b)
+        c_here = (count expr list calls fn_name (guard kids gs [])) + (count expr self calls fn_name b)
         c_rest = count case calls fn_name cs
         max int c_here c_rest
 
@@ -166,11 +132,6 @@ fn :: collect expr effects RExpr String RSummaryMap [String] Bool RCostTier => [
       collect expr effects (EWhere body binds) cur_fn summaries muts yld cost =
         r_body = collect expr effects body cur_fn summaries muts yld cost
         collect where effects tuple binds cur_fn summaries r_body
-      collect expr effects (EParPipe branches) cur_fn summaries muts yld cost =
-        collect expr list effects branches cur_fn summaries muts yld cost
-      collect expr effects (EBin _ l r) cur_fn summaries muts yld cost =
-        r1 = collect expr effects l cur_fn summaries muts yld cost
-        collect expr effects tuple r cur_fn summaries r1
       collect expr effects (EHadamard _ l _ r _) cur_fn summaries muts yld cost =
         r1 = collect expr effects l cur_fn summaries muts yld (max cost tier cost TierHeavyCPU)
         collect expr effects tuple r cur_fn summaries r1
@@ -178,31 +139,12 @@ fn :: collect expr effects RExpr String RSummaryMap [String] Bool RCostTier => [
         collect expr list effects es cur_fn summaries muts yld (max cost tier cost TierHeavyCPU)
       collect expr effects (ETensor elems) cur_fn summaries muts yld cost =
         collect expr list effects elems cur_fn summaries muts yld (max cost tier cost TierHeavyCPU)
-      collect expr effects (ENot inner) cur_fn summaries muts yld cost =
-        collect expr effects inner cur_fn summaries muts yld cost
-      collect expr effects (EOut inner) cur_fn summaries muts yld cost =
-        collect expr effects inner cur_fn summaries muts yld cost
-      collect expr effects (EWithRegion _ inner) cur_fn summaries muts yld cost =
-        collect expr effects inner cur_fn summaries muts yld cost
-      collect expr effects (EWithCtx _ v b) cur_fn summaries muts yld cost =
-        r1 = collect expr effects v cur_fn summaries muts yld cost
-        collect expr effects tuple b cur_fn summaries r1
       collect expr effects (EBlock stmts) cur_fn summaries muts yld cost =
         collect stmt list effects stmts cur_fn summaries muts yld cost
-      collect expr effects (EGuard guards) cur_fn summaries muts yld cost =
-        collect guards effects guards cur_fn summaries muts yld cost
-      collect expr effects (EList elems) cur_fn summaries muts yld cost =
-        collect expr list effects elems cur_fn summaries muts yld cost
-      collect expr effects (ETuple elems) cur_fn summaries muts yld cost =
-        collect expr list effects elems cur_fn summaries muts yld cost
-      collect expr effects (EEcho elems) cur_fn summaries muts yld cost =
-        collect expr list effects elems cur_fn summaries muts yld cost
-      collect expr effects (EStrInterp elems) cur_fn summaries muts yld cost =
-        collect expr list effects elems cur_fn summaries muts yld cost
-      collect expr effects (EIndex b idxs) cur_fn summaries muts yld cost =
-        r1 = collect expr effects b cur_fn summaries muts yld cost
-        collect expr list effects tuple idxs cur_fn summaries r1
-      collect expr effects _ _ _ muts yld cost = (muts, yld, cost)
+      -- KEPT AS IT WAS: the base of a sequence select is not traversed.
+      collect expr effects (ESeqSelect _ _) _ _ muts yld cost = (muts, yld, cost)
+      collect expr effects e cur_fn summaries muts yld cost =
+        collect expr list effects (expr kids e) cur_fn summaries muts yld cost
 
 fn :: collect expr effects tuple RExpr String RSummaryMap ([String], Bool, RCostTier) => [String] Bool RCostTier
       collect expr effects tuple e cur_fn summaries (muts, yld, cost) =
@@ -374,23 +316,13 @@ fn :: infer all summaries RProgram        => [RFnSummary]
 
 fn :: collect free vars RExpr              [String] => [String]
       collect free vars (EVar v)           acc      =  add unique str v acc
-      collect free vars (ENot inner)       acc      =  collect free vars inner acc
-      collect free vars (EOut inner)       acc      =  collect free vars inner acc
-      collect free vars (EBin _ l r)       acc      =  collect free vars r (collect free vars l acc)
-      collect free vars (EHadamard _ l _ r _) acc   =  collect free vars r (collect free vars l acc)
-      collect free vars (EEinsum es _)     acc      =  collect free vars list es acc
-      collect free vars (ECall _ args)     acc      =  collect free vars list args acc
-      collect free vars (EEcho args)       acc      =  collect free vars list args acc
-      collect free vars (EStrInterp args)  acc      =  collect free vars list args acc
-      collect free vars (EList args)       acc      =  collect free vars list args acc
-      collect free vars (ETuple args)      acc      =  collect free vars list args acc
-      collect free vars (ETensor args)     acc      =  collect free vars list args acc
-      collect free vars (EIndex b idxs)    acc      =  collect free vars list idxs (collect free vars b acc)
       collect free vars (EIndexAssign t idxs v) acc =  collect free vars v (collect free vars list idxs (add unique str t acc))
-      collect free vars (ESeqSelect b _)   acc      =  collect free vars b acc
-      collect free vars (EWithCtx _ v b)   acc      =  collect free vars b (collect free vars v acc)
-      collect free vars (EWithRegion _ b)  acc      =  collect free vars b acc
-      collect free vars _                  acc      =  acc
+      -- KEPT AS IT WAS: blocks, guards, where-bindings and parallel pipes are not traversed.
+      collect free vars (EBlock _)         acc      =  acc
+      collect free vars (EGuard _)         acc      =  acc
+      collect free vars (EWhere _ _)       acc      =  acc
+      collect free vars (EParPipe _)       acc      =  acc
+      collect free vars e                  acc      =  collect free vars list (expr kids e) acc
 
 fn :: collect free vars list [RExpr] [String] => [String]
       collect free vars list [] acc = acc
