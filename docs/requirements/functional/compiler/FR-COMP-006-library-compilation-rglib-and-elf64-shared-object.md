@@ -39,6 +39,7 @@ The `ridgunc` compiler (`src/main/ridgun/ridgunc/main.ridgun`, `src/main/ridgun/
      1. `<current_dir>/<libname>.ridgun` and `src/main/ridgun/lib/<libname>.ridgun`
      2. `target/lib<libname>.ridgunlib` and `.stable/deps/*/target/lib<libname>.ridgunlib`
      3. `.stable/deps/*/src/main/ridgun/lib/<libname>.ridgun`
+   - An import may name its package (`import pk.db.mod`), and a bare import found in two packages is an error: FR-COMP-028.
    - Importing a library exposes all of its `type`, `expand type`, `fn ::`, and `op ::` declarations to the consumer project so types can even be further extended via `expand type` (`FR-COMP-005`).
 
 ## Rationale

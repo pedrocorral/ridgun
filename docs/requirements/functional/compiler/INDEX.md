@@ -29,3 +29,4 @@
 | `FR-COMP-025-opaque-types.md` | `opaque type`: other modules name, hold and compare the type's values, but cannot build, match, read or update them | Adding or changing type declarations, module visibility or constructor resolution |
 | `FR-COMP-026-webassembly-target.md` | `--target wasm32`: `ridgunc` writes a WebAssembly module itself, runtime included; system calls are imports (ADR-0011) | Working on the wasm backend, the module writer or the playground |
 | `FR-COMP-027-conversions-between-int-and-real.md` | `int to real`, `real to int`, `real round`, `real floor`, `real ceil`: explicit, total conversions (builtins 136-140 of the IR runtime) | Converting numbers, adding a numeric builtin |
+| `FR-COMP-028-imports-name-their-package-ambiguity-is-an-error.md` | `import pk.db.mod` names the package; a bare import found in two packages is a build error that names both (as GHC) | Changing import resolution, packages, `.stable/deps` lookup |

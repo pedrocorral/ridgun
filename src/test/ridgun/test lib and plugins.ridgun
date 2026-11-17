@@ -335,6 +335,24 @@ fn :: main => ()
         assert ok (str contains repl_out "Welcome to stable 1.")
         assert ok (str contains repl_out "Reloaded build.ridgun — current project is 'alpha'")
         assert ok (str contains repl_out "Exiting stable.")
+        echo "=== FR-COMP-028: an import found in two packages is an error; the package first names one ==="
+        shell exec "rm -rf target/test_lib_work/amb && mkdir -p target/test_lib_work/amb/.stable/deps/pk1/src/main/ridgun/lib target/test_lib_work/amb/.stable/deps/pk2/src/main/ridgun/lib target/test_lib_work/amb/.stable/deps/pk3/target"
+        write file "target/test_lib_work/amb/.stable/deps/pk1/src/main/ridgun/lib/util.ridgun" "fn :: answer => Int\n      answer =  1\n"
+        write file "target/test_lib_work/amb/.stable/deps/pk2/src/main/ridgun/lib/util.ridgun" "fn :: answer => Int\n      answer =  2\n"
+        write file "target/test_lib_work/amb/.stable/deps/pk1/src/main/ridgun/lib/only.ridgun" "fn :: lonely => Int\n      lonely =  3\n"
+        write file "target/test_lib_work/amb/bundled_src.ridgun" "fn :: packed => Int\n      packed =  7\n"
+        st_amb_lib = shell exec ("cd target/test_lib_work/amb && \"" + ridgunc_bin + "\" build --quiet --lib bundled_src.ridgun -o .stable/deps/pk3/target/bundled.ridgunlib && rm bundled_src.ridgun")
+        assert int equals st_amb_lib 0 "bundle of package pk3"
+        write file "target/test_lib_work/amb/a.ridgun" "import util\n\nfn :: main => ()\n      main =  echo (int to str answer)\n"
+        st_amb = shell exec ("cd target/test_lib_work/amb && \"" + ridgunc_bin + "\" build a.ridgun -o a > a.txt 2>&1")
+        assert ok (st_amb != 0)
+        amb_out = read file "target/test_lib_work/amb/a.txt"
+        assert ok (str contains amb_out "import 'util' is ambiguous: the packages 'pk1' and 'pk2' both have it")
+        assert ok (str contains amb_out "import pk1.util")
+        write file "target/test_lib_work/amb/b.ridgun" "import pk2.util\nimport only\nimport pk3.bundled as b\n\nfn :: main => ()\n      main =  echo (int to str (answer * 100 + lonely * 10 + b.packed))\n"
+        st_qual = shell exec ("cd target/test_lib_work/amb && \"" + ridgunc_bin + "\" build --quiet b.ridgun -o b && ./b > b.txt")
+        assert int equals st_qual 0 "import with the package first, a module of one package, a bundle with the package first"
+        assert ok ((read file "target/test_lib_work/amb/b.txt") == "237\n")
         echo "=== FR-COMP-007: Cross-Platform PAL Descriptor/Poll/Process Primitives & with timeout ==="
         -- 0. Target Platform ADTs: `sys os => SysOs` (`Linux | MacOS | Windows`) & `sys arch => SysArch` (`X86_64 | Arm64`)
         assert true ((sys os) == Linux)

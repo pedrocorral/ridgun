@@ -4228,13 +4228,24 @@ fn :: spec root dir fallback String => String
       spec root dir fallback spec =
         spec root dir or strip (spec root dir spec) spec
 
+-- `import pk.db.mod`: the module `db/mod` of the package in the folder `pk`,
+-- looked for where a package keeps its modules (its bundles and its sources).
+fn :: qualified dep paths String String => [String]
+      qualified dep paths base spec =
+        qualified dep paths at base spec (first slash idx spec 0 (str len spec))
+
+fn :: qualified dep paths at String String Int => [String]
+      qualified dep paths at base spec sl
+        | sl <= 0 = []
+        | otherwise = dep subdir paths base [str slice spec 0 sl] (str slice spec (sl + 1) (str len spec))
+
 fn :: all deps base paths [String] String => [String]
       all deps base paths [] _ = []
       all deps base paths (base:bs) spec
         | is library spec spec =
           (stem with exts (base + "/" + (strip module ext spec)) (library exts)) :: (dep subdir paths base [spec root dir fallback spec] spec) :: (dep subdir paths base (list dir base) spec) :: (all deps base paths bs spec)
         | otherwise =
-          (stem with exts (base + "/" + spec) (module exts)) :: (dep subdir paths base [spec root dir fallback spec] spec) :: (dep subdir paths base (list dir base) spec) :: (all deps base paths bs spec)
+          (stem with exts (base + "/" + spec) (module exts)) :: (dep subdir paths base [spec root dir fallback spec] spec) :: (qualified dep paths base spec) :: (dep subdir paths base (list dir base) spec) :: (all deps base paths bs spec)
 
 fn :: pick parser home dir String => String
       pick parser home dir ""     =  sys getenv "USERPROFILE"
@@ -4386,10 +4397,53 @@ fn :: append rglib resolved mod String String String String [String] => String [
         res_deps = scan rglib imports state sub_pdir lib_src 0 (str len lib_src) 0 acc seen1
         append rglib after deps mname lib_src res_deps
 
-fn :: append rglib local or ext String String String String [String] => String [String]
-      append rglib local or ext pdir clean_spec "" acc seen1 =
+-- ── An import found in two packages (FR-COMP-028) ───────────
+-- `import util` that is not a module of the project is looked for in the
+-- installed packages. Written with its package first (`import pk.util`, or a
+-- package folder named as the module) it names one file. Written without it,
+-- every package folder is searched: when two of them have the module, the
+-- import is an error that names both, as in Haskell; the compiler does not
+-- pick one. The folders are those of the first place that has the module
+-- (the project's `.stable/deps` comes before `~/.omni/lib`).
+fn :: ambiguous import packages String String => [String]
+      ambiguous import packages pdir spec
+        | is core compiler mod spec = []
+        | otherwise = ambiguous in bases (stdlib deps bases pdir) (norm spec path (strip module ext spec))
+
+fn :: ambiguous in bases [String] String => [String]
+      ambiguous in bases [] _ = []
+      ambiguous in bases (base:bs) spec
+        | (try find candidate path (stem with exts (base + "/" + spec) (module exts))) != "" = []
+        | (try find candidate path (dep subdir paths base [spec root dir fallback spec] spec)) != "" = []
+        | (try find candidate path (qualified dep paths base spec)) != "" = []
+        | otherwise = ambiguous in base bs spec (packages with module base (list dir base) spec [])
+
+fn :: ambiguous in base [String] String [String] => [String]
+      ambiguous in base bs spec [] =  ambiguous in bases bs spec
+      ambiguous in base _ _ (_:[]) =  []
+      ambiguous in base _ _ found =  found
+
+fn :: packages with module String [String] String [String] => [String]
+      packages with module _ [] _ acc = acc
+      packages with module base (d:ds) spec acc
+        | (try find candidate path (dep subdir paths base [d] spec)) != "" = packages with module base ds spec (acc :: [d])
+        | otherwise = packages with module base ds spec acc
+
+fn :: ambiguous import message String [String] => String
+      ambiguous import message spec (a:b:_) =
+        "import '" + spec + "' is ambiguous: the packages '" + a + "' and '" + b + "' both have it; write the package first, as in 'import " + a + "." + spec + "'"
+      ambiguous import message spec _ =  "import '" + spec + "' is ambiguous"
+
+fn :: append rglib ambiguous or ext String String [String] String [String] => String [String]
+      append rglib ambiguous or ext pdir clean_spec [] acc seen1 =
         lib_src = resolve rglib bundle pdir clean_spec
         append rglib resolved mod pdir clean_spec lib_src acc seen1
+      append rglib ambiguous or ext _ clean_spec pkgs acc seen1 =
+        (acc + "\nfn :: __syntax_error__ => Int\n      __syntax_error__ = __syntax_error__ \"" + (ambiguous import message clean_spec pkgs) + "\"\n", seen1)
+
+fn :: append rglib local or ext String String String String [String] => String [String]
+      append rglib local or ext pdir clean_spec "" acc seen1 =
+        append rglib ambiguous or ext pdir clean_spec (ambiguous import packages pdir clean_spec) acc seen1
       append rglib local or ext pdir clean_spec local_rg acc seen1 =
         mname = mod name of spec clean_spec
         sub_pdir = child pdir for spec pdir clean_spec
