@@ -80,6 +80,13 @@ type RCompiledProg = CompiledProg [RCompiledFn]
 -- A pass that must see binders (the names a statement or a where-binding
 -- introduces), or that must not descend into some constructor, keeps its own
 -- clauses for those.
+-- EXCEPTIONS (passes that keep a clause for every constructor, on purpose):
+--   `lower expr`, `compile rexpr` (compiler), `check expr` (typecheck),
+--   `check expr safety` (analyzer): each constructor has work of its own.
+--   `lift expr lambdas` (parser): it threads the list of lifted functions.
+--   `expr has heavy ops` (compiler): it stops at some constructors by design
+--   of the cost estimate; a clause marked KEPT AS IT WAS in a converted pass
+--   records the same kind of stop.
 fn :: expr kids RExpr => [RExpr]
       expr kids (EStrInterp es)        =  es
       expr kids (ENot e)               =  [e]
@@ -117,3 +124,44 @@ fn :: guard kids [RGuard] [RExpr] => [RExpr]
 fn :: where kids [RWhereBind] [RExpr] => [RExpr]
       where kids [] acc = acc
       where kids ((WhereBind e _ _):ws) acc =  where kids ws (acc :: [e])
+
+-- `expr map kids e f`: e with f applied to each direct sub-expression (the
+-- same sub-expressions as `expr kids`). A rewriting pass writes the clauses
+-- of the constructors it changes and ends with one clause over this.
+fn :: expr map kids RExpr (RExpr => RExpr) => RExpr
+      expr map kids (EStrInterp es) f        =  EStrInterp (map f es)
+      expr map kids (ENot e) f               =  ENot (f e)
+      expr map kids (EOut e) f               =  EOut (f e)
+      expr map kids (EBin bop a b) f         =  EBin bop (f a) (f b)
+      expr map kids (ECall name args) f      =  ECall name (map f args)
+      expr map kids (EEcho es) f             =  EEcho (map f es)
+      expr map kids (EList es) f             =  EList (map f es)
+      expr map kids (ETuple es) f            =  ETuple (map f es)
+      expr map kids (ETensor es) f           =  ETensor (map f es)
+      expr map kids (EEinsum es subs) f      =  EEinsum (map f es) subs
+      expr map kids (EHadamard bop a sa b sb) f =  EHadamard bop (f a) sa (f b) sb
+      expr map kids (EIndex e es) f          =  EIndex (f e) (map f es)
+      expr map kids (EIndexAssign t es e) f  =  EIndexAssign t (map f es) (f e)
+      expr map kids (ESeqSelect e sel) f     =  ESeqSelect (f e) sel
+      expr map kids (EBlock ss) f            =  EBlock (stmts map exprs ss f)
+      expr map kids (EGuard gs) f            =  EGuard (guards map exprs gs f)
+      expr map kids (EWhere e ws) f          =  EWhere (f e) (wheres map exprs ws f)
+      expr map kids (EParPipe es) f          =  EParPipe (map f es)
+      expr map kids (EWithCtx c a b) f       =  EWithCtx c (f a) (f b)
+      expr map kids (EWithRegion q e) f      =  EWithRegion q (f e)
+      expr map kids e _                      =  e
+
+fn :: stmts map exprs [RStmt] (RExpr => RExpr) => [RStmt]
+      stmts map exprs [] _ = []
+      stmts map exprs ((StmtLet v e):ss) f   =  [StmtLet v (f e)] :: (stmts map exprs ss f)
+      stmts map exprs ((StmtMut v e):ss) f   =  [StmtMut v (f e)] :: (stmts map exprs ss f)
+      stmts map exprs ((StmtExpr e):ss) f    =  [StmtExpr (f e)] :: (stmts map exprs ss f)
+      stmts map exprs ((StmtIndexAssign t es e):ss) f =  [StmtIndexAssign t (map f es) (f e)] :: (stmts map exprs ss f)
+
+fn :: guards map exprs [RGuard] (RExpr => RExpr) => [RGuard]
+      guards map exprs [] _ = []
+      guards map exprs ((GuardBranch c e):gs) f =  [GuardBranch (f c) (f e)] :: (guards map exprs gs f)
+
+fn :: wheres map exprs [RWhereBind] (RExpr => RExpr) => [RWhereBind]
+      wheres map exprs [] _ = []
+      wheres map exprs ((WhereBind e v idxs):ws) f =  [WhereBind (f e) v idxs] :: (wheres map exprs ws f)

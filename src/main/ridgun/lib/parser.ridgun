@@ -3330,22 +3330,8 @@ fn :: norm expr RExpr              [RArityEntry] => RExpr
       norm expr (EBin bop l r)     arities       =  EBin bop (norm expr l arities) (norm expr r arities)
       norm expr (ECall fn_name args) arities     =  norm call fn_name args arities
       norm expr (EEcho args)       arities       =  EEcho (fold echo args (collapse fn ref args args arities) arities)
-      norm expr (EStrInterp parts) arities       =  EStrInterp (norm expr list parts arities)
-      norm expr (EList elems)      arities       =  EList (norm expr list elems arities)
-      norm expr (ETuple elems)     arities       =  ETuple (norm expr list elems arities)
-      norm expr (ETensor elems)    arities       =  ETensor (norm expr list elems arities)
-      norm expr (EEinsum es subs)  arities       =  EEinsum (norm expr list es arities) subs
-      norm expr (EHadamard bop l s1 r s2) arities = EHadamard bop (norm expr l arities) s1 (norm expr r arities) s2
-      norm expr (EIndex base idxs) arities       =  EIndex (norm expr base arities) (norm expr list idxs arities)
-      norm expr (EIndexAssign t idxs v) arities  =  EIndexAssign t (norm expr list idxs arities) (norm expr v arities)
-      norm expr (ESeqSelect b m)   arities       =  ESeqSelect (norm expr b arities) m
       norm expr (EBlock stmts)     arities       =  EBlock (norm stmt list stmts arities)
-      norm expr (EGuard guards)    arities       =  EGuard (norm guard list guards arities)
-      norm expr (EWhere body binds) arities      =  EWhere (norm expr body arities) (norm where list binds arities)
-      norm expr (EParPipe branches) arities      =  EParPipe (norm expr list branches arities)
-      norm expr (EWithCtx c v b)   arities       =  EWithCtx c (norm expr v arities) (norm expr b arities)
-      norm expr (EWithRegion q b)  arities       =  EWithRegion q (norm expr b arities)
-      norm expr e                  _             =  e
+      norm expr e                  arities       =  expr map kids e (x => norm expr x arities)
 
 fn :: norm expr list [RExpr] [RArityEntry] => [RExpr]
       norm expr list []      _             =  []
@@ -3397,10 +3383,6 @@ fn :: norm pipe var stmt RExpr String [RStmt] [RArityEntry] => [RStmt]
         | otherwise =
           [StmtLet v (norm expr left_e arities)] :: (norm stmt list ss ([ArityEntry v (0 - 2)] :: arities))
 
-fn :: norm where list [RWhereBind] [RArityEntry] => [RWhereBind]
-      norm where list []           _             =  []
-      norm where list ((WhereBind e v idxs):wbs) arities = [WhereBind (norm expr e arities) v idxs] :: (norm where list wbs arities)
-
 fn :: norm guard list [RGuard] [RArityEntry] => [RGuard]
       norm guard list []       _             =  []
       norm guard list ((GuardBranch c b):gs) arities = [GuardBranch (norm expr c arities) (norm expr b arities)] :: (norm guard list gs arities)
@@ -3408,7 +3390,7 @@ fn :: norm guard list [RGuard] [RArityEntry] => [RGuard]
 fn :: norm case body RExpr [RArityEntry] => RExpr
       norm case body (EWhere body binds) arities =
         ar1 = bind where local arities binds arities
-        EWhere (norm expr body ar1) (norm where list binds ar1)
+        EWhere (norm expr body ar1) (wheres map exprs binds (x => norm expr x ar1))
       norm case body body arities = norm expr body arities
 
 type RStrSet = StrSetEmpty | StrSetNode String RStrSet RStrSet
@@ -3622,55 +3604,23 @@ fn :: collect expr free locals RExpr [String] [String] [String] => [String]
       collect expr free locals (EVar v) outer_locals shadowed acc
         | (list contains outer_locals v) and (not (list contains shadowed v)) and (not (list contains acc v)) = acc :: [v]
         | otherwise = acc
-      collect expr free locals (ENot e) outer_locals shadowed acc =
-        collect expr free locals e outer_locals shadowed acc
-      collect expr free locals (EOut e) outer_locals shadowed acc =
-        collect expr free locals e outer_locals shadowed acc
-      collect expr free locals (EBin _ l r) outer_locals shadowed acc =
-        collect expr free locals r outer_locals shadowed (collect expr free locals l outer_locals shadowed acc)
       collect expr free locals (ECall "__lambda__" args) outer_locals shadowed acc =
         collect lambda free locals (extract lambda params args) outer_locals shadowed acc
       collect expr free locals (ECall fn_name args) outer_locals shadowed acc =
         acc1 = collect expr free locals (EVar fn_name) outer_locals shadowed acc
         collect expr list free locals args outer_locals shadowed acc1
-      collect expr free locals (EEcho args) outer_locals shadowed acc =
-        collect expr list free locals args outer_locals shadowed acc
-      collect expr free locals (EStrInterp parts) outer_locals shadowed acc =
-        collect expr list free locals parts outer_locals shadowed acc
-      collect expr free locals (EList elems) outer_locals shadowed acc =
-        collect expr list free locals elems outer_locals shadowed acc
-      collect expr free locals (ETuple elems) outer_locals shadowed acc =
-        collect expr list free locals elems outer_locals shadowed acc
-      collect expr free locals (ETensor elems) outer_locals shadowed acc =
-        collect expr list free locals elems outer_locals shadowed acc
-      collect expr free locals (EEinsum es _) outer_locals shadowed acc =
-        collect expr list free locals es outer_locals shadowed acc
-      collect expr free locals (EHadamard _ l _ r _) outer_locals shadowed acc =
-        collect expr free locals r outer_locals shadowed (collect expr free locals l outer_locals shadowed acc)
-      collect expr free locals (EIndex b idxs) outer_locals shadowed acc =
-        collect expr list free locals idxs outer_locals shadowed (collect expr free locals b outer_locals shadowed acc)
       collect expr free locals (EIndexAssign t idxs v) outer_locals shadowed acc =
         a1 = collect expr free locals (EVar t) outer_locals shadowed acc
         a2 = collect expr list free locals idxs outer_locals shadowed a1
         collect expr free locals v outer_locals shadowed a2
-      collect expr free locals (ESeqSelect b _) outer_locals shadowed acc =
-        collect expr free locals b outer_locals shadowed acc
       collect expr free locals (EBlock stmts) outer_locals shadowed acc =
         collect stmt list free locals stmts outer_locals shadowed acc
-      collect expr free locals (EGuard gs) outer_locals shadowed acc =
-        collect guard list free locals gs outer_locals shadowed acc
       collect expr free locals (EWhere b wbs) outer_locals shadowed acc =
         sh1 = collect where bound vars wbs shadowed
         a1 = collect where list free locals wbs outer_locals sh1 acc
         collect expr free locals b outer_locals sh1 a1
-      collect expr free locals (EParPipe bs) outer_locals shadowed acc =
-        collect expr list free locals bs outer_locals shadowed acc
-      collect expr free locals (EWithCtx c v b) outer_locals shadowed acc =
-        a1 = collect expr free locals v outer_locals shadowed acc
-        collect expr free locals b outer_locals ([c] :: shadowed) a1
-      collect expr free locals (EWithRegion _ b) outer_locals shadowed acc =
-        collect expr free locals b outer_locals shadowed acc
-      collect expr free locals _ _ _ acc = acc
+      collect expr free locals e outer_locals shadowed acc =
+        collect expr list free locals (expr kids e) outer_locals shadowed acc
 
 fn :: split raw comma loop String Int Int Int [String] => [String]
       split raw comma loop s start pos len acc
@@ -5936,48 +5886,15 @@ fn :: rewrite expr RExpr String [String] RModCtx [RModAlias] [RModAlias] [RModAl
       rewrite expr (EVar v) cur_mod locals special_ff aliases _ fn_map field_map
         | is upper ident v = EVar (resolve ctor ident ctx v cur_mod special_ff aliases)
         | otherwise = EVar (resolve lower ident v cur_mod locals special_ff aliases fn_map field_map)
-      rewrite expr (ENot inner) cur_mod locals special_ff aliases ctor_map fn_map field_map =
-        ENot (rewrite expr inner cur_mod locals special_ff aliases ctor_map fn_map field_map)
-      rewrite expr (EOut inner) cur_mod locals special_ff aliases ctor_map fn_map field_map =
-        EOut (rewrite expr inner cur_mod locals special_ff aliases ctor_map fn_map field_map)
-      rewrite expr (EBin bop l r) cur_mod locals special_ff aliases ctor_map fn_map field_map =
-        EBin bop (rewrite expr l cur_mod locals special_ff aliases ctor_map fn_map field_map) (rewrite expr r cur_mod locals special_ff aliases ctor_map fn_map field_map)
       rewrite expr (ECall fn_name args) cur_mod locals special_ff aliases ctor_map fn_map field_map =
         rewrite call expr fn_name args cur_mod locals special_ff aliases ctor_map fn_map field_map
-      rewrite expr (EEcho args) cur_mod locals special_ff aliases ctor_map fn_map field_map =
-        EEcho (rewrite expr list args cur_mod locals special_ff aliases ctor_map fn_map field_map)
-      rewrite expr (EStrInterp parts) cur_mod locals special_ff aliases ctor_map fn_map field_map =
-        EStrInterp (rewrite expr list parts cur_mod locals special_ff aliases ctor_map fn_map field_map)
-      rewrite expr (EList elems) cur_mod locals special_ff aliases ctor_map fn_map field_map =
-        EList (rewrite expr list elems cur_mod locals special_ff aliases ctor_map fn_map field_map)
-      rewrite expr (ETuple elems) cur_mod locals special_ff aliases ctor_map fn_map field_map =
-        ETuple (rewrite expr list elems cur_mod locals special_ff aliases ctor_map fn_map field_map)
-      rewrite expr (ETensor elems) cur_mod locals special_ff aliases ctor_map fn_map field_map =
-        ETensor (rewrite expr list elems cur_mod locals special_ff aliases ctor_map fn_map field_map)
-      rewrite expr (EEinsum es subs) cur_mod locals special_ff aliases ctor_map fn_map field_map =
-        EEinsum (rewrite expr list es cur_mod locals special_ff aliases ctor_map fn_map field_map) subs
-      rewrite expr (EHadamard bop l s1 r s2) cur_mod locals special_ff aliases ctor_map fn_map field_map =
-        EHadamard bop (rewrite expr l cur_mod locals special_ff aliases ctor_map fn_map field_map) s1 (rewrite expr r cur_mod locals special_ff aliases ctor_map fn_map field_map) s2
-      rewrite expr (EIndex base idxs) cur_mod locals special_ff aliases ctor_map fn_map field_map =
-        EIndex (rewrite expr base cur_mod locals special_ff aliases ctor_map fn_map field_map) (rewrite expr list idxs cur_mod locals special_ff aliases ctor_map fn_map field_map)
-      rewrite expr (EIndexAssign t idxs v) cur_mod locals special_ff aliases ctor_map fn_map field_map =
-        EIndexAssign t (rewrite expr list idxs cur_mod locals special_ff aliases ctor_map fn_map field_map) (rewrite expr v cur_mod locals special_ff aliases ctor_map fn_map field_map)
-      rewrite expr (ESeqSelect b m) cur_mod locals special_ff aliases ctor_map fn_map field_map =
-        ESeqSelect (rewrite expr b cur_mod locals special_ff aliases ctor_map fn_map field_map) m
       rewrite expr (EBlock stmts) cur_mod locals special_ff aliases ctor_map fn_map field_map =
         EBlock (rewrite stmt list stmts cur_mod locals special_ff aliases ctor_map fn_map field_map)
-      rewrite expr (EGuard guards) cur_mod locals special_ff aliases ctor_map fn_map field_map =
-        EGuard (rewrite guard list guards cur_mod locals special_ff aliases ctor_map fn_map field_map)
       rewrite expr (EWhere body binds) cur_mod locals special_ff aliases ctor_map fn_map field_map =
         locals1 = collect where bound vars binds locals
         EWhere (rewrite expr body cur_mod locals1 special_ff aliases ctor_map fn_map field_map) (rewrite where list binds cur_mod locals1 special_ff aliases ctor_map fn_map field_map)
-      rewrite expr (EParPipe branches) cur_mod locals special_ff aliases ctor_map fn_map field_map =
-        EParPipe (rewrite expr list branches cur_mod locals special_ff aliases ctor_map fn_map field_map)
-      rewrite expr (EWithCtx c v b) cur_mod locals special_ff aliases ctor_map fn_map field_map =
-        EWithCtx c (rewrite expr v cur_mod locals special_ff aliases ctor_map fn_map field_map) (rewrite expr b cur_mod locals special_ff aliases ctor_map fn_map field_map)
-      rewrite expr (EWithRegion q b) cur_mod locals special_ff aliases ctor_map fn_map field_map =
-        EWithRegion q (rewrite expr b cur_mod locals special_ff aliases ctor_map fn_map field_map)
-      rewrite expr e _ _ _ _ _ _ _ = e
+      rewrite expr e cur_mod locals special_ff aliases ctor_map fn_map field_map =
+        expr map kids e (x => rewrite expr x cur_mod locals special_ff aliases ctor_map fn_map field_map)
 
 fn :: rewrite expr list [RExpr] String [String] RModCtx [RModAlias] [RModAlias] [RModAlias] [RModAlias] => [RExpr]
       rewrite expr list [] _ _ _ _ _ _ _ = []
@@ -6008,11 +5925,6 @@ fn :: rewrite stmt list [RStmt] String [String] RModCtx [RModAlias] [RModAlias] 
       rewrite stmt list ((StmtIndexAssign t idxs e):ss) cur_mod locals special_ff aliases ctor_map fn_map field_map =
         [StmtIndexAssign t (rewrite expr list idxs cur_mod locals special_ff aliases ctor_map fn_map field_map) (rewrite expr e cur_mod locals special_ff aliases ctor_map fn_map field_map)] :: (rewrite stmt list ss cur_mod locals special_ff aliases ctor_map fn_map field_map)
 
-fn :: rewrite guard list [RGuard] String [String] RModCtx [RModAlias] [RModAlias] [RModAlias] [RModAlias] => [RGuard]
-      rewrite guard list [] _ _ _ _ _ _ _ = []
-      rewrite guard list ((GuardBranch c b):gs) cur_mod locals special_ff aliases ctor_map fn_map field_map =
-        [GuardBranch (rewrite expr c cur_mod locals special_ff aliases ctor_map fn_map field_map) (rewrite expr b cur_mod locals special_ff aliases ctor_map fn_map field_map)] :: (rewrite guard list gs cur_mod locals special_ff aliases ctor_map fn_map field_map)
-
 fn :: rewrite where list [RWhereBind] String [String] RModCtx [RModAlias] [RModAlias] [RModAlias] [RModAlias] => [RWhereBind]
       rewrite where list [] _ _ _ _ _ _ _ = []
       rewrite where list ((WhereBind e v idxs):wbs) cur_mod locals special_ff aliases ctor_map fn_map field_map =
@@ -6023,7 +5935,7 @@ fn :: rewrite fn cases [RFnCase] String RModCtx [RModAlias] [RModAlias] [RModAli
       rewrite fn cases ((FnCase pats guards body):cs) cur_mod special_ff aliases ctor_map fn_map field_map =
         pats1 = rewrite pat list ctx pats cur_mod special_ff aliases
         locals = collect pat list bound vars pats1 []
-        guards1 = rewrite guard list guards cur_mod locals special_ff aliases ctor_map fn_map field_map
+        guards1 = guards map exprs guards (x => rewrite expr x cur_mod locals special_ff aliases ctor_map fn_map field_map)
         body1 = rewrite expr body cur_mod locals special_ff aliases ctor_map fn_map field_map
         [FnCase pats1 guards1 body1] :: (rewrite fn cases cs cur_mod special_ff aliases ctor_map fn_map field_map)
 
@@ -6363,12 +6275,6 @@ fn :: is encode pipe var target String [RStmt] [String] RStrSet RStrSet => Bool
 fn :: encode expr underscores RExpr [String] RStrSet RStrSet Bool => RExpr
       encode expr underscores (EVar v) locals field_names _ encode_builtins =
         EVar (encode ident underscores v locals field_names encode_builtins)
-      encode expr underscores (ENot inner) locals field_names fn_names encode_builtins =
-        ENot (encode expr underscores inner locals field_names fn_names encode_builtins)
-      encode expr underscores (EOut inner) locals field_names fn_names encode_builtins =
-        EOut (encode expr underscores inner locals field_names fn_names encode_builtins)
-      encode expr underscores (EBin bop l r) locals field_names fn_names encode_builtins =
-        EBin bop (encode expr underscores l locals field_names fn_names encode_builtins) (encode expr underscores r locals field_names fn_names encode_builtins)
       encode expr underscores (ECall "__lambda__" args) locals field_names fn_names encode_builtins =
         locals1 = collect lambda param strs args locals
         ECall "__lambda__" (encode lambda args underscores args locals1 field_names fn_names encode_builtins)
@@ -6377,40 +6283,13 @@ fn :: encode expr underscores RExpr [String] RStrSet RStrSet Bool => RExpr
         ECall "__record_update__" ([base1] :: (encode rec update args underscores rest locals field_names fn_names encode_builtins))
       encode expr underscores (ECall fn_name args) locals field_names fn_names encode_builtins =
         ECall (encode ident underscores fn_name locals field_names encode_builtins) (encode expr list underscores args locals field_names fn_names encode_builtins)
-      encode expr underscores (EEcho args) locals field_names fn_names encode_builtins =
-        EEcho (encode expr list underscores args locals field_names fn_names encode_builtins)
-      encode expr underscores (EStrInterp parts) locals field_names fn_names encode_builtins =
-        EStrInterp (encode expr list underscores parts locals field_names fn_names encode_builtins)
-      encode expr underscores (EList elems) locals field_names fn_names encode_builtins =
-        EList (encode expr list underscores elems locals field_names fn_names encode_builtins)
-      encode expr underscores (ETuple elems) locals field_names fn_names encode_builtins =
-        ETuple (encode expr list underscores elems locals field_names fn_names encode_builtins)
-      encode expr underscores (ETensor elems) locals field_names fn_names encode_builtins =
-        ETensor (encode expr list underscores elems locals field_names fn_names encode_builtins)
-      encode expr underscores (EEinsum es subs) locals field_names fn_names encode_builtins =
-        EEinsum (encode expr list underscores es locals field_names fn_names encode_builtins) subs
-      encode expr underscores (EHadamard bop l s1 r s2) locals field_names fn_names encode_builtins =
-        EHadamard bop (encode expr underscores l locals field_names fn_names encode_builtins) s1 (encode expr underscores r locals field_names fn_names encode_builtins) s2
-      encode expr underscores (EIndex base idxs) locals field_names fn_names encode_builtins =
-        EIndex (encode expr underscores base locals field_names fn_names encode_builtins) (encode expr list underscores idxs locals field_names fn_names encode_builtins)
-      encode expr underscores (EIndexAssign t idxs v) locals field_names fn_names encode_builtins =
-        EIndexAssign t (encode expr list underscores idxs locals field_names fn_names encode_builtins) (encode expr underscores v locals field_names fn_names encode_builtins)
-      encode expr underscores (ESeqSelect b m) locals field_names fn_names encode_builtins =
-        ESeqSelect (encode expr underscores b locals field_names fn_names encode_builtins) m
       encode expr underscores (EBlock stmts) locals field_names fn_names encode_builtins =
         EBlock (encode stmt list underscores stmts locals field_names fn_names encode_builtins)
-      encode expr underscores (EGuard guards) locals field_names fn_names encode_builtins =
-        EGuard (encode guard list underscores guards locals field_names fn_names encode_builtins)
       encode expr underscores (EWhere body binds) locals field_names fn_names encode_builtins =
         locals1 = collect where bound vars binds locals
         EWhere (encode expr underscores body locals1 field_names fn_names encode_builtins) (encode where list underscores binds locals1 field_names fn_names encode_builtins)
-      encode expr underscores (EParPipe branches) locals field_names fn_names encode_builtins =
-        EParPipe (encode expr list underscores branches locals field_names fn_names encode_builtins)
-      encode expr underscores (EWithCtx c v b) locals field_names fn_names encode_builtins =
-        EWithCtx c (encode expr underscores v locals field_names fn_names encode_builtins) (encode expr underscores b ([c] :: locals) field_names fn_names encode_builtins)
-      encode expr underscores (EWithRegion q b) locals field_names fn_names encode_builtins =
-        EWithRegion q (encode expr underscores b locals field_names fn_names encode_builtins)
-      encode expr underscores e _ _ _ _ = e
+      encode expr underscores e locals field_names fn_names encode_builtins =
+        expr map kids e (x => encode expr underscores x locals field_names fn_names encode_builtins)
 
 fn :: encode expr list underscores [RExpr] [String] RStrSet RStrSet Bool => [RExpr]
       encode expr list underscores [] _ _ _ _ = []
@@ -6628,26 +6507,9 @@ fn :: expr refs RExpr [String] => [String]
       expr refs (ECall "__record_update__" (base:rest)) acc = update refs rest (expr refs base acc)
       expr refs (ECall "__lambda__" args) acc = expr refs list args (lambda binder refs (collect lambda param strs args []) acc)
       expr refs (ECall n args) acc = expr refs list args (["e:" + n] :: acc)
-      expr refs (EStrInterp es) acc = expr refs list es acc
-      expr refs (ENot e) acc = expr refs e acc
-      expr refs (EOut e) acc = expr refs e acc
-      expr refs (EBin _ a b) acc = expr refs b (expr refs a acc)
-      expr refs (EEcho es) acc = expr refs list es acc
-      expr refs (EList es) acc = expr refs list es acc
-      expr refs (ETuple es) acc = expr refs list es acc
-      expr refs (ETensor es) acc = expr refs list es acc
-      expr refs (EEinsum es _) acc = expr refs list es acc
-      expr refs (EHadamard _ a _ b _) acc = expr refs b (expr refs a acc)
-      expr refs (EIndex e es) acc = expr refs list es (expr refs e acc)
-      expr refs (EIndexAssign _ es e) acc = expr refs e (expr refs list es acc)
-      expr refs (ESeqSelect e _) acc = expr refs e acc
       expr refs (EBlock ss) acc = stmt refs list ss acc
-      expr refs (EGuard gs) acc = guard refs list gs acc
       expr refs (EWhere e ws) acc = where refs list ws (expr refs e acc)
-      expr refs (EParPipe es) acc = expr refs list es acc
-      expr refs (EWithCtx _ a b) acc = expr refs b (expr refs a acc)
-      expr refs (EWithRegion _ e) acc = expr refs e acc
-      expr refs _ acc = acc
+      expr refs e acc = expr refs list (expr kids e) acc
 
 fn :: opaque expand errors [RScopedType] [ROpaqueName] [RModAlias] RModCtx => [RFnDef]
       opaque expand errors _ [] _ _ = []

@@ -434,32 +434,15 @@ fn :: bind where cg sigs [RWhereBind] RCgSigMap => RCgSigMap
         | otherwise = bind where cg sigs wbs sigs
 
 fn :: prep expr RExpr              RCgSigMap => RExpr
-      prep expr (ENot inner)       sigs     =  ENot (prep expr inner sigs)
-      prep expr (EOut inner)       sigs     =  EOut (prep expr inner sigs)
-      prep expr (EBin bop l r)     sigs     =  EBin bop (prep expr l sigs) (prep expr r sigs)
       prep expr (ECall fname args) sigs     =
         p_args = prep expr list args sigs
         prep call fname p_args (lookup cg sig map sigs fname)
-      prep expr (EEcho args)       sigs     =  EEcho (prep expr list args sigs)
-      prep expr (EStrInterp parts) sigs     =  EStrInterp (prep expr list parts sigs)
-      prep expr (EList elems)      sigs     =  EList (prep expr list elems sigs)
-      prep expr (ETuple elems)     sigs     =  ETuple (prep expr list elems sigs)
-      prep expr (ETensor elems)    sigs     =  ETensor (prep expr list elems sigs)
-      prep expr (EEinsum es subs)  sigs     =  EEinsum (prep expr list es sigs) subs
-      prep expr (EHadamard bop l s1 r s2) sigs = EHadamard bop (prep expr l sigs) s1 (prep expr r sigs) s2
-      prep expr (EIndex base idxs) sigs     =  EIndex (prep expr base sigs) (prep expr list idxs sigs)
-      prep expr (EIndexAssign t idxs v) sigs = EIndexAssign t (prep expr list idxs sigs) (prep expr v sigs)
-      prep expr (ESeqSelect b m)   sigs     =  ESeqSelect (prep expr b sigs) m
       prep expr (EBlock stmts)     sigs     =  EBlock (prep stmt list stmts sigs)
-      prep expr (EGuard guards)    sigs     =  EGuard (prep guard list guards sigs)
       prep expr (EWhere body binds) sigs    =
         sigs1 = bind where cg sigs binds sigs
         EWhere (prep expr body sigs1) (prep where list binds sigs1)
-      prep expr (EParPipe branches) sigs    =  EParPipe (prep expr list branches sigs)
-      prep expr (EWithCtx c v b)   sigs     =  EWithCtx c (prep expr v sigs) (prep expr b sigs)
-      prep expr (EWithRegion q b)  sigs     =  EWithRegion q (prep expr b sigs)
       prep expr (EVar v)           sigs     =  prep var v (lookup cg sig map sigs v)
-      prep expr e                  _        =  e
+      prep expr e                  sigs     =  expr map kids e (x => prep expr x sigs)
 
 fn :: prep var String (Bool, Int, Bool) => RExpr
       prep var v      (True, 0, False)  =  ECall v []
@@ -511,15 +494,11 @@ fn :: prep where list [RWhereBind] RCgSigMap => [RWhereBind]
       prep where list []           _        =  []
       prep where list ((WhereBind e v idxs):wbs) sigs = [WhereBind (prep expr e sigs) v idxs] :: (prep where list wbs sigs)
 
-fn :: prep guard list [RGuard] RCgSigMap => [RGuard]
-      prep guard list []       _        =  []
-      prep guard list ((GuardBranch c b):gs) sigs = [GuardBranch (prep expr c sigs) (prep expr b sigs)] :: (prep guard list gs sigs)
-
 fn :: prep case list [RFnCase] RCgSigMap => [RFnCase]
       prep case list []        _        =  []
       prep case list ((FnCase pats guards body):cs) sigs =
         case_sigs = bind pat list cg sigs pats sigs
-        [FnCase pats (prep guard list guards case_sigs) (prep expr body case_sigs)] :: (prep case list cs sigs)
+        [FnCase pats (guards map exprs guards (x => prep expr x case_sigs)) (prep expr body case_sigs)] :: (prep case list cs sigs)
 
 fn :: prep fndef list acc [RFnDef] RCgSigMap [RFnDef] => [RFnDef]
       prep fndef list acc []       _        acc      =  list reverse acc
@@ -627,46 +606,23 @@ fn :: inline leaf call check String [RExpr] [RInlineExprEntry] => RExpr
         | otherwise = ECall fname args1
 
 fn :: inline leaf expr RExpr              [RInlineExprEntry] => RExpr
-      inline leaf expr (ENot a)           tbl                =  ENot (inline leaf expr a tbl)
-      inline leaf expr (EBin bop a b)     tbl                =  EBin bop (inline leaf expr a tbl) (inline leaf expr b tbl)
-      inline leaf expr (EList es)         tbl                =  EList (inline leaf expr list es tbl)
-      inline leaf expr (ETuple es)        tbl                =  ETuple (inline leaf expr list es tbl)
-      inline leaf expr (ETensor es)       tbl                =  ETensor (inline leaf expr list es tbl)
       inline leaf expr (ECall fname args) tbl                =
         inline leaf call check fname (inline leaf expr list args tbl) tbl
-      inline leaf expr (EEcho es)         tbl                =  EEcho (inline leaf expr list es tbl)
-      inline leaf expr (EIndex b is)      tbl                =  EIndex (inline leaf expr b tbl) (inline leaf expr list is tbl)
-      inline leaf expr (EIndexAssign t is v) tbl             =  EIndexAssign t (inline leaf expr list is tbl) (inline leaf expr v tbl)
-      inline leaf expr (EBlock stmts)     tbl                =  EBlock (inline leaf stmt list stmts tbl)
-      inline leaf expr (EGuard guards)    tbl                =  EGuard (inline leaf guard list guards tbl)
-      inline leaf expr (EWhere b wbs)     tbl                =  EWhere (inline leaf expr b tbl) (inline leaf where list wbs tbl)
-      inline leaf expr (EParPipe es)      tbl                =  EParPipe (inline leaf expr list es tbl)
-      inline leaf expr (EWithCtx c v b)   tbl                =  EWithCtx c (inline leaf expr v tbl) (inline leaf expr b tbl)
-      inline leaf expr (EWithRegion q b)  tbl                =  EWithRegion q (inline leaf expr b tbl)
-      inline leaf expr e                  _                  =  e
+      -- KEPT AS IT WAS: nothing is inlined inside these five.
+      inline leaf expr (EOut a)           _                  =  EOut a
+      inline leaf expr (EStrInterp es)    _                  =  EStrInterp es
+      inline leaf expr (EEinsum es subs)  _                  =  EEinsum es subs
+      inline leaf expr (EHadamard bop a sa b sb) _           =  EHadamard bop a sa b sb
+      inline leaf expr (ESeqSelect a sel) _                  =  ESeqSelect a sel
+      inline leaf expr e                  tbl                =  expr map kids e (x => inline leaf expr x tbl)
 
 fn :: inline leaf expr list [RExpr] [RInlineExprEntry] => [RExpr]
       inline leaf expr list [] _ = []
       inline leaf expr list (e:es) tbl = [inline leaf expr e tbl] :: (inline leaf expr list es tbl)
 
-fn :: inline leaf stmt list [RStmt] [RInlineExprEntry] => [RStmt]
-      inline leaf stmt list [] _ = []
-      inline leaf stmt list ((StmtLet v e):ss) tbl = [StmtLet v (inline leaf expr e tbl)] :: (inline leaf stmt list ss tbl)
-      inline leaf stmt list ((StmtMut v e):ss) tbl = [StmtMut v (inline leaf expr e tbl)] :: (inline leaf stmt list ss tbl)
-      inline leaf stmt list ((StmtExpr e):ss) tbl = [StmtExpr (inline leaf expr e tbl)] :: (inline leaf stmt list ss tbl)
-      inline leaf stmt list ((StmtIndexAssign t is e):ss) tbl = [StmtIndexAssign t (inline leaf expr list is tbl) (inline leaf expr e tbl)] :: (inline leaf stmt list ss tbl)
-
-fn :: inline leaf where list [RWhereBind] [RInlineExprEntry] => [RWhereBind]
-      inline leaf where list [] _ = []
-      inline leaf where list ((WhereBind e v is):wbs) tbl = [WhereBind (inline leaf expr e tbl) v is] :: (inline leaf where list wbs tbl)
-
-fn :: inline leaf guard list [RGuard] [RInlineExprEntry] => [RGuard]
-      inline leaf guard list [] _ = []
-      inline leaf guard list ((GuardBranch c b):gs) tbl = [GuardBranch (inline leaf expr c tbl) (inline leaf expr b tbl)] :: (inline leaf guard list gs tbl)
-
 fn :: inline leaf case list [RFnCase] [RInlineExprEntry] => [RFnCase]
       inline leaf case list [] _ = []
-      inline leaf case list ((FnCase p gs b):cs) tbl = [FnCase p (inline leaf guard list gs tbl) (inline leaf expr b tbl)] :: (inline leaf case list cs tbl)
+      inline leaf case list ((FnCase p gs b):cs) tbl = [FnCase p (guards map exprs gs (x => inline leaf expr x tbl)) (inline leaf expr b tbl)] :: (inline leaf case list cs tbl)
 
 fn :: inline leaf fndef list [RFnDef] [RInlineExprEntry] => [RFnDef]
       inline leaf fndef list [] _ = []
@@ -3846,7 +3802,7 @@ fn :: share cons case [RPattern] [RGuard] RExpr => RFnCase
 fn :: share cons apply [RPattern] [RGuard] RExpr [String] => RFnCase
       share cons apply pats guards body [] =  FnCase pats guards body
       share cons apply pats guards body keys =
-        guards2 = share cons guards guards keys
+        guards2 = guards map exprs guards (x => share cons expr x keys)
         body2 = share cons expr body keys
         used = cmm expr vars (EGuard guards2) (cmm expr vars body2 [])
         FnCase (share cons pat list pats used) guards2 body2
@@ -3925,46 +3881,12 @@ fn :: share cons wrap [String] RPattern [String] => RPattern
 fn :: share cons expr RExpr [String] => RExpr
       share cons expr (EBin OpConcat (EList elems) (EVar r)) keys
         | list contains keys (rebuild key elems r) = EVar (rebuild key elems r)
-      share cons expr (ENot e) keys =  ENot (share cons expr e keys)
-      share cons expr (EOut e) keys =  EOut (share cons expr e keys)
       share cons expr (EBin bop l r) keys =  EBin bop (share cons expr l keys) (share cons expr r keys)
-      share cons expr (ECall f args) keys =  ECall f (share cons exprs args keys)
-      share cons expr (EEcho args) keys =  EEcho (share cons exprs args keys)
-      share cons expr (EStrInterp parts) keys =  EStrInterp (share cons exprs parts keys)
-      share cons expr (EList es) keys =  EList (share cons exprs es keys)
-      share cons expr (ETuple es) keys =  ETuple (share cons exprs es keys)
-      share cons expr (ETensor es) keys =  ETensor (share cons exprs es keys)
-      share cons expr (EEinsum es subs) keys =  EEinsum (share cons exprs es keys) subs
-      share cons expr (EHadamard bop l ls r rs) keys =  EHadamard bop (share cons expr l keys) ls (share cons expr r keys) rs
-      share cons expr (EIndex b idxs) keys =  EIndex (share cons expr b keys) (share cons exprs idxs keys)
-      share cons expr (EIndexAssign t idxs v) keys =  EIndexAssign t (share cons exprs idxs keys) (share cons expr v keys)
-      share cons expr (ESeqSelect b m) keys =  ESeqSelect (share cons expr b keys) m
-      share cons expr (EBlock stmts) keys =  EBlock (share cons stmts stmts keys)
-      share cons expr (EGuard guards) keys =  EGuard (share cons guards guards keys)
-      share cons expr (EWhere body binds) keys =  EWhere (share cons expr body keys) (share cons wheres binds keys)
-      share cons expr (EParPipe es) keys =  EParPipe (share cons exprs es keys)
-      share cons expr (EWithCtx c v b) keys =  EWithCtx c (share cons expr v keys) (share cons expr b keys)
-      share cons expr (EWithRegion q b) keys =  EWithRegion q (share cons expr b keys)
-      share cons expr e _ =  e
+      share cons expr e keys =  expr map kids e (x => share cons expr x keys)
 
 fn :: share cons exprs [RExpr] [String] => [RExpr]
       share cons exprs [] _ =  []
       share cons exprs (e:es) keys =  [share cons expr e keys] :: (share cons exprs es keys)
-
-fn :: share cons stmts [RStmt] [String] => [RStmt]
-      share cons stmts [] _ =  []
-      share cons stmts ((StmtLet v e):ss) keys =  [StmtLet v (share cons expr e keys)] :: (share cons stmts ss keys)
-      share cons stmts ((StmtMut v e):ss) keys =  [StmtMut v (share cons expr e keys)] :: (share cons stmts ss keys)
-      share cons stmts ((StmtExpr e):ss) keys =  [StmtExpr (share cons expr e keys)] :: (share cons stmts ss keys)
-      share cons stmts ((StmtIndexAssign t idxs e):ss) keys =  [StmtIndexAssign t (share cons exprs idxs keys) (share cons expr e keys)] :: (share cons stmts ss keys)
-
-fn :: share cons guards [RGuard] [String] => [RGuard]
-      share cons guards [] _ =  []
-      share cons guards ((GuardBranch c b):gs) keys =  [GuardBranch (share cons expr c keys) (share cons expr b keys)] :: (share cons guards gs keys)
-
-fn :: share cons wheres [RWhereBind] [String] => [RWhereBind]
-      share cons wheres [] _ =  []
-      share cons wheres ((WhereBind e v idxs):ws) keys =  [WhereBind (share cons expr e keys) v idxs] :: (share cons wheres ws keys)
 
 -- ── OPT-022: a record field read at the last use of the record moves out ──
 -- `in_record i n acc = ... Acc ([i] :: (a_list acc)) ...` read the list with a
@@ -4048,29 +3970,12 @@ fn :: take reads expr RExpr String RStrIntMap RStrIntMap [String] => [String]
       take reads expr (EVar r2) r _ _ acc
         | r2 == r = acc :: ["#other"]
         | otherwise = acc
-      take reads expr (ENot e) r fam fm acc =  take reads expr e r fam fm acc
-      take reads expr (EOut e) r fam fm acc =  take reads expr e r fam fm acc
-      take reads expr (EBin _ l x) r fam fm acc =  take reads expr x r fam fm (take reads expr l r fam fm acc)
       take reads expr (ECall _ args) r fam fm acc =  take reads exprs args r fam fm acc
-      take reads expr (EEcho args) r fam fm acc =  take reads exprs args r fam fm acc
-      take reads expr (EStrInterp parts) r fam fm acc =  take reads exprs parts r fam fm acc
-      take reads expr (EList es) r fam fm acc =  take reads exprs es r fam fm acc
-      take reads expr (ETuple es) r fam fm acc =  take reads exprs es r fam fm acc
-      take reads expr (ETensor es) r fam fm acc =  take reads exprs es r fam fm acc
-      take reads expr (EEinsum es _) r fam fm acc =  take reads exprs es r fam fm acc
-      take reads expr (EHadamard _ l _ x _) r fam fm acc =  take reads expr x r fam fm (take reads expr l r fam fm acc)
-      take reads expr (EIndex b idxs) r fam fm acc =  take reads exprs idxs r fam fm (take reads expr b r fam fm acc)
       take reads expr (EIndexAssign t idxs v) r fam fm acc
         | t == r = acc :: ["#other"]
         | otherwise = take reads expr v r fam fm (take reads exprs idxs r fam fm acc)
-      take reads expr (ESeqSelect b _) r fam fm acc =  take reads expr b r fam fm acc
       take reads expr (EBlock stmts) r fam fm acc =  take reads stmts stmts r fam fm acc
-      take reads expr (EGuard guards) r fam fm acc =  take reads guards guards r fam fm acc
-      take reads expr (EWhere body binds) r fam fm acc =  take reads wheres binds r fam fm (take reads expr body r fam fm acc)
-      take reads expr (EParPipe es) r fam fm acc =  take reads exprs es r fam fm acc
-      take reads expr (EWithCtx _ v b) r fam fm acc =  take reads expr b r fam fm (take reads expr v r fam fm acc)
-      take reads expr (EWithRegion _ b) r fam fm acc =  take reads expr b r fam fm acc
-      take reads expr _ _ _ _ acc =  acc
+      take reads expr e r fam fm acc =  take reads exprs (expr kids e) r fam fm acc
 
 fn :: take reads exprs [RExpr] String RStrIntMap RStrIntMap [String] => [String]
       take reads exprs [] _ _ _ acc =  acc
@@ -4087,14 +3992,6 @@ fn :: take reads stmts [RStmt] String RStrIntMap RStrIntMap [String] => [String]
         | t == r = acc :: ["#other"]
         | otherwise = take reads stmts ss r fam fm (take reads expr e r fam fm (take reads exprs idxs r fam fm acc))
 
-fn :: take reads guards [RGuard] String RStrIntMap RStrIntMap [String] => [String]
-      take reads guards [] _ _ _ acc =  acc
-      take reads guards ((GuardBranch c b):gs) r fam fm acc =  take reads guards gs r fam fm (take reads expr b r fam fm (take reads expr c r fam fm acc))
-
-fn :: take reads wheres [RWhereBind] String RStrIntMap RStrIntMap [String] => [String]
-      take reads wheres [] _ _ _ acc =  acc
-      take reads wheres ((WhereBind e _ _):ws) r fam fm acc =  take reads wheres ws r fam fm (take reads expr e r fam fm acc)
-
 -- True when no mention of r is outside a getter and no takeable field is read twice.
 fn :: take reads ok [String] [String] => Bool
       take reads ok [] _ =  True
@@ -4108,46 +4005,12 @@ fn :: take reads ok [String] [String] => Bool
 fn :: take expr RExpr String RStrIntMap RStrIntMap => RExpr
       take expr (ECall g ((EVar r2):[])) r fam fm
         | r2 == r and (take field ok g fam fm) = ECall ("#take " + g) [EVar r]
-      take expr (ENot e) r fam fm =  ENot (take expr e r fam fm)
-      take expr (EOut e) r fam fm =  EOut (take expr e r fam fm)
-      take expr (EBin bop l x) r fam fm =  EBin bop (take expr l r fam fm) (take expr x r fam fm)
       take expr (ECall f args) r fam fm =  ECall f (take exprs args r fam fm)
-      take expr (EEcho args) r fam fm =  EEcho (take exprs args r fam fm)
-      take expr (EStrInterp parts) r fam fm =  EStrInterp (take exprs parts r fam fm)
-      take expr (EList es) r fam fm =  EList (take exprs es r fam fm)
-      take expr (ETuple es) r fam fm =  ETuple (take exprs es r fam fm)
-      take expr (ETensor es) r fam fm =  ETensor (take exprs es r fam fm)
-      take expr (EEinsum es subs) r fam fm =  EEinsum (take exprs es r fam fm) subs
-      take expr (EHadamard bop l ls x xs) r fam fm =  EHadamard bop (take expr l r fam fm) ls (take expr x r fam fm) xs
-      take expr (EIndex b idxs) r fam fm =  EIndex (take expr b r fam fm) (take exprs idxs r fam fm)
-      take expr (EIndexAssign t idxs v) r fam fm =  EIndexAssign t (take exprs idxs r fam fm) (take expr v r fam fm)
-      take expr (ESeqSelect b m) r fam fm =  ESeqSelect (take expr b r fam fm) m
-      take expr (EBlock stmts) r fam fm =  EBlock (take stmts stmts r fam fm)
-      take expr (EGuard guards) r fam fm =  EGuard (take guards guards r fam fm)
-      take expr (EWhere body binds) r fam fm =  EWhere (take expr body r fam fm) (take wheres binds r fam fm)
-      take expr (EParPipe es) r fam fm =  EParPipe (take exprs es r fam fm)
-      take expr (EWithCtx c v b) r fam fm =  EWithCtx c (take expr v r fam fm) (take expr b r fam fm)
-      take expr (EWithRegion q b) r fam fm =  EWithRegion q (take expr b r fam fm)
-      take expr e _ _ _ =  e
+      take expr e r fam fm =  expr map kids e (x => take expr x r fam fm)
 
 fn :: take exprs [RExpr] String RStrIntMap RStrIntMap => [RExpr]
       take exprs [] _ _ _ =  []
       take exprs (e:es) r fam fm =  [take expr e r fam fm] :: (take exprs es r fam fm)
-
-fn :: take stmts [RStmt] String RStrIntMap RStrIntMap => [RStmt]
-      take stmts [] _ _ _ =  []
-      take stmts ((StmtLet v e):ss) r fam fm =  [StmtLet v (take expr e r fam fm)] :: (take stmts ss r fam fm)
-      take stmts ((StmtMut v e):ss) r fam fm =  [StmtMut v (take expr e r fam fm)] :: (take stmts ss r fam fm)
-      take stmts ((StmtExpr e):ss) r fam fm =  [StmtExpr (take expr e r fam fm)] :: (take stmts ss r fam fm)
-      take stmts ((StmtIndexAssign t idxs e):ss) r fam fm =  [StmtIndexAssign t (take exprs idxs r fam fm) (take expr e r fam fm)] :: (take stmts ss r fam fm)
-
-fn :: take guards [RGuard] String RStrIntMap RStrIntMap => [RGuard]
-      take guards [] _ _ _ =  []
-      take guards ((GuardBranch c b):gs) r fam fm =  [GuardBranch (take expr c r fam fm) (take expr b r fam fm)] :: (take guards gs r fam fm)
-
-fn :: take wheres [RWhereBind] String RStrIntMap RStrIntMap => [RWhereBind]
-      take wheres [] _ _ _ =  []
-      take wheres ((WhereBind e v idxs):ws) r fam fm =  [WhereBind (take expr e r fam fm) v idxs] :: (take wheres ws r fam fm)
 
 -- Lowering of the marker: read the field, put zero in its place, give the value.
 fn :: lower take field RNativeEnv String String Int RNativeCode => RNativeCode
@@ -4647,49 +4510,15 @@ fn :: shadow name String RStrSet => String
 fn :: shadow expr RExpr RStrSet => RExpr
       shadow expr (EVar v) names                    =  EVar (shadow name v names)
       shadow expr (ECall f args) names              =  ECall (shadow name f names) (shadow exprs args names)
-      shadow expr (EStrInterp es) names             =  EStrInterp (shadow exprs es names)
-      shadow expr (ENot a) names                    =  ENot (shadow expr a names)
-      shadow expr (EOut a) names                    =  EOut (shadow expr a names)
-      shadow expr (EBin bop a b) names              =  EBin bop (shadow expr a names) (shadow expr b names)
-      shadow expr (EEcho es) names                  =  EEcho (shadow exprs es names)
-      shadow expr (EList es) names                  =  EList (shadow exprs es names)
-      shadow expr (ETuple es) names                 =  ETuple (shadow exprs es names)
-      shadow expr (ETensor es) names                =  ETensor (shadow exprs es names)
-      shadow expr (EEinsum es ss) names             =  EEinsum (shadow exprs es names) ss
-      shadow expr (EHadamard bop a sa b sb) names   =  EHadamard bop (shadow expr a names) sa (shadow expr b names) sb
-      shadow expr (EIndex a es) names               =  EIndex (shadow expr a names) (shadow exprs es names)
-      shadow expr (EIndexAssign v es e) names       =  EIndexAssign v (shadow exprs es names) (shadow expr e names)
-      shadow expr (ESeqSelect a sel) names          =  ESeqSelect (shadow expr a names) sel
-      shadow expr (EBlock ss) names                 =  EBlock (shadow stmts ss names)
-      shadow expr (EGuard gs) names                 =  EGuard (shadow guards gs names)
-      shadow expr (EWhere b wbs) names              =  EWhere (shadow expr b names) (shadow where binds wbs names)
-      shadow expr (EParPipe es) names               =  EParPipe (shadow exprs es names)
-      shadow expr (EWithCtx c v b) names            =  EWithCtx c (shadow expr v names) (shadow expr b names)
-      shadow expr (EWithRegion q b) names           =  EWithRegion q (shadow expr b names)
-      shadow expr e _                               =  e
+      shadow expr e names                              =  expr map kids e (x => shadow expr x names)
 
 fn :: shadow exprs [RExpr] RStrSet => [RExpr]
       shadow exprs []     _     =  []
       shadow exprs (e:es) names =  [shadow expr e names] :: (shadow exprs es names)
 
-fn :: shadow stmts [RStmt] RStrSet => [RStmt]
-      shadow stmts []                              _     =  []
-      shadow stmts ((StmtLet v e):ss)              names =  [StmtLet v (shadow expr e names)] :: (shadow stmts ss names)
-      shadow stmts ((StmtMut v e):ss)              names =  [StmtMut v (shadow expr e names)] :: (shadow stmts ss names)
-      shadow stmts ((StmtExpr e):ss)               names =  [StmtExpr (shadow expr e names)] :: (shadow stmts ss names)
-      shadow stmts ((StmtIndexAssign v is e):ss)   names =  [StmtIndexAssign v (shadow exprs is names) (shadow expr e names)] :: (shadow stmts ss names)
-
-fn :: shadow guards [RGuard] RStrSet => [RGuard]
-      shadow guards []                       _     =  []
-      shadow guards ((GuardBranch c b):gs)   names =  [GuardBranch (shadow expr c names) (shadow expr b names)] :: (shadow guards gs names)
-
-fn :: shadow where binds [RWhereBind] RStrSet => [RWhereBind]
-      shadow where binds []                        _     =  []
-      shadow where binds ((WhereBind e v ix):ws)   names =  [WhereBind (shadow expr e names) v ix] :: (shadow where binds ws names)
-
 fn :: shadow cases [RFnCase] RStrSet => [RFnCase]
       shadow cases []                       _     =  []
-      shadow cases ((FnCase ps gs b):cs)    names =  [FnCase ps (shadow guards gs names) (shadow expr b names)] :: (shadow cases cs names)
+      shadow cases ((FnCase ps gs b):cs)    names =  [FnCase ps (guards map exprs gs (x => shadow expr x names)) (shadow expr b names)] :: (shadow cases cs names)
 
 fn :: shadow fndefs [RFnDef] RStrSet => [RFnDef]
       shadow fndefs []                         _     =  []
