@@ -1,5 +1,6 @@
 -- case: standard library modules (str, io, posix, crypto) resolve outside project directories
 -- source: FR-COMP-006; implement-code-ridgun §6
+-- uses-libs
 -- expect-output:
 --   trimmed: hello
 --   replaced: a-b-c

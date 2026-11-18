@@ -4354,7 +4354,7 @@ fn :: stdlib deps bases String => [String]
 fn :: all deps places String => [String]
       all deps places pdir =
         home_dir = resolve parser home dir
-        [".stable/deps", pdir + "/.stable/deps", pdir + "/../.stable/deps", pdir + "/../../.stable/deps", pdir + "/../../../.stable/deps", pdir + "/../../../../.stable/deps", home_dir + "/.omni/lib", home_dir + "/.local/lib/ridgun", home_dir + "/.stable/deps", "/home/boogie/ridgun/ridgun/.stable/deps"]
+        [".stable/deps", pdir + "/.stable/deps", pdir + "/../.stable/deps", pdir + "/../../.stable/deps", pdir + "/../../../.stable/deps", pdir + "/../../../../.stable/deps", home_dir + "/.omni/lib", home_dir + "/.local/lib/ridgun", home_dir + "/.stable/deps"]
 
 -- An import a project cannot see: the message that says where the module is
 -- (GHC: "it is a member of the hidden package ..."), or "" when it is nowhere.

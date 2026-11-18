@@ -33,4 +33,4 @@ Before 1.0.31 a build looked into every folder of `.stable/deps`, into three fol
 
 ## Not in scope
 - `stable deps` does not remove from `.stable/deps` what `build.ridgun` no longer lists; such a folder is now hidden, and an import of it says so.
-- Outside a project the fixed path `/home/boogie/ridgun/ridgun/.stable/deps` is still in the list of places (`all deps places` in `parser.ridgun`). It should go; the acceptance cases run outside a project and may depend on it.
+- Outside a project the places are `.stable/deps` of the current folder and of the five above it, `~/.omni/lib`, `~/.local/lib/ridgun` and `~/.stable/deps`. A path of one machine was in that list until 1.0.32.
