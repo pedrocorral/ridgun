@@ -152,16 +152,22 @@ fn :: expr map kids RExpr (RExpr => RExpr) => RExpr
       expr map kids e _                      =  e
 
 fn :: stmts map exprs [RStmt] (RExpr => RExpr) => [RStmt]
-      stmts map exprs [] _ = []
-      stmts map exprs ((StmtLet v e):ss) f   =  [StmtLet v (f e)] :: (stmts map exprs ss f)
-      stmts map exprs ((StmtMut v e):ss) f   =  [StmtMut v (f e)] :: (stmts map exprs ss f)
-      stmts map exprs ((StmtExpr e):ss) f    =  [StmtExpr (f e)] :: (stmts map exprs ss f)
-      stmts map exprs ((StmtIndexAssign t es e):ss) f =  [StmtIndexAssign t (map f es) (f e)] :: (stmts map exprs ss f)
+      stmts map exprs ss f =  map (s => stmt map exprs one s f) ss
+
+fn :: stmt map exprs one RStmt (RExpr => RExpr) => RStmt
+      stmt map exprs one (StmtLet v e) f   =  StmtLet v (f e)
+      stmt map exprs one (StmtMut v e) f   =  StmtMut v (f e)
+      stmt map exprs one (StmtExpr e) f    =  StmtExpr (f e)
+      stmt map exprs one (StmtIndexAssign t es e) f =  StmtIndexAssign t (map f es) (f e)
 
 fn :: guards map exprs [RGuard] (RExpr => RExpr) => [RGuard]
-      guards map exprs [] _ = []
-      guards map exprs ((GuardBranch c e):gs) f =  [GuardBranch (f c) (f e)] :: (guards map exprs gs f)
+      guards map exprs gs f =  map (g => guard map exprs one g f) gs
+
+fn :: guard map exprs one RGuard (RExpr => RExpr) => RGuard
+      guard map exprs one (GuardBranch c e) f =  GuardBranch (f c) (f e)
 
 fn :: wheres map exprs [RWhereBind] (RExpr => RExpr) => [RWhereBind]
-      wheres map exprs [] _ = []
-      wheres map exprs ((WhereBind e v idxs):ws) f =  [WhereBind (f e) v idxs] :: (wheres map exprs ws f)
+      wheres map exprs ws f =  map (w => where map exprs one w f) ws
+
+fn :: where map exprs one RWhereBind (RExpr => RExpr) => RWhereBind
+      where map exprs one (WhereBind e v idxs) f =  WhereBind (f e) v idxs

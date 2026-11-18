@@ -2009,10 +2009,15 @@ fn :: finish block body ([RStmt], [RToken]) => RExpr [RToken]
 -- ── Top-Level Function, Operator, Scoped Global, Hardware & Type Decls ──
 
 fn :: parse fn case for String [RToken] => RFnCase [RToken]
-      parse fn case for _ (_:rest) =
+      parse fn case for _ (_:rest) =  parse fn case from rest
+      parse fn case for _ [] = (FnCase [] [] EUnit, [])
+
+-- A clause whose name token has been read: its patterns, then guards or `=` and the body. Callers that
+-- have just matched the name token call this with the tokens after it (no token is put back).
+fn :: parse fn case from [RToken] => RFnCase [RToken]
+      parse fn case from rest =
         pats_res = parse case patterns rest
         parse fn case after pats pats_res
-      parse fn case for _ [] = (FnCase [] [] EUnit, [])
 
 fn :: parse fn case after pats ([RPattern], [RToken]) => RFnCase [RToken]
       parse fn case after pats (pats, (TokNewline:TokPipe:rest)) =
@@ -2036,34 +2041,28 @@ fn :: finish guarded case [RPattern] ([RGuard], [RToken]) => RFnCase [RToken]
 fn :: finish body case [RPattern] (RExpr, [RToken]) => RFnCase [RToken]
       finish body case pats       (body, rest)      =  (FnCase pats [] body, rest)
 
-fn :: parse fn cases String  [RToken] => [RFnCase] [RToken]
-      parse fn cases fn_name ts       =
-        clean = skip newlines ts
-        parse fn cases check fn_name clean
+-- The clauses of one function, in order, built with an accumulator: n clauses cost n steps.
+fn :: parse fn cases String [RToken] => [RFnCase] [RToken]
+      parse fn cases fn_name ts       =  parse fn cases check fn_name [] (skip newlines ts)
 
-fn :: parse fn cases check String [RToken] => [RFnCase] [RToken]
-      parse fn cases check fn_name ((TokIdent s):rest)
-        | (encode literal underscores s) == fn_name = parse fn cases cont fn_name (parse fn case for fn_name ([TokIdent (encode literal underscores s)] :: rest))
-        | otherwise = ([], [TokIdent s] :: rest)
-      parse fn cases check "fn" (TokFn:rest)
+fn :: parse fn cases check String [RFnCase] [RToken] => [RFnCase] [RToken]
+      parse fn cases check fn_name acc ((TokIdent s):rest)
+        | (encode literal underscores s) == fn_name = parse fn cases cont fn_name acc (parse fn case from rest)
+        | otherwise = (acc, [TokIdent s] :: rest)
+      parse fn cases check "fn" acc (TokFn:rest)
         | not (is top decl start ([TokFn] :: rest)) =
-          parse fn cases cont "fn" (parse fn case for "fn" ([TokIdent "fn"] :: rest))
-      parse fn cases check "op" (TokOp:rest)
+          parse fn cases cont "fn" acc (parse fn case from rest)
+      parse fn cases check "op" acc (TokOp:rest)
         | not (is top decl start ([TokOp] :: rest)) =
-          parse fn cases cont "op" (parse fn case for "op" ([TokIdent "op"] :: rest))
-      parse fn cases check "type" (TokType:rest) =
-        parse fn cases cont "type" (parse fn case for "type" ([TokIdent "type"] :: rest))
-      parse fn cases check "with" (TokWith:rest) =
-        parse fn cases cont "with" (parse fn case for "with" ([TokIdent "with"] :: rest))
-      parse fn cases check _ ts = ([], ts)
+          parse fn cases cont "op" acc (parse fn case from rest)
+      parse fn cases check "type" acc (TokType:rest) =
+        parse fn cases cont "type" acc (parse fn case from rest)
+      parse fn cases check "with" acc (TokWith:rest) =
+        parse fn cases cont "with" acc (parse fn case from rest)
+      parse fn cases check _ acc ts = (acc, ts)
 
-fn :: parse fn cases cont String (RFnCase, [RToken]) => [RFnCase] [RToken]
-      parse fn cases cont fn_name (c, rest) =
-        more = parse fn cases fn_name rest
-        prepend case c more
-
-fn :: prepend case RFnCase ([RFnCase], [RToken]) => [RFnCase] [RToken]
-      prepend case c       (cs, rest)            =  ([c] :: cs, rest)
+fn :: parse fn cases cont String [RFnCase] (RFnCase, [RToken]) => [RFnCase] [RToken]
+      parse fn cases cont fn_name acc (c, rest) =  parse fn cases check fn_name (acc :: [c]) (skip newlines rest)
 
 fn :: parse fn decl [RToken] => RFnDef [RToken]
       parse fn decl (TokFn:TokColonColon:rest) =
@@ -2200,21 +2199,21 @@ fn :: try parse op pat [Bool] [String] [RPattern] (RPattern, [RToken]) => Bool [
       try parse op pat t_rest kws pats (pat, rest) =
         try parse op template t_rest kws rest (pats :: [pat])
 
+-- The clauses of one operator, in order, built with an accumulator (as `parse fn cases`).
 fn :: parse op cases [Bool] [String] [RToken] => [RFnCase] [RToken]
-      parse op cases tmpl kws ts =
-        clean = skip newlines ts
-        parse op cases step tmpl kws clean (try parse op template tmpl kws clean [])
+      parse op cases tmpl kws ts =  parse op cases next tmpl kws [] (skip newlines ts)
 
-fn :: parse op cases step [Bool] [String] [RToken] (Bool, [RPattern], [RToken]) => [RFnCase] [RToken]
-      parse op cases step _ _ orig_ts (False, _, _) = ([], orig_ts)
-      parse op cases step tmpl kws _ (True, pats, after_pats) =
-        c_res = parse fn case after pats (pats, after_pats)
-        parse op cases cont tmpl kws c_res
+fn :: parse op cases next [Bool] [String] [RFnCase] [RToken] => [RFnCase] [RToken]
+      parse op cases next tmpl kws acc clean =
+        parse op cases step tmpl kws acc clean (try parse op template tmpl kws clean [])
 
-fn :: parse op cases cont [Bool] [String] (RFnCase, [RToken]) => [RFnCase] [RToken]
-      parse op cases cont tmpl kws (c, rest) =
-        more = parse op cases tmpl kws rest
-        prepend case c more
+fn :: parse op cases step [Bool] [String] [RFnCase] [RToken] (Bool, [RPattern], [RToken]) => [RFnCase] [RToken]
+      parse op cases step _ _ acc orig_ts (False, _, _) = (acc, orig_ts)
+      parse op cases step tmpl kws acc _ (True, pats, after_pats) =
+        parse op cases cont tmpl kws acc (parse fn case after pats (pats, after_pats))
+
+fn :: parse op cases cont [Bool] [String] [RFnCase] (RFnCase, [RToken]) => [RFnCase] [RToken]
+      parse op cases cont tmpl kws acc (c, rest) =  parse op cases next tmpl kws (acc :: [c]) (skip newlines rest)
 
 fn :: parse op decl [RToken] => RFnDef [RToken]
       parse op decl (TokOp:TokColonColon:rest) =
@@ -3342,8 +3341,7 @@ fn :: norm expr RExpr              [RArityEntry] => RExpr
       norm expr e                  arities       =  expr map kids e (x => norm expr x arities)
 
 fn :: norm expr list [RExpr] [RArityEntry] => [RExpr]
-      norm expr list []      _             =  []
-      norm expr list (e:es)  arities       =  [norm expr e arities] :: (norm expr list es arities)
+      norm expr list es arities =  map (e => norm expr e arities) es
 
 fn :: bind pat local arities RPattern [RArityEntry] => [RArityEntry]
       bind pat local arities (PatVar v) arities = [ArityEntry v (0 - 2)] :: arities
@@ -6124,9 +6122,8 @@ fn :: rewrite expr RExpr String [String] RModCtx [RModAlias] [RModAlias] [RModAl
         expr map kids e (x => rewrite expr x cur_mod locals special_ff aliases ctor_map fn_map field_map)
 
 fn :: rewrite expr list [RExpr] String [String] RModCtx [RModAlias] [RModAlias] [RModAlias] [RModAlias] => [RExpr]
-      rewrite expr list [] _ _ _ _ _ _ _ = []
-      rewrite expr list (e:es) cur_mod locals special_ff aliases ctor_map fn_map field_map =
-        [rewrite expr e cur_mod locals special_ff aliases ctor_map fn_map field_map] :: (rewrite expr list es cur_mod locals special_ff aliases ctor_map fn_map field_map)
+      rewrite expr list es cur_mod locals special_ff aliases ctor_map fn_map field_map =
+        map (e => rewrite expr e cur_mod locals special_ff aliases ctor_map fn_map field_map) es
 
 fn :: is scoped pipe var target String [RStmt] [String] RModCtx => Bool
       is scoped pipe var target v ss locals ctx
@@ -6519,9 +6516,8 @@ fn :: encode expr underscores RExpr [String] RStrSet RStrSet Bool => RExpr
         expr map kids e (x => encode expr underscores x locals field_names fn_names encode_builtins)
 
 fn :: encode expr list underscores [RExpr] [String] RStrSet RStrSet Bool => [RExpr]
-      encode expr list underscores [] _ _ _ _ = []
-      encode expr list underscores (e:es) locals field_names fn_names encode_builtins =
-        [encode expr underscores e locals field_names fn_names encode_builtins] :: (encode expr list underscores es locals field_names fn_names encode_builtins)
+      encode expr list underscores es locals field_names fn_names encode_builtins =
+        map (e => encode expr underscores e locals field_names fn_names encode_builtins) es
 
 fn :: encode stmt list underscores [RStmt] [String] RStrSet RStrSet Bool => [RStmt]
       encode stmt list underscores [] _ _ _ _ = []

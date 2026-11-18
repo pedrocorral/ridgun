@@ -478,8 +478,7 @@ fn :: prep call String [RExpr]         (Bool, Int, Bool) => RExpr
       prep call fname  args            _                 =  ECall fname args
 
 fn :: prep expr list [RExpr] RCgSigMap => [RExpr]
-      prep expr list []      _        =  []
-      prep expr list (e:es)  sigs     =  [prep expr e sigs] :: (prep expr list es sigs)
+      prep expr list es sigs =  map (e => prep expr e sigs) es
 
 fn :: prep stmt list [RStmt]            RCgSigMap => [RStmt]
       prep stmt list []                 _        =  []
@@ -617,8 +616,7 @@ fn :: inline leaf expr RExpr              [RInlineExprEntry] => RExpr
       inline leaf expr e                  tbl                =  expr map kids e (x => inline leaf expr x tbl)
 
 fn :: inline leaf expr list [RExpr] [RInlineExprEntry] => [RExpr]
-      inline leaf expr list [] _ = []
-      inline leaf expr list (e:es) tbl = [inline leaf expr e tbl] :: (inline leaf expr list es tbl)
+      inline leaf expr list es tbl = map (e => inline leaf expr e tbl) es
 
 fn :: inline leaf case list [RFnCase] [RInlineExprEntry] => [RFnCase]
       inline leaf case list [] _ = []
@@ -799,31 +797,37 @@ type RFieldEntry = FieldEntry String Int
 
 type RNativeEnv = NativeEnv String Int [String] RStrIntMap RStrIntMap RStrIntMap RStrSet RStrIntMap [String]
 
-type RNativeCode = NativeCode [RNativeInstr] Int Int
+-- The code of one function while it is lowered: the instructions emitted so far (in order), the next
+-- label and the highest slot used. A record, because the instruction list is the one thing that grows
+-- at every step and `nc emit` must not copy it: it reads the field in the constructor call of the new
+-- state (`RNativeCode ((ncode_ins st) :: [one]) ...`), which moves the list out of the old state
+-- (OPT-022). A positional constructor matched in the parameters copied the list at each instruction.
+type RNativeCode = ncode_ins: [RNativeInstr], ncode_lbl: Int, ncode_msp: Int
 
 fn :: rev native instrs [RNativeInstr] [RNativeInstr] => [RNativeInstr]
       rev native instrs [] acc = acc
       rev native instrs (x:xs) acc = rev native instrs xs ([x] :: acc)
 
+-- The instructions emitted so far, in order. A new instruction goes at the end of the list, in place.
+-- (It was kept reversed and each instruction put in front, which copied the whole list every time: a
+-- list literal of 32 000 numbers took 10 s to lower.)
 fn :: nc instrs RNativeCode => [RNativeInstr]
-      nc instrs (NativeCode rev_ins _ _) = rev native instrs rev_ins []
+      nc instrs st = ncode_ins st
 
 fn :: nc lbl RNativeCode => Int
-      nc lbl (NativeCode _ lbl _) = lbl
+      nc lbl st = ncode_lbl st
 
 fn :: nc max sp RNativeCode => Int
-      nc max sp (NativeCode _ _ msp) = msp
+      nc max sp st = ncode_msp st
 
 fn :: nc set lbl RNativeCode Int     => RNativeCode
-      nc set lbl (NativeCode rev_ins _ msp) new_lbl = NativeCode rev_ins new_lbl msp
+      nc set lbl st new_lbl = RNativeCode (ncode_ins st) new_lbl (ncode_msp st)
 
 fn :: nc emit RNativeCode RNativeInstr Int     => RNativeCode
-      nc emit (NativeCode rev_ins lbl msp) ins used_sp =
-        NativeCode ([ins] :: rev_ins) lbl (max int msp used_sp)
+      nc emit st one used_sp = RNativeCode ((ncode_ins st) :: [one]) (ncode_lbl st) (max int (ncode_msp st) used_sp)
 
 fn :: nc emit list RNativeCode [RNativeInstr] Int => RNativeCode
-      nc emit list (NativeCode rev_ins lbl msp) more used_sp =
-        NativeCode (rev native instrs more rev_ins) lbl (max int msp used_sp)
+      nc emit list st more used_sp = RNativeCode ((ncode_ins st) :: more) (ncode_lbl st) (max int (ncode_msp st) used_sp)
 
 -- ── String Pool (.rodata) Collection & Interning ─────────────
 
@@ -2659,6 +2663,8 @@ fn :: lower adt ctor call RNativeEnv [RExpr] [String] Int Int Int Int RNativeCod
 fn :: lower expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
       lower expr env (ECall fname ((EVar tr):[])) bound_locals sp st
         | str starts with fname "#take " = lower take field env (str slice fname 6 (str len fname)) tr sp st
+      lower expr env (ECall "#move" ((EVar u):[])) _ sp st =
+        nc emit st (NMoveSlot (env var slot env u)) sp
       lower expr _ (EInt n) _ sp st =
         lower int lit n sp st
       lower expr env (EReal r) _ sp st =
@@ -3891,8 +3897,7 @@ fn :: share cons expr RExpr [String] => RExpr
       share cons expr e keys =  expr map kids e (x => share cons expr x keys)
 
 fn :: share cons exprs [RExpr] [String] => [RExpr]
-      share cons exprs [] _ =  []
-      share cons exprs (e:es) keys =  [share cons expr e keys] :: (share cons exprs es keys)
+      share cons exprs es keys =  map (e => share cons expr e keys) es
 
 -- ── OPT-022: a record field read at the last use of the record moves out ──
 -- `in_record i n acc = ... Acc ([i] :: (a_list acc)) ...` read the list with a
@@ -3920,6 +3925,151 @@ fn :: is big field type String => Bool
       is big field type ftype =  ftype == "String" or ((str len ftype) >= 2 and (str slice ftype 0 1) == "[")
 
 -- A getter whose field can be taken: a plain accessor of a large field with one position.
+-- ── OPT-023: the only use of a name moves instead of cloning ──────────────
+-- `st1 = f st x` clones `st` into the argument, so the callee sees two owners and an in-place
+-- update inside it (`ins :: [one]`) copies. A chain of such states made every step cost the size of
+-- the state: lowering a list literal of 32 000 numbers took 10 s. Here, in a clause, a name that
+-- is bound once (a parameter the function owns, or a `let`) and mentioned once, as a plain
+-- argument of a call written as `let` (not the last statement: that call is a tail call and moves
+-- its arguments already), becomes `#move name`: lowering loads the slot and empties it. Only calls of
+-- user functions with all their arguments (the arguments of the positions the callee owns), and
+-- constructors. Not rewritten: conditions of guards (a failed guard goes on to the next clause, which
+-- would read the name again), the right sides of `where`, and anything below a call.
+fn :: move once cases [RFnCase] String RStrIntMap => [RFnCase]
+      move once cases cs name fam =  map (c => move once case c name fam) cs
+
+fn :: move once case RFnCase String RStrIntMap => RFnCase
+      move once case (FnCase pats guards body) name fam =
+        mask = non neg int (str int map lookup fam ("#b " + name))
+        everything = (guard kids guards []) :: [body]
+        uses = move count uses everything StrIntEmpty
+        binders = move count binders everything (move count pat names (collect pat list vars pats []) StrIntEmpty)
+        owned = move owned params pats 0 mask []
+        once = move pick once ((move let names everything []) :: owned) uses binders StrSetEmpty
+        move apply (FnCase pats guards body) once fam
+
+fn :: move apply RFnCase RStrSet RStrIntMap => RFnCase
+      move apply (FnCase pats guards body) once fam
+        | once == StrSetEmpty = FnCase pats guards body
+        | otherwise = FnCase pats (move branches guards once fam) (move body body once fam)
+
+-- The names of the parameters the function owns that a plain variable pattern binds.
+fn :: move owned params [RPattern] Int Int [String] => [String]
+      move owned params [] _ _ acc =  acc
+      move owned params ((PatVar r):ps) i mask acc
+        | borrow bit mask i = move owned params ps (i + 1) mask acc
+        | otherwise = move owned params ps (i + 1) mask (acc :: [r])
+      move owned params (_:ps) i mask acc =  move owned params ps (i + 1) mask acc
+
+-- The names a `let` binds, in every block of the clause.
+fn :: move let names [RExpr] [String] => [String]
+      move let names [] acc =  acc
+      move let names (e:es) acc =  move let names es (move let name expr e acc)
+
+fn :: move let name expr RExpr [String] => [String]
+      move let name expr (EBlock stmts) acc =  move let names (stmt kids stmts []) (move let stmt names stmts acc)
+      move let name expr e acc =  move let names (expr kids e) acc
+
+fn :: move let stmt names [RStmt] [String] => [String]
+      move let stmt names [] acc =  acc
+      move let stmt names ((StmtLet v _):ss) acc =  move let stmt names ss (acc :: [v])
+      move let stmt names (_:ss) acc =  move let stmt names ss acc
+
+-- How many times each name is mentioned (as a variable, or called) in the expressions.
+fn :: move count uses [RExpr] RStrIntMap => RStrIntMap
+      move count uses [] m =  m
+      move count uses (e:es) m =  move count uses es (move count use e m)
+
+fn :: move count use RExpr RStrIntMap => RStrIntMap
+      move count use (EVar n) m =  move bump m n
+      move count use (ECall f args) m =  move count uses args (move bump m f)
+      move count use e m =  move count uses (expr kids e) m
+
+fn :: move bump RStrIntMap String => RStrIntMap
+      move bump m n =  str int map insert m n (1 + (non neg int (str int map lookup m n)))
+
+-- How many places bind each name: the parameters' patterns, `let`, `let mut`, index assignment,
+-- the targets of `where`.
+fn :: move count binders [RExpr] RStrIntMap => RStrIntMap
+      move count binders [] m =  m
+      move count binders (e:es) m =  move count binders es (move count binders one e m)
+
+fn :: move count binders one RExpr RStrIntMap => RStrIntMap
+      move count binders one (EBlock stmts) m =  move count binders (stmt kids stmts []) (move count binder stmts stmts m)
+      move count binders one (EWhere b binds) m =  move count binders (expr kids (EWhere b binds)) (move count where binds m)
+      move count binders one e m =  move count binders (expr kids e) m
+
+fn :: move count binder stmts [RStmt] RStrIntMap => RStrIntMap
+      move count binder stmts [] m =  m
+      move count binder stmts ((StmtLet v _):ss) m =  move count binder stmts ss (move bump m v)
+      move count binder stmts ((StmtMut v _):ss) m =  move count binder stmts ss (move bump m v)
+      move count binder stmts ((StmtIndexAssign t _ _):ss) m =  move count binder stmts ss (move bump m t)
+      move count binder stmts (_:ss) m =  move count binder stmts ss m
+
+fn :: move count where [RWhereBind] RStrIntMap => RStrIntMap
+      move count where [] m =  m
+      move count where ((WhereBind _ t _):ws) m =  move count where ws (move bump m t)
+
+fn :: move count pat names [String] RStrIntMap => RStrIntMap
+      move count pat names [] m =  m
+      move count pat names (n:ns) m =  move count pat names ns (move bump m n)
+
+-- The names bound once and mentioned once.
+fn :: move pick once [String] RStrIntMap RStrIntMap RStrSet => RStrSet
+      move pick once [] _ _ acc =  acc
+      move pick once (n:ns) uses binders acc
+        | (str int map lookup uses n) == 1 and (str int map lookup binders n) == 1 = move pick once ns uses binders (str set add acc n)
+        | otherwise = move pick once ns uses binders acc
+
+fn :: move branches [RGuard] RStrSet RStrIntMap => [RGuard]
+      move branches gs once fam =  map (g => move branch g once fam) gs
+
+fn :: move branch RGuard RStrSet RStrIntMap => RGuard
+      move branch (GuardBranch c b) once fam =  GuardBranch c (move body b once fam)
+
+fn :: move body RExpr RStrSet RStrIntMap => RExpr
+      move body (EBlock stmts) once fam =  EBlock (move stmts stmts [] once fam)
+      move body (EGuard gs) once fam =  EGuard (move branches gs once fam)
+      move body (EWhere b binds) once fam =  EWhere (move body b once fam) binds
+      move body e _ _ =  e
+
+fn :: move stmts [RStmt] [RStmt] RStrSet RStrIntMap => [RStmt]
+      move stmts [] acc _ _ =  acc
+      move stmts (s:[]) acc once fam =  acc :: [move last stmt s once fam]
+      move stmts (s:ss) acc once fam =  move stmts ss (acc :: [move stmt s once fam]) once fam
+
+fn :: move stmt RStmt RStrSet RStrIntMap => RStmt
+      move stmt (StmtLet v (ECall f args)) once fam =  StmtLet v (move call f args once fam)
+      move stmt s _ _ =  s
+
+fn :: move last stmt RStmt RStrSet RStrIntMap => RStmt
+      move last stmt (StmtExpr e) once fam =  StmtExpr (move body e once fam)
+      move last stmt s once fam =  move stmt s once fam
+
+fn :: move call String [RExpr] RStrSet RStrIntMap => RExpr
+      move call f args once fam
+        | move callee ok f (list len args) fam = ECall f (move args args (non neg int (str int map lookup fam ("#b " + f))) 0 once [])
+        | otherwise = ECall f args
+
+-- Only the arguments in the positions the callee owns: a borrowed position takes a plain variable as it is.
+fn :: move args [RExpr] Int Int RStrSet [RExpr] => [RExpr]
+      move args [] _ _ _ acc =  acc
+      move args (a:as) mask i once acc
+        | borrow bit mask i = move args as mask (i + 1) once (acc :: [a])
+        | otherwise = move args as mask (i + 1) once (acc :: [move arg a once])
+
+fn :: move arg RExpr RStrSet => RExpr
+      move arg (EVar u) once
+        | str set has once u = ECall "#move" [EVar u]
+      move arg e _ =  e
+
+fn :: move callee ok String Int RStrIntMap => Bool
+      move callee ok f n fam
+        | (str len f) == 0 = False
+        | (str starts with f "#") or (str starts with f "__") = False
+        | is upper ident f = True
+        | otherwise = (str int map lookup fam f) == n
+
 fn :: take field ok String RStrIntMap RStrIntMap => Bool
       take field ok g fam fm =  (str int map lookup fam ("#g " + g)) == 1 and (str int map lookup fm ("#fb " + g)) == 1 and (non neg int (str int map lookup fm ("#fa " + g))) == 0
 
@@ -4015,8 +4165,7 @@ fn :: take expr RExpr String RStrIntMap RStrIntMap => RExpr
       take expr e r fam fm =  expr map kids e (x => take expr x r fam fm)
 
 fn :: take exprs [RExpr] String RStrIntMap RStrIntMap => [RExpr]
-      take exprs [] _ _ _ =  []
-      take exprs (e:es) r fam fm =  [take expr e r fam fm] :: (take exprs es r fam fm)
+      take exprs es r fam fm =  map (e => take expr e r fam fm) es
 
 -- Lowering of the marker: read the field, put zero in its place, give the value.
 fn :: lower take field RNativeEnv String String Int RNativeCode => RNativeCode
@@ -4035,14 +4184,15 @@ fn :: add unit marks [RFnDef] RStrIntMap => RStrIntMap
 fn :: lower fndef RFnDef RStrIntMap RStrIntMap RStrIntMap RStrSet RStrIntMap [String] => RNativeFn
       lower fndef (FnDef name params ret raw_cases) str_map fn_id_map fn_arity_map heavy_set field_map infos =
         cases1 = share cons cases (maybe wrap unit cases name ret fn_arity_map raw_cases)
-        cases = take field cases cases1 name fn_arity_map field_map
+        cases2 = take field cases cases1 name fn_arity_map field_map
+        cases = move once cases cases2 name fn_arity_map
         fid = lookup fn id map fn_id_map name
         arity = infer fndef arity params cases
         all_locals = collect cases all locals cases []
         base_sp = arity + (list str len all_locals)
         elem_vars = fn tensor elems infos (name + "|") []
         env = NativeEnv name arity all_locals str_map fn_id_map fn_arity_map heavy_set field_map elem_vars
-        init_st = NativeCode [] 1 (max int (base_sp + 1) 2)
+        init_st = RNativeCode [] 1 (max int (base_sp + 1) 2)
         st1 = lower cases list env cases base_sp init_st
         st2 = lower no match tail env name cases base_sp st1
         bmask = env borrow mask env name
@@ -4112,7 +4262,7 @@ fn :: lower field getter fns [RFieldEntry] RStrSet RStrIntMap RStrIntMap RStrInt
 fn :: field getter fn Int String Int RNativeEnv => RNativeFn
       field getter fn fid fname idx env
         | env field is alt env fname =
-          st = lower field alt env fname 0 (0 - 1) 1 (NativeCode [] 1 2)
+          st = lower field alt env fname 0 (0 - 1) 1 (RNativeCode [] 1 2)
           NativeFn fid fname 1 (nc max sp st) ((nc instrs st) :: [NReturn])
         | otherwise = NativeFn fid fname 1 2 [NAdtField 0 idx, NReturn]
 
@@ -4519,8 +4669,7 @@ fn :: shadow expr RExpr RStrSet => RExpr
       shadow expr e names                              =  expr map kids e (x => shadow expr x names)
 
 fn :: shadow exprs [RExpr] RStrSet => [RExpr]
-      shadow exprs []     _     =  []
-      shadow exprs (e:es) names =  [shadow expr e names] :: (shadow exprs es names)
+      shadow exprs es names =  map (e => shadow expr e names) es
 
 fn :: shadow cases [RFnCase] RStrSet => [RFnCase]
       shadow cases []                       _     =  []
@@ -5262,8 +5411,7 @@ fn :: gt helper src show => String
 -- A tensor stores raw 64-bit words. A `Real` element of a tensor literal
 -- is stored as its bits (`NRealToBits`); an `Int` passes unchanged.
 fn :: real bits leaves [RExpr] => [RExpr]
-      real bits leaves [] =  []
-      real bits leaves (e:es) =  [real bits leaf e] :: (real bits leaves es)
+      real bits leaves es =  map (e => real bits leaf e) es
 
 fn :: real bits leaf RExpr => RExpr
       real bits leaf (EInt n) =  EInt n

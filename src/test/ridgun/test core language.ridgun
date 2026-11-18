@@ -551,8 +551,11 @@ fn :: main => ()
         echo "=== RMM2 Assignment & Cascaded Structure Counting ==="
         assert equals (cmm check ptr identity True) (True, False)
         assert equals (cmm check ptr identity False) (False, True)
-        assert equals (cmm trace elegir True) (2, 1, 1, 0, 2, 1)
-        assert equals (cmm trace elegir False) (2, 2, 1, 0, 2, 1)
+        -- The first four numbers are the live blocks and do not change. The last two count the conditional
+        -- drops done (freed) and skipped (spared) in the caller: `b` is used once, as an argument, so
+        -- OPT-023 moves it into `elegir` and the caller has one conditional drop less to do (1.0.35).
+        assert equals (cmm trace elegir True) (2, 1, 1, 0, 1, 1)
+        assert equals (cmm trace elegir False) (2, 2, 1, 0, 2, 0)
         assert equals (cmm trace cascada True True) (1, 1, 0)
         assert equals (cmm trace cascada False False) (2, 1, 0)
         assert equals (rmm2 trace nested) (3, 1, 0)

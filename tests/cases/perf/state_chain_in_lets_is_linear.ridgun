@@ -1,0 +1,25 @@
+-- @tests TS-COMP-011
+-- case: a state passed through a chain of `let`s (st1 = step st; st2 = step st1) grows its list in place: 32 000 steps take milliseconds, not seconds (OPT-023)
+-- source: docs/etc/compiler_optimizations.md OPT-023; the instruction list of the compiler's own lowering was built this way and a list literal of 32 000 numbers took 10 s
+-- expect-output:
+--   64000
+-- max-ms: 2000
+
+type Code = c_ins: [Int], c_lbl: Int
+
+fn :: emit Code Int => Code
+      emit st one =  Code ((c_ins st) :: [one]) (c_lbl st)
+
+fn :: two Code Int => Code
+      two st i =
+        st1 = emit st i
+        st2 = emit st1 (i + 1)
+        st2
+
+fn :: loop Code Int Int => Code
+      loop st i n
+        | i >= n = st
+        | otherwise = loop (two st i) (i + 1) n
+
+fn :: main => ()
+      main =  echo (int to str (list len (c_ins (loop (Code [] 0) 0 32000))))
