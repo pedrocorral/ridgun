@@ -1,0 +1,30 @@
+-- Times the stages of the parser on one source file (docs/etc/testing_in_segments.md): soften,
+-- items, normalize, int-literal check, in ms. Build once; run with the path of a .ridgun file.
+-- To see the scaling, run it on a file with one function holding a list literal of n numbers,
+-- for n = 4000, 8000, 16000, 32000: every stage must about double each time (linear).
+import ast
+import lexer
+import parser
+
+fn :: ms Int Int => Int
+      ms t0 t1 =  (t1 - t0) / 1000000
+
+fn :: main => ()
+      main =
+        text = read file (list nth or (cli args) 1 "")
+        toks = tokenize src text
+        n0 = list len toks
+        t0 = sys time ns
+        soft = soften name keywords toks
+        n1 = list len soft
+        t1 = sys time ns
+        raw = parse items soft [] []
+        n2 = count fn defs raw
+        t2 = sys time ns
+        norm = normalize program raw
+        n3 = count fn defs norm
+        t3 = sys time ns
+        errs = int lit errors toks TokNewline "" []
+        n4 = list len errs
+        t4 = sys time ns
+        echo "tokens" n0 "soften ms" (ms t0 t1) "| items ms" (ms t1 t2) "| normalize ms" (ms t2 t3) "| intlit ms" (ms t3 t4) "| fns" n3 n1 n4

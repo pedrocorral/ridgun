@@ -1421,18 +1421,16 @@ fn :: parse paren expr (RExpr, [RToken]) => RExpr [RToken]
       parse paren expr (first_e, (TokRParen:rest)) = (first_e, rest)
       parse paren expr (first_e, rest)   =  (first_e, rest)
 
+-- The expressions of a list, tuple or tensor literal, up to its closing `)` or `]`. The
+-- list is built in order with an accumulator: a literal of n elements costs n steps.
 fn :: parse comma exprs [RToken] => [RExpr] [RToken]
-      parse comma exprs ts       =
-        p1 = parse expr ts
-        parse comma exprs cont p1
+      parse comma exprs ts       =  parse comma exprs cont [] (parse expr ts)
 
-fn :: parse comma exprs cont (RExpr, [RToken]) => [RExpr] [RToken]
-      parse comma exprs cont (e, (TokComma:rest)) =
-        more = parse comma exprs rest
-        prepend expr e more
-      parse comma exprs cont (e, (TokRParen:rest)) = ([e], rest)
-      parse comma exprs cont (e, (TokRBracket:rest)) = ([e], rest)
-      parse comma exprs cont (e, rest)         =  ([e], rest)
+fn :: parse comma exprs cont [RExpr] (RExpr, [RToken]) => [RExpr] [RToken]
+      parse comma exprs cont acc (e, (TokComma:rest)) =  parse comma exprs cont (acc :: [e]) (parse expr rest)
+      parse comma exprs cont acc (e, (TokRParen:rest)) = (acc :: [e], rest)
+      parse comma exprs cont acc (e, (TokRBracket:rest)) = (acc :: [e], rest)
+      parse comma exprs cont acc (e, rest)         =  (acc :: [e], rest)
 
 fn :: finish list lit ([RExpr], [RToken]) => RExpr [RToken]
       finish list lit (elems, rest)       =  (EList elems, rest)
@@ -3443,6 +3441,24 @@ fn :: cmp str bst String String => Int
         | a == b = 0
         | otherwise = cmp str bst prio a b (str bst prio a) (str bst prio b)
 
+-- A map from a String to a value of any type, with the same order of keys as RStrSet.
+-- The maps below that differ only in the type of the value are this one.
+type RBst V = BstEmpty | BstNode String V (RBst V) (RBst V)
+
+fn :: bst get (RBst V) String V => V
+      bst get BstEmpty _ dflt = dflt
+      bst get (BstNode k v l r) s dflt
+        | s == k = v
+        | (cmp str bst s k) < 0 = bst get l s dflt
+        | otherwise = bst get r s dflt
+
+fn :: bst put (RBst V) String V => RBst V
+      bst put BstEmpty k v = BstNode k v BstEmpty BstEmpty
+      bst put (BstNode k0 v0 l r) k v
+        | k == k0 = BstNode k0 v l r
+        | (cmp str bst k k0) < 0 = BstNode k0 v0 (bst put l k v) r
+        | otherwise = BstNode k0 v0 l (bst put r k v)
+
 fn :: str set has RStrSet String => Bool
       str set has StrSetEmpty _ = False
       str set has (StrSetNode k l r) s
@@ -3863,17 +3879,18 @@ fn :: lift where lambdas (RExpr, Int, [RFnDef]) [RWhereBind] [String] => RExpr I
 fn :: finish lift where RExpr ([RWhereBind], Int, [RFnDef]) => RExpr Int [RFnDef]
       finish lift where b1 (wbs1, c2, l2) = (EWhere b1 wbs1, c2, l2)
 
+-- The expressions of a list, each lifted in turn (the counter and the lifted functions go from one to the
+-- next), built in order with an accumulator: n expressions cost n steps.
 fn :: lift expr list lambdas [RExpr] [String] Int [RFnDef] => [RExpr] Int [RFnDef]
-      lift expr list lambdas [] _ cnt lifted = ([], cnt, lifted)
-      lift expr list lambdas (e:es) locals cnt lifted =
-        lift expr list step (lift expr lambdas e locals cnt lifted) es locals
+      lift expr list lambdas es locals cnt lifted =  lift expr list built [] es locals cnt lifted
 
-fn :: lift expr list step (RExpr, Int, [RFnDef]) [RExpr] [String] => [RExpr] Int [RFnDef]
-      lift expr list step (e1, c1, l1) es locals =
-        finish lift expr list e1 (lift expr list lambdas es locals c1 l1)
+fn :: lift expr list built [RExpr] [RExpr] [String] Int [RFnDef] => [RExpr] Int [RFnDef]
+      lift expr list built done [] _ cnt lifted = (done, cnt, lifted)
+      lift expr list built done (e:es) locals cnt lifted =
+        lift expr list built next done es locals (lift expr lambdas e locals cnt lifted)
 
-fn :: finish lift expr list RExpr ([RExpr], Int, [RFnDef]) => [RExpr] Int [RFnDef]
-      finish lift expr list e1 (es1, c2, l2) = ([e1] :: es1, c2, l2)
+fn :: lift expr list built next [RExpr] [RExpr] [String] (RExpr, Int, [RFnDef]) => [RExpr] Int [RFnDef]
+      lift expr list built next done es locals (e1, c1, l1) =  lift expr list built (done :: [e1]) es locals c1 l1
 
 fn :: lift stmt list lambdas [RStmt] [String] Int [RFnDef] => [RStmt] Int [RFnDef]
       lift stmt list lambdas [] _ cnt lifted = ([], cnt, lifted)
@@ -7332,7 +7349,13 @@ fn :: soften name keywords [RToken] => [RToken]
 
 fn :: soften with names [[String]] [RToken] => [RToken]
       soften with names []    toks =  toks
-      soften with names names toks =  soften scan names toks []
+      soften with names names toks =  soften scan (names by first word names BstEmpty) toks []
+
+-- The declared names, grouped by their first word, each group in the order of the names.
+fn :: names by first word [[String]] (RBst [[String]]) => RBst [[String]]
+      names by first word [] acc =  acc
+      names by first word ((w:ws):ns) acc =  names by first word ns (bst put acc w ((bst get acc w []) :: [[w] :: ws]))
+      names by first word (_:ns) acc =  names by first word ns acc
 
 fn :: keyword names in toks [RToken] [[String]] => [[String]]
       keyword names in toks [] acc =  acc
@@ -7363,11 +7386,11 @@ fn :: token word RToken => String
       token word TokType =  "type"
       token word _ =  ""
 
-fn :: soften scan [[String]] [RToken] [RToken] => [RToken]
+fn :: soften scan (RBst [[String]]) [RToken] [RToken] => [RToken]
       soften scan _     [] acc =  list reverse acc
-      soften scan names (t:rest) acc =  soften at names (longest name match names ([t] :: rest) 0) ([t] :: rest) acc
+      soften scan names (t:rest) acc =  soften at names (longest name match (bst get names (token word t) []) ([t] :: rest) 0) ([t] :: rest) acc
 
-fn :: soften at [[String]] Int [RToken] [RToken] => [RToken]
+fn :: soften at (RBst [[String]]) Int [RToken] [RToken] => [RToken]
       soften at names 0 (t:rest) acc =  soften scan names rest ([t] :: acc)
       soften at names k toks acc =  soften scan names (list drop toks k) (rev onto acc (soften window (list take toks k)))
 
