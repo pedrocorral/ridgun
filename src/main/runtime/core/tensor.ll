@@ -1154,13 +1154,84 @@ done:
   ret i64 %t
 }
 
+declare i64 @llvm.fshr.i64(i64, i64, i64)
+declare i64 @llvm.fshl.i64(i64, i64, i64)
+
 define i64 @rg_word_op(i64 %op, i64 %a, i64 %b) {
 entry:
   switch i64 %op, label %xor [ i64 0, label %add
                                i64 1, label %sub
                                i64 2, label %mul
                                i64 11, label %and
-                               i64 12, label %or ]
+                               i64 12, label %or
+                               i64 3, label %div
+                               i64 4, label %rem
+                               i64 17, label %shl
+                               i64 18, label %shr
+                               i64 19, label %rotr
+                               i64 20, label %rotl
+                               i64 100, label %fadd
+                               i64 101, label %fsub
+                               i64 102, label %fmul
+                               i64 103, label %fdiv ]
+div:
+  ; a divisor of 0 gives 0 (as `rg_hadamard_op`); -1 is done as a negation, which cannot trap
+  %dz = icmp eq i64 %b, 0
+  %dm = icmp eq i64 %b, -1
+  %dsafe0 = select i1 %dz, i64 1, i64 %b
+  %dsafe = select i1 %dm, i64 1, i64 %dsafe0
+  %dq = sdiv i64 %a, %dsafe
+  %dneg = sub i64 0, %a
+  %dq1 = select i1 %dm, i64 %dneg, i64 %dq
+  %dr = select i1 %dz, i64 0, i64 %dq1
+  ret i64 %dr
+rem:
+  %rz = icmp eq i64 %b, 0
+  %rm1 = icmp eq i64 %b, -1
+  %rsafe0 = select i1 %rz, i64 1, i64 %b
+  %rsafe = select i1 %rm1, i64 1, i64 %rsafe0
+  %rq = srem i64 %a, %rsafe
+  %rbad = or i1 %rz, %rm1
+  %rres = select i1 %rbad, i64 0, i64 %rq
+  ret i64 %rres
+rotr:
+  %tr = call i64 @llvm.fshr.i64(i64 %a, i64 %a, i64 %b)
+  ret i64 %tr
+rotl:
+  %tl = call i64 @llvm.fshl.i64(i64 %a, i64 %a, i64 %b)
+  ret i64 %tl
+fadd:
+  %fa0 = bitcast i64 %a to double
+  %fb0 = bitcast i64 %b to double
+  %fr0 = fadd double %fa0, %fb0
+  %fw0 = bitcast double %fr0 to i64
+  ret i64 %fw0
+fsub:
+  %fa1 = bitcast i64 %a to double
+  %fb1 = bitcast i64 %b to double
+  %fr1 = fsub double %fa1, %fb1
+  %fw1 = bitcast double %fr1 to i64
+  ret i64 %fw1
+fmul:
+  %fa2 = bitcast i64 %a to double
+  %fb2 = bitcast i64 %b to double
+  %fr2 = fmul double %fa2, %fb2
+  %fw2 = bitcast double %fr2 to i64
+  ret i64 %fw2
+fdiv:
+  %fa3 = bitcast i64 %a to double
+  %fb3 = bitcast i64 %b to double
+  %fr3 = fdiv double %fa3, %fb3
+  %fw3 = bitcast double %fr3 to i64
+  ret i64 %fw3
+shl:
+  %c1 = and i64 %b, 63
+  %rl = shl i64 %a, %c1
+  ret i64 %rl
+shr:
+  %c2 = and i64 %b, 63
+  %rr = lshr i64 %a, %c2
+  ret i64 %rr
 add:
   %r0 = add i64 %a, %b
   ret i64 %r0
@@ -1183,7 +1254,8 @@ xor:
 
 ; 90 element-wise (a, b, op): a new tensor of a's shape with op on each
 ; pair of words (b a tensor, or a number used for every element); ops
-; 0 +, 1 -, 2 *, 11 and, 12 or, else xor. `a or a` is a copy of a.
+; 0 +, 1 -, 2 *, 3 / and 4 % (a divisor of 0 gives 0), 11 and, 12 or, 17 shl, 18 shr (logical, the
+; count modulo 64), 19 rotr, 20 rotl, 100 to 103 the words as Reals (+ - * /), else xor. `a or a` is a copy of a.
 define i64 @rg_elementwise(i64 %slots, i64 %n) {
 entry:
   %a = call i64 @rg_ld(i64 %slots)

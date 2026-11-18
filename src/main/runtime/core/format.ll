@@ -190,6 +190,15 @@ minus:
   br label %abs
 abs:
   %a = call double @llvm.fabs.f64(double %x)
+  %isinf = fcmp oeq double %a, 0x7FF0000000000000
+  br i1 %isinf, label %inf, label %fin
+inf:
+  ; an infinity is `inf` (after the sign), as a NaN is `nan`
+  call void @rg_buf_byte(i64 %b, i64 105)
+  call void @rg_buf_byte(i64 %b, i64 110)
+  call void @rg_buf_byte(i64 %b, i64 102)
+  ret void
+fin:
   %big = fcmp oge double %a, 0x43F0000000000000
   %ip0 = fptoui double %a to i64
   %ip = select i1 %big, i64 -1, i64 %ip0
@@ -208,8 +217,8 @@ abs:
   call void @rg_buf_byte(i64 %b, i64 46)
   br label %trim
 trim:
-  %v = phi i64 [ %fr, %abs ], [ %v10, %cut ]
-  %digits = phi i64 [ 6, %abs ], [ %d1, %cut ]
+  %v = phi i64 [ %fr, %fin ], [ %v10, %cut ]
+  %digits = phi i64 [ 6, %fin ], [ %d1, %cut ]
   %r = urem i64 %v, 10
   %z = icmp eq i64 %r, 0
   %keep = icmp sgt i64 %digits, 1

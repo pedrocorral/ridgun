@@ -570,7 +570,7 @@ fn :: llvm target triple String           => String
 -- pure encoder does, and go through `__rg_rt_builtin`.
 fn :: emit llvm ir RNativeProg => String
       emit llvm ir (NativeProg main_fid spawn_fid call2_fid binop_fid fns0 rodata_str) =
-        fns = x86 mark ir fns fns0 []
+        fns = x86 mark ir fns False fns0 []
         rlen = llvm rodata len rodata_str
         resc = llvm escape rodata rodata_str
         mod_hdr = "target datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128\"\ntarget triple = \"x86_64-unknown-linux-gnu\"\n\n@__rg_page0 = global {{ ptr, ptr, ptr, ptr, [3936 x i8] }} {{ ptr @__rg_fn_{main_fid}, ptr @__rg_fn_{spawn_fid}, ptr @__rg_fn_{call2_fid}, ptr @__rg_fn_{binop_fid}, [3936 x i8] zeroinitializer }}, section \".rg_page0\", align 8\n@__rg_rodata = private unnamed_addr constant [{rlen} x i8] c\"{resc}\", align 16\n\n"

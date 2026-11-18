@@ -1898,13 +1898,41 @@ fn :: lower tensor helper RNativeEnv String [RExpr] [String] Int RNativeCode => 
         nc emit list st7 insDone (sp + 9)
       lower tensor helper _ _ _ _ _ st = st
 
+-- The element-wise operations of two tensors of the same shape that builtin 90 does word by word
+-- (vectorised by the LLVM backend, OPT-012): the bit operations for any subscripts, the arithmetic
+-- ones when both tensors have the same subscripts.
+fn :: hadamard word op RBinOp => Bool
+      hadamard word op OpXor  =  True
+      hadamard word op OpAnd  =  True
+      hadamard word op OpOr   =  True
+      hadamard word op OpShl  =  True
+      hadamard word op OpShr  =  True
+      hadamard word op OpRotl =  True
+      hadamard word op OpRotr =  True
+      hadamard word op _      =  False
+
+fn :: hadamard arith op RBinOp => Bool
+      hadamard arith op OpAdd =  True
+      hadamard arith op OpSub =  True
+      hadamard arith op OpMul =  True
+      hadamard arith op OpDiv =  True
+      hadamard arith op OpMod =  True
+      hadamard arith op _     =  False
+
+-- The code builtin 90 gets: the operator's id, or 100 + id for + - * / on two tensors of Reals
+-- (their words are the bits of the Reals, so the Int operation would give nonsense).
+fn :: hadamard op code RNativeEnv RBinOp RExpr RExpr => Int
+      hadamard op code env bop leftE rightE
+        | (all real operands env [leftE, rightE]) and ((binop id bop) <= 3) = 100 + (binop id bop)
+        | otherwise = binop id bop
+
 fn :: lower bitwise hadamard RNativeEnv RBinOp RExpr RExpr [String] Int RNativeCode => RNativeCode
       lower bitwise hadamard env bop leftE rightE boundLocals sp st =
         st1 = lower expr env leftE boundLocals sp st
         st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
         st3 = lower expr env rightE boundLocals (sp + 1) st2
         st4 = nc emit st3 (NStoreSlot (sp + 1)) (sp + 2)
-        opCode = binop id bop
+        opCode = hadamard op code env bop leftE rightE
         ins = [NLoadImmInt opCode, NStoreSlot (sp + 2), NCallBuiltin 90 sp 3]
         nc emit list st4 ins (sp + 4)
 
@@ -2792,7 +2820,7 @@ fn :: lower expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
           st1 = lower expr list to slots env es bound_locals sp 0 st
           nc emit st1 (NEinsum sp count off (str len spec)) (sp + count + 1)
       lower expr env (EHadamard bop l s1 r s2) bound_locals sp st
-        | (bop == OpXor or bop == OpAnd or bop == OpOr) or (s1 == s2 and (bop == OpAdd or bop == OpSub or bop == OpMul)) =
+        | (hadamard word op bop) or (s1 == s2 and (hadamard arith op bop)) =
           lower bitwise hadamard env bop l r bound_locals sp st
         | otherwise =
           subs = s1 + "," + s2

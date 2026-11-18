@@ -1195,12 +1195,14 @@ fn :: x86 ir slot entry Int => [Int]
 -- With the IR runtime these builtins go through the runtime's own entry (it
 -- takes the channel lock, starts the jobs and keeps the tagged replies): the
 -- instruction is marked (id + 10000) and the encoder emits the generic call.
-fn :: x86 mark ir builtin RNativeInstr => RNativeInstr
-      x86 mark ir builtin (NCallBuiltin 57 slot _) =  NCallBuiltin 10057 slot 2
-      x86 mark ir builtin (NCallBuiltin b_id slot count)
-        | x86 ir builtin id b_id = NCallBuiltin (b_id + 10000) slot count
+-- `pure` is True for the pure encoder, which has no vectorised helper for the element-wise operations
+-- of tensors (90): they go through the runtime. The LLVM backend keeps its own helper for them.
+fn :: x86 mark ir builtin Bool RNativeInstr => RNativeInstr
+      x86 mark ir builtin _ (NCallBuiltin 57 slot _) =  NCallBuiltin 10057 slot 2
+      x86 mark ir builtin pure (NCallBuiltin b_id slot count)
+        | (x86 ir builtin id b_id) or (pure and b_id == 90) = NCallBuiltin (b_id + 10000) slot count
         | otherwise = NCallBuiltin b_id slot count
-      x86 mark ir builtin ins =  ins
+      x86 mark ir builtin _ ins =  ins
 
 fn :: x86 ir builtin id Int => Bool
       x86 ir builtin id 1  =  True
@@ -1215,14 +1217,14 @@ fn :: x86 ir builtin id Int => Bool
       x86 ir builtin id 99 =  True
       x86 ir builtin id _  =  False
 
-fn :: x86 mark ir instrs [RNativeInstr] [RNativeInstr] => [RNativeInstr]
-      x86 mark ir instrs [] acc = acc
-      x86 mark ir instrs (i:is) acc =  x86 mark ir instrs is (acc :: [x86 mark ir builtin i])
+fn :: x86 mark ir instrs Bool [RNativeInstr] [RNativeInstr] => [RNativeInstr]
+      x86 mark ir instrs _ [] acc = acc
+      x86 mark ir instrs pure (i:is) acc =  x86 mark ir instrs pure is (acc :: [x86 mark ir builtin pure i])
 
-fn :: x86 mark ir fns [RNativeFn] [RNativeFn] => [RNativeFn]
-      x86 mark ir fns [] acc = acc
-      x86 mark ir fns ((NativeFn fid name arity nslots instrs):fs) acc =
-        x86 mark ir fns fs (acc :: [NativeFn fid name arity nslots (x86 mark ir instrs instrs [])])
+fn :: x86 mark ir fns Bool [RNativeFn] [RNativeFn] => [RNativeFn]
+      x86 mark ir fns _ [] acc = acc
+      x86 mark ir fns pure ((NativeFn fid name arity nslots instrs):fs) acc =
+        x86 mark ir fns pure fs (acc :: [NativeFn fid name arity nslots (x86 mark ir instrs pure instrs [])])
 
 -- Hand-assembled routines of this file call the old blob by address
 -- (`mov rax, <address>` then `call rax` or `jmp rax`). In an IR image each
@@ -1365,7 +1367,7 @@ fn :: x86 builtin bytes Int => [Int]
       x86 builtin bytes _ = []
 
 fn :: x86 pick fns Bool [RNativeFn] => [RNativeFn]
-      x86 pick fns True  fns =  x86 mark ir fns fns []
+      x86 pick fns True  fns =  x86 mark ir fns True fns []
       x86 pick fns False fns =  fns
 
 fn :: x86 pick image Bool => [Int]

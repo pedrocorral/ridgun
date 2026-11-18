@@ -910,6 +910,11 @@ fn :: is hadamard bop RBinOp => Bool
       is hadamard bop OpAnd  =  True
       is hadamard bop OpOr   =  True
       is hadamard bop OpXor  =  True
+      is hadamard bop OpMod  =  True
+      is hadamard bop OpShl  =  True
+      is hadamard bop OpShr  =  True
+      is hadamard bop OpRotl =  True
+      is hadamard bop OpRotr =  True
       is hadamard bop _      =  False
 
 fn :: make add or hadamard RBinOp RExpr RExpr => RExpr

@@ -1,0 +1,400 @@
+-- ============================================================
+-- src/test/ridgun/test operator matrix.ridgun
+-- Every operator against every pair of types (FR-COMP-030): a combination
+-- either gives the result written here or does not compile. None may fail,
+-- or give nonsense, when the program runs.
+-- Rows: kind|left type|operator|right type|ok or err|output.
+--   S  `r = a op b` in `main` (Int 7 and 2, Real 7.5 and 2.0, Bool True and False, Str "ab" and "cd",
+--      List [1, 2] and [3], TenU a tensor of U64 (12, 5) and (3, 2), TenR a tensor of Real (7.5, 1.5)
+--      and (2.0, 0.5)); the output is `echo "{r}"`.
+--   E  `a_ij op b_ij` on two tensors of that element type; the output is the two elements.
+-- Each row is built and run with both backends (LLVM and the pure x86-64 encoder).
+-- A new operator or type gets its rows here.
+-- @tests FR-COMP-030
+-- ============================================================
+import str
+import "io.ridgunlib"
+
+fn :: matrix rows => Int
+      matrix rows =  283
+
+fn :: matrix row Int => String
+      matrix row 0 =  "S|Int|+|Int|ok|9"
+      matrix row 1 =  "S|Int|-|Int|ok|5"
+      matrix row 2 =  "S|Int|*|Int|ok|14"
+      matrix row 3 =  "S|Int|/|Int|ok|3"
+      matrix row 4 =  "S|Int|%|Int|ok|1"
+      matrix row 5 =  "S|Int|==|Int|ok|False"
+      matrix row 6 =  "S|Int|!=|Int|ok|True"
+      matrix row 7 =  "S|Int|<|Int|ok|False"
+      matrix row 8 =  "S|Int|>|Int|ok|True"
+      matrix row 9 =  "S|Int|<=|Int|ok|False"
+      matrix row 10 =  "S|Int|>=|Int|ok|True"
+      matrix row 11 =  "S|Int|and|Int|ok|2"
+      matrix row 12 =  "S|Int|or|Int|ok|7"
+      matrix row 13 =  "S|Int|xor|Int|ok|5"
+      matrix row 14 =  "S|Int|shl|Int|ok|28"
+      matrix row 15 =  "S|Int|shr|Int|ok|1"
+      matrix row 16 =  "S|Int|rotl|Int|ok|28"
+      matrix row 17 =  "S|Int|rotr|Int|ok|-4611686018427387903"
+      matrix row 18 =  "S|Int|::|Int|err|"
+      matrix row 19 =  "S|Real|+|Real|ok|9.5"
+      matrix row 20 =  "S|Real|-|Real|ok|5.5"
+      matrix row 21 =  "S|Real|*|Real|ok|15.0"
+      matrix row 22 =  "S|Real|/|Real|ok|3.75"
+      matrix row 23 =  "S|Real|%|Real|ok|1.5"
+      matrix row 24 =  "S|Real|==|Real|ok|False"
+      matrix row 25 =  "S|Real|!=|Real|ok|True"
+      matrix row 26 =  "S|Real|<|Real|ok|False"
+      matrix row 27 =  "S|Real|>|Real|ok|True"
+      matrix row 28 =  "S|Real|<=|Real|ok|False"
+      matrix row 29 =  "S|Real|>=|Real|ok|True"
+      matrix row 30 =  "S|Real|and|Real|err|"
+      matrix row 31 =  "S|Real|or|Real|err|"
+      matrix row 32 =  "S|Real|xor|Real|err|"
+      matrix row 33 =  "S|Real|shl|Real|err|"
+      matrix row 34 =  "S|Real|shr|Real|err|"
+      matrix row 35 =  "S|Real|rotl|Real|err|"
+      matrix row 36 =  "S|Real|rotr|Real|err|"
+      matrix row 37 =  "S|Real|::|Real|err|"
+      matrix row 38 =  "S|Bool|+|Bool|err|"
+      matrix row 39 =  "S|Bool|-|Bool|err|"
+      matrix row 40 =  "S|Bool|*|Bool|err|"
+      matrix row 41 =  "S|Bool|/|Bool|err|"
+      matrix row 42 =  "S|Bool|%|Bool|err|"
+      matrix row 43 =  "S|Bool|==|Bool|ok|False"
+      matrix row 44 =  "S|Bool|!=|Bool|ok|True"
+      matrix row 45 =  "S|Bool|<|Bool|err|"
+      matrix row 46 =  "S|Bool|>|Bool|err|"
+      matrix row 47 =  "S|Bool|<=|Bool|err|"
+      matrix row 48 =  "S|Bool|>=|Bool|err|"
+      matrix row 49 =  "S|Bool|and|Bool|ok|False"
+      matrix row 50 =  "S|Bool|or|Bool|ok|True"
+      matrix row 51 =  "S|Bool|xor|Bool|ok|True"
+      matrix row 52 =  "S|Bool|shl|Bool|err|"
+      matrix row 53 =  "S|Bool|shr|Bool|err|"
+      matrix row 54 =  "S|Bool|rotl|Bool|err|"
+      matrix row 55 =  "S|Bool|rotr|Bool|err|"
+      matrix row 56 =  "S|Bool|::|Bool|err|"
+      matrix row 57 =  "S|Str|+|Str|ok|abcd"
+      matrix row 58 =  "S|Str|-|Str|err|"
+      matrix row 59 =  "S|Str|*|Str|err|"
+      matrix row 60 =  "S|Str|/|Str|err|"
+      matrix row 61 =  "S|Str|%|Str|err|"
+      matrix row 62 =  "S|Str|==|Str|ok|False"
+      matrix row 63 =  "S|Str|!=|Str|ok|True"
+      matrix row 64 =  "S|Str|<|Str|ok|True"
+      matrix row 65 =  "S|Str|>|Str|ok|False"
+      matrix row 66 =  "S|Str|<=|Str|ok|True"
+      matrix row 67 =  "S|Str|>=|Str|ok|False"
+      matrix row 68 =  "S|Str|and|Str|err|"
+      matrix row 69 =  "S|Str|or|Str|err|"
+      matrix row 70 =  "S|Str|xor|Str|err|"
+      matrix row 71 =  "S|Str|shl|Str|err|"
+      matrix row 72 =  "S|Str|shr|Str|err|"
+      matrix row 73 =  "S|Str|rotl|Str|err|"
+      matrix row 74 =  "S|Str|rotr|Str|err|"
+      matrix row 75 =  "S|Str|::|Str|err|"
+      matrix row 76 =  "S|List|+|List|err|"
+      matrix row 77 =  "S|List|-|List|err|"
+      matrix row 78 =  "S|List|*|List|err|"
+      matrix row 79 =  "S|List|/|List|err|"
+      matrix row 80 =  "S|List|%|List|err|"
+      matrix row 81 =  "S|List|==|List|ok|False"
+      matrix row 82 =  "S|List|!=|List|ok|True"
+      matrix row 83 =  "S|List|<|List|err|"
+      matrix row 84 =  "S|List|>|List|err|"
+      matrix row 85 =  "S|List|<=|List|err|"
+      matrix row 86 =  "S|List|>=|List|err|"
+      matrix row 87 =  "S|List|and|List|err|"
+      matrix row 88 =  "S|List|or|List|err|"
+      matrix row 89 =  "S|List|xor|List|err|"
+      matrix row 90 =  "S|List|shl|List|err|"
+      matrix row 91 =  "S|List|shr|List|err|"
+      matrix row 92 =  "S|List|rotl|List|err|"
+      matrix row 93 =  "S|List|rotr|List|err|"
+      matrix row 94 =  "S|List|::|List|ok|[1, 2, 3]"
+      matrix row 95 =  "S|TenU|+|TenU|err|"
+      matrix row 96 =  "S|TenU|-|TenU|err|"
+      matrix row 97 =  "S|TenU|*|TenU|err|"
+      matrix row 98 =  "S|TenU|/|TenU|err|"
+      matrix row 99 =  "S|TenU|%|TenU|err|"
+      matrix row 100 =  "S|TenU|==|TenU|ok|False"
+      matrix row 101 =  "S|TenU|!=|TenU|ok|True"
+      matrix row 102 =  "S|TenU|<|TenU|err|"
+      matrix row 103 =  "S|TenU|>|TenU|err|"
+      matrix row 104 =  "S|TenU|<=|TenU|err|"
+      matrix row 105 =  "S|TenU|>=|TenU|err|"
+      matrix row 106 =  "S|TenU|and|TenU|err|"
+      matrix row 107 =  "S|TenU|or|TenU|err|"
+      matrix row 108 =  "S|TenU|xor|TenU|err|"
+      matrix row 109 =  "S|TenU|shl|TenU|err|"
+      matrix row 110 =  "S|TenU|shr|TenU|err|"
+      matrix row 111 =  "S|TenU|rotl|TenU|err|"
+      matrix row 112 =  "S|TenU|rotr|TenU|err|"
+      matrix row 113 =  "S|TenU|::|TenU|err|"
+      matrix row 114 =  "S|TenR|+|TenR|err|"
+      matrix row 115 =  "S|TenR|-|TenR|err|"
+      matrix row 116 =  "S|TenR|*|TenR|err|"
+      matrix row 117 =  "S|TenR|/|TenR|err|"
+      matrix row 118 =  "S|TenR|%|TenR|err|"
+      matrix row 119 =  "S|TenR|==|TenR|ok|False"
+      matrix row 120 =  "S|TenR|!=|TenR|ok|True"
+      matrix row 121 =  "S|TenR|<|TenR|err|"
+      matrix row 122 =  "S|TenR|>|TenR|err|"
+      matrix row 123 =  "S|TenR|<=|TenR|err|"
+      matrix row 124 =  "S|TenR|>=|TenR|err|"
+      matrix row 125 =  "S|TenR|and|TenR|err|"
+      matrix row 126 =  "S|TenR|or|TenR|err|"
+      matrix row 127 =  "S|TenR|xor|TenR|err|"
+      matrix row 128 =  "S|TenR|shl|TenR|err|"
+      matrix row 129 =  "S|TenR|shr|TenR|err|"
+      matrix row 130 =  "S|TenR|rotl|TenR|err|"
+      matrix row 131 =  "S|TenR|rotr|TenR|err|"
+      matrix row 132 =  "S|TenR|::|TenR|err|"
+      matrix row 133 =  "S|Int|+|Real|err|"
+      matrix row 134 =  "S|Int|-|Real|err|"
+      matrix row 135 =  "S|Int|*|Real|err|"
+      matrix row 136 =  "S|Int|/|Real|err|"
+      matrix row 137 =  "S|Int|%|Real|err|"
+      matrix row 138 =  "S|Int|==|Real|err|"
+      matrix row 139 =  "S|Int|!=|Real|err|"
+      matrix row 140 =  "S|Int|<|Real|err|"
+      matrix row 141 =  "S|Int|>|Real|err|"
+      matrix row 142 =  "S|Int|<=|Real|err|"
+      matrix row 143 =  "S|Int|>=|Real|err|"
+      matrix row 144 =  "S|Int|and|Real|err|"
+      matrix row 145 =  "S|Int|or|Real|err|"
+      matrix row 146 =  "S|Int|xor|Real|err|"
+      matrix row 147 =  "S|Int|shl|Real|err|"
+      matrix row 148 =  "S|Int|shr|Real|err|"
+      matrix row 149 =  "S|Int|rotl|Real|err|"
+      matrix row 150 =  "S|Int|rotr|Real|err|"
+      matrix row 151 =  "S|Int|::|Real|err|"
+      matrix row 152 =  "S|Real|+|Int|err|"
+      matrix row 153 =  "S|Real|-|Int|err|"
+      matrix row 154 =  "S|Real|*|Int|err|"
+      matrix row 155 =  "S|Real|/|Int|err|"
+      matrix row 156 =  "S|Real|%|Int|err|"
+      matrix row 157 =  "S|Real|==|Int|err|"
+      matrix row 158 =  "S|Real|!=|Int|err|"
+      matrix row 159 =  "S|Real|<|Int|err|"
+      matrix row 160 =  "S|Real|>|Int|err|"
+      matrix row 161 =  "S|Real|<=|Int|err|"
+      matrix row 162 =  "S|Real|>=|Int|err|"
+      matrix row 163 =  "S|Real|and|Int|err|"
+      matrix row 164 =  "S|Real|or|Int|err|"
+      matrix row 165 =  "S|Real|xor|Int|err|"
+      matrix row 166 =  "S|Real|shl|Int|err|"
+      matrix row 167 =  "S|Real|shr|Int|err|"
+      matrix row 168 =  "S|Real|rotl|Int|err|"
+      matrix row 169 =  "S|Real|rotr|Int|err|"
+      matrix row 170 =  "S|Real|::|Int|err|"
+      matrix row 171 =  "S|Str|+|Int|err|"
+      matrix row 172 =  "S|Str|-|Int|err|"
+      matrix row 173 =  "S|Str|*|Int|err|"
+      matrix row 174 =  "S|Str|/|Int|err|"
+      matrix row 175 =  "S|Str|%|Int|err|"
+      matrix row 176 =  "S|Str|==|Int|err|"
+      matrix row 177 =  "S|Str|!=|Int|err|"
+      matrix row 178 =  "S|Str|<|Int|err|"
+      matrix row 179 =  "S|Str|>|Int|err|"
+      matrix row 180 =  "S|Str|<=|Int|err|"
+      matrix row 181 =  "S|Str|>=|Int|err|"
+      matrix row 182 =  "S|Str|and|Int|err|"
+      matrix row 183 =  "S|Str|or|Int|err|"
+      matrix row 184 =  "S|Str|xor|Int|err|"
+      matrix row 185 =  "S|Str|shl|Int|err|"
+      matrix row 186 =  "S|Str|shr|Int|err|"
+      matrix row 187 =  "S|Str|rotl|Int|err|"
+      matrix row 188 =  "S|Str|rotr|Int|err|"
+      matrix row 189 =  "S|Str|::|Int|err|"
+      matrix row 190 =  "S|Int|+|Str|err|"
+      matrix row 191 =  "S|Int|-|Str|err|"
+      matrix row 192 =  "S|Int|*|Str|err|"
+      matrix row 193 =  "S|Int|/|Str|err|"
+      matrix row 194 =  "S|Int|%|Str|err|"
+      matrix row 195 =  "S|Int|==|Str|err|"
+      matrix row 196 =  "S|Int|!=|Str|err|"
+      matrix row 197 =  "S|Int|<|Str|err|"
+      matrix row 198 =  "S|Int|>|Str|err|"
+      matrix row 199 =  "S|Int|<=|Str|err|"
+      matrix row 200 =  "S|Int|>=|Str|err|"
+      matrix row 201 =  "S|Int|and|Str|err|"
+      matrix row 202 =  "S|Int|or|Str|err|"
+      matrix row 203 =  "S|Int|xor|Str|err|"
+      matrix row 204 =  "S|Int|shl|Str|err|"
+      matrix row 205 =  "S|Int|shr|Str|err|"
+      matrix row 206 =  "S|Int|rotl|Str|err|"
+      matrix row 207 =  "S|Int|rotr|Str|err|"
+      matrix row 208 =  "S|Int|::|Str|err|"
+      matrix row 209 =  "S|TenU|+|Int|err|"
+      matrix row 210 =  "S|TenU|-|Int|err|"
+      matrix row 211 =  "S|TenU|*|Int|err|"
+      matrix row 212 =  "S|TenU|/|Int|err|"
+      matrix row 213 =  "S|TenU|%|Int|err|"
+      matrix row 214 =  "S|TenU|==|Int|err|"
+      matrix row 215 =  "S|TenU|!=|Int|err|"
+      matrix row 216 =  "S|TenU|<|Int|err|"
+      matrix row 217 =  "S|TenU|>|Int|err|"
+      matrix row 218 =  "S|TenU|<=|Int|err|"
+      matrix row 219 =  "S|TenU|>=|Int|err|"
+      matrix row 220 =  "S|TenU|and|Int|err|"
+      matrix row 221 =  "S|TenU|or|Int|err|"
+      matrix row 222 =  "S|TenU|xor|Int|err|"
+      matrix row 223 =  "S|TenU|shl|Int|err|"
+      matrix row 224 =  "S|TenU|shr|Int|err|"
+      matrix row 225 =  "S|TenU|rotl|Int|err|"
+      matrix row 226 =  "S|TenU|rotr|Int|err|"
+      matrix row 227 =  "S|TenU|::|Int|err|"
+      matrix row 228 =  "S|TenR|+|Real|err|"
+      matrix row 229 =  "S|TenR|-|Real|err|"
+      matrix row 230 =  "S|TenR|*|Real|err|"
+      matrix row 231 =  "S|TenR|/|Real|err|"
+      matrix row 232 =  "S|TenR|%|Real|err|"
+      matrix row 233 =  "S|TenR|==|Real|err|"
+      matrix row 234 =  "S|TenR|!=|Real|err|"
+      matrix row 235 =  "S|TenR|<|Real|err|"
+      matrix row 236 =  "S|TenR|>|Real|err|"
+      matrix row 237 =  "S|TenR|<=|Real|err|"
+      matrix row 238 =  "S|TenR|>=|Real|err|"
+      matrix row 239 =  "S|TenR|and|Real|err|"
+      matrix row 240 =  "S|TenR|or|Real|err|"
+      matrix row 241 =  "S|TenR|xor|Real|err|"
+      matrix row 242 =  "S|TenR|shl|Real|err|"
+      matrix row 243 =  "S|TenR|shr|Real|err|"
+      matrix row 244 =  "S|TenR|rotl|Real|err|"
+      matrix row 245 =  "S|TenR|rotr|Real|err|"
+      matrix row 246 =  "S|TenR|::|Real|err|"
+      matrix row 247 =  "E|U64|+|U64|ok|15 7"
+      matrix row 248 =  "E|U64|-|U64|ok|9 3"
+      matrix row 249 =  "E|U64|*|U64|ok|36 10"
+      matrix row 250 =  "E|U64|/|U64|ok|4 2"
+      matrix row 251 =  "E|U64|%|U64|ok|0 1"
+      matrix row 252 =  "E|U64|==|U64|err|"
+      matrix row 253 =  "E|U64|!=|U64|err|"
+      matrix row 254 =  "E|U64|<|U64|err|"
+      matrix row 255 =  "E|U64|>|U64|err|"
+      matrix row 256 =  "E|U64|<=|U64|err|"
+      matrix row 257 =  "E|U64|>=|U64|err|"
+      matrix row 258 =  "E|U64|and|U64|ok|0 0"
+      matrix row 259 =  "E|U64|or|U64|ok|15 7"
+      matrix row 260 =  "E|U64|xor|U64|ok|15 7"
+      matrix row 261 =  "E|U64|shl|U64|ok|96 20"
+      matrix row 262 =  "E|U64|shr|U64|ok|1 1"
+      matrix row 263 =  "E|U64|rotl|U64|ok|96 20"
+      matrix row 264 =  "E|U64|rotr|U64|ok|-9223372036854775807 4611686018427387905"
+      matrix row 265 =  "E|Real|+|Real|ok|9.5 2.0"
+      matrix row 266 =  "E|Real|-|Real|ok|5.5 1.0"
+      matrix row 267 =  "E|Real|*|Real|ok|15.0 0.75"
+      matrix row 268 =  "E|Real|/|Real|ok|3.75 3.0"
+      matrix row 269 =  "E|Real|%|Real|err|"
+      matrix row 270 =  "E|Real|==|Real|err|"
+      matrix row 271 =  "E|Real|!=|Real|err|"
+      matrix row 272 =  "E|Real|<|Real|err|"
+      matrix row 273 =  "E|Real|>|Real|err|"
+      matrix row 274 =  "E|Real|<=|Real|err|"
+      matrix row 275 =  "E|Real|>=|Real|err|"
+      matrix row 276 =  "E|Real|and|Real|err|"
+      matrix row 277 =  "E|Real|or|Real|err|"
+      matrix row 278 =  "E|Real|xor|Real|err|"
+      matrix row 279 =  "E|Real|shl|Real|err|"
+      matrix row 280 =  "E|Real|shr|Real|err|"
+      matrix row 281 =  "E|Real|rotl|Real|err|"
+      matrix row 282 =  "E|Real|rotr|Real|err|"
+      matrix row _ =  ""
+
+fn :: resolve ridgunc bin => String
+      resolve ridgunc bin
+        | is file "target/ridgunc_candidate" = "target/ridgunc_candidate"
+        | is file "target/ridgunc"           = "target/ridgunc"
+        | otherwise                         = "bin/ridgunc"
+
+-- The lines that give a (which 0) or b (which 1) a value of the type.
+fn :: value lines String String Int => String
+      value lines v "Int" 0 =  "        " + v + " = 7\n"
+      value lines v "Int" _ =  "        " + v + " = 2\n"
+      value lines v "Real" 0 =  "        " + v + " = 7.5\n"
+      value lines v "Real" _ =  "        " + v + " = 2.0\n"
+      value lines v "Bool" 0 =  "        " + v + " = True\n"
+      value lines v "Bool" _ =  "        " + v + " = False\n"
+      value lines v "Str" 0 =  "        " + v + " = \"ab\"\n"
+      value lines v "Str" _ =  "        " + v + " = \"cd\"\n"
+      value lines v "List" 0 =  "        " + v + " = [1, 2]\n"
+      value lines v "List" _ =  "        " + v + " = [3]\n"
+      value lines v "TenU" 0 =  tensor lines v "U64" "12" "5"
+      value lines v "TenU" _ =  tensor lines v "U64" "3" "2"
+      value lines v "TenR" 0 =  tensor lines v "Real" "7.5" "1.5"
+      value lines v _ 0 =  tensor lines v "Real" "7.5" "1.5"
+      value lines v _ _ =  tensor lines v "Real" "2.0" "0.5"
+
+-- The lines that give a (which 0) or b (which 1) a tensor of two elements of that type.
+fn :: elem lines String String Int => String
+      elem lines v "U64" 0 =  tensor lines v "U64" "12" "5"
+      elem lines v "U64" _ =  tensor lines v "U64" "3" "2"
+      elem lines v _ 0 =  tensor lines v "Real" "7.5" "1.5"
+      elem lines v _ _ =  tensor lines v "Real" "2.0" "0.5"
+
+fn :: tensor lines String String String String => String
+      tensor lines v el x y =
+        "        " + v + " = Tensor[" + el + " * 2]\n        " + v + "_(0) = " + x + "\n        " + v + "_(1) = " + y + "\n"
+
+fn :: program String String String String => String
+      program "S" ta oper tb =
+        "fn :: main => ()\n      main =\n" + (value lines "a" ta 0) + (value lines "b" tb 1) + "        r = a " + oper + " b\n        echo \"{{r}}\"\n"
+      program _ el oper _ =
+        "fn :: f Tensor[" + el + " * 2] Tensor[" + el + " * 2] => Tensor[" + el + " * 2]\n      f a b =  a_ij " + oper + " b_ij\n\nfn :: main => ()\n      main =\n" + (elem lines "a" el 0) + (elem lines "b" el 1) + "        r = f a b\n        echo \"{{r_(0)}} {{r_(1)}}\"\n"
+
+fn :: field [String] Int => String
+      field [] _ =  ""
+      field (x:_) 0 =  x
+      field (_:xs) i =  field xs (i - 1)
+
+-- 0 when the row holds with this backend, 1 and a line that says what happened otherwise.
+fn :: check row String [String] String String => Int
+      check row rgc cols flag tag =
+        dir = "target/test_matrix"
+        write file (dir + "/t.ridgun") (program (field cols 0) (field cols 1) (field cols 2) (field cols 3))
+        st = shell exec ("cd " + dir + " && rm -f t && \"" + rgc + "\" build " + flag + " t.ridgun -o t --quiet > build.txt 2>&1")
+        verdict row cols tag st dir
+
+fn :: verdict row [String] String Int String => Int
+      verdict row cols tag st dir
+        | (field cols 4) == "err" and st != 0 and (str contains (read file (dir + "/build.txt")) "error") = 0
+        | (field cols 4) == "err" = report row cols tag ("it had to be a compile error, the build gave status " + (int to str st))
+        | st != 0 = report row cols tag ("it does not build: " + (read file (dir + "/build.txt")))
+        | otherwise = run row cols tag dir (shell exec ("cd " + dir + " && ./t > run.txt 2>&1"))
+
+fn :: run row [String] String String Int => Int
+      run row cols tag dir st
+        | st != 0 = report row cols tag ("it fails when it runs (status " + (int to str st) + "): " + (read file (dir + "/run.txt")))
+        | (read file (dir + "/run.txt")) == ((field cols 5) + "\n") = 0
+        | otherwise = report row cols tag ("it prints '" + (read file (dir + "/run.txt")) + "', expected '" + (field cols 5) + "'")
+
+fn :: report row [String] String String => Int
+      report row cols tag what =
+        echo ("[FAIL] " + tag + ": " + (field cols 1) + " " + (field cols 2) + " " + (field cols 3) + " (" + (field cols 0) + "): " + what)
+        1
+
+fn :: all rows String Int Int Int => Int
+      all rows rgc i n bad
+        | i >= n = bad
+        | otherwise = all rows rgc (i + 1) n (bad + (one row rgc (str split (matrix row i) "|")))
+
+fn :: one row String [String] => Int
+      one row rgc cols =  (check row rgc cols "" "llvm") + (check row rgc cols "--target x86_64-linux-pure" "pure")
+
+fn :: main => ()
+      main =
+        rgc = (sys getcwd) + "/" + (resolve ridgunc bin)
+        shell exec "rm -rf target/test_matrix && mkdir -p target/test_matrix"
+        echo "=== FR-COMP-030: every operator against every pair of types ==="
+        bad = all rows rgc 0 matrix rows 0
+        finish bad
+
+fn :: finish Int => ()
+      finish 0 =
+        echo ("=== operator matrix: " + (int to str matrix rows) + " rows hold on both backends ===")
+      finish bad =
+        echo ("=== operator matrix: " + (int to str bad) + " failure(s) ===")
+        sys exit 1

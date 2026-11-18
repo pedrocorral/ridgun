@@ -628,8 +628,45 @@ fn :: check overload lookup String RType RType (Bool, RType) String => RType [RT
       check overload lookup sym l_ty r_ty _ fn_name =
         (TyInt, [TypeError fn_name ("arithmetic operator " + sym + " requires numeric or overloaded operands, got " + (rtype to str l_ty) + " and " + (rtype to str r_ty))])
 
+-- Which operators mean something for which numbers (FR-COMP-030). Each combination either gives the
+-- right result or is an error here: none is left to fail, or to give nonsense, when the program runs.
+fn :: is int only op RBinOp => Bool
+      is int only op OpShl  =  True
+      is int only op OpShr  =  True
+      is int only op OpRotl =  True
+      is int only op OpRotr =  True
+      is int only op _      =  False
+
+fn :: is tensor int only op RBinOp => Bool
+      is tensor int only op OpAnd =  True
+      is tensor int only op OpOr  =  True
+      is tensor int only op OpXor =  True
+      is tensor int only op OpMod =  True
+      is tensor int only op bop   =  is int only op bop
+
+fn :: is real tensor RType => Bool
+      is real tensor (TyTensor TyReal _) =  True
+      is real tensor _                   =  False
+
+fn :: is int tensor RType => Bool
+      is int tensor (TyTensor TyInt _) =  True
+      is int tensor _                  =  False
+
+-- The element-wise operators (`a_ij op b_ij`): bit operations, shifts, rotations and `%` need tensors
+-- of integers; `+ - * /` need two tensors of the same kind of number.
+fn :: hadamard op errs RBinOp (RType, [RTypeError]) RType RType String => RType [RTypeError]
+      hadamard op errs bop (ty, errs) l r fn_name
+        | (is tensor int only op bop) and ((is real tensor l) or (is real tensor r)) =
+          (ty, errs :: [TypeError fn_name ("element-wise operator " + (binop symbol bop) + " needs tensors of integers, got a tensor of Real")])
+        | ((is real tensor l) and (is int tensor r)) or ((is int tensor l) and (is real tensor r)) =
+          (ty, errs :: [TypeError fn_name ("element-wise operator " + (binop symbol bop) + " needs two tensors of the same element type, got " + (rtype to str l) + " and " + (rtype to str r))])
+        | otherwise = (ty, errs)
+
 fn :: check arith binop RBinOp RType RType [RTypeBind] String => RType [RTypeError]
-      check arith binop bop (TyTensor e1 d1) (TyTensor e2 d2) _ fn_name = (TyTensor e1 d1, numeric tensor errs ("arithmetic operator " + (binop symbol bop)) (TyTensor e1 d1) (TyTensor e2 d2) fn_name)
+      check arith binop bop (TyTensor e1 d1) (TyTensor e2 d2) _ fn_name = (TyTensor e1 d1, (numeric tensor errs ("arithmetic operator " + (binop symbol bop)) (TyTensor e1 d1) (TyTensor e2 d2) fn_name) :: [TypeError fn_name ("operator " + (binop symbol bop) + " between two tensors needs subscripts, as in a_ij " + (binop symbol bop) + " b_ij")])
+      check arith binop bop l_ty r_ty fns fn_name
+        | (is int only op bop) and ((is real or poly l_ty) and (is real or poly r_ty)) and (not ((is int or poly l_ty) and (is int or poly r_ty))) =
+          (TyInt, [TypeError fn_name ("operator " + (binop symbol bop) + " needs Int operands, got " + (rtype to str l_ty) + " and " + (rtype to str r_ty))])
       check arith binop bop l_ty r_ty fns fn_name
         | (is int or poly l_ty) and (is int or poly r_ty) = (TyInt, [])
         | (is real or poly l_ty) and (is real or poly r_ty) = (TyReal, [])
@@ -680,17 +717,17 @@ fn :: check binop RBinOp RType RType [RTypeBind] String => RType [RTypeError]
       check binop OpAnd l r fns fn_name
         | (types compatible l TyBool) and (types compatible r TyBool) = (TyBool, [])
         | (is int or poly l) and (is int or poly r) = (TyInt, [])
-        | (types compatible l (TyTensor (tensor elem any) [])) and (types compatible r (TyTensor (tensor elem any) [])) = (l, numeric tensor errs "a bitwise operator" l r fn_name)
+        | (types compatible l (TyTensor (tensor elem any) [])) and (types compatible r (TyTensor (tensor elem any) [])) = (l, (numeric tensor errs "a bitwise operator" l r fn_name) :: [TypeError fn_name ("operator " + (binop symbol OpAnd) + " between two tensors needs subscripts, as in a_ij " + (binop symbol OpAnd) + " b_ij")])
         | otherwise = check overloaded arith OpAnd l r fns fn_name
       check binop OpOr l r fns fn_name
         | (types compatible l TyBool) and (types compatible r TyBool) = (TyBool, [])
         | (is int or poly l) and (is int or poly r) = (TyInt, [])
-        | (types compatible l (TyTensor (tensor elem any) [])) and (types compatible r (TyTensor (tensor elem any) [])) = (l, numeric tensor errs "a bitwise operator" l r fn_name)
+        | (types compatible l (TyTensor (tensor elem any) [])) and (types compatible r (TyTensor (tensor elem any) [])) = (l, (numeric tensor errs "a bitwise operator" l r fn_name) :: [TypeError fn_name ("operator " + (binop symbol OpOr) + " between two tensors needs subscripts, as in a_ij " + (binop symbol OpOr) + " b_ij")])
         | otherwise = check overloaded arith OpOr l r fns fn_name
       check binop OpXor l r fns fn_name
         | (types compatible l TyBool) and (types compatible r TyBool) = (TyBool, [])
         | (is int or poly l) and (is int or poly r) = (TyInt, [])
-        | (types compatible l (TyTensor (tensor elem any) [])) and (types compatible r (TyTensor (tensor elem any) [])) = (l, numeric tensor errs "a bitwise operator" l r fn_name)
+        | (types compatible l (TyTensor (tensor elem any) [])) and (types compatible r (TyTensor (tensor elem any) [])) = (l, (numeric tensor errs "a bitwise operator" l r fn_name) :: [TypeError fn_name ("operator " + (binop symbol OpXor) + " between two tensors needs subscripts, as in a_ij " + (binop symbol OpXor) + " b_ij")])
         | otherwise = check overloaded arith OpXor l r fns fn_name
       check binop _ l r _ fn_name
         | (types compatible l TyInt and types compatible r TyInt) or (types compatible l TyReal and types compatible r TyReal) or (types compatible l TyChar and types compatible r TyChar) or (types compatible l TyString and types compatible r TyString) = (TyBool, [])
@@ -1068,10 +1105,10 @@ fn :: check expr RExpr String [RTypeBind] [RTypeBind] => RType [RTypeError]
       check expr (EEinsum es subs) fn_name locals fns =
         e_res = check einsum terms es subs fn_name locals fns []
         finish einsum check (einsum elem es fn_name locals fns) e_res
-      check expr (EHadamard _ l _ r _) fn_name locals fns =
+      check expr (EHadamard bop l _ r _) fn_name locals fns =
         l_res = check expr l fn_name locals fns
         r_res = check expr r fn_name locals fns
-        finish hadamard check l_res r_res fn_name
+        hadamard op errs bop (finish hadamard check l_res r_res fn_name) (fst ty l_res) (fst ty r_res) fn_name
       check expr (EVar name) fn_name locals fns =
         lookup var type name fn_name locals fns
       check expr (EBin OpAdd (EVar v) r) fn_name locals fns =

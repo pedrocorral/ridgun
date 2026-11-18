@@ -416,6 +416,16 @@ entry:
     i64 2, label %loop_mul
     i64 11, label %loop_and
     i64 12, label %loop_or
+    i64 3, label %loop_div
+    i64 4, label %loop_rem
+    i64 17, label %loop_shl
+    i64 18, label %loop_shr
+    i64 19, label %loop_rotr
+    i64 20, label %loop_rotl
+    i64 100, label %loop_fadd
+    i64 101, label %loop_fsub
+    i64 102, label %loop_fmul
+    i64 103, label %loop_fdiv
   ]
 loop_add:
   %ia = phi i64 [ 0, %entry ], [ %ia_next, %body_add ]
@@ -487,6 +497,176 @@ body_or:
   store i64 %ro, ptr %dpo, align 8
   %io_next = add i64 %io, 1
   br label %loop_or
+; 3 / and 4 % (a divisor of 0 gives 0), 19 rotr, 20 rotl, and 100 to 103: the words as Reals (+ - * /).
+loop_div:
+  %i_div = phi i64 [ 0, %entry ], [ %i_div_next, %body_div ]
+  %c_div = icmp slt i64 %i_div, %tot
+  br i1 %c_div, label %body_div, label %done
+body_div:
+  %ap_div = getelementptr inbounds i64, ptr %adata, i64 %i_div
+  %bp_div = getelementptr inbounds i64, ptr %bdata, i64 %i_div
+  %x_div = load i64, ptr %ap_div, align 8
+  %y_div = load i64, ptr %bp_div, align 8
+  %z_div = icmp eq i64 %y_div, 0
+  %m_div = icmp eq i64 %y_div, -1
+  %s0_div = select i1 %z_div, i64 1, i64 %y_div
+  %s_div = select i1 %m_div, i64 1, i64 %s0_div
+  %q_div = sdiv i64 %x_div, %s_div
+  %n_div = sub i64 0, %x_div
+  %q1_div = select i1 %m_div, i64 %n_div, i64 %q_div
+  %r_div = select i1 %z_div, i64 0, i64 %q1_div
+  %dp_div = getelementptr inbounds i64, ptr %d_buf, i64 %i_div
+  store i64 %r_div, ptr %dp_div, align 8
+  %i_div_next = add i64 %i_div, 1
+  br label %loop_div
+loop_rem:
+  %i_rem = phi i64 [ 0, %entry ], [ %i_rem_next, %body_rem ]
+  %c_rem = icmp slt i64 %i_rem, %tot
+  br i1 %c_rem, label %body_rem, label %done
+body_rem:
+  %ap_rem = getelementptr inbounds i64, ptr %adata, i64 %i_rem
+  %bp_rem = getelementptr inbounds i64, ptr %bdata, i64 %i_rem
+  %x_rem = load i64, ptr %ap_rem, align 8
+  %y_rem = load i64, ptr %bp_rem, align 8
+  %z_rem = icmp eq i64 %y_rem, 0
+  %m_rem = icmp eq i64 %y_rem, -1
+  %s0_rem = select i1 %z_rem, i64 1, i64 %y_rem
+  %s_rem = select i1 %m_rem, i64 1, i64 %s0_rem
+  %q_rem = srem i64 %x_rem, %s_rem
+  %bad_rem = or i1 %z_rem, %m_rem
+  %r_rem = select i1 %bad_rem, i64 0, i64 %q_rem
+  %dp_rem = getelementptr inbounds i64, ptr %d_buf, i64 %i_rem
+  store i64 %r_rem, ptr %dp_rem, align 8
+  %i_rem_next = add i64 %i_rem, 1
+  br label %loop_rem
+loop_rotr:
+  %i_rotr = phi i64 [ 0, %entry ], [ %i_rotr_next, %body_rotr ]
+  %c_rotr = icmp slt i64 %i_rotr, %tot
+  br i1 %c_rotr, label %body_rotr, label %done
+body_rotr:
+  %ap_rotr = getelementptr inbounds i64, ptr %adata, i64 %i_rotr
+  %bp_rotr = getelementptr inbounds i64, ptr %bdata, i64 %i_rotr
+  %x_rotr = load i64, ptr %ap_rotr, align 8
+  %y_rotr = load i64, ptr %bp_rotr, align 8
+  %r_rotr = call i64 @llvm.fshr.i64(i64 %x_rotr, i64 %x_rotr, i64 %y_rotr)
+  %dp_rotr = getelementptr inbounds i64, ptr %d_buf, i64 %i_rotr
+  store i64 %r_rotr, ptr %dp_rotr, align 8
+  %i_rotr_next = add i64 %i_rotr, 1
+  br label %loop_rotr
+loop_rotl:
+  %i_rotl = phi i64 [ 0, %entry ], [ %i_rotl_next, %body_rotl ]
+  %c_rotl = icmp slt i64 %i_rotl, %tot
+  br i1 %c_rotl, label %body_rotl, label %done
+body_rotl:
+  %ap_rotl = getelementptr inbounds i64, ptr %adata, i64 %i_rotl
+  %bp_rotl = getelementptr inbounds i64, ptr %bdata, i64 %i_rotl
+  %x_rotl = load i64, ptr %ap_rotl, align 8
+  %y_rotl = load i64, ptr %bp_rotl, align 8
+  %r_rotl = call i64 @llvm.fshl.i64(i64 %x_rotl, i64 %x_rotl, i64 %y_rotl)
+  %dp_rotl = getelementptr inbounds i64, ptr %d_buf, i64 %i_rotl
+  store i64 %r_rotl, ptr %dp_rotl, align 8
+  %i_rotl_next = add i64 %i_rotl, 1
+  br label %loop_rotl
+loop_fadd:
+  %i_fadd = phi i64 [ 0, %entry ], [ %i_fadd_next, %body_fadd ]
+  %c_fadd = icmp slt i64 %i_fadd, %tot
+  br i1 %c_fadd, label %body_fadd, label %done
+body_fadd:
+  %ap_fadd = getelementptr inbounds i64, ptr %adata, i64 %i_fadd
+  %bp_fadd = getelementptr inbounds i64, ptr %bdata, i64 %i_fadd
+  %x_fadd = load i64, ptr %ap_fadd, align 8
+  %y_fadd = load i64, ptr %bp_fadd, align 8
+  %fx_fadd = bitcast i64 %x_fadd to double
+  %fy_fadd = bitcast i64 %y_fadd to double
+  %fr_fadd = fadd double %fx_fadd, %fy_fadd
+  %r_fadd = bitcast double %fr_fadd to i64
+  %dp_fadd = getelementptr inbounds i64, ptr %d_buf, i64 %i_fadd
+  store i64 %r_fadd, ptr %dp_fadd, align 8
+  %i_fadd_next = add i64 %i_fadd, 1
+  br label %loop_fadd
+loop_fsub:
+  %i_fsub = phi i64 [ 0, %entry ], [ %i_fsub_next, %body_fsub ]
+  %c_fsub = icmp slt i64 %i_fsub, %tot
+  br i1 %c_fsub, label %body_fsub, label %done
+body_fsub:
+  %ap_fsub = getelementptr inbounds i64, ptr %adata, i64 %i_fsub
+  %bp_fsub = getelementptr inbounds i64, ptr %bdata, i64 %i_fsub
+  %x_fsub = load i64, ptr %ap_fsub, align 8
+  %y_fsub = load i64, ptr %bp_fsub, align 8
+  %fx_fsub = bitcast i64 %x_fsub to double
+  %fy_fsub = bitcast i64 %y_fsub to double
+  %fr_fsub = fsub double %fx_fsub, %fy_fsub
+  %r_fsub = bitcast double %fr_fsub to i64
+  %dp_fsub = getelementptr inbounds i64, ptr %d_buf, i64 %i_fsub
+  store i64 %r_fsub, ptr %dp_fsub, align 8
+  %i_fsub_next = add i64 %i_fsub, 1
+  br label %loop_fsub
+loop_fmul:
+  %i_fmul = phi i64 [ 0, %entry ], [ %i_fmul_next, %body_fmul ]
+  %c_fmul = icmp slt i64 %i_fmul, %tot
+  br i1 %c_fmul, label %body_fmul, label %done
+body_fmul:
+  %ap_fmul = getelementptr inbounds i64, ptr %adata, i64 %i_fmul
+  %bp_fmul = getelementptr inbounds i64, ptr %bdata, i64 %i_fmul
+  %x_fmul = load i64, ptr %ap_fmul, align 8
+  %y_fmul = load i64, ptr %bp_fmul, align 8
+  %fx_fmul = bitcast i64 %x_fmul to double
+  %fy_fmul = bitcast i64 %y_fmul to double
+  %fr_fmul = fmul double %fx_fmul, %fy_fmul
+  %r_fmul = bitcast double %fr_fmul to i64
+  %dp_fmul = getelementptr inbounds i64, ptr %d_buf, i64 %i_fmul
+  store i64 %r_fmul, ptr %dp_fmul, align 8
+  %i_fmul_next = add i64 %i_fmul, 1
+  br label %loop_fmul
+loop_fdiv:
+  %i_fdiv = phi i64 [ 0, %entry ], [ %i_fdiv_next, %body_fdiv ]
+  %c_fdiv = icmp slt i64 %i_fdiv, %tot
+  br i1 %c_fdiv, label %body_fdiv, label %done
+body_fdiv:
+  %ap_fdiv = getelementptr inbounds i64, ptr %adata, i64 %i_fdiv
+  %bp_fdiv = getelementptr inbounds i64, ptr %bdata, i64 %i_fdiv
+  %x_fdiv = load i64, ptr %ap_fdiv, align 8
+  %y_fdiv = load i64, ptr %bp_fdiv, align 8
+  %fx_fdiv = bitcast i64 %x_fdiv to double
+  %fy_fdiv = bitcast i64 %y_fdiv to double
+  %fr_fdiv = fdiv double %fx_fdiv, %fy_fdiv
+  %r_fdiv = bitcast double %fr_fdiv to i64
+  %dp_fdiv = getelementptr inbounds i64, ptr %d_buf, i64 %i_fdiv
+  store i64 %r_fdiv, ptr %dp_fdiv, align 8
+  %i_fdiv_next = add i64 %i_fdiv, 1
+  br label %loop_fdiv
+; shl and shr (logical) of each word of a by the count in the word of b, taken modulo 64 as for
+; Int (`rg_int_op`): the same loop shape as the others, so LLVM vectorises it (psllq, psrlq).
+loop_shl:
+  %il = phi i64 [ 0, %entry ], [ %il_next, %body_shl ]
+  %cl = icmp slt i64 %il, %tot
+  br i1 %cl, label %body_shl, label %done
+body_shl:
+  %apl = getelementptr inbounds i64, ptr %adata, i64 %il
+  %bpl = getelementptr inbounds i64, ptr %bdata, i64 %il
+  %xl = load i64, ptr %apl, align 8
+  %yl = load i64, ptr %bpl, align 8
+  %yl6 = and i64 %yl, 63
+  %rl = shl i64 %xl, %yl6
+  %dpl = getelementptr inbounds i64, ptr %d_buf, i64 %il
+  store i64 %rl, ptr %dpl, align 8
+  %il_next = add i64 %il, 1
+  br label %loop_shl
+loop_shr:
+  %ir = phi i64 [ 0, %entry ], [ %ir_next, %body_shr ]
+  %cr = icmp slt i64 %ir, %tot
+  br i1 %cr, label %body_shr, label %done
+body_shr:
+  %apr = getelementptr inbounds i64, ptr %adata, i64 %ir
+  %bpr = getelementptr inbounds i64, ptr %bdata, i64 %ir
+  %xr = load i64, ptr %apr, align 8
+  %yr = load i64, ptr %bpr, align 8
+  %yr6 = and i64 %yr, 63
+  %rr = lshr i64 %xr, %yr6
+  %dpr = getelementptr inbounds i64, ptr %d_buf, i64 %ir
+  store i64 %rr, ptr %dpr, align 8
+  %ir_next = add i64 %ir, 1
+  br label %loop_shr
 loop_xor:
   %ix = phi i64 [ 0, %entry ], [ %ix_next, %body_xor ]
   %cx = icmp slt i64 %ix, %tot

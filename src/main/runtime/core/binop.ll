@@ -787,7 +787,46 @@ bigint_arith:
   %d2 = call i64 @__rg_rt_drop_val(i64 %b)
   ret i64 %br
 real:
-  br i1 %iscmp, label %general_cmp, label %real_arith
+  br i1 %iscmp, label %real_cmp, label %real_arith
+real_cmp:
+  ; IEEE 754: every comparison with a NaN is false except `!=`. The three-way compare of
+  ; `rg_compare` cannot say "unordered" (it gave 0, equal), so each operator has its own predicate.
+  %ca = call double @rg_num_of(i64 %a)
+  %cb = call double @rg_num_of(i64 %b)
+  %dca = call i64 @__rg_rt_drop_val(i64 %a)
+  %dcb = call i64 @__rg_rt_drop_val(i64 %b)
+  %p_eq = fcmp oeq double %ca, %cb
+  %p_ne = fcmp une double %ca, %cb
+  %p_gt = fcmp ogt double %ca, %cb
+  %p_lt = fcmp olt double %ca, %cb
+  %p_ge = fcmp oge double %ca, %cb
+  %p_le = fcmp ole double %ca, %cb
+  switch i64 %op, label %real_cmp_no [ i64 5, label %real_cmp_eq
+                                       i64 6, label %real_cmp_ne
+                                       i64 7, label %real_cmp_gt
+                                       i64 8, label %real_cmp_lt
+                                       i64 9, label %real_cmp_ge
+                                       i64 10, label %real_cmp_le ]
+real_cmp_eq:
+  %w_eq = select i1 %p_eq, i64 6, i64 2
+  ret i64 %w_eq
+real_cmp_ne:
+  %w_ne = select i1 %p_ne, i64 6, i64 2
+  ret i64 %w_ne
+real_cmp_gt:
+  %w_gt = select i1 %p_gt, i64 6, i64 2
+  ret i64 %w_gt
+real_cmp_lt:
+  %w_lt = select i1 %p_lt, i64 6, i64 2
+  ret i64 %w_lt
+real_cmp_ge:
+  %w_ge = select i1 %p_ge, i64 6, i64 2
+  ret i64 %w_ge
+real_cmp_le:
+  %w_le = select i1 %p_le, i64 6, i64 2
+  ret i64 %w_le
+real_cmp_no:
+  ret i64 2
 real_arith:
   %fa = call double @rg_num_of(i64 %a)
   %fb = call double @rg_num_of(i64 %b)

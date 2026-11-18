@@ -1,0 +1,50 @@
+-- @tests TS-COMP-030
+-- case: Real follows IEEE 754 on special values: NaN compares false except with !=, infinities order, -0.0 equals 0.0, conversions saturate, text is inf, -inf, nan
+-- source: FR-COMP-030 AC-1 to AC-3
+-- expect-output:
+--   nan  vs 0.0  FTFFFF
+--   nan  vs nan  FTFFFF
+--   0.0  vs nan  FTFFFF
+--   nan  vs inf  FTFFFF
+--   inf  vs inf  TFFFTT
+--   inf  vs -inf FTFTFT
+--   -inf vs 1.0  FTTFTF
+--   0.0  vs -0.0 TFFFTT
+--   1.5  vs 2.5  FTTFTF
+--   is nan by x != x: T F F
+--   inf + 1 == inf: T  inf * 0 is nan: T  1/0 == inf: T  0/0 is nan: T
+--   to int: nan 0  inf 9223372036854775807  -inf -9223372036854775808  round nan 0  floor -inf -9223372036854775808
+--   text: inf -inf nan -0.0
+
+fn :: big Real Int => Real
+      big x n
+        | n <= 0 = x
+        | otherwise = big (x * 1000000000.0) (n - 1)
+
+fn :: b Bool => String
+      b v
+        | v = "T"
+        | otherwise = "F"
+
+fn :: six Real Real => String
+      six x y =  (b (x == y)) + (b (x != y)) + (b (x < y)) + (b (x > y)) + (b (x <= y)) + (b (x >= y))
+
+fn :: main => ()
+      main =
+        inf = big 1.0 40
+        ninf = 0.0 - inf
+        nan = inf - inf
+        nzero = 0.0 * (0.0 - 1.0)
+        echo ("nan  vs 0.0  " + (six nan 0.0))
+        echo ("nan  vs nan  " + (six nan nan))
+        echo ("0.0  vs nan  " + (six 0.0 nan))
+        echo ("nan  vs inf  " + (six nan inf))
+        echo ("inf  vs inf  " + (six inf inf))
+        echo ("inf  vs -inf " + (six inf ninf))
+        echo ("-inf vs 1.0  " + (six ninf 1.0))
+        echo ("0.0  vs -0.0 " + (six 0.0 nzero))
+        echo ("1.5  vs 2.5  " + (six 1.5 2.5))
+        echo ("is nan by x != x: " + (b (nan != nan)) + " " + (b (inf != inf)) + " " + (b (1.5 != 1.5)))
+        echo ("inf + 1 == inf: " + (b ((inf + 1.0) == inf)) + "  inf * 0 is nan: " + (b ((inf * 0.0) != (inf * 0.0))) + "  1/0 == inf: " + (b ((1.0 / 0.0) == inf)) + "  0/0 is nan: " + (b ((0.0 / 0.0) != (0.0 / 0.0))))
+        echo ("to int: nan " + (int to str (real to int nan)) + "  inf " + (int to str (real to int inf)) + "  -inf " + (int to str (real to int ninf)) + "  round nan " + (int to str (real round nan)) + "  floor -inf " + (int to str (real floor ninf)))
+        echo "text: {inf} {ninf} {nan} {nzero}"

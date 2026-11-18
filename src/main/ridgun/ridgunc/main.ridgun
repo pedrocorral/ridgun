@@ -1,6 +1,6 @@
 -- ============================================================
 -- src/main/ridgun/ridgunc/main.ridgun
--- Self-Hosted Ridgun Compiler CLI Driver (ridgunc v1.0.35)
+-- Self-Hosted Ridgun Compiler CLI Driver (ridgunc v1.0.36)
 -- Shared Library (`src/main/ridgun/lib/`): ast, lexer, parser,
 -- analyzer, typecheck, compiler, elf64, x86_64, arm64, llvm,
 -- macho64, pe64 (each a `.ridgun` file)
@@ -230,7 +230,7 @@ fn :: exec built run Int String [String] => ()
 
 fn :: run cli version => ()
       run cli version =
-        echo "ridgunc 1.0.35 (self-hosted Ridgun compiler, {host triple (host os)})"
+        echo "ridgunc 1.0.36 (self-hosted Ridgun compiler, {host triple (host os)})"
 
 fn :: host triple SysOs => String
       host triple Windows = "x86_64-pc-windows"

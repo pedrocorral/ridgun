@@ -1,0 +1,76 @@
+-- @tests TS-COMP-030
+-- case: element-wise shl, shr, rotl, rotr, / and % on integer tensors and + - * / on Real tensors give the value of the scalar operator on each element
+-- source: FR-COMP-030 AC-4, AC-5
+-- expect-output:
+--   shl  48 -9223372036854775808 1 255 -2
+--   shr  0 0 1 255 9223372036854775807
+--   rotl 48 -9223372036854775808 1 255 -1
+--   rotr 3458764513820540928 2 1 255 -1
+--   div  0 0 0 0 -1
+--   rem  3 1 1 0 0
+--   real 9.5 2.0 | 5.5 1.0 | 15.0 0.75 | 3.75 3.0
+
+fn :: shl t Tensor[U64 * 5] Tensor[U64 * 5] => Tensor[U64 * 5]
+      shl t a b =  a_ij shl b_ij
+
+fn :: shr t Tensor[U64 * 5] Tensor[U64 * 5] => Tensor[U64 * 5]
+      shr t a b =  a_ij shr b_ij
+
+fn :: rotl t Tensor[U64 * 5] Tensor[U64 * 5] => Tensor[U64 * 5]
+      rotl t a b =  a_ij rotl b_ij
+
+fn :: rotr t Tensor[U64 * 5] Tensor[U64 * 5] => Tensor[U64 * 5]
+      rotr t a b =  a_ij rotr b_ij
+
+fn :: div t Tensor[U64 * 5] Tensor[U64 * 5] => Tensor[U64 * 5]
+      div t a b =  a_ij / b_ij
+
+fn :: rem t Tensor[U64 * 5] Tensor[U64 * 5] => Tensor[U64 * 5]
+      rem t a b =  a_ij % b_ij
+
+fn :: radd Tensor[Real * 2] Tensor[Real * 2] => Tensor[Real * 2]
+      radd a b =  a_ij + b_ij
+
+fn :: rsub Tensor[Real * 2] Tensor[Real * 2] => Tensor[Real * 2]
+      rsub a b =  a_ij - b_ij
+
+fn :: rmul Tensor[Real * 2] Tensor[Real * 2] => Tensor[Real * 2]
+      rmul a b =  a_ij * b_ij
+
+fn :: rdiv Tensor[Real * 2] Tensor[Real * 2] => Tensor[Real * 2]
+      rdiv a b =  a_ij / b_ij
+
+fn :: show Tensor[U64 * 5] => String
+      show t =  "{t_(0)} {t_(1)} {t_(2)} {t_(3)} {t_(4)}"
+
+fn :: main => ()
+      main =
+        a = Tensor[U64 * 5]
+        b = Tensor[U64 * 5]
+        a_(0) = 3
+        b_(0) = 4
+        a_(1) = 1
+        b_(1) = 63
+        a_(2) = 1
+        b_(2) = 64
+        a_(3) = 255
+        b_(3) = 0
+        a_(4) = 0 - 1
+        b_(4) = 1
+        echo ("shl  " + (show (shl t a b)))
+        echo ("shr  " + (show (shr t a b)))
+        echo ("rotl " + (show (rotl t a b)))
+        echo ("rotr " + (show (rotr t a b)))
+        echo ("div  " + (show (div t a b)))
+        echo ("rem  " + (show (rem t a b)))
+        x = Tensor[Real * 2]
+        y = Tensor[Real * 2]
+        x_(0) = 7.5
+        x_(1) = 1.5
+        y_(0) = 2.0
+        y_(1) = 0.5
+        s = radd x y
+        d = rsub x y
+        m = rmul x y
+        q = rdiv x y
+        echo "real {s_(0)} {s_(1)} | {d_(0)} {d_(1)} | {m_(0)} {m_(1)} | {q_(0)} {q_(1)}"
