@@ -32,4 +32,4 @@ Before 1.0.30 an import was resolved by file name alone and the first file found
 
 ## Not in scope
 - An import that names no existing module is still not reported by itself (only the use of an undefined name is).
-- Every folder of `.stable/deps` and `~/.omni/lib` is visible, not only the packages that `build.ridgun` declares. Haskell restricts imports to declared dependencies; doing so here changes `stable` and `omni` and is a decision of its own.
+- Which packages a build may see at all: FR-COMP-029 (in a project, only the declared ones).

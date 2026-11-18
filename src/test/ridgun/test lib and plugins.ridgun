@@ -353,6 +353,22 @@ fn :: main => ()
         st_qual = shell exec ("cd target/test_lib_work/amb && \"" + ridgunc_bin + "\" build --quiet b.ridgun -o b && ./b > b.txt")
         assert int equals st_qual 0 "import with the package first, a module of one package, a bundle with the package first"
         assert ok ((read file "target/test_lib_work/amb/b.txt") == "237\n")
+        echo "=== FR-COMP-029: in a project only the declared packages are visible ==="
+        write file "target/test_lib_work/amb/build.ridgun" "fn :: project name => String\n      project name =  \"demo\"\n\nfn :: dependencies => [String]\n      dependencies =  [\"pk2@1.0\"]\n"
+        st_decl = shell exec ("cd target/test_lib_work/amb && \"" + ridgunc_bin + "\" build --quiet a.ridgun -o a && ./a > a.txt")
+        assert int equals st_decl 0 "import util with only pk2 declared: pk1 is hidden, so it is not ambiguous"
+        assert ok ((read file "target/test_lib_work/amb/a.txt") == "2\n")
+        write file "target/test_lib_work/amb/c.ridgun" "import only\n\nfn :: main => ()\n      main =  echo (int to str lonely)\n"
+        st_hid = shell exec ("cd target/test_lib_work/amb && \"" + ridgunc_bin + "\" build c.ridgun -o c > c.txt 2>&1")
+        assert ok (st_hid != 0)
+        hid_out = read file "target/test_lib_work/amb/c.txt"
+        assert ok (str contains hid_out "module 'only' is in the package 'pk1', which build.ridgun does not list in its dependencies")
+        assert ok (str contains hid_out "stable add pk1")
+        write file "target/test_lib_work/amb/build.ridgun" ("fn :: dependencies => [String]\n      dependencies =  [\"" + root_dir + "/target/test_lib_work/amb/.stable/deps/pk1\"]\n")
+        st_path = shell exec ("cd target/test_lib_work/amb && \"" + ridgunc_bin + "\" build --quiet c.ridgun -o c && ./c > c.txt")
+        assert int equals st_path 0 "a dependency declared by its path is visible under the name of its folder"
+        assert ok ((read file "target/test_lib_work/amb/c.txt") == "3\n")
+        shell exec "rm -f target/test_lib_work/amb/build.ridgun"
         echo "=== FR-COMP-007: Cross-Platform PAL Descriptor/Poll/Process Primitives & with timeout ==="
         -- 0. Target Platform ADTs: `sys os => SysOs` (`Linux | MacOS | Windows`) & `sys arch => SysArch` (`X86_64 | Arm64`)
         assert true ((sys os) == Linux)

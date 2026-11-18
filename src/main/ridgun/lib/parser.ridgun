@@ -4237,15 +4237,15 @@ fn :: qualified dep paths String String => [String]
 fn :: qualified dep paths at String String Int => [String]
       qualified dep paths at base spec sl
         | sl <= 0 = []
-        | otherwise = dep subdir paths base [str slice spec 0 sl] (str slice spec (sl + 1) (str len spec))
+        | otherwise = dep subdir paths base (visible package (str slice spec 0 sl)) (str slice spec (sl + 1) (str len spec))
 
 fn :: all deps base paths [String] String => [String]
       all deps base paths [] _ = []
       all deps base paths (base:bs) spec
         | is library spec spec =
-          (stem with exts (base + "/" + (strip module ext spec)) (library exts)) :: (dep subdir paths base [spec root dir fallback spec] spec) :: (dep subdir paths base (list dir base) spec) :: (all deps base paths bs spec)
+          (stem with exts (base + "/" + (strip module ext spec)) (library exts)) :: (dep subdir paths base (visible package (spec root dir fallback spec)) spec) :: (dep subdir paths base (package folders base) spec) :: (all deps base paths bs spec)
         | otherwise =
-          (stem with exts (base + "/" + spec) (module exts)) :: (dep subdir paths base [spec root dir fallback spec] spec) :: (qualified dep paths base spec) :: (dep subdir paths base (list dir base) spec) :: (all deps base paths bs spec)
+          (stem with exts (base + "/" + spec) (module exts)) :: (dep subdir paths base (visible package (spec root dir fallback spec)) spec) :: (qualified dep paths base spec) :: (dep subdir paths base (package folders base) spec) :: (all deps base paths bs spec)
 
 fn :: pick parser home dir String => String
       pick parser home dir ""     =  sys getenv "USERPROFILE"
@@ -4254,20 +4254,160 @@ fn :: pick parser home dir String => String
 fn :: resolve parser home dir => String
       resolve parser home dir =  pick parser home dir (sys getenv "HOME")
 
+-- ── The packages a build may see (FR-COMP-029) ──────────────
+-- A build is in a project when the current folder has a `build.ridgun`. In a
+-- project only the packages that file lists in `dependencies` are visible, in
+-- the project's `.stable/deps` (where `stable deps` puts them), as with the
+-- `build-depends` of Cabal. Outside a project every installed package is
+-- visible, as with plain `ghc`.
+fn :: project build file => String
+      project build file =  read file "build.ridgun"
+
+fn :: in project => Bool
+      in project =  (project build file) != ""
+
+fn :: find sub String String Int => Int
+      find sub s sub pos
+        | pos < 0 = 0 - 1
+        | (pos + (str len sub)) > (str len s) = 0 - 1
+        | (str slice s pos (pos + (str len sub))) == sub = pos
+        | otherwise = find sub s sub (pos + 1)
+
+-- The names of the declared packages: an entry of `dependencies` is a name
+-- (`"libs"`, `"libs@0.3"`) or a path to a package folder or to one module
+-- file (`"/home/me/libs"`); the name is the last part of the path.
+fn :: declared packages => [String]
+      declared packages =  map (e => entry package name e) declared entries
+
+fn :: declared entries => [String]
+      declared entries =  declared entries in (project build file)
+
+fn :: entry package name String => String
+      entry package name e =  str slice e ((last slash idx e 0 (str len e) (0 - 1)) + 1) (str len e)
+
+fn :: entry folder String => String
+      entry folder e =  entry folder at e (last slash idx e 0 (str len e) (0 - 1))
+
+fn :: entry folder at String Int => String
+      entry folder at e sl
+        | sl <= 0 = "."
+        | otherwise = str slice e 0 sl
+
+-- Where a module is when its package was declared by path: inside the folder
+-- named, or the file named itself when it is that module.
+fn :: declared path paths String => [String]
+      declared path paths spec
+        | not in project = []
+        | otherwise = entry path paths declared entries spec
+
+fn :: entry path paths [String] String => [String]
+      entry path paths [] _ = []
+      entry path paths (e:es) spec
+        | not (str contains e "/") = entry path paths es spec
+        | (has module ext e) and ((strip module ext (entry package name e)) == spec) = [e] :: (entry path paths es spec)
+        | has module ext e = entry path paths es spec
+        | otherwise = (dep subdir paths (entry folder e) [entry package name e] spec) :: (qualified dep paths (entry folder e) spec) :: (entry path paths es spec)
+
+-- The entries of the list of `fn :: dependencies` (a version after `@` is cut).
+fn :: declared entries in String => [String]
+      declared entries in src =
+        sig = find sub src "fn :: dependencies" 0
+        clause = find sub src "\n" sig
+        open = find sub src "[" clause
+        close = find sub src "]" open
+        declared names src (open + 1) close (0 - 1) []
+
+fn :: declared names String Int Int Int [String] => [String]
+      declared names src pos end start acc
+        | (pos <= 0) or (end < 0) or (pos >= end) = acc
+        | ((str char at src pos) == 34) and (start >= 0) = declared names src (pos + 1) end (0 - 1) (acc :: [package name of (str slice src start pos)])
+        | (str char at src pos) == 34 = declared names src (pos + 1) end (pos + 1) acc
+        | otherwise = declared names src (pos + 1) end start acc
+
+fn :: package name of String => String
+      package name of dep =  package name cut dep (find sub dep "@" 0)
+
+fn :: package name cut String Int => String
+      package name cut dep at
+        | at < 0 = dep
+        | otherwise = str slice dep 0 at
+
+-- The package folders of a place the build may look into.
+fn :: package folders String => [String]
+      package folders base
+        | in project = declared packages
+        | otherwise = list dir base
+
+-- [name] when the build may see the package folder `name`, else [].
+fn :: visible package String => [String]
+      visible package name
+        | not in project = [name]
+        | list contains declared packages name = [name]
+        | otherwise = []
+
 fn :: stdlib deps bases String => [String]
-      stdlib deps bases pdir =
+      stdlib deps bases pdir
+        | in project = [".stable/deps"]
+        | otherwise = all deps places pdir
+
+-- Every place a package can be installed in (the only places outside a project).
+fn :: all deps places String => [String]
+      all deps places pdir =
         home_dir = resolve parser home dir
         [".stable/deps", pdir + "/.stable/deps", pdir + "/../.stable/deps", pdir + "/../../.stable/deps", pdir + "/../../../.stable/deps", pdir + "/../../../../.stable/deps", home_dir + "/.omni/lib", home_dir + "/.local/lib/ridgun", home_dir + "/.stable/deps", "/home/boogie/ridgun/ridgun/.stable/deps"]
+
+-- An import a project cannot see: the message that says where the module is
+-- (GHC: "it is a member of the hidden package ..."), or "" when it is nowhere.
+fn :: hidden import message String String => String
+      hidden import message pdir spec
+        | not in project = ""
+        | is core compiler mod spec = ""
+        | otherwise = hidden message of pdir (norm spec path (strip module ext spec))
+
+fn :: hidden message of String String => String
+      hidden message of pdir spec
+        | (hidden qualified package spec (first slash idx spec 0 (str len spec))) != "" =
+          hidden message for spec [hidden qualified package spec (first slash idx spec 0 (str len spec))] ""
+        | otherwise = hidden message scan pdir spec
+
+-- `import pk.mod` where the folder `pk` has the module but is not declared: "pk", else "".
+fn :: hidden qualified package String Int => String
+      hidden qualified package spec sl
+        | sl <= 0 = ""
+        | (try find candidate path (dep subdir paths ".stable/deps" [str slice spec 0 sl] (str slice spec (sl + 1) (str len spec)))) != "" = str slice spec 0 sl
+        | otherwise = ""
+
+fn :: hidden message scan String String => String
+      hidden message scan pdir spec =
+        hidden message for spec (packages with module ".stable/deps" (undeclared entries (list dir ".stable/deps") declared packages) spec []) (try find candidate path (every place paths (all deps places pdir) spec))
+
+fn :: undeclared entries [String] [String] => [String]
+      undeclared entries [] _ = []
+      undeclared entries (e:es) declared
+        | list contains declared e = undeclared entries es declared
+        | otherwise = [e] :: (undeclared entries es declared)
+
+fn :: every place paths [String] String => [String]
+      every place paths [] _ = []
+      every place paths (base:bs) spec =
+        (stem with exts (base + "/" + spec) (module exts)) :: (dep subdir paths base (list dir base) spec) :: (every place paths bs spec)
+
+fn :: hidden message for String [String] String => String
+      hidden message for spec (pk:_) _ =
+        "module '" + spec + "' is in the package '" + pk + "', which build.ridgun does not list in its dependencies; add it with 'stable add " + pk + "'"
+      hidden message for _ [] "" =  ""
+      hidden message for spec [] found =
+        "module '" + spec + "' was found at '" + found + "', outside the dependencies of build.ridgun; declare the package that has it and run 'stable deps'"
 
 fn :: resolve rglib bundle raw String String => String
       resolve rglib bundle raw pdir spec
         | is core compiler mod spec = ""
         | is library spec spec =
-          dep_paths = all deps base paths (stdlib deps bases pdir) spec
+          dep_paths = (all deps base paths (stdlib deps bases pdir) spec) :: (declared path paths (strip module ext spec))
           stem = strip module ext spec
           try read candidate paths ((with exts [stem, pdir + "/" + stem, "target/bundles/" + stem, "build/" + stem, "target/" + stem, "dist/" + stem, "lib/" + stem] (library exts)) :: dep_paths)
         | otherwise =
-          dep_paths = all deps base paths (stdlib deps bases pdir) spec
+          dep_paths = (all deps base paths (stdlib deps bases pdir) spec) :: (declared path paths spec)
           try read candidate paths (dep_paths :: (with exts ["target/bundles/" + spec, "build/" + spec, pdir + "/" + spec, pdir + "/lib/" + spec, spec, "target/" + spec, "dist/" + spec, "lib/" + spec, "src/main/ridgun/lib/" + spec] (library exts)))
 
 fn :: resolve rglib bundle fallback String String String => String
@@ -4389,8 +4529,8 @@ fn :: has same dir rglib String String => Bool
         | otherwise = (try read candidate paths (stem with exts (pdir + "/" + spec) (library exts))) != ""
 
 fn :: append rglib resolved mod String String String String [String] => String [String]
-      append rglib resolved mod _ clean_spec "" acc seen1 =
-        (acc + "\nfn :: unresolved import => Int\n      unresolved import = __missing_import__ \"" + clean_spec + "\"\n", seen1)
+      append rglib resolved mod pdir clean_spec "" acc seen1 =
+        append rglib unresolved clean_spec (hidden import message pdir clean_spec) acc seen1
       append rglib resolved mod pdir clean_spec lib_src acc seen1 =
         mname = mod name of spec clean_spec
         sub_pdir = child pdir for spec pdir clean_spec
@@ -4414,9 +4554,9 @@ fn :: ambiguous in bases [String] String => [String]
       ambiguous in bases [] _ = []
       ambiguous in bases (base:bs) spec
         | (try find candidate path (stem with exts (base + "/" + spec) (module exts))) != "" = []
-        | (try find candidate path (dep subdir paths base [spec root dir fallback spec] spec)) != "" = []
+        | (try find candidate path (dep subdir paths base (visible package (spec root dir fallback spec)) spec)) != "" = []
         | (try find candidate path (qualified dep paths base spec)) != "" = []
-        | otherwise = ambiguous in base bs spec (packages with module base (list dir base) spec [])
+        | otherwise = ambiguous in base bs spec (packages with module base (package folders base) spec [])
 
 fn :: ambiguous in base [String] String [String] => [String]
       ambiguous in base bs spec [] =  ambiguous in bases bs spec
@@ -4440,6 +4580,12 @@ fn :: append rglib ambiguous or ext String String [String] String [String] => St
         append rglib resolved mod pdir clean_spec lib_src acc seen1
       append rglib ambiguous or ext _ clean_spec pkgs acc seen1 =
         (acc + "\nfn :: __syntax_error__ => Int\n      __syntax_error__ = __syntax_error__ \"" + (ambiguous import message clean_spec pkgs) + "\"\n", seen1)
+
+fn :: append rglib unresolved String String String [String] => String [String]
+      append rglib unresolved clean_spec "" acc seen1 =
+        (acc + "\nfn :: unresolved import => Int\n      unresolved import = __missing_import__ \"" + clean_spec + "\"\n", seen1)
+      append rglib unresolved _ msg acc seen1 =
+        (acc + "\nfn :: __syntax_error__ => Int\n      __syntax_error__ = __syntax_error__ \"" + msg + "\"\n", seen1)
 
 fn :: append rglib local or ext String String String String [String] => String [String]
       append rglib local or ext pdir clean_spec "" acc seen1 =
