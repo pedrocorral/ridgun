@@ -1,17 +1,17 @@
 ---
 id: TASK-0095
 title: No fixed paths of the development machine in stable and the test runner
-status: pending             # pending | going-on | blocked | completed
+status: completed
 created: 2026-11-14
-completed:
+completed: 2026-11-18
 requirements: []            # FR-*/NFR-* this task delivers or touches
 tests: []                   # TS-* to automate
 security: []                # VUL-* to address
 context_files: [src/main/ridgun/stable/main.ridgun, tests/run.ridgun]
 scope: [src/main/ridgun/stable/main.ridgun, tests/run.ridgun, src/test/ridgun/test.ridgun]
-owner:                      # the seat that holds it (agent-001 ...), signed by aix task start
-claimed:
-claimed_by:                 # tool user@host behind the seat at that moment (stays after the seat is released)
+owner: agent-001
+claimed: 2026-11-18T20:36:16Z
+claimed_by: claude claude@solarfall
 policy:                     # a cycle for this task only (hotfix, release, ...); empty = the project's (aix policy)
 ---
 # TASK-0095 — No fixed paths of the development machine in stable and the test runner
@@ -31,13 +31,14 @@ Some searches end in a path that only exists on the machine where Ridgun is deve
 The fixed path in the library search of `parser.ridgun` (`/home/boogie/ridgun/ridgun/.stable/deps`) is not here: TASK-0089 removes it together with `ridgunc --libs` (ADR-0012).
 
 ## Plan
-- [ ] `stable`: drop the fixed path. The order stays `RIDGUNC`, the binary next to `stable`, `bin/ridgunc`, `target/ridgunc`, then `ridgunc` on the `PATH`.
-- [ ] `tests/run.ridgun`: drop the fixed path. The libraries come from `RIDGUN_LIBS_BUNDLES`, which already exists, else `<repo>/.stable/deps`. Document the variable in `tests/README.md` if it is not there.
-- [ ] `test.ridgun`: the comment names the ridgun-libs repository and file, not a folder of one machine.
-- [ ] Look once more for `/home/` in `src/`, `tests/` and `build.ridgun`; nothing left but documentation examples.
-- [ ] Verify: `stable` builds a project with `RIDGUNC` unset from a folder without `bin/`; the suite with `RIDGUN_LIBS_BUNDLES` set and unset; bootstrap and fixed point (`stable` changes).
+- [x] `stable`: drop the fixed path. The order stays `RIDGUNC`, the binary next to `stable`, `bin/ridgunc`, `target/ridgunc`, then `ridgunc` on the `PATH`.
+- [x] `tests/run.ridgun`: drop the fixed path. The libraries come from `RIDGUN_LIBS_BUNDLES`, which already exists, else `<repo>/.stable/deps`. Document the variable in `tests/README.md` if it is not there.
+- [x] `test.ridgun`: the comment names the ridgun-libs repository and file, not a folder of one machine.
+- [x] Look once more for `/home/` in `src/`, `tests/` and `build.ridgun`; nothing left but documentation examples.
+- [x] Verify: `stable` builds a project with `RIDGUNC` unset from a folder without `bin/`; the suite with `RIDGUN_LIBS_BUNDLES` set and unset; bootstrap and fixed point (`stable` changes).
 
 ## Progress log (append-only, newest last)
+- 2026-11-18: Done in 1.0.32 and 1.0.33. The fixed path of `parser.ridgun` (also listed in TASK-0089) was removed in 1.0.32 (the case that relied on it declares `-- uses-libs`); `stable` no longer tries `/home/boogie/ridgun/bin/ridgunc`; `tests/run.ridgun` takes the libraries from `RIDGUN_LIBS_BUNDLES` or `<repo>/.stable/deps`; the comment of `test.ridgun` names the ridgun-libs repository; `tests/README.md` documents the variable. `grep /home/` in `src/`, `tests/` and `build.ridgun` finds only the example path in a comment of `parser.ridgun`.
 - 2026-11-14: Created at the user's request, after the fixed paths were found while writing ADR-0012.
 
 ## Files changed (keep current)

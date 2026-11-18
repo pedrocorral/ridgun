@@ -212,9 +212,7 @@ fn :: resolve ridgunc path String => String
         absolute from repo (pick non empty (sys getenv "RIDGUNC") (repo + "/bin/ridgunc"))
 
 fn :: resolve libs default String => String
-      resolve libs default repo
-        | file exists (repo + "/../libs/target/bundles") = repo + "/../libs/target/bundles"
-        | otherwise = repo + "/.stable/deps"
+      resolve libs default repo =  repo + "/.stable/deps"
 
 fn :: resolve libs bundles dir String => String
       resolve libs bundles dir repo =

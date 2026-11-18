@@ -97,3 +97,6 @@ The documents leave these points open, or say different things in different plac
 2. Write the `-- case:` and `-- source:` lines, then the expectations. The source is a document and a line or section. When nothing promises the behaviour, say so ("no promise in the docs (proposal)") and put the case under `perf/` or a folder that says it.
 3. Derive the expected output from that source by hand, never from running the compiler.
 4. Check that it builds with `--strict`: `./bin/ridgunc run tests/run.ridgun <its path>`.
+
+## Where the cases find the libraries
+A case marked `-- uses-libs` gets the library bundles copied into its own `.stable/deps`. The runner takes them from the folder named by `RIDGUN_LIBS_BUNDLES` when that variable is set, and from `<repository>/.stable/deps` otherwise. No path of any machine is written in the runner.

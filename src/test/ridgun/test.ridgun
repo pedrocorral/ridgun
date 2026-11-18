@@ -1,7 +1,7 @@
 -- ============================================================
 -- src/test/ridgun/test.ridgun
 -- Ridgun Standard Test Assertion Library (`import test`)
--- Synced with `/home/boogie/ridgun-libs/src/main/ridgun/lib/test.ridgun`
+-- Synced with `src/main/ridgun/lib/test.ridgun` of the ridgun-libs repository
 -- ============================================================
 
 fn :: fail test String => ()
