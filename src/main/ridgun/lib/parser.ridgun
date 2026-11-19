@@ -5693,6 +5693,12 @@ fn :: add mod import step String String [RModAlias] => [RModAlias]
         | ikey == tkey = aliases
         | otherwise = add alias unique ("__imp__:" + ikey) tkey aliases
 
+-- `export m` (FR-COMP-032): the module offers the names of `m`, a module it imports, to those
+-- that import it.
+fn :: add mod export String String [RModAlias] => [RModAlias]
+      add mod export _ "" aliases = aliases
+      add mod export cur_mod target aliases =  add alias unique ("__exp__:" + (mod key of cur_mod)) (strip enter colon target) aliases
+
 fn :: add mod rename String String [RModAlias] => [RModAlias]
       add mod rename m1 m2 aliases
         | m1 == "" or m2 == "" or m1 == m2 = aliases
@@ -5843,13 +5849,27 @@ fn :: expand imp hop [String] [RModAlias] => [String]
         step1 = collect imps for mods mods aliases mods
         expand renames list step1 aliases []
 
+-- What a module sees beyond its own names and those of the modules it imports (FR-COMP-032,
+-- as Haskell): the names those modules offer with `export`, and the ones the exported modules
+-- offer in turn. What a module imports for its own use is not seen from outside it.
+fn :: collect exps for mods [String] [RModAlias] [String] => [String]
+      collect exps for mods [] _ acc = acc
+      collect exps for mods (m:ms) aliases acc =
+        collect exps for mods ms aliases (add all unique end (lookup all map vals aliases ("__exp__:" + m) []) acc)
+
+fn :: exported from [String] [String] [RModAlias] Int => [String]
+      exported from mods seen aliases left
+        | left <= 0 = seen
+        | otherwise = exported from next (filter out mods (expand renames list (collect exps for mods mods aliases []) aliases []) seen) seen aliases left
+
+fn :: exported from next [String] [String] [RModAlias] Int => [String]
+      exported from next [] seen _ _ =  seen
+      exported from next fresh seen aliases left =  exported from fresh (add all unique end fresh seen) aliases (left - 1)
+
 fn :: trans imports of String [String] [RModAlias] => [String]
       trans imports of cur_mod direct_imps aliases =
         own = own mods of cur_mod aliases
-        h1 = expand imp hop direct_imps aliases
-        h2 = expand imp hop h1 aliases
-        h3 = expand imp hop h2 aliases
-        filter out mods h3 (own :: direct_imps)
+        filter out mods (exported from direct_imps direct_imps aliases 16) (own :: direct_imps)
 
 fn :: lookup all mod keys [String] String [RModAlias] [String] => [String]
       lookup all mod keys [] _ _ acc = acc
@@ -6457,9 +6477,31 @@ fn :: resolve one type single dispatch String String RModCtx => String
         | str set has (ctx vis set ctx) m0 = t1
         | otherwise = "__unimported__." + t1
 
-fn :: resolve one type step ctx String RModCtx => String
-      resolve one type step ctx t1 ctx
-        | str contains t1 "." = default if empty (str map get (ctx type bst ctx) t1) t1
+-- ── A name said with the module that brings it (FR-COMP-032) ──
+-- `abstract.TableDef` when `abstract` does not define `TableDef` but offers it (`export`): the
+-- name is the one of the nearest module it exports that has it. Two at the same step: ambiguous.
+-- So a program names the library it imports, not the file inside it where the name is written.
+fn :: name through module String [RModAlias] RStrMap => String
+      name through module qualified aliases map =
+        through hops [ident first prefix qualified] (ident after first dot qualified) aliases map 3
+
+fn :: through hops [String] String [RModAlias] RStrMap Int => String
+      through hops mods ident aliases map left
+        | left <= 0 or (str contains ident ".") = ""
+        | otherwise = through hop next (filter out mods (expand renames list (collect exps for mods mods aliases []) aliases []) mods) ident aliases map left
+
+fn :: through hop next [String] String [RModAlias] RStrMap Int => String
+      through hop next [] _ _ _ _ =  ""
+      through hop next next_mods ident aliases map left =
+        through pick (select tier hits (lookup all mod keys bst next_mods ident map []) ident) next_mods ident aliases map left
+
+fn :: through pick String [String] String [RModAlias] RStrMap Int => String
+      through pick "" next_mods ident aliases map left =  through hops next_mods ident aliases map (left - 1)
+      through pick hit _ _ _ _ _ =  hit
+
+fn :: resolve one type step ctx String RModCtx [RModAlias] => String
+      resolve one type step ctx t1 ctx aliases
+        | str contains t1 "." = default if empty (str map get (ctx type bst ctx) t1) (default if empty (name through module t1 aliases (ctx type bst ctx)) t1)
         | otherwise =
           m0 = str map get (ctx type single ctx) t1
           resolve one type single dispatch t1 m0 ctx
@@ -6469,7 +6511,7 @@ fn :: resolve one type ident ctx String String RModCtx [RModAlias] => String
         | (not (is upper ident tok)) or (is builtin or poly type tok) = tok
         | otherwise =
           t1 = expand mod alias tok cur_mod aliases
-          resolve one type step ctx t1 ctx
+          resolve one type step ctx t1 ctx aliases
 
 fn :: rewrite type str loop ctx String Int Int String RModCtx [RModAlias] String => String
       rewrite type str loop ctx s pos len cur_mod ctx aliases acc
@@ -6506,14 +6548,14 @@ fn :: resolve ctor ident ctx String String RModCtx [RModAlias] => String
         | is builtin ctor ident c = c
         | otherwise =
           c1 = expand mod alias c cur_mod aliases
-          resolve ctor ident ctx step c1 ctx
+          resolve ctor ident ctx step c1 ctx aliases
 
-fn :: resolve ctor ident ctx step String RModCtx => String
-      resolve ctor ident ctx step c1 ctx
+fn :: resolve ctor ident ctx step String RModCtx [RModAlias] => String
+      resolve ctor ident ctx step c1 ctx aliases
         | str contains c1 "." =
           in_scope = lookup in ctx scope ctx c1 (ctx ctor bst ctx)
           in_direct = str map get (ctx ctor bst ctx) c1
-          resolve ctor dot fallback c1 in_scope in_direct
+          resolve ctor dot fallback c1 in_scope (default if empty in_direct (name through module c1 aliases (ctx ctor bst ctx)))
         | otherwise =
           m0 = str map get (ctx ctor single ctx) c1
           resolve ctor single dispatch c1 m0 ctx
@@ -6683,14 +6725,14 @@ fn :: resolve lower ident String String [String] RModCtx [RModAlias] [RModAlias]
         | (not (str contains v ".")) and (not (is in ctx sp set v special_ff)) = v
         | otherwise =
           v1 = expand mod alias v cur_mod aliases
-          resolve lower ident step v1 special_ff fn_map
+          resolve lower ident step v1 special_ff fn_map aliases
 
-fn :: resolve lower ident step String RModCtx [RModAlias] => String
-      resolve lower ident step v1 ctx fn_map
+fn :: resolve lower ident step String RModCtx [RModAlias] [RModAlias] => String
+      resolve lower ident step v1 ctx fn_map aliases
         | str contains v1 "." =
           in_fn = str map get (ctx fn bst ctx) v1
           in_fld = str map get (ctx field bst ctx) v1
-          default if empty in_fn (default if empty in_fld v1)
+          default if empty in_fn (default if empty in_fld (default if empty (name through module v1 aliases (ctx fn bst ctx)) (default if empty (name through module v1 aliases (ctx field bst ctx)) v1)))
         | otherwise =
           in_scope = lookup scoped fn or field ctx v1 ctx
           resolve lower plain fallback v1 ctx fn_map in_scope
@@ -7886,6 +7928,8 @@ fn :: parse items loop [RToken] [RScopedFn] [RScopedType] [RModAlias] [String] B
         new_mod = cur mod of stack new_stack
         aliases1 = record enter rename mod_stack new_mod aliases
         parse items loop (skip to newline rest) s_fns s_tys aliases1 new_stack in_lib
+      parse items loop ((TokIdent "export"):(TokIdent target):rest) s_fns s_tys aliases mod_stack in_lib =
+        parse items loop (skip to newline rest) s_fns s_tys (add mod export (cur mod of stack mod_stack) target aliases) mod_stack in_lib
       parse items loop (TokImport:rest)   s_fns s_tys aliases mod_stack in_lib =
         cur_mod = cur mod of stack mod_stack
         parse items loop (skip to newline rest) s_fns s_tys (parse inline import rest cur_mod aliases) mod_stack in_lib
