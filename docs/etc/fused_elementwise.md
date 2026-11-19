@@ -29,6 +29,9 @@ The node of the syntax tree keeps the subscripts; the program the runtime reads 
 | `r<id>` | `r<id>` | the last token: one number from all the elements (0 sum, 30 smallest, 31 largest) |
 | `f<k>` | `f<k>` | after `o`: that result is what leaf k holds the next time round |
 | `n` | `n` | the next leaf is a number: the program runs that many times (at least once) |
+| `v<c>` | `v<c>` | the next leaf: a number that moves by c each time the program runs |
+| `k<d>` | `k<d>` | `e as U8`: the value on top at the width of kind d |
+| `y` | `y` | `t_(index) = value`, the last token: the next leaf (a tensor) gets the value under the index, at that index |
 
 The kinds are not in the text: `kinds` is a number with one digit of 3 bits per tensor leaf, the first leaf lowest (1 `N` 64-bit integers, 2 `R` Reals, 3 `B` U8, 4 `H` U16, 5 `W` U32); leaves after the 20th have the kind of the 20th. A value has the kind of the tensor it was read from, a number takes the kind of the value it meets, and an operator gives the kind of its operands. Both runners follow the kinds through the program once, before the loop.
 
@@ -36,6 +39,14 @@ Rule every program keeps: element i of every `e` leaf is read before element i o
 
 ## A program that runs several times
 The first time every leaf is read where it is. After it, a leaf that a result feeds is read in that result, and the result is written in place (element i is read before it is written). Only a leaf that a result feeds can take a result. In the LLVM function the elements go in pieces of 256: each piece runs all its times before the next one starts, so sixteen tensors of `U32` stay in the first cache however long the tensors are. The loop over the times is around the loop over the elements, which is the one that is vectorised.
+
+A parameter that the call gives as it is stays a leaf that nothing feeds; a number given with a constant added is a `v<c>` leaf. A tensor read by index inside a joined loop is a leaf of its own, wrapped as `:tbl: t` in the tree so that the same name read element by element is another leaf. An index outside its tensor sets a flag kept in memory across the pieces and the times (`%badp`), read after the loops.
+
+## Writing by index
+A program with `y` gives nothing and has no result tensor. Its loop does not carry the mark that says its elements are independent, so the elements run in their order: two elements may name one place, and an element may read what another wrote.
+
+## The types of the values
+The type checker follows the element type of each value through the program (`fuse walk`): a tensor read has its element type, a number has none until it meets one, an operator needs two values of one type, `as` changes it, an index is any integer, and the tensor read or written by index gives or takes its own type.
 
 ## Operators that are not one instruction everywhere
 - `mulhi` (21): in the LLVM function, a product at twice the width; in the runtime, from 32-bit halves (`rg_mulhi`, binop.ll), because wasm32 has no 128-bit product without a library.
@@ -46,6 +57,8 @@ The first time every leaf is read where it is. After it, a leaf that a result fe
 `Tensor[U16]` and `Tensor[U32]` use the layout of `Tensor[U8]` (`runtime_ext.md`): the first data word is `rank + (lg << 32)`, `lg` the element size as a power of two, so a `Tensor[U8]` is unchanged. Builtin 141 `(lg, fill, d1 .. dk)` makes one; reads and writes are builtins 105 and 106, which take the size from the tensor. The lowering treats the kinds `H` and `W` as `B` everywhere but in a fused program (`packed as b`).
 
 ## Bytes, words and tensors side by side
+`tensor put le32` and the like (146) and `tensor get ...` (147) take a mode: the size of the word as a power of two, plus 16 for the high byte first. They are loops with a step, one word at a time.
+
 Builtins of the runtime (`bytes.ll`), not fused programs: 142 `tensor bytes`, 143 and 145 `tensor u16 from bytes` and `tensor u32 from bytes` (one copy of the bytes), 144 `tensor interleave` (list, element size). The element size of `tensor interleave` is the kind of the first tensor written in the list; for a list that comes from elsewhere, the kind the type checker found for the result, one per function.
 
 ## The LLVM function

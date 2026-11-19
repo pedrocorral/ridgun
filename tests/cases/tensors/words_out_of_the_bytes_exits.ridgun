@@ -1,0 +1,12 @@
+-- @tests TS-COMP-031
+-- case: tensor get le32 of a word that does not fit in the bytes stops the program
+-- source: FR-COMP-031 AC-21
+-- expect-output:
+--   runtime error: byte range out of bounds
+-- expect-exit: 1
+
+fn :: main => ()
+      main =
+        b = tensor from str "abcdefghijklmnop"
+        bad = tensor get le32 b 13 4 1
+        echo bad

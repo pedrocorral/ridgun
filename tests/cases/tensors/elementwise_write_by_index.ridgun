@@ -1,0 +1,65 @@
+-- @tests TS-COMP-031
+-- case: t_(index) = value with an element-wise index writes each value at its index, in the order of the elements; the last one wins a place two of them name
+-- source: FR-COMP-031 AC-23
+-- expect-output:
+--   written by index (the last wins place 3): Tensor(shape=[8], data=[21, 0, 0, 41, 0, 0, 0, 11])
+--   a number into a tensor of bytes, U32 indices: Tensor(shape=[6], data=[0, 0, 255, 0, 0, 255])
+--   an index that is an expression: Tensor(shape=[8], data=[0, 0, 9, 0, 0, 0, 9, 0])
+--   the elements go in order (each reads what the ones before wrote): Tensor(shape=[4], data=[1, 1, 1, 1])
+
+fn :: spread Tensor[U64 * m] Tensor[U64 * n] Tensor[U64 * n] => ()
+      spread q p v =
+        q_(p_i) = v_i + 1
+
+fn :: mark Tensor[U8 * m] Tensor[U32 * n] => ()
+      mark q p =
+        q_(p_i) = 255
+
+fn :: lanes into block Tensor[U64 * m] Tensor[U64 * n] Tensor[U64 * n] Int => ()
+      lanes into block q a where at =
+        q_((where_i * 4) + at) = a_i xor 1
+
+fn :: shift Tensor[U64 * n] Tensor[U64 * n] => ()
+      shift q p =
+        q_(p_i) = q_i
+
+fn :: main => ()
+      main =
+        q = Tensor[U64 * 8]
+        p = Tensor[U64 * 4]
+        v = Tensor[U64 * 4]
+        p_(0) = 7
+        p_(1) = 0
+        p_(2) = 3
+        p_(3) = 3
+        v_(0) = 10
+        v_(1) = 20
+        v_(2) = 30
+        v_(3) = 40
+        spread q p v
+        echo "written by index (the last wins place 3):" q
+        b = Tensor[U8 * 6]
+        k = Tensor[U32 * 2]
+        k_(0) = 5
+        k_(1) = 2
+        mark b k
+        echo "a number into a tensor of bytes, U32 indices:" b
+        blk = Tensor[U64 * 8]
+        w = Tensor[U64 * 2]
+        w_(0) = 0
+        w_(1) = 1
+        two = Tensor[U64 * 2] with 8
+        lanes into block blk two w 2
+        echo "an index that is an expression:" blk
+        r = Tensor[U64 * 4]
+        s = Tensor[U64 * 4]
+        r_(0) = 1
+        r_(1) = 2
+        r_(2) = 3
+        r_(3) = 4
+        s_(0) = 1
+        s_(1) = 2
+        s_(2) = 3
+        s_(3) = 3
+        shift r s
+        echo "the elements go in order (each reads what the ones before wrote):" r

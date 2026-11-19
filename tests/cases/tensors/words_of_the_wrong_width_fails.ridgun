@@ -1,0 +1,10 @@
+-- @tests TS-COMP-031
+-- case: tensor put le32 with a Tensor[U16] as its words is a compile error
+-- source: FR-COMP-031 AC-21
+-- expect-build-error: tensor put le32 takes a tensor of U32
+
+fn :: main => ()
+      main =
+        out = Tensor[U8 * 8]
+        w = Tensor[U16 * 2]
+        tensor put le32 out 0 4 w

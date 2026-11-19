@@ -1,0 +1,48 @@
+-- @tests TS-COMP-031
+-- case: tensor get le32, be32, be16, le64, be64 read words from the bytes of a Tensor[U8] at a place, with a step; tensor put le32, be32, be64, le16 write them
+-- source: FR-COMP-031 AC-21
+-- expect-output:
+--   le32: Tensor(shape=[4], data=[1684234849, 1751606885, 1818978921, 1886350957])
+--   be32: Tensor(shape=[4], data=[1633837924, 1701209960, 1768581996, 1835954032])
+--   from byte 1, every 8 bytes: Tensor(shape=[2], data=[1701077858, 1835821930])
+--   be16 from byte 2: Tensor(shape=[3], data=[25444, 25958, 26472])
+--   le64: Tensor(shape=[2], data=[7523094288207667809, 8101815670912281193])
+--   be64: Tensor(shape=[1], data=[7596001834950356848])
+--   two tensors side by side by their step: abcddcbaefghhgfe
+--   be64 at byte 1: -ABCDEFGH-
+--   le16: 012345
+
+fn :: main => ()
+      main =
+        b = tensor from str "abcdefghijklmnop"
+        le = tensor get le32 b 0 4 4
+        be = tensor get be32 b 0 4 4
+        echo "le32:" le
+        echo "be32:" be
+        odd = tensor get le32 b 1 8 2
+        echo "from byte 1, every 8 bytes:" odd
+        h = tensor get be16 b 2 2 3
+        echo "be16 from byte 2:" h
+        q = tensor get le64 b 0 8 2
+        r = tensor get be64 b 8 8 1
+        echo "le64:" q
+        echo "be64:" r
+        out = Tensor[U8 * 16] with 46
+        w = Tensor[U32 * 2]
+        w_(0) = 0x64636261
+        w_(1) = 0x68676665
+        tensor put le32 out 0 8 w
+        tensor put be32 out 4 8 w
+        echo "two tensors side by side by their step:" (tensor to str out)
+        big = Tensor[U64 * 1]
+        big_(0) = 0x4142434445464748
+        o8 = Tensor[U8 * 10] with 45
+        tensor put be64 o8 1 8 big
+        echo "be64 at byte 1:" (tensor to str o8)
+        s = Tensor[U16 * 3]
+        s_(0) = 0x3130
+        s_(1) = 0x3332
+        s_(2) = 0x3534
+        o6 = Tensor[U8 * 6]
+        tensor put le16 o6 0 2 s
+        echo "le16:" (tensor to str o6)

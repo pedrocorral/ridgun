@@ -491,6 +491,183 @@ done:
   ret i64 %r
 }
 
+; ── Words in a tensor of bytes, at any place and in either byte order ──
+; mode: the size of a word as a power of two (1, 2 or 3), plus 16 for the
+; high byte first. A tensor of 2- or 4-byte words is packed; one of 8-byte
+; words holds 64-bit elements.
+
+declare i16 @llvm.bswap.i16(i16)
+declare i32 @llvm.bswap.i32(i32)
+declare i64 @llvm.bswap.i64(i64)
+
+; The word of 2^lg bytes at address a (not aligned), in the order of mode.
+define i64 @rg_word_load(i64 %a, i64 %lg, i1 %be) alwaysinline {
+entry:
+  %p = inttoptr i64 %a to ptr
+  switch i64 %lg, label %w8 [ i64 1, label %w2
+                              i64 2, label %w4 ]
+w2:
+  %v2 = load i16, ptr %p, align 1
+  %s2 = call i16 @llvm.bswap.i16(i16 %v2)
+  %r2 = select i1 %be, i16 %s2, i16 %v2
+  %z2 = zext i16 %r2 to i64
+  ret i64 %z2
+w4:
+  %v4 = load i32, ptr %p, align 1
+  %s4 = call i32 @llvm.bswap.i32(i32 %v4)
+  %r4 = select i1 %be, i32 %s4, i32 %v4
+  %z4 = zext i32 %r4 to i64
+  ret i64 %z4
+w8:
+  %v8 = load i64, ptr %p, align 1
+  %s8 = call i64 @llvm.bswap.i64(i64 %v8)
+  %r8 = select i1 %be, i64 %s8, i64 %v8
+  ret i64 %r8
+}
+
+define void @rg_word_store(i64 %a, i64 %lg, i1 %be, i64 %v) alwaysinline {
+entry:
+  %p = inttoptr i64 %a to ptr
+  switch i64 %lg, label %w8 [ i64 1, label %w2
+                              i64 2, label %w4 ]
+w2:
+  %t2 = trunc i64 %v to i16
+  %s2 = call i16 @llvm.bswap.i16(i16 %t2)
+  %r2 = select i1 %be, i16 %s2, i16 %t2
+  store i16 %r2, ptr %p, align 1
+  ret void
+w4:
+  %t4 = trunc i64 %v to i32
+  %s4 = call i32 @llvm.bswap.i32(i32 %t4)
+  %r4 = select i1 %be, i32 %s4, i32 %t4
+  store i32 %r4, ptr %p, align 1
+  ret void
+w8:
+  %s8 = call i64 @llvm.bswap.i64(i64 %v)
+  %r8 = select i1 %be, i64 %s8, i64 %v
+  store i64 %r8, ptr %p, align 1
+  ret void
+}
+
+; The n words of 2^lg bytes at off, off + stride, ... fit in nb bytes; stops
+; when they do not.
+define void @rg_words_fit(i64 %nb, i64 %off, i64 %stride, i64 %n, i64 %lg) {
+entry:
+  %none = icmp sle i64 %n, 0
+  br i1 %none, label %ok, label %some
+some:
+  %size = shl i64 1, %lg
+  %offneg = icmp slt i64 %off, 0
+  %strneg = icmp slt i64 %stride, 0
+  %neg = or i1 %offneg, %strneg
+  br i1 %neg, label %bad, label %range
+range:
+  %n1 = sub i64 %n, 1
+  %span = mul i64 %n1, %stride
+  %lastw = add i64 %off, %span
+  %endb = add i64 %lastw, %size
+  %over0 = icmp ugt i64 %endb, %nb
+  %wrap = icmp ult i64 %endb, %off
+  %over = or i1 %over0, %wrap
+  br i1 %over, label %bad, label %ok
+ok:
+  ret void
+bad:
+  call void @rg_fatal(ptr @rg_msg_io, i64 24)
+  unreachable
+}
+
+; 146 (dst, off, stride, src, mode): word i of src goes to the bytes of dst
+; from off + stride * i; gives 0. dst is a Tensor[U8].
+define i64 @rg_put_words_b(i64 %slots) {
+entry:
+  %dst = call i64 @rg_slot_at(i64 %slots, i64 0)
+  %offv = call i64 @rg_slot_at(i64 %slots, i64 1)
+  %strv = call i64 @rg_slot_at(i64 %slots, i64 2)
+  %src = call i64 @rg_slot_at(i64 %slots, i64 3)
+  %modev = call i64 @rg_slot_at(i64 %slots, i64 4)
+  %off = call i64 @rg_int_arg(i64 %offv)
+  %stride = call i64 @rg_int_arg(i64 %strv)
+  %mode = call i64 @rg_int_arg(i64 %modev)
+  %lg = and i64 %mode, 15
+  %bebit = and i64 %mode, 16
+  %be = icmp ne i64 %bebit, 0
+  %nb = call i64 @rg_u8_count(i64 %dst)
+  %db = call i64 @rg_u8_bytes(i64 %dst)
+  %n = call i64 @rg_fuse_len(i64 %src, i64 %lg)
+  %sd = call i64 @rg_fuse_data(i64 %src, i64 %lg)
+  call void @rg_words_fit(i64 %nb, i64 %off, i64 %stride, i64 %n, i64 %lg)
+  %base = add i64 %db, %off
+  br label %loop
+loop:
+  %i = phi i64 [ 0, %entry ], [ %i1, %body ]
+  %more = icmp slt i64 %i, %n
+  br i1 %more, label %body, label %done
+body:
+  %v = call i64 @rg_fuse_get(i64 %sd, i64 %i, i64 %lg)
+  %step = mul i64 %i, %stride
+  %a = add i64 %base, %step
+  call void @rg_word_store(i64 %a, i64 %lg, i1 %be, i64 %v)
+  %i1 = add i64 %i, 1
+  br label %loop
+done:
+  ret i64 0
+}
+
+; 147 (src, off, stride, n, mode): a tensor of one dimension of n words read
+; from the bytes of src at off, off + stride, ... src is a Tensor[U8].
+define i64 @rg_get_words_b(i64 %slots) {
+entry:
+  %src = call i64 @rg_slot_at(i64 %slots, i64 0)
+  %offv = call i64 @rg_slot_at(i64 %slots, i64 1)
+  %strv = call i64 @rg_slot_at(i64 %slots, i64 2)
+  %nv = call i64 @rg_slot_at(i64 %slots, i64 3)
+  %modev = call i64 @rg_slot_at(i64 %slots, i64 4)
+  %off = call i64 @rg_int_arg(i64 %offv)
+  %stride = call i64 @rg_int_arg(i64 %strv)
+  %n0 = call i64 @rg_int_arg(i64 %nv)
+  %npos = icmp sgt i64 %n0, 0
+  %n = select i1 %npos, i64 %n0, i64 0
+  %mode = call i64 @rg_int_arg(i64 %modev)
+  %lg = and i64 %mode, 15
+  %bebit = and i64 %mode, 16
+  %be = icmp ne i64 %bebit, 0
+  %nb = call i64 @rg_u8_count(i64 %src)
+  %sb = call i64 @rg_u8_bytes(i64 %src)
+  call void @rg_words_fit(i64 %nb, i64 %off, i64 %stride, i64 %n, i64 %lg)
+  %dims = alloca i64, align 8
+  store i64 %n, ptr %dims, align 8
+  %dp = ptrtoint ptr %dims to i64
+  %packed = icmp ult i64 %lg, 3
+  br i1 %packed, label %pk, label %wd
+pk:
+  %rp = call i64 @rg_pk_new(i64 1, i64 %dp, i64 0, i64 %lg)
+  br label %fill
+wd:
+  %rw = call i64 @rg_t_new(i64 1, i64 %n)
+  %rwd = call i64 @rg_t_dims(i64 %rw)
+  call void @rg_st(i64 %rwd, i64 %n)
+  br label %fill
+fill:
+  %r = phi i64 [ %rp, %pk ], [ %rw, %wd ]
+  %dd = call i64 @rg_fuse_data(i64 %r, i64 %lg)
+  %base = add i64 %sb, %off
+  br label %loop
+loop:
+  %i = phi i64 [ 0, %fill ], [ %i1, %body ]
+  %more = icmp slt i64 %i, %n
+  br i1 %more, label %body, label %done
+body:
+  %step = mul i64 %i, %stride
+  %a = add i64 %base, %step
+  %v = call i64 @rg_word_load(i64 %a, i64 %lg, i1 %be)
+  call void @rg_fuse_put(i64 %dd, i64 %i, i64 %lg, i64 %v)
+  %i1 = add i64 %i, 1
+  br label %loop
+done:
+  ret i64 %r
+}
+
 ; 105 (i1 .. ik, t borrowed)
 define i64 @rg_u8_get_b(i64 %slots, i64 %n) {
   %k = sub i64 %n, 1
@@ -1233,7 +1410,17 @@ entry:
                                 i64 142, label %bytesof
                                 i64 143, label %words16
                                 i64 145, label %words32
-                                i64 144, label %ilv ]
+                                i64 144, label %ilv
+                                i64 146, label %putw
+                                i64 147, label %getw ]
+putw:
+  %r146 = call i64 @rg_put_words_b(i64 %slots)
+  call void @rg_drop_slots(i64 %slots, i64 %n)
+  ret i64 %r146
+getw:
+  %r147 = call i64 @rg_get_words_b(i64 %slots)
+  call void @rg_drop_slots(i64 %slots, i64 %n)
+  ret i64 %r147
 bytesof:
   %v142 = call i64 @rg_slot_at(i64 %slots, i64 0)
   %r142 = call i64 @rg_pk_bytes(i64 %v142)

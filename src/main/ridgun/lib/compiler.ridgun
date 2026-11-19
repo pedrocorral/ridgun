@@ -1466,6 +1466,18 @@ fn :: builtin call id String             => Int
       builtin call id "tensor_from_str"  =  108
       builtin call id "tensor_u8_from_list"  =  119
       builtin call id "tensor_bytes"  =  142
+      builtin call id "tensor_put_le16"  =  146
+      builtin call id "tensor_put_le32"  =  146
+      builtin call id "tensor_put_le64"  =  146
+      builtin call id "tensor_put_be16"  =  146
+      builtin call id "tensor_put_be32"  =  146
+      builtin call id "tensor_put_be64"  =  146
+      builtin call id "tensor_get_le16"  =  147
+      builtin call id "tensor_get_le32"  =  147
+      builtin call id "tensor_get_le64"  =  147
+      builtin call id "tensor_get_be16"  =  147
+      builtin call id "tensor_get_be32"  =  147
+      builtin call id "tensor_get_be64"  =  147
       builtin call id "tensor_u16_from_bytes"  =  143
       builtin call id "tensor_interleave"  =  144
       builtin call id "tensor_u32_from_bytes"  =  145
@@ -2788,6 +2800,13 @@ fn :: lower expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
         unpack_ins = build tuple unpack instrs sp arity 0
         ins_list = [NStoreSlot sp, NMatchTuple sp arity, NJumpIfZero part_lbl] :: unpack_ins :: [NClearLocals sp (sp + 1), NCallFn fid (sp + 1) arity, NJump done_lbl, NLabel part_lbl, NMoveSlot sp, NStoreSlot (sp + 1), NMakeList (sp + 1) 1, NStoreSlot (sp + 1), NLoadStrLit off slen, NStoreSlot sp, NMakeTuple sp 2, NLabel done_lbl]
         nc emit list st1 ins_list (sp + arity + 2)
+      lower expr env (ECall fname (a:b:c:d:[])) bound_locals sp st
+        | (word builtin mode fname) > 0 =
+          -- builtins 146 and 147 (bytes, place, step, words or their number, mode)
+          st1 = lower expr list to slots env [a, b, c, d] bound_locals sp 0 st
+          nc emit list st1 [NLoadImmInt (word builtin mode fname), NStoreSlot (sp + 4), NCallBuiltin (builtin call id fname) sp 5] (sp + 6)
+      lower expr env (ECall ":tbl:" (e:[])) bound_locals sp st =
+        lower expr env e bound_locals sp st
       lower expr env (ECall "tensor_interleave" (l:[])) bound_locals sp st =
         -- builtin 144 (list, lg): the element size comes from the type the checker found
         st1 = lower expr env l bound_locals sp st
@@ -5119,6 +5138,23 @@ fn :: interleave kind RNativeEnv RExpr => String
       interleave kind env (EList (e:_)) =  expr tensor raw kind env e
       interleave kind env _ =  env tensor raw kind env "()tensor_interleave"
 
+-- `tensor put le32` and the like (bytes.ll): the size of the word as a power of two, plus 16 for
+-- the high byte first; 0 for another name.
+fn :: word builtin mode String => Int
+      word builtin mode "tensor_put_le16" =  1
+      word builtin mode "tensor_put_le32" =  2
+      word builtin mode "tensor_put_le64" =  3
+      word builtin mode "tensor_put_be16" =  17
+      word builtin mode "tensor_put_be32" =  18
+      word builtin mode "tensor_put_be64" =  19
+      word builtin mode "tensor_get_le16" =  1
+      word builtin mode "tensor_get_le32" =  2
+      word builtin mode "tensor_get_le64" =  3
+      word builtin mode "tensor_get_be16" =  17
+      word builtin mode "tensor_get_be32" =  18
+      word builtin mode "tensor_get_be64" =  19
+      word builtin mode _ =  0
+
 -- The size of an element of a kind as a power of two (3: a 64-bit word).
 fn :: fuse kind lg String => Int
       fuse kind lg "B" =  0
@@ -5138,9 +5174,11 @@ fn :: fuse kind digit String => Int
 fn :: fuse kinds code RNativeEnv [RFuseTok] [RExpr] Int Int => Int
       fuse kinds code _ [] _ _ acc =  acc
       fuse kinds code env ((FtTensor _):ts) (leaf:ls) place acc =  fuse kinds code env ts ls (fuse next place place) (acc + ((fuse place digit place (expr tensor raw kind env leaf))))
+      fuse kinds code env (FtScatter:ts) (leaf:ls) place acc =  fuse kinds code env ts ls (fuse next place place) (acc + ((fuse place digit place (expr tensor raw kind env leaf))))
       fuse kinds code env (FtGather:ts) (leaf:ls) place acc =  fuse kinds code env ts ls (fuse next place place) (acc + ((fuse place digit place (expr tensor raw kind env leaf))))
       fuse kinds code env (FtScalar:ts) (_:ls) place acc =  fuse kinds code env ts ls place acc
       fuse kinds code env (FtCount:ts) (_:ls) place acc =  fuse kinds code env ts ls place acc
+      fuse kinds code env ((FtStep _):ts) (_:ls) place acc =  fuse kinds code env ts ls place acc
       fuse kinds code env (_:ts) ls place acc =  fuse kinds code env ts ls place acc
 
 fn :: fuse next place Int => Int
@@ -5163,13 +5201,21 @@ fn :: fuse result kind RNativeEnv [RFuseTok] [RExpr] [String] [(Int, String)] =>
       fuse result kind env ((FtTensor _):ts) (leaf:ls) stack vals =  fuse result kind env ts ls ([expr tensor raw kind env leaf] :: stack) vals
       fuse result kind env (FtScalar:ts) (_:ls) stack vals =  fuse result kind env ts ls ([""] :: stack) vals
       fuse result kind env (FtCount:ts) (_:ls) stack vals =  fuse result kind env ts ls stack vals
+      fuse result kind env ((FtStep _):ts) (_:ls) stack vals =  fuse result kind env ts ls ([""] :: stack) vals
       fuse result kind env ((FtConst _):ts) ls stack vals =  fuse result kind env ts ls ([""] :: stack) vals
       fuse result kind env ((FtOp _):ts) ls (b:a:stack) vals =  fuse result kind env ts ls ([fuse kind of two a b] :: stack) vals
+      fuse result kind env ((FtKind d):ts) ls (_:stack) vals =  fuse result kind env ts ls ([fuse digit letter d] :: stack) vals
       fuse result kind env (FtGather:ts) (leaf:ls) (_:stack) vals =  fuse result kind env ts ls ([expr tensor raw kind env leaf] :: stack) vals
       fuse result kind env ((FtSet k):ts) ls (top:stack) vals =  fuse result kind env ts ls stack ([(k, top)] :: vals)
       fuse result kind env ((FtGet k):ts) ls stack vals =  fuse result kind env ts ls ([fuse val kind vals k] :: stack) vals
       fuse result kind _ (FtOut:_) _ (top:_) _ =  fuse kind or n top
       fuse result kind env (_:ts) ls stack vals =  fuse result kind env ts ls stack vals
+
+fn :: fuse digit letter Int => String
+      fuse digit letter 3 =  "B"
+      fuse digit letter 4 =  "H"
+      fuse digit letter 5 =  "W"
+      fuse digit letter _ =  "N"
 
 fn :: fuse kind of two String String => String
       fuse kind of two "" b =  b
@@ -5222,6 +5268,7 @@ fn :: fuse leaf uses [RExpr] String Int => Int
 fn :: expr tensor raw kind RNativeEnv RExpr => String
       expr tensor raw kind env (EVar v) =  env tensor raw kind env v
       expr tensor raw kind env (ECall "#move" ((EVar v):_)) =  env tensor raw kind env v
+      expr tensor raw kind env (ECall ":tbl:" (e:_)) =  expr tensor raw kind env e
       expr tensor raw kind env (ECall ":fuse:" ((EStr code):leaves)) =  fuse leaves kind env (fuse toks code) leaves
       expr tensor raw kind _ (ECall ":typed-tensor:" ((EStr "U16"):_)) =  "H"
       expr tensor raw kind _ (ECall ":typed-tensor:" ((EStr "U32"):_)) =  "W"

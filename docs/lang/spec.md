@@ -578,11 +578,17 @@ m = (a_ij shr 4) and 0xFF
 - A shift or rotation count is taken modulo the width; `shr` is logical; `/` and `%` by zero give 0.
 - A tensor read has the subscripts of the result, its first ones (`c_i` in `a_ij * c_i`) or its last ones (`b_j` in `a_ij + b_j`).
 - Consecutive statements that bind such expressions over tensors of one type run as one loop. A tensor read for the last time, with no other owner, takes the result in place.
-- A function that does one such loop and calls itself with the results and one less in its counter (`| k <= 0 = (a, b)` then the statements and `f a1 b1 (k - 1)`) runs as that loop done `k` times, with no call in between.
+- A function that does one such loop and calls itself with the results and one less in its counter (`| k <= 0 = (a, b)` then the statements and `f a1 b1 (k - 1)`) runs as that loop done `k` times, with no call in between. Its other parameters go to the call as they are, or, a number, with a constant added (`at + 4`).
 - `t_(index)`, with an element-wise index, reads `t` at the index of each element: `sbox_(x_i)`, `t_((x_i shr 4) and 15)`. The index tensors are integers of any element type; an index outside `t` stops the program.
 - `tensor sum e`, `tensor min e` and `tensor max e` give one number from all the elements of an element-wise expression or of a tensor: `tensor sum (a_i * b_i)` is a dot product. The result is an `Int` (a `Real` for `Real` tensors); 0 when there are no elements.
 
 **Bytes and words (`FR-COMP-031`):** `tensor bytes t` gives the bytes of a `Tensor[U8]`, `Tensor[U16]` or `Tensor[U32]` as a `Tensor[U8]`; `tensor u16 from bytes b` and `tensor u32 from bytes b` read the bytes of a `Tensor[U8]` as elements of that width (low byte first; the bytes must be a whole number of elements). `tensor interleave [t0, t1, ...]` puts tensors of one type and one length side by side: element `i * k + j` of the result is element `i` of tensor `j`.
+
+`tensor get le32 b off step n` reads `n` words from the bytes of `b` at `off`, `off + step`, ... and `tensor put le32 b off step w` writes the words of `w` there; the same with `be32`, `le16`, `be16`, `le64` and `be64`.
+
+**Width (`FR-COMP-031`):** `e as U8`, `e as U16`, `e as U32`, `e as U64` give an integer at another width (cut, or widened with zeros): `msg_i xor (w_i as U8)` in an element-wise expression, `n as U16` on an `Int`.
+
+**Writing by index (`FR-COMP-031`):** `t_(index) = value` with an element-wise index writes each value at its index, in the order of the elements: `q_(p_i) = v_i + 1`.
 
 **Wide and carry-less products:** `a mulhi b` is the high half of the product of two integers taken as unsigned (`*` gives the low half); `a clmul b` and `a clmulhi b` are the low and the high half of the product without carries. They work on `Int`s (64 bits) and element-wise at the width of the element type.
 

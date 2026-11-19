@@ -302,7 +302,7 @@ fn :: builtin local types => [RTypeBind]
 
 fn :: builtin fn types => [RTypeBind]
       builtin fn types =
-        [TypeBind "cli_args" (TyFun [] (TyList TyString)), TypeBind "new_mailbox" (TyFun [] TyInt), TypeBind "new_channel" (TyFun [] (TyVar "Channel")), TypeBind "stop" (TyFun [TyVar "Agent"] TyUnit), TypeBind "agent_alive" (TyFun [TyVar "Agent"] TyBool), TypeBind "agent_dropped" (TyFun [TyVar "Agent"] TyInt), TypeBind "agent_flush" (TyFun [TyVar "Agent"] TyUnit), TypeBind "agent_state" (TyFun [TyVar "Agent"] (TyVar "A")), TypeBind "send_to" (TyFun [TyVar "A", TyVar "Agent"] TyUnit), TypeBind "ask_to" (TyFun [TyVar "A", TyVar "Agent"] (TyVar "B")), TypeBind "new_bounded_channel" (TyFun [TyInt] (TyVar "Channel")), TypeBind "send_through" (TyFun [TyVar "A", TyVar "Channel"] TyUnit), TypeBind "chan_send" (TyFun [TyVar "A", TyVar "Channel"] TyUnit), TypeBind "receive_from" (TyFun [TyVar "_chan_or_agent"] (TyVar "A")), TypeBind "chan_recv" (TyFun [TyVar "Channel"] (TyVar "A")), TypeBind "try_receive_from" (TyFun [TyVar "_chan_or_agent"] (TyVar "Option")), TypeBind "chan_try_recv" (TyFun [TyVar "Channel"] (TyVar "Option")), TypeBind "receive_from_timeout" (TyFun [TyVar "Channel", TyInt] (TyVar "Option")), TypeBind "str_len" (TyFun [TyString] TyInt), TypeBind "sort_by_ints" (TyFun [TyList (TyVar "A"), TyList TyInt] (TyList (TyVar "A"))), TypeBind "sort_by_texts" (TyFun [TyList (TyVar "A"), TyList TyString] (TyList (TyVar "A"))), TypeBind "str_char_at" (TyFun [TyString, TyInt] TyInt), TypeBind "str_slice" (TyFun [TyString, TyInt, TyInt] TyString), TypeBind "char_from_code" (TyFun [TyInt] TyString), TypeBind "str_concat" (TyFun [TyString, TyString] TyString), TypeBind "int_to_str" (TyFun [TyInt] TyString), TypeBind "str_to_int" (TyFun [TyString] TyInt), TypeBind "int_to_real" (TyFun [TyInt] TyReal), TypeBind "real_to_int" (TyFun [TyReal] TyInt), TypeBind "real_round" (TyFun [TyReal] TyInt), TypeBind "real_floor" (TyFun [TyReal] TyInt), TypeBind "tensor_sum" (TyFun [TyTensor (TyVar "_any") []] TyInt), TypeBind "tensor_bytes" (TyFun [TyTensor (TyVar "_any") []] u8 tensor ty), TypeBind "tensor_u16_from_bytes" (TyFun [u8 tensor ty] (TyTensor (TyVar "U16") [])), TypeBind "tensor_u32_from_bytes" (TyFun [u8 tensor ty] (TyTensor (TyVar "U32") [])), TypeBind "tensor_interleave" (TyFun [TyList (TyTensor (TyVar "_any") [])] (TyTensor (TyVar "_any") [])), TypeBind "tensor_min" (TyFun [TyTensor (TyVar "_any") []] TyInt), TypeBind "tensor_max" (TyFun [TyTensor (TyVar "_any") []] TyInt), TypeBind "real_ceil" (TyFun [TyReal] TyInt), TypeBind "str_starts_with" (TyFun [TyString, TyString] TyBool), TypeBind "str_contains" (TyFun [TyString, TyString] TyBool), TypeBind "read_file" (TyFun [TyString] TyString), TypeBind "load_rg_source" (TyFun [TyString] TyString), TypeBind "read_bytes" (TyFun [TyString] u8 tensor ty), TypeBind "write_bytes" (TyFun [TyString, TyVar "_u8_or_ints"] TyUnit), TypeBind "write_file" (TyFun [TyString, TyString] TyUnit), TypeBind "shell_exec" (TyFun [TyString] TyInt), TypeBind "map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "seq_map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "||map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "par_map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "seq_filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "||filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "par_filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "fold" (TyFun [TyFun [TyVar "B", TyVar "A"] (TyVar "B"), TyVar "B", TyList (TyVar "A")] (TyVar "B")), TypeBind "list_dir" (TyFun [TyString] (TyList TyString)), TypeBind "file_lstat" (TyFun [TyString] (TyTuple [TyBool, TyString, TyInt, TyInt, TyInt, TyString, TyString, TyInt, TyString])), TypeBind "sha256_file" (TyFun [TyString] TyString), TypeBind "sha256_str" (TyFun [TyString] TyString), TypeBind "sha256_raw" (TyFun [TyVar "_u8_data"] TyString), TypeBind "sha256_bytes" (TyFun [TyString] TyString), TypeBind "sys_os" (TyFun [] (TyVar "adt:SysOs")), TypeBind "sys_arch" (TyFun [] (TyVar "adt:SysArch")), TypeBind "sys_mkdir" (TyFun [TyString, TyInt] TyInt), TypeBind "sys_chmod" (TyFun [TyString, TyInt] TyInt), TypeBind "sys_exec" (TyFun [TyString, TyList TyString, TyList TyString] TyInt), TypeBind "sys_chdir" (TyFun [TyString] TyInt), TypeBind "sys_getcwd" (TyFun [] TyString), TypeBind "sys_getenv" (TyFun [TyString] TyString), TypeBind "sys_setenv" (TyFun [TyString, TyString] TyInt), TypeBind "sys_exit" (TyFun [TyInt] TyUnit), TypeBind "sys_getuid" (TyFun [] TyInt), TypeBind "sys_getgid" (TyFun [] TyInt), TypeBind "sys_getpid" (TyFun [] TyInt), TypeBind "sys_time_ms" (TyFun [] TyInt), TypeBind "sys_time_ns" (TyFun [] TyInt), TypeBind "sys_wall_time_ms" (TyFun [] TyInt), TypeBind "crc32_range" (TyFun [TyVar "_u8_data", TyInt, TyInt, TyInt] TyInt), TypeBind "tensor_from_str" (TyFun [TyString] u8 tensor ty), TypeBind "tensor_u8_from_list" (TyFun [TyList TyInt] u8 tensor ty), TypeBind "tensor_to_str" (TyFun [u8 tensor ty] TyString), TypeBind "sha256_digest" (TyFun [TyVar "_u8_data"] u8 tensor ty), TypeBind "sys_read_into" (TyFun [TyInt, u8 tensor ty, TyInt, TyInt] TyInt), TypeBind "sys_write_from" (TyFun [TyInt, u8 tensor ty, TyInt, TyInt] TyInt), TypeBind "sys_deadline_ms" (TyFun [] TyInt), TypeBind "sys_remaining_ms" (TyFun [] TyInt), TypeBind "sys_sleep_ms" (TyFun [TyInt] TyUnit), TypeBind "sys_open_mode" (TyFun [TyString, TyString] TyInt), TypeBind "sys_open" (TyFun [TyString, TyInt, TyInt] TyInt), TypeBind "sys_close" (TyFun [TyInt] TyInt), TypeBind "sys_read_fd" (TyFun [TyInt, TyInt] TyString), TypeBind "sys_write_fd" (TyFun [TyInt, TyString] TyInt), TypeBind "sys_poll" (TyFun [TyInt, TyInt, TyInt] TyInt), TypeBind "sys_terminate" (TyFun [TyInt, TyBool] TyInt), TypeBind "sys_kill" (TyFun [TyInt, TyInt] TyInt), TypeBind "sys_call" (TyFun [TyInt, TyVariadic (TyVar "_int_or_u8")] TyInt), TypeBind "sys_pipe" (TyFun [] (TyTuple [TyInt, TyInt])), TypeBind "sys_waitpid" (TyFun [TyInt, TyInt] (TyTuple [TyInt, TyInt])), TypeBind "sys_username" (TyFun [TyInt] TyString), TypeBind "sys_user_groups" (TyFun [TyString] (TyList TyString)), TypeBind "sys_lookup_uid_gid" (TyFun [TyString] (TyTuple [TyInt, TyInt])), TypeBind "sys_setresgid" (TyFun [TyInt] TyInt), TypeBind "sys_setgroups" (TyFun [TyList TyInt] TyInt), TypeBind "sys_setresuid" (TyFun [TyInt] TyInt), TypeBind "sys_execve" (TyFun [TyString, TyList TyString, TyList TyString] TyInt), TypeBind "remove_file" (TyFun [TyString] TyInt), TypeBind "remove_dir" (TyFun [TyString] TyInt), TypeBind "rename_path" (TyFun [TyString, TyString] TyInt), TypeBind "net_connect" (TyFun [TyString, TyInt, TyInt] TyInt), TypeBind "net_listen" (TyFun [TyString, TyInt, TyInt] TyInt), TypeBind "net_accept" (TyFun [TyInt, TyInt] TyInt), TypeBind "net_send" (TyFun [TyInt, TyVar "_u8_data", TyInt] TyInt), TypeBind "net_recv_into" (TyFun [TyInt, u8 tensor ty, TyInt, TyInt, TyInt] TyInt), TypeBind "net_recv" (TyFun [TyInt, TyInt, TyInt] TyString), TypeBind "net_shutdown" (TyFun [TyInt, TyInt] TyInt), TypeBind "net_option" (TyFun [TyInt, TyString, TyInt] TyInt), TypeBind "net_local_port" (TyFun [TyInt] TyInt), TypeBind "net_peer_ip" (TyFun [TyInt] TyString), TypeBind "net_resolve" (TyFun [TyString] TyString), TypeBind "sys_read_pass" (TyFun [TyString] TyString), TypeBind "cmm_live_blocks" (TyFun [] TyInt), TypeBind "cmm_cond_spared" (TyFun [] TyInt), TypeBind "cmm_cond_freed" (TyFun [] TyInt), TypeBind "cmm_same_ptr" (TyFun [TyVar "A", TyVar "A"] TyBool)]
+        [TypeBind "cli_args" (TyFun [] (TyList TyString)), TypeBind "new_mailbox" (TyFun [] TyInt), TypeBind "new_channel" (TyFun [] (TyVar "Channel")), TypeBind "stop" (TyFun [TyVar "Agent"] TyUnit), TypeBind "agent_alive" (TyFun [TyVar "Agent"] TyBool), TypeBind "agent_dropped" (TyFun [TyVar "Agent"] TyInt), TypeBind "agent_flush" (TyFun [TyVar "Agent"] TyUnit), TypeBind "agent_state" (TyFun [TyVar "Agent"] (TyVar "A")), TypeBind "send_to" (TyFun [TyVar "A", TyVar "Agent"] TyUnit), TypeBind "ask_to" (TyFun [TyVar "A", TyVar "Agent"] (TyVar "B")), TypeBind "new_bounded_channel" (TyFun [TyInt] (TyVar "Channel")), TypeBind "send_through" (TyFun [TyVar "A", TyVar "Channel"] TyUnit), TypeBind "chan_send" (TyFun [TyVar "A", TyVar "Channel"] TyUnit), TypeBind "receive_from" (TyFun [TyVar "_chan_or_agent"] (TyVar "A")), TypeBind "chan_recv" (TyFun [TyVar "Channel"] (TyVar "A")), TypeBind "try_receive_from" (TyFun [TyVar "_chan_or_agent"] (TyVar "Option")), TypeBind "chan_try_recv" (TyFun [TyVar "Channel"] (TyVar "Option")), TypeBind "receive_from_timeout" (TyFun [TyVar "Channel", TyInt] (TyVar "Option")), TypeBind "str_len" (TyFun [TyString] TyInt), TypeBind "sort_by_ints" (TyFun [TyList (TyVar "A"), TyList TyInt] (TyList (TyVar "A"))), TypeBind "sort_by_texts" (TyFun [TyList (TyVar "A"), TyList TyString] (TyList (TyVar "A"))), TypeBind "str_char_at" (TyFun [TyString, TyInt] TyInt), TypeBind "str_slice" (TyFun [TyString, TyInt, TyInt] TyString), TypeBind "char_from_code" (TyFun [TyInt] TyString), TypeBind "str_concat" (TyFun [TyString, TyString] TyString), TypeBind "int_to_str" (TyFun [TyInt] TyString), TypeBind "str_to_int" (TyFun [TyString] TyInt), TypeBind "int_to_real" (TyFun [TyInt] TyReal), TypeBind "real_to_int" (TyFun [TyReal] TyInt), TypeBind "real_round" (TyFun [TyReal] TyInt), TypeBind "real_floor" (TyFun [TyReal] TyInt), TypeBind "tensor_sum" (TyFun [TyTensor (TyVar "_any") []] TyInt), TypeBind "tensor_bytes" (TyFun [TyTensor (TyVar "_any") []] u8 tensor ty), TypeBind "tensor_put_le16" (TyFun [u8 tensor ty, TyInt, TyInt, TyTensor (TyVar "U16") []] TyUnit), TypeBind "tensor_put_le32" (TyFun [u8 tensor ty, TyInt, TyInt, TyTensor (TyVar "U32") []] TyUnit), TypeBind "tensor_put_le64" (TyFun [u8 tensor ty, TyInt, TyInt, TyTensor (TyInt) []] TyUnit), TypeBind "tensor_put_be16" (TyFun [u8 tensor ty, TyInt, TyInt, TyTensor (TyVar "U16") []] TyUnit), TypeBind "tensor_put_be32" (TyFun [u8 tensor ty, TyInt, TyInt, TyTensor (TyVar "U32") []] TyUnit), TypeBind "tensor_put_be64" (TyFun [u8 tensor ty, TyInt, TyInt, TyTensor (TyInt) []] TyUnit), TypeBind "tensor_get_le16" (TyFun [u8 tensor ty, TyInt, TyInt, TyInt] (TyTensor (TyVar "U16") [])), TypeBind "tensor_get_le32" (TyFun [u8 tensor ty, TyInt, TyInt, TyInt] (TyTensor (TyVar "U32") [])), TypeBind "tensor_get_le64" (TyFun [u8 tensor ty, TyInt, TyInt, TyInt] (TyTensor (TyInt) [])), TypeBind "tensor_get_be16" (TyFun [u8 tensor ty, TyInt, TyInt, TyInt] (TyTensor (TyVar "U16") [])), TypeBind "tensor_get_be32" (TyFun [u8 tensor ty, TyInt, TyInt, TyInt] (TyTensor (TyVar "U32") [])), TypeBind "tensor_get_be64" (TyFun [u8 tensor ty, TyInt, TyInt, TyInt] (TyTensor (TyInt) [])), TypeBind "tensor_u16_from_bytes" (TyFun [u8 tensor ty] (TyTensor (TyVar "U16") [])), TypeBind "tensor_u32_from_bytes" (TyFun [u8 tensor ty] (TyTensor (TyVar "U32") [])), TypeBind "tensor_interleave" (TyFun [TyList (TyTensor (TyVar "_any") [])] (TyTensor (TyVar "_any") [])), TypeBind "tensor_min" (TyFun [TyTensor (TyVar "_any") []] TyInt), TypeBind "tensor_max" (TyFun [TyTensor (TyVar "_any") []] TyInt), TypeBind "real_ceil" (TyFun [TyReal] TyInt), TypeBind "str_starts_with" (TyFun [TyString, TyString] TyBool), TypeBind "str_contains" (TyFun [TyString, TyString] TyBool), TypeBind "read_file" (TyFun [TyString] TyString), TypeBind "load_rg_source" (TyFun [TyString] TyString), TypeBind "read_bytes" (TyFun [TyString] u8 tensor ty), TypeBind "write_bytes" (TyFun [TyString, TyVar "_u8_or_ints"] TyUnit), TypeBind "write_file" (TyFun [TyString, TyString] TyUnit), TypeBind "shell_exec" (TyFun [TyString] TyInt), TypeBind "map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "seq_map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "||map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "par_map" (TyFun [TyFun [TyVar "A"] (TyVar "B"), TyList (TyVar "A")] (TyList (TyVar "B"))), TypeBind "filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "seq_filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "||filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "par_filter" (TyFun [TyFun [TyVar "A"] TyBool, TyList (TyVar "A")] (TyList (TyVar "A"))), TypeBind "fold" (TyFun [TyFun [TyVar "B", TyVar "A"] (TyVar "B"), TyVar "B", TyList (TyVar "A")] (TyVar "B")), TypeBind "list_dir" (TyFun [TyString] (TyList TyString)), TypeBind "file_lstat" (TyFun [TyString] (TyTuple [TyBool, TyString, TyInt, TyInt, TyInt, TyString, TyString, TyInt, TyString])), TypeBind "sha256_file" (TyFun [TyString] TyString), TypeBind "sha256_str" (TyFun [TyString] TyString), TypeBind "sha256_raw" (TyFun [TyVar "_u8_data"] TyString), TypeBind "sha256_bytes" (TyFun [TyString] TyString), TypeBind "sys_os" (TyFun [] (TyVar "adt:SysOs")), TypeBind "sys_arch" (TyFun [] (TyVar "adt:SysArch")), TypeBind "sys_mkdir" (TyFun [TyString, TyInt] TyInt), TypeBind "sys_chmod" (TyFun [TyString, TyInt] TyInt), TypeBind "sys_exec" (TyFun [TyString, TyList TyString, TyList TyString] TyInt), TypeBind "sys_chdir" (TyFun [TyString] TyInt), TypeBind "sys_getcwd" (TyFun [] TyString), TypeBind "sys_getenv" (TyFun [TyString] TyString), TypeBind "sys_setenv" (TyFun [TyString, TyString] TyInt), TypeBind "sys_exit" (TyFun [TyInt] TyUnit), TypeBind "sys_getuid" (TyFun [] TyInt), TypeBind "sys_getgid" (TyFun [] TyInt), TypeBind "sys_getpid" (TyFun [] TyInt), TypeBind "sys_time_ms" (TyFun [] TyInt), TypeBind "sys_time_ns" (TyFun [] TyInt), TypeBind "sys_wall_time_ms" (TyFun [] TyInt), TypeBind "crc32_range" (TyFun [TyVar "_u8_data", TyInt, TyInt, TyInt] TyInt), TypeBind "tensor_from_str" (TyFun [TyString] u8 tensor ty), TypeBind "tensor_u8_from_list" (TyFun [TyList TyInt] u8 tensor ty), TypeBind "tensor_to_str" (TyFun [u8 tensor ty] TyString), TypeBind "sha256_digest" (TyFun [TyVar "_u8_data"] u8 tensor ty), TypeBind "sys_read_into" (TyFun [TyInt, u8 tensor ty, TyInt, TyInt] TyInt), TypeBind "sys_write_from" (TyFun [TyInt, u8 tensor ty, TyInt, TyInt] TyInt), TypeBind "sys_deadline_ms" (TyFun [] TyInt), TypeBind "sys_remaining_ms" (TyFun [] TyInt), TypeBind "sys_sleep_ms" (TyFun [TyInt] TyUnit), TypeBind "sys_open_mode" (TyFun [TyString, TyString] TyInt), TypeBind "sys_open" (TyFun [TyString, TyInt, TyInt] TyInt), TypeBind "sys_close" (TyFun [TyInt] TyInt), TypeBind "sys_read_fd" (TyFun [TyInt, TyInt] TyString), TypeBind "sys_write_fd" (TyFun [TyInt, TyString] TyInt), TypeBind "sys_poll" (TyFun [TyInt, TyInt, TyInt] TyInt), TypeBind "sys_terminate" (TyFun [TyInt, TyBool] TyInt), TypeBind "sys_kill" (TyFun [TyInt, TyInt] TyInt), TypeBind "sys_call" (TyFun [TyInt, TyVariadic (TyVar "_int_or_u8")] TyInt), TypeBind "sys_pipe" (TyFun [] (TyTuple [TyInt, TyInt])), TypeBind "sys_waitpid" (TyFun [TyInt, TyInt] (TyTuple [TyInt, TyInt])), TypeBind "sys_username" (TyFun [TyInt] TyString), TypeBind "sys_user_groups" (TyFun [TyString] (TyList TyString)), TypeBind "sys_lookup_uid_gid" (TyFun [TyString] (TyTuple [TyInt, TyInt])), TypeBind "sys_setresgid" (TyFun [TyInt] TyInt), TypeBind "sys_setgroups" (TyFun [TyList TyInt] TyInt), TypeBind "sys_setresuid" (TyFun [TyInt] TyInt), TypeBind "sys_execve" (TyFun [TyString, TyList TyString, TyList TyString] TyInt), TypeBind "remove_file" (TyFun [TyString] TyInt), TypeBind "remove_dir" (TyFun [TyString] TyInt), TypeBind "rename_path" (TyFun [TyString, TyString] TyInt), TypeBind "net_connect" (TyFun [TyString, TyInt, TyInt] TyInt), TypeBind "net_listen" (TyFun [TyString, TyInt, TyInt] TyInt), TypeBind "net_accept" (TyFun [TyInt, TyInt] TyInt), TypeBind "net_send" (TyFun [TyInt, TyVar "_u8_data", TyInt] TyInt), TypeBind "net_recv_into" (TyFun [TyInt, u8 tensor ty, TyInt, TyInt, TyInt] TyInt), TypeBind "net_recv" (TyFun [TyInt, TyInt, TyInt] TyString), TypeBind "net_shutdown" (TyFun [TyInt, TyInt] TyInt), TypeBind "net_option" (TyFun [TyInt, TyString, TyInt] TyInt), TypeBind "net_local_port" (TyFun [TyInt] TyInt), TypeBind "net_peer_ip" (TyFun [TyInt] TyString), TypeBind "net_resolve" (TyFun [TyString] TyString), TypeBind "sys_read_pass" (TyFun [TyString] TyString), TypeBind "cmm_live_blocks" (TyFun [] TyInt), TypeBind "cmm_cond_spared" (TyFun [] TyInt), TypeBind "cmm_cond_freed" (TyFun [] TyInt), TypeBind "cmm_same_ptr" (TyFun [TyVar "A", TyVar "A"] TyBool)]
 
 fn :: join adt ret ty RType RType => RType
       join adt ret ty (TyVar a) (TyVar b)
@@ -676,11 +676,41 @@ fn :: hadamard op errs RBinOp (RType, [RTypeError]) RType RType String => RType 
 fn :: fuse check [RFuseTok] ([RType], [RTypeError]) String => RType [RTypeError]
       fuse check toks (tys, errs) fn_name =
         out = fuse out subs toks ""
-        fuse check done toks out (fuse result dims toks tys out) (fuse walk toks tys [TyVar "?"] fn_name []) errs fn_name
+        fuse check done toks out (fuse result dims toks tys out) (fuse walk toks tys [] [] (TyVar "?") fn_name []) (errs :: (fuse many kinds errs (fuse leaf classes toks tys []) fn_name)) fn_name
 
 fn :: fuse check done [RFuseTok] String [String] (RType, [RTypeError]) [RTypeError] String => RType [RTypeError]
       fuse check done toks out dims (elem, walk_errs) errs fn_name =
-        (fuse reduced ty (fuse reduces toks) elem (fuse results ty (TyTensor (fuse known elem elem) dims) (fuse outs toks 0)), errs :: (fuse fit errs toks out fn_name) :: walk_errs)
+        (fuse scattered ty (fuse scatters toks) (fuse reduced ty (fuse reduces toks) elem (fuse results ty (TyTensor (fuse known elem elem) dims) (fuse outs toks 0))), errs :: (fuse fit errs toks out fn_name) :: walk_errs)
+
+-- The kinds of the tensors of a program are kept for its first 20 (fuse.ll); the ones after must
+-- have the kind of the 20th.
+fn :: fuse leaf classes [RFuseTok] [RType] [String] => [String]
+      fuse leaf classes [] _ acc =  acc
+      fuse leaf classes ((FtTensor _):ts) ((TyTensor e _):tys) acc =  fuse leaf classes ts tys (acc :: [fuse elem class e])
+      fuse leaf classes (FtGather:ts) ((TyTensor e _):tys) acc =  fuse leaf classes ts tys (acc :: [fuse elem class e])
+      fuse leaf classes (FtScatter:ts) ((TyTensor e _):tys) acc =  fuse leaf classes ts tys (acc :: [fuse elem class e])
+      fuse leaf classes ((FtTensor _):ts) (_:tys) acc =  fuse leaf classes ts tys acc
+      fuse leaf classes (FtGather:ts) (_:tys) acc =  fuse leaf classes ts tys acc
+      fuse leaf classes (FtScatter:ts) (_:tys) acc =  fuse leaf classes ts tys acc
+      fuse leaf classes (FtScalar:ts) (_:tys) acc =  fuse leaf classes ts tys acc
+      fuse leaf classes (FtCount:ts) (_:tys) acc =  fuse leaf classes ts tys acc
+      fuse leaf classes ((FtStep _):ts) (_:tys) acc =  fuse leaf classes ts tys acc
+      fuse leaf classes (_:ts) tys acc =  fuse leaf classes ts tys acc
+
+fn :: fuse many kinds errs [String] String => [RTypeError]
+      fuse many kinds errs classes fn_name
+        | (list len classes) <= 20 = []
+        | fuse all class (list drop classes 20) (list nth or classes 19 "") = []
+        | otherwise = [TypeError fn_name "an element-wise expression with tensors of several element types reads at most 20 tensors; split it in two"]
+
+fn :: fuse all class [String] String => Bool
+      fuse all class [] _ =  True
+      fuse all class (c:cs) want =  c == want and (fuse all class cs want)
+
+-- `t_(index) = value` gives nothing.
+fn :: fuse scattered ty Bool RType => RType
+      fuse scattered ty True _ =  TyUnit
+      fuse scattered ty False res =  res
 
 -- `tensor sum`, `tensor min`, `tensor max`: a Real for tensors of Real, else an Int.
 fn :: fuse reduced ty Bool RType RType => RType
@@ -689,7 +719,8 @@ fn :: fuse reduced ty Bool RType RType => RType
       fuse reduced ty True _ _ =  TyInt
 
 fn :: fuse known elem RType => RType
-      fuse known elem (TyVar "?") =  tensor elem any
+      fuse known elem (TyVar v)
+        | (str starts with v "?") or (str starts with v "#") = tensor elem any
       fuse known elem e =  e
 
 -- A program with several results gives a tuple of tensors of the type of one result.
@@ -711,6 +742,8 @@ fn :: fuse result dims [RFuseTok] [RType] String => [String]
       fuse result dims (FtScalar:ts) (_:tys) out =  fuse result dims ts tys out
       fuse result dims (FtGather:ts) (_:tys) out =  fuse result dims ts tys out
       fuse result dims (FtCount:ts) (_:tys) out =  fuse result dims ts tys out
+      fuse result dims (FtScatter:ts) (_:tys) out =  fuse result dims ts tys out
+      fuse result dims ((FtStep _):ts) (_:tys) out =  fuse result dims ts tys out
       fuse result dims (_:ts) tys out =  fuse result dims ts tys out
       fuse result dims [] _ _ =  []
 
@@ -720,7 +753,8 @@ fn :: fuse fit errs [RFuseTok] String String => [RTypeError]
         | otherwise = [TypeError fn_name ("element-wise expression: every tensor needs the subscripts of the result (" + out + "), its first ones or its last ones")]
 
 -- The kind of number an element type is: "R" a Real, "N" an integer of 64 bits, the type name for the
--- packed ones, "?" not known yet, "" when it is not a number.
+-- packed ones, "" when it is not a number. A number that has not met a tensor yet is `?i` (an Int),
+-- `?r` (a Real) or `#n` (the integer n written in the expression).
 fn :: fuse elem class RType => String
       fuse elem class TyReal =  "R"
       fuse elem class TyInt =  "N"
@@ -728,58 +762,124 @@ fn :: fuse elem class RType => String
       fuse elem class (TyVar "U8") =  "U8"
       fuse elem class (TyVar "U16") =  "U16"
       fuse elem class (TyVar "U32") =  "U32"
-      fuse elem class (TyVar "?") =  "?"
       fuse elem class _ =  ""
 
--- The walk: `ctx` holds the element type of the expression being read, and under it those of the
--- expressions around it (an index opens one, `g` closes it). It gives the element type of the
--- whole expression and the errors.
-fn :: fuse walk [RFuseTok] [RType] [RType] String [RTypeError] => RType [RTypeError]
-      fuse walk [] _ (elem:_) _ errs =  (elem, errs)
-      fuse walk [] _ [] _ errs =  (TyVar "?", errs)
-      fuse walk ((FtTensor subs):ts) ((TyTensor e d):tys) (elem:ctx) fn_name errs
-        | (fuse elem class e) == "" = fuse walk ts tys ([elem] :: ctx) fn_name (errs :: [TypeError fn_name ("element-wise operator needs tensors of numbers, got a tensor of " + (rtype to str e))])
-        | (fuse elem class elem) == "?" = fuse walk ts tys ([e] :: ctx) fn_name errs
-        | (fuse elem class e) != (fuse elem class elem) = fuse walk ts tys ([elem] :: ctx) fn_name (errs :: [TypeError fn_name ("element-wise operators need tensors of the same element type, got " + (rtype to str (TyTensor e d)) + " with a tensor of " + (rtype to str elem))])
-        | otherwise = fuse walk ts tys ([elem] :: ctx) fn_name errs
-      fuse walk ((FtTensor subs):ts) (ty:tys) ctx fn_name errs =
-        fuse walk ts tys ctx fn_name (errs :: [TypeError fn_name ("subscripts '" + subs + "' need a tensor, got " + (rtype to str ty))])
-      fuse walk (FtScalar:ts) (ty:tys) (elem:ctx) fn_name errs
-        | (fuse elem class elem) == "R" and not (is real or poly ty) = fuse walk ts tys ([elem] :: ctx) fn_name (errs :: [TypeError fn_name ("element-wise operator on a tensor of Real needs a Real, got " + (rtype to str ty))])
-        | (fuse elem class elem) != "R" and (fuse elem class elem) != "?" and not (is int or poly ty) = fuse walk ts tys ([elem] :: ctx) fn_name (errs :: [TypeError fn_name ("element-wise operator on a tensor of integers needs an Int, got " + (rtype to str ty))])
-        | otherwise = fuse walk ts tys ([elem] :: ctx) fn_name errs
-      fuse walk ((FtConst n):ts) tys (elem:ctx) fn_name errs
-        | (fuse elem class elem) == "R" = fuse walk ts tys ([elem] :: ctx) fn_name (errs :: [TypeError fn_name ("element-wise operator on a tensor of Real needs a Real, got the Int " + (int to str n))])
-        | otherwise = fuse walk ts tys ([elem] :: ctx) fn_name errs
-      fuse walk ((FtOp id):ts) tys (elem:ctx) fn_name errs
-        | (fuse elem class elem) == "R" and id > 3 = fuse walk ts tys ([elem] :: ctx) fn_name (errs :: [TypeError fn_name ("element-wise operator " + (fuse op symbol id) + " needs tensors of integers, got a tensor of Real")])
-        | otherwise = fuse walk ts tys ([elem] :: ctx) fn_name errs
-      fuse walk (FtCount:ts) (ty:tys) ctx fn_name errs
-        | is int or poly ty = fuse walk ts tys ctx fn_name errs
-        | otherwise = fuse walk ts tys ctx fn_name (errs :: [TypeError fn_name ("the number of times a loop runs is an Int, got " + (rtype to str ty))])
-      fuse walk (FtIdx:ts) tys ctx fn_name errs =  fuse walk ts tys ([TyVar "?"] :: ctx) fn_name errs
-      fuse walk (FtGather:ts) ((TyTensor e d):tys) (idx:elem:ctx) fn_name errs =
-        fuse walk ts tys ([fuse gather elem e elem] :: ctx) fn_name (errs :: (fuse index errs idx fn_name) :: (fuse gather errs (TyTensor e d) elem fn_name))
-      fuse walk (FtGather:ts) (ty:tys) (_:ctx) fn_name errs =
-        fuse walk ts tys ctx fn_name (errs :: [TypeError fn_name ("an element-wise index needs a tensor to read, got " + (rtype to str ty))])
-      fuse walk (_:ts) tys ctx fn_name errs =  fuse walk ts tys ctx fn_name errs
+fn :: fuse is number RType => Bool
+      fuse is number (TyVar v) =  (str starts with v "?") or (str starts with v "#")
+      fuse is number _ =  False
 
-fn :: fuse gather elem RType RType => RType
-      fuse gather elem e (TyVar "?") =  e
-      fuse gather elem _ elem =  elem
+fn :: fuse number is real RType => Bool
+      fuse number is real (TyVar "?r") =  True
+      fuse number is real _ =  False
 
-fn :: fuse index errs RType String => [RTypeError]
-      fuse index errs idx fn_name
-        | (fuse elem class idx) == "R" = [TypeError fn_name "an element-wise index needs tensors of integers, got a tensor of Real"]
-        | (fuse elem class idx) == "?" = [TypeError fn_name "an element-wise index needs a tensor read, as in t_(p_i)"]
+fn :: fuse number text RType => String
+      fuse number text (TyVar v)
+        | str starts with v "#" = "the Int " + (str slice v 1 (str len v))
+        | v == "?r" = "Real"
+      fuse number text _ =  "Int"
+
+-- The walk: `stack` holds the element type of each value, the last first (FR-COMP-031). `vals`
+-- are the values set by `w`; `res` the element type of the first result (`?`: none yet). It gives
+-- the element type of what the expression gives, and the errors.
+fn :: fuse walk [RFuseTok] [RType] [RType] [(Int, RType)] RType String [RTypeError] => RType [RTypeError]
+      fuse walk [] _ stack _ res _ errs =  (fuse walk result res stack, errs)
+      fuse walk ((FtTensor subs):ts) ((TyTensor e d):tys) stack vals res fn_name errs
+        | (fuse elem class e) == "" = fuse walk ts tys ([e] :: stack) vals res fn_name (errs :: [TypeError fn_name ("element-wise operator needs tensors of numbers, got a tensor of " + (rtype to str e))])
+        | otherwise = fuse walk ts tys ([e] :: stack) vals res fn_name errs
+      fuse walk ((FtTensor subs):ts) (ty:tys) stack vals res fn_name errs =
+        fuse walk ts tys ([TyInt] :: stack) vals res fn_name (errs :: [TypeError fn_name ("subscripts '" + subs + "' need a tensor, got " + (rtype to str ty))])
+      fuse walk (FtScalar:ts) (ty:tys) stack vals res fn_name errs
+        | is int or poly ty = fuse walk ts tys ([TyVar "?i"] :: stack) vals res fn_name errs
+        | is real or poly ty = fuse walk ts tys ([TyVar "?r"] :: stack) vals res fn_name errs
+        | otherwise = fuse walk ts tys ([TyVar "?i"] :: stack) vals res fn_name (errs :: [TypeError fn_name ("element-wise operators take tensors and numbers, got " + (rtype to str ty))])
+      fuse walk ((FtConst n):ts) tys stack vals res fn_name errs =
+        fuse walk ts tys ([TyVar ("#" + (int to str n))] :: stack) vals res fn_name errs
+      fuse walk ((FtOp id):ts) tys (b:a:stack) vals res fn_name errs =
+        fuse walk ts tys ([fuse op elem a b] :: stack) vals res fn_name (errs :: (fuse op errs id a b fn_name))
+      fuse walk (FtGather:ts) ((TyTensor e d):tys) (idx:stack) vals res fn_name errs
+        | (fuse elem class e) == "" = fuse walk ts tys ([e] :: stack) vals res fn_name (errs :: [TypeError fn_name ("element-wise operator needs tensors of numbers, got a tensor of " + (rtype to str e))])
+        | (fuse elem class idx) == "R" or (fuse number is real idx) = fuse walk ts tys ([e] :: stack) vals res fn_name (errs :: [TypeError fn_name "an element-wise index needs tensors of integers, got a tensor of Real"])
+        | otherwise = fuse walk ts tys ([e] :: stack) vals res fn_name errs
+      fuse walk (FtGather:ts) (ty:tys) (_:stack) vals res fn_name errs =
+        fuse walk ts tys ([TyInt] :: stack) vals res fn_name (errs :: [TypeError fn_name ("an element-wise index needs a tensor to read, got " + (rtype to str ty))])
+      fuse walk (FtScatter:ts) ((TyTensor e d):tys) (idx:val:stack) vals res fn_name errs
+        | (fuse elem class e) == "" = fuse walk ts tys stack vals res fn_name (errs :: [TypeError fn_name ("element-wise operator needs tensors of numbers, got a tensor of " + (rtype to str e))])
+        | (fuse elem class idx) == "R" or (fuse number is real idx) = fuse walk ts tys stack vals res fn_name (errs :: [TypeError fn_name "an element-wise index needs tensors of integers, got a tensor of Real"])
+        | fuse is number val = fuse walk ts tys stack vals res fn_name (errs :: (fuse number errs e val fn_name))
+        | (fuse elem class val) != (fuse elem class e) = fuse walk ts tys stack vals res fn_name (errs :: [TypeError fn_name ("cannot store elements of " + (rtype to str val) + " in a tensor of " + (rtype to str e) + " by index")])
+        | otherwise = fuse walk ts tys stack vals res fn_name errs
+      fuse walk (FtScatter:ts) (ty:tys) (_:_:stack) vals res fn_name errs =
+        fuse walk ts tys stack vals res fn_name (errs :: [TypeError fn_name ("an element-wise index needs a tensor to write, got " + (rtype to str ty))])
+      fuse walk ((FtKind d):ts) tys (a:stack) vals res fn_name errs
+        | (fuse elem class a) == "R" or (fuse number is real a) = fuse walk ts tys ([fuse kind elem d] :: stack) vals res fn_name (errs :: [TypeError fn_name ("'as " + (rtype to str (fuse kind elem d)) + "' takes integers, got a Real")])
+        | otherwise = fuse walk ts tys ([fuse kind elem d] :: stack) vals res fn_name errs
+      fuse walk ((FtSet k):ts) tys (a:stack) vals res fn_name errs =  fuse walk ts tys stack ([(k, a)] :: vals) res fn_name errs
+      fuse walk ((FtGet k):ts) tys stack vals res fn_name errs =  fuse walk ts tys ([fuse val elem vals k] :: stack) vals res fn_name errs
+      fuse walk (FtOut:ts) tys (a:stack) vals res fn_name errs =  fuse walk ts tys stack vals (fuse first res res a) fn_name errs
+      fuse walk ((FtReduce _):ts) tys (a:stack) vals res fn_name errs =  fuse walk ts tys stack vals (fuse first res res a) fn_name errs
+      fuse walk ((FtStep _):ts) (ty:tys) stack vals res fn_name errs
+        | is int or poly ty = fuse walk ts tys ([TyVar "?i"] :: stack) vals res fn_name errs
+        | otherwise = fuse walk ts tys ([TyVar "?i"] :: stack) vals res fn_name (errs :: [TypeError fn_name ("a number that moves each time a loop runs is an Int, got " + (rtype to str ty))])
+      fuse walk (FtCount:ts) (ty:tys) stack vals res fn_name errs
+        | is int or poly ty = fuse walk ts tys stack vals res fn_name errs
+        | otherwise = fuse walk ts tys stack vals res fn_name (errs :: [TypeError fn_name ("the number of times a loop runs is an Int, got " + (rtype to str ty))])
+      fuse walk (_:ts) tys stack vals res fn_name errs =  fuse walk ts tys stack vals res fn_name errs
+
+fn :: fuse first res RType RType => RType
+      fuse first res (TyVar "?") a =  a
+      fuse first res res _ =  res
+
+fn :: fuse walk result RType [RType] => RType
+      fuse walk result (TyVar "?") (top:_) =  fuse number as elem top
+      fuse walk result (TyVar "?") [] =  TyVar "?"
+      fuse walk result res _ =  fuse number as elem res
+
+-- A number that met no tensor is an Int or a Real.
+fn :: fuse number as elem RType => RType
+      fuse number as elem (TyVar "?r") =  TyReal
+      fuse number as elem e
+        | fuse is number e = TyInt
+        | otherwise = e
+
+-- The element type of the result of an operator: that of the operand that is not a plain number.
+fn :: fuse op elem RType RType => RType
+      fuse op elem a b
+        | fuse is number a = b
+        | otherwise = a
+
+fn :: fuse op errs Int RType RType String => [RTypeError]
+      fuse op errs id a b fn_name
+        | (fuse is number a) and (fuse is number b) = fuse op real errs id ((fuse number is real a) or (fuse number is real b)) fn_name
+        | fuse is number a = (fuse number errs b a fn_name) :: (fuse op real errs id ((fuse elem class b) == "R") fn_name)
+        | fuse is number b = (fuse number errs a b fn_name) :: (fuse op real errs id ((fuse elem class a) == "R") fn_name)
+        | (fuse elem class a) != (fuse elem class b) and (fuse elem class a) != "" and (fuse elem class b) != "" = [TypeError fn_name ("element-wise operators need tensors of the same element type, got a tensor of " + (rtype to str a) + " with a tensor of " + (rtype to str b) + "; 'as " + (rtype to str a) + "' changes the width of integers")]
+        | otherwise = fuse op real errs id ((fuse elem class a) == "R") fn_name
+
+fn :: fuse op real errs Int Bool String => [RTypeError]
+      fuse op real errs id True fn_name
+        | id > 3 = [TypeError fn_name ("element-wise operator " + (fuse op symbol id) + " needs tensors of integers, got a tensor of Real")]
+      fuse op real errs _ _ _ =  []
+
+-- A number with a tensor: a Real for tensors of Real, an Int for the others.
+fn :: fuse number errs RType RType String => [RTypeError]
+      fuse number errs elem num fn_name
+        | (fuse elem class elem) == "R" and not (fuse number is real num) = [TypeError fn_name ("element-wise operator on a tensor of Real needs a Real, got " + (fuse number text num))]
+        | (fuse elem class elem) != "R" and (fuse number is real num) = [TypeError fn_name "element-wise operator on a tensor of integers needs an Int, got Real"]
         | otherwise = []
 
-fn :: fuse gather errs RType RType String => [RTypeError]
-      fuse gather errs (TyTensor e d) elem fn_name
-        | (fuse elem class e) == "" = [TypeError fn_name ("element-wise operator needs tensors of numbers, got a tensor of " + (rtype to str e))]
-        | (fuse elem class elem) != "?" and (fuse elem class e) != (fuse elem class elem) = [TypeError fn_name ("element-wise operators need tensors of the same element type, got " + (rtype to str (TyTensor e d)) + " with a tensor of " + (rtype to str elem))]
-        | otherwise = []
-      fuse gather errs _ _ _ =  []
+-- The element type `as U8` and the like give (the digit of the kind: fuse.ll).
+fn :: fuse kind elem Int => RType
+      fuse kind elem 3 =  TyVar "U8"
+      fuse kind elem 4 =  TyVar "U16"
+      fuse kind elem 5 =  TyVar "U32"
+      fuse kind elem _ =  TyInt
+
+-- The element type of a value set by `w` (not known: a number).
+fn :: fuse val elem [(Int, RType)] Int => RType
+      fuse val elem [] _ =  TyVar "?i"
+      fuse val elem ((k, e):vs) want
+        | k == want = e
+        | otherwise = fuse val elem vs want
 
 fn :: fuse op symbol Int => String
       fuse op symbol 4 =  "%"
@@ -1241,6 +1341,8 @@ fn :: check expr RExpr String [RTypeBind] [RTypeBind] => RType [RTypeError]
       check expr (EEinsum es subs) fn_name locals fns =
         e_res = check einsum terms es subs fn_name locals fns []
         finish einsum check (einsum elem es fn_name locals fns) e_res
+      check expr (ECall ":tbl:" (e:[])) fn_name locals fns =
+        check expr e fn_name locals fns
       check expr (ECall ":fuse:" ((EStr code):leaves)) fn_name locals fns =
         fuse check (fuse toks code) (check expr list leaves fn_name locals fns) fn_name
       check expr (EHadamard bop l _ r _) fn_name locals fns =
@@ -1278,6 +1380,8 @@ fn :: check expr RExpr String [RTypeBind] [RTypeBind] => RType [RTypeError]
         discard tys return (TyTensor (tensor elem any) []) (check expr list args fn_name locals fns)
       check expr (ECall "tensor_from_list" (xs:[])) fn_name locals fns =
         tensor from list result (check expr xs fn_name locals fns) fn_name
+      check expr (ECall name (a:b:c:d:[])) fn_name locals fns
+        | (word builtin bits name) > 0 = with u8 call fact fn_name name (word builtin result name (word builtin bits name) (check expr list [a, b, c, d] fn_name locals fns) fn_name)
       check expr (ECall "tensor_bytes" (t:[])) fn_name locals fns =
         t_res = check expr t fn_name locals fns
         with u8 use errs fn_name t (fst ty t_res) (with u8 call fact fn_name "tensor_bytes" (tensor bytes result t_res fn_name))
@@ -2559,6 +2663,53 @@ fn :: tensor from list result (RType, [RTypeError]) String => RType [RTypeError]
       tensor from list result ((TyList (TyVar "_empty")), errs) _ =  (TyTensor (tensor elem any) [], errs)
       tensor from list result ((TyList e), errs) _ =  (TyTensor e [], errs)
       tensor from list result (t, errs) fn_name =  (TyTensor (tensor elem any) [], errs :: [TypeError fn_name ("tensor from list expects a list, got " + (rtype to str t))])
+
+-- Words in a tensor of bytes (FR-COMP-031): `tensor put le32 dst off stride src` and
+-- `tensor get be64 src off stride n`. The bits of the word, 0 for another name.
+fn :: word builtin bits String => Int
+      word builtin bits "tensor_put_le16" =  16
+      word builtin bits "tensor_put_le32" =  32
+      word builtin bits "tensor_put_le64" =  64
+      word builtin bits "tensor_put_be16" =  16
+      word builtin bits "tensor_put_be32" =  32
+      word builtin bits "tensor_put_be64" =  64
+      word builtin bits "tensor_get_le16" =  16
+      word builtin bits "tensor_get_le32" =  32
+      word builtin bits "tensor_get_le64" =  64
+      word builtin bits "tensor_get_be16" =  16
+      word builtin bits "tensor_get_be32" =  32
+      word builtin bits "tensor_get_be64" =  64
+      word builtin bits _ =  0
+
+fn :: word elem ty Int => RType
+      word elem ty 16 =  TyVar "U16"
+      word elem ty 32 =  TyVar "U32"
+      word elem ty _ =  TyInt
+
+fn :: word builtin result String Int ([RType], [RTypeError]) String => RType [RTypeError]
+      word builtin result name bits ((bytes:off:stride:last:[]), errs) fn_name
+        | str starts with name "tensor_put_" = (TyUnit, errs :: (word bytes errs name bytes fn_name) :: (word int errs name off fn_name) :: (word int errs name stride fn_name) :: (word src errs name bits last fn_name))
+        | otherwise = (TyTensor (word elem ty bits) [], errs :: (word bytes errs name bytes fn_name) :: (word int errs name off fn_name) :: (word int errs name stride fn_name) :: (word int errs name last fn_name))
+      word builtin result _ bits (_, errs) _ =  (TyTensor (word elem ty bits) [], errs)
+
+fn :: word shown name String => String
+      word shown name name =  decode literal underscores (shown fn name loop name 0 (str len name) "")
+
+fn :: word bytes errs String RType String => [RTypeError]
+      word bytes errs name t fn_name
+        | is u8 tensor t = []
+        | otherwise = [TypeError fn_name ((word shown name name) + " works on the bytes of a Tensor[U8], got " + (rtype to str t))]
+
+fn :: word int errs String RType String => [RTypeError]
+      word int errs name t fn_name
+        | is int or poly t = []
+        | otherwise = [TypeError fn_name ((word shown name name) + " takes Ints for the place, the step and the number of words, got " + (rtype to str t))]
+
+fn :: word src errs String Int RType String => [RTypeError]
+      word src errs name bits (TyTensor e d) fn_name
+        | (fuse elem class e) == (fuse elem class (word elem ty bits)) = []
+        | otherwise = [TypeError fn_name ((word shown name name) + " takes a tensor of " + (rtype to str (word elem ty bits)) + ", got " + (rtype to str (TyTensor e d)))]
+      word src errs name bits t fn_name =  [TypeError fn_name ((word shown name name) + " takes a tensor of " + (rtype to str (word elem ty bits)) + ", got " + (rtype to str t))]
 
 -- Bytes and words, and tensors side by side (FR-COMP-031).
 fn :: tensor bytes result (RType, [RTypeError]) String => RType [RTypeError]

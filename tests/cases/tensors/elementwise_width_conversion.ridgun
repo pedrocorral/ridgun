@@ -1,0 +1,45 @@
+-- @tests TS-COMP-031
+-- case: e as U8, as U16, as U32, as U64 change the width of integers inside an element-wise expression (tensors of two element types in one expression) and of plain Ints
+-- source: FR-COMP-031 AC-22
+-- expect-output:
+--   low byte Tensor(shape=[3], data=[187, 34, 0])
+--   second byte Tensor(shape=[3], data=[204, 51, 254])
+--   bytes widened Tensor(shape=[3], data=[2434937668, 716950749, 2147484159])
+--   to 64 bits Tensor(shape=[3], data=[1234605615003729920, -6144092017057071104, 2194728288256])
+--   two dimensions Tensor(shape=[2, 2], data=[35, 35, 35, 35])
+--   plain numbers: 255 4464 4294967295 511
+
+fn :: low byte Tensor[U8 * n] Tensor[U32 * n] => Tensor[U8 * n]
+      low byte msg w =  msg_i xor (w_i as U8)
+
+fn :: second byte Tensor[U8 * n] Tensor[U32 * n] => Tensor[U8 * n]
+      second byte msg w =  msg_i xor ((w_i shr 8) as U8)
+
+fn :: widen Tensor[U8 * n] Tensor[U32 * n] => Tensor[U32 * n]
+      widen b w =  ((b_i as U32) shl 24) + w_i
+
+fn :: to words Tensor[U32 * n] => Tensor[U64 * n]
+      to words w =  (w_i as U64) * 4294967296
+
+fn :: grid Tensor[U16 * r * c] => Tensor[U8 * r * c]
+      grid t =  (t_ij shr 4) as U8
+
+fn :: main => ()
+      main =
+        msg = Tensor[U8 * 3] with 0xFF
+        w = Tensor[U32 * 3]
+        w_(0) = 0x11223344
+        w_(1) = 0xAABBCCDD
+        w_(2) = 0x000001FF
+        echo "low byte" (low byte msg w)
+        echo "second byte" (second byte msg w)
+        b = Tensor[U8 * 3] with 0x80
+        x = widen b w
+        echo "bytes widened" x
+        y = to words w
+        echo "to 64 bits" y
+        g = Tensor[U16 * 2 * 2] with 0x1234
+        z = grid g
+        echo "two dimensions" z
+        n = 0x1FF
+        echo "plain numbers: {n as U8} {70000 as U16} {(0 - 1) as U32} {n as U64}"

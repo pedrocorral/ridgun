@@ -1,0 +1,17 @@
+-- @tests TS-COMP-031
+-- case: writing by index outside the tensor, in an element-wise statement, stops the program
+-- source: FR-COMP-031 AC-23
+-- expect-output:
+--   runtime error: tensor index out of range
+-- expect-exit: 1
+
+fn :: spread Tensor[U64 * m] Tensor[U64 * n] => ()
+      spread q p =
+        q_(p_i) = 1
+
+fn :: main => ()
+      main =
+        q = Tensor[U64 * 4]
+        p = Tensor[U64 * 2] with 4
+        spread q p
+        echo q

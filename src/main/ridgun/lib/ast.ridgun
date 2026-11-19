@@ -188,12 +188,17 @@ fn :: where map exprs one RWhereBind (RExpr => RExpr) => RWhereBind
 --             `tensor min`, 30; `tensor max`, 31)
 --   f<k>      after `o`: that result is what leaf k holds the next time round
 --   n         the next leaf is a number: the program runs that many times (`fuse repeat`, parser)
+--   v<c>      the next leaf: a number that moves by c each time the program runs
+--   k<d>      `e as U8`: the value on top as an integer of another width (d: 1 64 bits, 3 U8,
+--             4 U16, 5 U32): cut to it, or widened with zeros
+--   y         `t_(index) = value`, the last token: under the index on top is the value; the next
+--             leaf, a tensor, gets that value at that index. The program gives nothing.
 --   b ... g   `t_(index)`: the tokens between are the index; `g` takes the next leaf, a tensor, and
 --             gives its element at that index (the tensors of the index may be of another type)
 -- A program with `o` gives a tuple of tensors, one for each `o`.
 -- Leaves are taken in the order of their tokens. The parser builds the node, the type checker types
 -- it, lowering finds the element kind of each tensor and every back end reads the same text.
-type RFuseTok = FtTensor String | FtScalar | FtConst Int | FtOp Int | FtSet Int | FtGet Int | FtOut | FtIdx | FtGather | FtReduce Int | FtFeed Int | FtCount
+type RFuseTok = FtTensor String | FtScalar | FtConst Int | FtOp Int | FtSet Int | FtGet Int | FtOut | FtIdx | FtGather | FtReduce Int | FtFeed Int | FtCount | FtStep Int | FtKind Int | FtScatter
 
 fn :: fuse toks String => [RFuseTok]
       fuse toks code =  fuse toks loop code 0 0 (str len code) []
@@ -218,6 +223,9 @@ fn :: fuse tok String => RFuseTok
         | (str char at s 0) == 114 = FtReduce (fuse int s 1)
         | (str char at s 0) == 102 = FtFeed (fuse int s 1)
         | (str char at s 0) == 110 = FtCount
+        | (str char at s 0) == 118 = FtStep (fuse int s 1)
+        | (str char at s 0) == 107 = FtKind (fuse int s 1)
+        | (str char at s 0) == 121 = FtScatter
         | otherwise = FtOp (fuse int s 1)
 
 fn :: fuse int String Int => Int
@@ -308,6 +316,14 @@ fn :: fuse rt tok RFuseTok String => String
       fuse rt tok (FtReduce id) _ =  "r" + (int to str id)
       fuse rt tok (FtFeed k) _ =  "f" + (int to str k)
       fuse rt tok FtCount _ =  "n"
+      fuse rt tok (FtStep c) _ =  "v" + (int to str c)
+      fuse rt tok (FtKind d) _ =  "k" + (int to str d)
+      fuse rt tok FtScatter _ =  "y"
+
+fn :: fuse scatters [RFuseTok] => Bool
+      fuse scatters [] =  False
+      fuse scatters (FtScatter:_) =  True
+      fuse scatters (_:ts) =  fuse scatters ts
 
 fn :: fuse reduces [RFuseTok] => Bool
       fuse reduces [] =  False

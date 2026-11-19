@@ -1,0 +1,46 @@
+-- @tests TS-COMP-031
+-- case: twelve statements that read two tables of different element types by index: a loop with tensors of several types does not grow past 20 tensors, and the result is that of the statements one by one
+-- source: FR-COMP-031 AC-24
+-- expect-output:
+--   Tensor(shape=[3], data=[544831, 463215, 766007])
+
+-- twelve statements, each reads a table of bytes and a table of words by index: 24 tensors of two
+-- element types besides the three it reads element by element
+fn :: load Tensor[U64 * n] Tensor[U8 * m] Tensor[U64 * k] => Tensor[U64 * n]
+      load at msg wide =
+        s0 = at_i + (wide_(msg_(at_i + 0)) shl 0)
+        s1 = s0_i + (wide_(msg_(at_i + 1)) shl 1)
+        s2 = s1_i + (wide_(msg_(at_i + 2)) shl 2)
+        s3 = s2_i + (wide_(msg_(at_i + 3)) shl 3)
+        s4 = s3_i + (wide_(msg_(at_i + 4)) shl 4)
+        s5 = s4_i + (wide_(msg_(at_i + 5)) shl 5)
+        s6 = s5_i + (wide_(msg_(at_i + 6)) shl 6)
+        s7 = s6_i + (wide_(msg_(at_i + 7)) shl 7)
+        s8 = s7_i + (wide_(msg_(at_i + 8)) shl 8)
+        s9 = s8_i + (wide_(msg_(at_i + 9)) shl 9)
+        s10 = s9_i + (wide_(msg_(at_i + 10)) shl 10)
+        s11 = s10_i + (wide_(msg_(at_i + 11)) shl 11)
+        s11
+
+fn :: fill Tensor[U8 * n] Int Int => Tensor[U8 * n]
+      fill t i n
+        | i >= n = t
+        | otherwise =
+          t_(i) = (i * 37 + 11) % 256
+          fill t (i + 1) n
+
+fn :: same as itself Tensor[U64 * n] Int Int => Tensor[U64 * n]
+      same as itself t i n
+        | i >= n = t
+        | otherwise =
+          t_(i) = i
+          same as itself t (i + 1) n
+
+fn :: main => ()
+      main =
+        msg = fill (Tensor[U8 * 64]) 0 64
+        wide = same as itself (Tensor[U64 * 256]) 0 256
+        at = Tensor[U64 * 3]
+        at_(1) = 20
+        at_(2) = 50
+        echo (load at msg wide)

@@ -726,6 +726,13 @@ fn :: build str expr String => RExpr
 
 -- ── Expression Parsing (Precedence Climbing) ────────────────
 
+-- The tokens start one more argument of a call. `as U8` (and the other widths) after a value is
+-- not one: it is the conversion (`x as U8`); `as` alone stays a plain name.
+fn :: starts an argument [RToken] => Bool
+      starts an argument ((TokIdent "as"):(TokIdent ty):_)
+        | (fuse width digit ty) > 0 = False
+      starts an argument ts =  is atom tok (tok head ts)
+
 fn :: is atom tok RToken        => Bool
       is atom tok (TokInt _)    =  True
       is atom tok (TokBadInt _) =  True
@@ -953,6 +960,43 @@ fn :: fuse operand RExpr => String [RExpr]
         | is fuse read idx = fuse index operand base (fuse operand idx)
       fuse operand e =  ("s", [e])
 
+-- `e as U8`, `e as U16`, `e as U32`, `e as U64` (FR-COMP-031): an integer at another width. In an
+-- element-wise expression it is a token of the program; on a plain Int, the low bits.
+fn :: fuse width digit String => Int
+      fuse width digit "U8" =  3
+      fuse width digit "Byte" =  3
+      fuse width digit "U16" =  4
+      fuse width digit "U32" =  5
+      fuse width digit "U64" =  1
+      fuse width digit "Int" =  1
+      fuse width digit _ =  0
+
+fn :: fuse as node RExpr String => RExpr
+      fuse as node e ty
+        | is fuse read e = fuse as wrap (fuse operand e) ty
+        | otherwise = ECall ":as:" [EStr ty, e]
+
+fn :: fuse as wrap (String, [RExpr]) String => RExpr
+      fuse as wrap (code, leaves) ty =  ECall ":fuse:" ([EStr (code + " k" + (int to str (fuse width digit ty)))] :: leaves)
+
+-- What was not a tensor read after all: a plain Int.
+fn :: fuse as number RExpr String => RExpr
+      fuse as number e "U8" =  EBin OpAnd e (EInt 255)
+      fuse as number e "Byte" =  EBin OpAnd e (EInt 255)
+      fuse as number e "U16" =  EBin OpAnd e (EInt 65535)
+      fuse as number e "U32" =  EBin OpAnd e (EInt 4294967295)
+      fuse as number e _ =  e
+
+-- `t_(index) = value` with an element-wise index (FR-COMP-031): each element writes its value at
+-- its index of `t`, in the order of the elements (the last one wins a place two of them name).
+fn :: fuse scatter stmt RStmt => RStmt
+      fuse scatter stmt (StmtIndexAssign t (idx:[]) e)
+        | is fuse read idx = StmtExpr (fuse scatter node t (fuse operand e) (fuse operand idx))
+      fuse scatter stmt stmt =  stmt
+
+fn :: fuse scatter node String (String, [RExpr]) (String, [RExpr]) => RExpr
+      fuse scatter node t (vc, vl) (ic, il) =  ECall ":fuse:" ([EStr (vc + " " + ic + " y")] :: vl :: il :: [ECall ":tbl:" [EVar t]])
+
 -- `t_(index)` with an element-wise index: the index, then the tensor it reads.
 fn :: fuse index operand String (String, [RExpr]) => String [RExpr]
       fuse index operand base (code, leaves) =  ("b " + code + " g", leaves :: [EVar base])
@@ -991,6 +1035,9 @@ fn :: fuse late node RExpr => RExpr
       fuse late node (ECall ":fuse:" ((EStr code):leaves)) =  fuse late leaves (fuse toks code) leaves "" []
       fuse late node (EIndex (EVar base) (idx:[]))
         | is fuse read idx = fuse index node (EVar base) idx
+      fuse late node (ECall ":as:" ((EStr ty):arg:[]))
+        | is fuse read arg = fuse as wrap (fuse operand arg) ty
+        | otherwise = fuse as number arg ty
       fuse late node (ECall "tensor_sum" (arg:[])) =  fuse reduce node 0 (fuse reduce operand arg)
       fuse late node (ECall "tensor_min" (arg:[])) =  fuse reduce node 30 (fuse reduce operand arg)
       fuse late node (ECall "tensor_max" (arg:[])) =  fuse reduce node 31 (fuse reduce operand arg)
@@ -1016,6 +1063,9 @@ fn :: fuse late leaves [RFuseTok] [RExpr] String [RExpr] => RExpr
       fuse late leaves (FtGather:ts) (leaf:ls) code acc =  fuse late leaves ts ls (fuse code add code "g") (acc :: [leaf])
       fuse late leaves (FtIdx:ts) ls code acc =  fuse late leaves ts ls (fuse code add code "b") acc
       fuse late leaves ((FtFeed k):ts) ls code acc =  fuse late leaves ts ls (fuse code add code ("f" + (int to str k))) acc
+      fuse late leaves (FtScatter:ts) (leaf:ls) code acc =  fuse late leaves ts ls (fuse code add code "y") (acc :: [leaf])
+      fuse late leaves ((FtKind d):ts) ls code acc =  fuse late leaves ts ls (fuse code add code ("k" + (int to str d))) acc
+      fuse late leaves ((FtStep c):ts) (leaf:ls) code acc =  fuse late leaves ts ls (fuse code add code ("v" + (int to str c))) (acc :: [leaf])
       fuse late leaves (FtCount:ts) (leaf:ls) code acc =  fuse late leaves ts ls (fuse code add code "n") (acc :: [leaf])
       fuse late leaves ((FtReduce id):ts) ls code acc =  fuse late leaves ts ls (fuse code add code ("r" + (int to str id))) acc
       fuse late leaves ((FtConst n):ts) ls code acc =  fuse late leaves ts ls (fuse code add code ("c" + (int to str n))) acc
@@ -1060,11 +1110,44 @@ fn :: fuse param kinds [String] [RPattern] [(String, String)] => [(String, Strin
 
 -- The element type of what an expression gives, when the text says it.
 fn :: fuse expr kind [(String, String)] RExpr => String
-      fuse expr kind kinds (ECall ":fuse:" ((EStr code):leaves)) =  fuse leaves one kind kinds (fuse toks code) leaves "?"
+      fuse expr kind kinds (ECall ":fuse:" ((EStr code):leaves)) =  fuse stmt kind kinds (fuse toks code) leaves []
       fuse expr kind _ (ECall ":typed-tensor:" ((EStr ty):_))
         | ty == "Byte" = "U8"
         | otherwise = ty
       fuse expr kind _ _ =  ""
+
+-- The element type of the tensor a fused expression gives, found by following the types of its
+-- values ("?" a number); "" when a tensor it reads is not known, or it gives something else (one
+-- number, several results). The tensors of an index may have another type.
+fn :: fuse stmt kind [(String, String)] [RFuseTok] [RExpr] [String] => String
+      fuse stmt kind _ [] _ (top:[]) =  fuse known kind top
+      fuse stmt kind _ [] _ _ =  ""
+      fuse stmt kind kinds ((FtTensor _):ts) ((EVar v):ls) stack =  fuse stmt kind next kinds ts ls stack (fuse kind of kinds v)
+      fuse stmt kind kinds (FtScalar:ts) (_:ls) stack =  fuse stmt kind kinds ts ls (["?"] :: stack)
+      fuse stmt kind kinds ((FtConst _):ts) ls stack =  fuse stmt kind kinds ts ls (["?"] :: stack)
+      fuse stmt kind kinds ((FtOp _):ts) ls (b:a:stack) =  fuse stmt kind kinds ts ls ([fuse kind of pair a b] :: stack)
+      fuse stmt kind kinds (FtIdx:ts) ls stack =  fuse stmt kind kinds ts ls stack
+      fuse stmt kind kinds ((FtKind d):ts) ls (_:stack) =  fuse stmt kind kinds ts ls ([fuse width name d] :: stack)
+      fuse stmt kind kinds (FtGather:ts) ((EVar v):ls) (_:stack) =  fuse stmt kind next kinds ts ls stack (fuse kind of kinds v)
+      fuse stmt kind _ _ _ _ =  ""
+
+fn :: fuse stmt kind next [(String, String)] [RFuseTok] [RExpr] [String] String => String
+      fuse stmt kind next _ _ _ _ "" =  ""
+      fuse stmt kind next kinds ts ls stack k =  fuse stmt kind kinds ts ls ([k] :: stack)
+
+fn :: fuse width name Int => String
+      fuse width name 3 =  "U8"
+      fuse width name 4 =  "U16"
+      fuse width name 5 =  "U32"
+      fuse width name _ =  "U64"
+
+fn :: fuse kind of pair String String => String
+      fuse kind of pair "?" b =  b
+      fuse kind of pair a _ =  a
+
+fn :: fuse known kind String => String
+      fuse known kind "?" =  ""
+      fuse known kind k =  k
 
 -- The one element type of the tensors a program reads; "" when one is not known or two differ.
 fn :: fuse leaves one kind [(String, String)] [RFuseTok] [RExpr] String => String
@@ -1113,16 +1196,18 @@ fn :: fuse all same subs [RFuseTok] String => Bool
       fuse all same subs ((FtSet _):_) _ =  False
       fuse all same subs ((FtGet _):_) _ =  False
       fuse all same subs (FtOut:_) _ =  False
-      fuse all same subs (FtGather:_) _ =  False
       fuse all same subs ((FtReduce _):_) _ =  False
+      fuse all same subs (FtScatter:_) _ =  False
       fuse all same subs (FtCount:_) _ =  False
       fuse all same subs (_:ts) out =  fuse all same subs ts out
 
--- A number a statement reads must not come from the statements already in the loop.
+-- A number a statement reads, and a tensor it reads by index, must not come from the statements
+-- already in the loop.
 fn :: fuse scalars free [RFuseTok] [RExpr] [String] => Bool
       fuse scalars free [] _ _ =  True
       fuse scalars free ((FtTensor _):ts) (_:ls) vars =  fuse scalars free ts ls vars
       fuse scalars free (FtScalar:ts) (leaf:ls) vars =  (not (fuse expr mentions any leaf vars)) and (fuse scalars free ts ls vars)
+      fuse scalars free (FtGather:ts) (leaf:ls) vars =  (not (fuse expr mentions any leaf vars)) and (fuse scalars free ts ls vars)
       fuse scalars free (_:ts) ls vars =  fuse scalars free ts ls vars
 
 fn :: fuse expr mentions any RExpr [String] => Bool
@@ -1152,9 +1237,36 @@ fn :: fuse take run [(String, String)] [RStmt] String String [String] [RStmt] =>
       fuse take run kinds (stmt:rest) kind out vars run =
         fuse take run next kinds stmt rest kind out vars run (fuse stmt joins kinds stmt vars)
 
+-- The kinds of the tensors of a program are kept for its first 20 (fuse.ll): a loop whose
+-- tensors may be of several element types (it reads by index, or changes a width) stops growing
+-- there. `fuse run reads`: the tensor reads of the statements (no fewer than its tensors).
+fn :: fuse reads [RFuseTok] Int => Int
+      fuse reads [] n =  n
+      fuse reads ((FtTensor _):ts) n =  fuse reads ts (n + 1)
+      fuse reads (FtGather:ts) n =  fuse reads ts (n + 1)
+      fuse reads (_:ts) n =  fuse reads ts n
+
+fn :: fuse mixes [RFuseTok] => Bool
+      fuse mixes [] =  False
+      fuse mixes (FtGather:_) =  True
+      fuse mixes ((FtKind _):_) =  True
+      fuse mixes (_:ts) =  fuse mixes ts
+
+fn :: fuse run reads [RStmt] Int => Int
+      fuse run reads [] n =  n
+      fuse run reads (stmt:ss) n =  fuse run reads ss (fuse reads (fuse toks (fuse stmt code stmt)) n)
+
+fn :: fuse run mixes [RStmt] => Bool
+      fuse run mixes [] =  False
+      fuse run mixes (stmt:ss) =  (fuse mixes (fuse toks (fuse stmt code stmt))) or (fuse run mixes ss)
+
+fn :: fuse run too wide [RStmt] RStmt => Bool
+      fuse run too wide run stmt =
+        ((fuse run mixes run) or (fuse mixes (fuse toks (fuse stmt code stmt)))) and (fuse run reads run (fuse reads (fuse toks (fuse stmt code stmt)) 0)) > 20
+
 fn :: fuse take run next [(String, String)] RStmt [RStmt] String String [String] [RStmt] (String, String) => [RStmt] [RStmt]
       fuse take run next kinds stmt rest kind out vars run (k, o)
-        | k == "" or (kind != "" and (k != kind or o != out)) or (list len run) >= 150 = (run, [stmt] :: rest)
+        | k == "" or (kind != "" and (k != kind or o != out)) or (list len run) >= 150 or (fuse run too wide run stmt) = (run, [stmt] :: rest)
         | otherwise = fuse take run ([(fuse stmt var stmt, k)] :: kinds) rest k o (vars :: [fuse stmt var stmt]) (run :: [stmt])
 
 -- One program for the statements of a loop. `locals`: the value each name of the loop has, the
@@ -1174,6 +1286,8 @@ fn :: fuse local of [(String, Int)] String => Int
         | name == v = k
         | otherwise = fuse local of ls v
 
+-- A tensor read by index is a leaf of its own, kept apart as `:tbl: t` (a pass-through): the
+-- same name read element by element is another leaf.
 -- A tensor the loop reads in several statements is read once: leaf number p keeps its element as
 -- value 1000 + p (the statements use the values from 0 up; a loop has at most 150 statements).
 fn :: fuse leaf pos [RExpr] String Int => Int
@@ -1190,6 +1304,9 @@ fn :: fuse run stmt [RFuseTok] [RExpr] [(String, Int)] String [RExpr] => String 
         | (fuse leaf pos leaves v 0) >= 0 = fuse run stmt ts ls locals (fuse code add code ("l" + (int to str (1000 + (fuse leaf pos leaves v 0))))) leaves
         | otherwise = fuse run stmt ts ls locals (fuse code add code ("t" + subs + " w" + (int to str (1000 + (list len leaves))) + " l" + (int to str (1000 + (list len leaves))))) (leaves :: [EVar v])
       fuse run stmt (FtScalar:ts) (leaf:ls) locals code leaves =  fuse run stmt ts ls locals (fuse code add code "s") (leaves :: [leaf])
+      fuse run stmt ((FtKind d):ts) ls locals code leaves =  fuse run stmt ts ls locals (fuse code add code ("k" + (int to str d))) leaves
+      fuse run stmt (FtIdx:ts) ls locals code leaves =  fuse run stmt ts ls locals (fuse code add code "b") leaves
+      fuse run stmt (FtGather:ts) (leaf:ls) locals code leaves =  fuse run stmt ts ls locals (fuse code add code "g") (leaves :: [ECall ":tbl:" [leaf]])
       fuse run stmt ((FtConst n):ts) ls locals code leaves =  fuse run stmt ts ls locals (fuse code add code ("c" + (int to str n))) leaves
       fuse run stmt ((FtOp id):ts) ls locals code leaves =  fuse run stmt ts ls locals (fuse code add code ("x" + (int to str id))) leaves
       fuse run stmt (_:ts) ls locals code leaves =  fuse run stmt ts ls locals code leaves
@@ -1255,7 +1372,7 @@ fn :: fuse run kinds [(String, String)] [RStmt] => [(String, String)]
       fuse run kinds kinds (stmt:ss) =  fuse run kinds ([(fuse stmt var stmt, fuse expr kind kinds (fuse stmt expr stmt))] :: kinds) ss
 
 fn :: fuse blocks stmt [(String, String)] RStmt => RStmt
-      fuse blocks stmt kinds stmt =  stmt map exprs one stmt (x => fuse blocks expr kinds x)
+      fuse blocks stmt kinds stmt =  fuse scatter stmt (stmt map exprs one stmt (x => fuse blocks expr kinds x))
 
 fn :: fuse blocks expr [(String, String)] RExpr => RExpr
       fuse blocks expr kinds (EBlock stmts) =  EBlock (fuse blocks stmts kinds stmts [])
@@ -1272,18 +1389,24 @@ fn :: fuse blocks fn RFnDef => RFnDef
 -- ── A loop that runs a number of times (FR-COMP-031) ──────────
 -- A function that does one fused step on its tensors and calls itself with the results and one
 -- less in its counter is the same step done that many times:
---     fn :: rounds T T Int => T T
---           rounds a b k
+--     fn :: rounds T T T Int Int => T T
+--           rounds a b key at k
 --             | k <= 0 = (a, b)
 --             | otherwise =
---               a1 = a_i + b_i
---               b1 = (b_i xor a1_i) rotl 7
---               rounds a1 b1 (k - 1)
--- The second branch becomes one fused expression that runs `k` times: its results come in the
--- order of the parameters and each says which tensor it replaces (`f<leaf>`). The values then go
--- from one time to the next without a call, a tuple or a new tensor. Shape of what is taken: every
--- parameter but the last is a plain name, the first branch gives them back as they came, and the
--- second is one loop (`fuse blocks`) followed by the call with one new name for each.
+--               a1 = a_i + (b_i xor key_i)
+--               b1 = (b_i xor a1_i) + at
+--               rounds a1 b1 key (at + 4) (k - 1)
+-- The second branch becomes one fused expression that runs `k` times. The values then go from
+-- one time to the next without a call, a tuple or a new tensor. Shape of what is taken:
+--   - the counter is the last parameter, the first branch is `k <= 0`;
+--   - the first branch gives back some of the parameters, in their order: the state. In the call
+--     each has one new name, a result of the loop (`f<leaf>` says which tensor a result replaces);
+--   - every other parameter is given to the call as it is, or, a number, with a constant added
+--     or taken away (`at + 4`): the loop then reads it as a number that moves by that much each
+--     time (`v<c>`);
+--   - the loop does not read the state by index (it is written while it is read), and reads a
+--     moving number only on its own (`at`, not `at * 2`).
+-- A parameter has a role: "state", "same", "step" (with its constant) or "" (the call does not fit).
 fn :: fuse repeat case String RFnCase => RFnCase
       fuse repeat case name (FnCase pats ((GuardBranch (EBin OpLtEq (EVar k) (EInt 0)) (ETuple base)):(GuardBranch (EBool True) (EBlock stmts)):[]) body) =
         fuse repeat built name pats k base stmts body (fuse repeat params pats [])
@@ -1296,7 +1419,7 @@ fn :: fuse repeat params [RPattern] [String] => [String]
 
 fn :: fuse repeat built String [RPattern] String [RExpr] [RStmt] RExpr [String] => RFnCase
       fuse repeat built name pats k base stmts body params
-        | fuse repeat fits name k base stmts params = FnCase pats [GuardBranch (EBin OpLtEq (EVar k) (EInt 0)) (ETuple base), GuardBranch (EBool True) (fuse repeat node k stmts params)] body
+        | fuse repeat fits name k base stmts params = FnCase pats [GuardBranch (EBin OpLtEq (EVar k) (EInt 0)) (ETuple base), GuardBranch (EBool True) (fuse repeat node k base stmts params)] body
         | otherwise = FnCase pats [GuardBranch (EBin OpLtEq (EVar k) (EInt 0)) (ETuple base), GuardBranch (EBool True) (EBlock stmts)] body
 
 fn :: fuse names of [RExpr] [String] => [String]
@@ -1309,17 +1432,25 @@ fn :: fuse drop last [String] [String] => [String]
       fuse drop last (_:[]) acc =  acc
       fuse drop last (x:xs) acc =  fuse drop last xs (acc :: [x])
 
-fn :: fuse repeat fits String String [RExpr] [RStmt] [String] => Bool
-      fuse repeat fits name k base ((StmtMut tmp (ECall ":fuse:" ((EStr code):leaves))):rest) params =
-        tensors = fuse drop last params []
-        (list len params) >= 2 and (list last or params "") == k and (fuse names of base []) == tensors and not (list contains tensors "") and (fuse repeat call ok name k tmp rest (list len tensors)) and not (fuse expr mentions any (ETuple leaves) [k])
-      fuse repeat fits _ _ _ _ _ =  False
+fn :: fuse drop last expr [RExpr] [RExpr] => [RExpr]
+      fuse drop last expr [] acc =  acc
+      fuse drop last expr (_:[]) acc =  acc
+      fuse drop last expr (x:xs) acc =  fuse drop last expr xs (acc :: [x])
 
--- The statements after the loop: one `v = tmp_(j)` for each result, then the call with those
--- names, each once, and `k - 1`.
-fn :: fuse repeat call ok String String String [RStmt] Int => Bool
-      fuse repeat call ok name k tmp rest n =
-        fuse repeat call args name k (fuse unpack names rest tmp []) (list last or rest (StmtExpr EUnit)) n ((list len rest) - 1)
+-- The parameters of the list that are in `keep`, in their order.
+fn :: fuse keep names [String] [String] [String] => [String]
+      fuse keep names [] _ acc =  acc
+      fuse keep names (x:xs) keep acc
+        | list contains keep x = fuse keep names xs keep (acc :: [x])
+        | otherwise = fuse keep names xs keep acc
+
+fn :: fuse call args RStmt => [RExpr]
+      fuse call args (StmtExpr (ECall _ args)) =  args
+      fuse call args _ =  []
+
+fn :: fuse call name RStmt => String
+      fuse call name (StmtExpr (ECall f _)) =  f
+      fuse call name _ =  ""
 
 fn :: fuse unpack names [RStmt] String [String] => [String]
       fuse unpack names ((StmtLet v (EIndex (EVar t) ((EInt _):[]))):ss) tmp acc
@@ -1328,22 +1459,77 @@ fn :: fuse unpack names [RStmt] String [String] => [String]
         | t == tmp = fuse unpack names ss tmp (acc :: [v])
       fuse unpack names _ _ acc =  acc
 
-fn :: fuse repeat call args String String [String] RStmt Int Int => Bool
-      fuse repeat call args name k outs (StmtExpr (ECall f args)) n unpacked =
-        f == name and (list len outs) == unpacked and (list len args) == (n + 1) and (fuse repeat last arg k (list last or args EUnit)) and (fuse all in (fuse drop last (fuse names of args []) []) outs) and (fuse all distinct (fuse drop last (fuse names of args []) []))
-      fuse repeat call args _ _ _ _ _ _ =  False
+-- The role of each parameter but the counter, from what the call gives in its place.
+fn :: fuse repeat roles [String] [RExpr] [String] [String] [(String, Int)] => [(String, Int)]
+      fuse repeat roles [] _ _ _ acc =  acc
+      fuse repeat roles (param:ps) (arg:args) state outs acc =  fuse repeat roles ps args state outs (acc :: [fuse repeat role param arg (list contains state param) outs])
+      fuse repeat roles (_:ps) [] state outs acc =  fuse repeat roles ps [] state outs (acc :: [("", 0)])
+
+fn :: fuse repeat role String RExpr Bool [String] => String Int
+      fuse repeat role _ (EVar v) True outs
+        | list contains outs v = ("state", 0)
+      fuse repeat role _ _ True _ =  ("", 0)
+      fuse repeat role param (EVar v) False _
+        | v == param = ("same", 0)
+      fuse repeat role param (EBin OpAdd (EVar v) (EInt c)) False _
+        | v == param = ("step", c)
+      fuse repeat role param (EBin OpSub (EVar v) (EInt c)) False _
+        | v == param = ("step", 0 - c)
+      fuse repeat role _ _ _ _ =  ("", 0)
+
+fn :: fuse roles all known [(String, Int)] => Bool
+      fuse roles all known [] =  True
+      fuse roles all known ((role, _):rs) =  role != "" and (fuse roles all known rs)
+
+-- The names that have a role, and the constant of a moving number (0: it is not one).
+fn :: fuse role names [String] [(String, Int)] String [String] => [String]
+      fuse role names [] _ _ acc =  acc
+      fuse role names (p:ps) ((role, _):rs) want acc
+        | role == want = fuse role names ps rs want (acc :: [p])
+        | otherwise = fuse role names ps rs want acc
+      fuse role names _ _ _ acc =  acc
+
+fn :: fuse step of [String] [(String, Int)] String => Int
+      fuse step of (p:ps) ((role, c):rs) v
+        | p == v and role == "step" = c
+        | otherwise = fuse step of ps rs v
+      fuse step of _ _ _ =  0
+
+-- The names the call gives in the place of the state, in the order of the state.
+fn :: fuse state args [String] [RExpr] [(String, Int)] [String] => [String]
+      fuse state args (_:ps) ((EVar v):args) (("state", _):rs) acc =  fuse state args ps args rs (acc :: [v])
+      fuse state args (_:ps) (_:args) (_:rs) acc =  fuse state args ps args rs acc
+      fuse state args _ _ _ acc =  acc
 
 fn :: fuse repeat last arg String RExpr => Bool
       fuse repeat last arg k (EBin OpSub (EVar v) (EInt 1)) =  v == k
       fuse repeat last arg _ _ =  False
 
-fn :: fuse all in [String] [String] => Bool
-      fuse all in [] _ =  True
-      fuse all in (x:xs) set =  x != "" and (list contains set x) and (fuse all in xs set)
-
 fn :: fuse all distinct [String] => Bool
       fuse all distinct [] =  True
       fuse all distinct (x:xs) =  (not (list contains xs x)) and (fuse all distinct xs)
+
+-- What the loop reads: the state as tensors only (not by index, not inside a number); a moving
+-- number on its own.
+fn :: fuse repeat leaves ok [RFuseTok] [RExpr] [String] [String] => Bool
+      fuse repeat leaves ok [] _ _ _ =  True
+      fuse repeat leaves ok ((FtTensor _):ts) (_:ls) state steps =  fuse repeat leaves ok ts ls state steps
+      fuse repeat leaves ok (FtGather:ts) (leaf:ls) state steps =  (not (fuse expr mentions any leaf state)) and (fuse repeat leaves ok ts ls state steps)
+      fuse repeat leaves ok (FtScalar:ts) ((EVar v):ls) state steps =  (not (list contains state v)) and (fuse repeat leaves ok ts ls state steps)
+      fuse repeat leaves ok (FtScalar:ts) (leaf:ls) state steps =  (not (fuse expr mentions any leaf state)) and (not (fuse expr mentions any leaf steps)) and (fuse repeat leaves ok ts ls state steps)
+      fuse repeat leaves ok (_:ts) ls state steps =  fuse repeat leaves ok ts ls state steps
+
+fn :: fuse repeat fits String String [RExpr] [RStmt] [String] => Bool
+      fuse repeat fits name k base ((StmtMut tmp (ECall ":fuse:" ((EStr code):leaves))):rest) params =
+        fuse repeat fits call name k (fuse names of base []) (fuse toks code) leaves (fuse unpack names rest tmp []) (list last or rest (StmtExpr EUnit)) ((list len rest) - 1) params
+      fuse repeat fits _ _ _ _ _ =  False
+
+fn :: fuse repeat fits call String String [String] [RFuseTok] [RExpr] [String] RStmt Int [String] => Bool
+      fuse repeat fits call name k state toks leaves outs call unpacked params =
+        others = fuse drop last params []
+        args = fuse call args call
+        roles = fuse repeat roles others (fuse drop last expr args []) state outs []
+        (list len params) >= 2 and (list last or params "") == k and not (list contains others "") and (list len state) >= 1 and (fuse keep names others state []) == state and (fuse call name call) == name and (list len outs) == unpacked and (list len args) == (list len params) and (fuse repeat last arg k (list last or args EUnit)) and (fuse roles all known roles) and (fuse all distinct (fuse state args others args roles [])) and not (fuse expr mentions any (ETuple leaves) [k]) and (fuse repeat leaves ok toks leaves state (fuse role names others roles "step" []))
 
 -- The values the results of the loop hold, in the order of its `o` tokens.
 fn :: fuse out locals [RFuseTok] Int [Int] => [Int]
@@ -1352,19 +1538,30 @@ fn :: fuse out locals [RFuseTok] Int [Int] => [Int]
       fuse out locals (FtOut:ts) last acc =  fuse out locals ts last (acc :: [last])
       fuse out locals (_:ts) last acc =  fuse out locals ts last acc
 
--- The program up to its results: the tokens before the first `l<k> o` of the tail.
-fn :: fuse body code [RFuseTok] Int String => String
-      fuse body code toks outs code =  fuse body toks toks ((fuse count toks 0) - (outs * 2)) code
-
 fn :: fuse count [RFuseTok] Int => Int
       fuse count [] n =  n
       fuse count (_:ts) n =  fuse count ts (n + 1)
 
-fn :: fuse body toks [RFuseTok] Int String => String
-      fuse body toks [] _ code =  code
-      fuse body toks (t:ts) left code
+-- The program up to its results (`left` tokens), with each moving number as `v<c>`.
+fn :: fuse repeat body [RFuseTok] [RExpr] Int [String] [(String, Int)] String => String
+      fuse repeat body [] _ _ _ _ code =  code
+      fuse repeat body (t:ts) leaves left others roles code
         | left <= 0 = code
-        | otherwise = fuse body toks ts (left - 1) (fuse code add code (fuse tok text t))
+        | otherwise = fuse repeat body ts (fuse leaves after t leaves) (left - 1) others roles (fuse code add code (fuse repeat tok t leaves others roles))
+
+fn :: fuse leaves after RFuseTok [RExpr] => [RExpr]
+      fuse leaves after (FtTensor _) (_:ls) =  ls
+      fuse leaves after FtScalar (_:ls) =  ls
+      fuse leaves after FtGather (_:ls) =  ls
+      fuse leaves after FtCount (_:ls) =  ls
+      fuse leaves after (FtStep _) (_:ls) =  ls
+      fuse leaves after FtScatter (_:ls) =  ls
+      fuse leaves after _ ls =  ls
+
+fn :: fuse repeat tok RFuseTok [RExpr] [String] [(String, Int)] => String
+      fuse repeat tok FtScalar ((EVar v):_) others roles
+        | (fuse step of others roles v) != 0 = "v" + (int to str (fuse step of others roles v))
+      fuse repeat tok t _ _ _ =  fuse tok text t
 
 fn :: fuse tok text RFuseTok => String
       fuse tok text (FtTensor subs) =  "t" + subs
@@ -1379,6 +1576,9 @@ fn :: fuse tok text RFuseTok => String
       fuse tok text (FtReduce id) =  "r" + (int to str id)
       fuse tok text (FtFeed k) =  "f" + (int to str k)
       fuse tok text FtCount =  "n"
+      fuse tok text (FtStep c) =  "v" + (int to str c)
+      fuse tok text (FtKind d) =  "k" + (int to str d)
+      fuse tok text FtScatter =  "y"
 
 fn :: fuse index of [String] String Int => Int
       fuse index of [] _ _ =  0 - 1
@@ -1386,19 +1586,19 @@ fn :: fuse index of [String] String Int => Int
         | x == v = i
         | otherwise = fuse index of xs v (i + 1)
 
-fn :: fuse repeat node String [RStmt] [String] => RExpr
-      fuse repeat node k ((StmtMut tmp (ECall ":fuse:" ((EStr code):leaves))):rest) params =
-        toks = fuse toks code
-        outs = fuse unpack names rest tmp []
-        ECall ":fuse:" ([EStr ((fuse repeat tail (fuse drop last (fuse names of (fuse call args (list last or rest (StmtExpr EUnit))) []) []) (fuse drop last params []) outs (fuse out locals toks 0 []) leaves (fuse body code toks (list len outs) "")) + " n")] :: leaves :: [EVar k])
-      fuse repeat node _ stmts _ =  EBlock stmts
+fn :: fuse repeat node String [RExpr] [RStmt] [String] => RExpr
+      fuse repeat node k base ((StmtMut tmp (ECall ":fuse:" ((EStr code):leaves))):rest) params =
+        fuse repeat node built k (fuse names of base []) (fuse toks code) leaves (fuse unpack names rest tmp []) (fuse call args (list last or rest (StmtExpr EUnit))) (fuse drop last params [])
+      fuse repeat node _ _ stmts _ =  EBlock stmts
 
-fn :: fuse call args RStmt => [RExpr]
-      fuse call args (StmtExpr (ECall _ args)) =  args
-      fuse call args _ =  []
+fn :: fuse repeat node built String [String] [RFuseTok] [RExpr] [String] [RExpr] [String] => RExpr
+      fuse repeat node built k state toks leaves outs args others =
+        roles = fuse repeat roles others (fuse drop last expr args []) state outs []
+        body = fuse repeat body toks leaves ((fuse count toks 0) - ((list len outs) * 2)) others roles ""
+        ECall ":fuse:" ([EStr ((fuse repeat tail (fuse state args others args roles []) state outs (fuse out locals toks 0 []) leaves body) + " n")] :: leaves :: [EVar k])
 
--- One result for each parameter, in their order: the value of the name the call gives in its
--- place, and the leaf that reads that parameter (when the loop reads it).
+-- One result for each tensor of the state, in their order: the value of the name the call gives
+-- in its place, and the leaf that reads that tensor (when the loop reads it).
 fn :: fuse repeat tail [String] [String] [String] [Int] [RExpr] String => String
       fuse repeat tail [] _ _ _ _ code =  code
       fuse repeat tail (arg:args) (param:params) outs locals leaves code =
@@ -1522,6 +1722,8 @@ fn :: parse mul loop (RExpr, [RToken]) => RExpr [RToken]
       parse mul loop (left, ((TokIdent "rotl"):rest)) =
         r = parse app expr rest
         parse mul combine OpRotl left r
+      parse mul loop (left, ((TokIdent "as"):(TokIdent ty):rest))
+        | (fuse width digit ty) > 0 = parse mul loop (fuse as node left ty, rest)
       parse mul loop (left, ((TokIdent "mulhi"):rest)) =
         r = parse app expr rest
         parse mul combine OpMulHi left r
@@ -1653,11 +1855,11 @@ fn :: parse app tail (RExpr, [RToken]) => RExpr [RToken]
         | is record update start rest = parse record update (EVar name) rest
         | name == "echo" = finish echo call (parse atom list rest)
         | name == "agent" and (is tok sink rest) = check record update tail (finish fn or out call (EVar name) name (parse agent sink comma opts (parse atom list rest)))
-        | is atom tok (tok head rest) = check record update tail (finish fn or out call (EVar name) name (parse atom list rest))
+        | starts an argument rest = check record update tail (finish fn or out call (EVar name) name (parse atom list rest))
         | otherwise = (EVar name, rest)
       parse app tail (first_e, rest)
         | is record update start rest = parse record update first_e rest
-        | is atom tok (tok head rest) = check record update tail (finish chain or out first_e (parse atom list rest))
+        | starts an argument rest = check record update tail (finish chain or out first_e (parse atom list rest))
         | otherwise = (first_e, rest)
 
 fn :: finish fn or out call RExpr String ([RExpr], [RToken]) => RExpr [RToken]
@@ -1673,7 +1875,7 @@ fn :: finish chain or out RExpr ([RExpr], [RToken]) => RExpr [RToken]
 fn :: parse atom list [RToken] => [RExpr] [RToken]
       parse atom list ts
         | is record update start ts = ([], ts)
-        | is atom tok (tok head ts) = parse atom list cont (parse atom ts)
+        | starts an argument ts = parse atom list cont (parse atom ts)
         | otherwise = ([], ts)
 
 fn :: parse atom list cont (RExpr, [RToken]) => [RExpr] [RToken]
@@ -2445,7 +2647,7 @@ fn :: parse block idx assign String [RToken] ([RExpr], [RToken]) => [RStmt] [RTo
 fn :: finish idx assign stmt String [RExpr] (RExpr, [RToken]) => [RStmt] [RToken]
       finish idx assign stmt name idxs (val_e, rest) =
         more = parse block stmts safe rest
-        prepend stmt (StmtIndexAssign name idxs val_e) more
+        prepend stmt (fuse scatter stmt (StmtIndexAssign name idxs val_e)) more
 
 fn :: finish let stmt String (RExpr, [RToken]) => [RStmt] [RToken]
       finish let stmt v      (e, rest)         =
@@ -3047,7 +3249,7 @@ fn :: arity matches Int Int    => Bool
 
 fn :: builtin arity entries => [RArityEntry]
       builtin arity entries =
-        [ArityEntry "tensor_from_list" 1, ArityEntry "sort_by_ints" 2, ArityEntry "sort_by_texts" 2, ArityEntry "tensor_to_list" 1, ArityEntry "tensor_sum" 1, ArityEntry "tensor_bytes" 1, ArityEntry "tensor_u16_from_bytes" 1, ArityEntry "tensor_u32_from_bytes" 1, ArityEntry "tensor_interleave" 1, ArityEntry "tensor_min" 1, ArityEntry "tensor_max" 1, ArityEntry "assert_equals" 2, ArityEntry "assert_true" 1, ArityEntry "send_to" 2, ArityEntry "ask_to" 2, ArityEntry "send_through" 2, ArityEntry "receive_from" 1, ArityEntry "try_receive_from" 1, ArityEntry "receive_from_timeout" 2, ArityEntry "stop" 1, ArityEntry "agent_alive" 1, ArityEntry "agent_dropped" 1, ArityEntry "agent_flush" 1, ArityEntry "agent_state" 1, ArityEntry "new_mailbox" 0, ArityEntry "new_channel" 0, ArityEntry "new_bounded_channel" 1, ArityEntry "chan_send" 2, ArityEntry "chan_recv" 1, ArityEntry "chan_try_recv" 1, ArityEntry "str_len" 1, ArityEntry "str_char_at" 2, ArityEntry "str_slice" 3, ArityEntry "str_contains" 2, ArityEntry "str_starts_with" 2, ArityEntry "str_concat" 2, ArityEntry "int_to_str" 1, ArityEntry "str_to_int" 1, ArityEntry "int_to_real" 1, ArityEntry "real_to_int" 1, ArityEntry "real_round" 1, ArityEntry "real_floor" 1, ArityEntry "real_ceil" 1, ArityEntry "char_from_code" 1, ArityEntry "trim_str" 1, ArityEntry "read_file" 1, ArityEntry "load_rg_source" 1, ArityEntry "read_bytes" 1, ArityEntry "write_bytes" 2, ArityEntry "write_file" 2, ArityEntry "shell_exec" 1, ArityEntry "list_str_len" 1, ArityEntry "list_dir" 1, ArityEntry "file_lstat" 1, ArityEntry "sha256_file" 1, ArityEntry "sha256_str" 1, ArityEntry "sha256_raw" 1, ArityEntry "sha256_bytes" 1, ArityEntry "sys_os" 0, ArityEntry "sys_arch" 0, ArityEntry "sys_mkdir" 2, ArityEntry "sys_chmod" 2, ArityEntry "sys_exec" 3, ArityEntry "sys_chdir" 1, ArityEntry "sys_getcwd" 0, ArityEntry "sys_getenv" 1, ArityEntry "sys_setenv" 2, ArityEntry "sys_exit" 1, ArityEntry "sys_getuid" 0, ArityEntry "sys_getgid" 0, ArityEntry "sys_getpid" 0, ArityEntry "sys_time_ms" 0, ArityEntry "sys_time_ns" 0, ArityEntry "sys_wall_time_ms" 0, ArityEntry "crc32_range" 4, ArityEntry "tensor_from_str" 1, ArityEntry "tensor_u8_from_list" 1, ArityEntry "tensor_to_str" 1, ArityEntry "sha256_digest" 1, ArityEntry "sys_read_into" 4, ArityEntry "sys_write_from" 4, ArityEntry "sys_deadline_ms" 0, ArityEntry "sys_remaining_ms" 0, ArityEntry "sys_sleep_ms" 1, ArityEntry "sys_open_mode" 2, ArityEntry "sys_open" 3, ArityEntry "sys_close" 1, ArityEntry "sys_read_fd" 2, ArityEntry "sys_write_fd" 2, ArityEntry "sys_poll" 3, ArityEntry "sys_terminate" 2, ArityEntry "sys_kill" 2, ArityEntry "sys_call" 7, ArityEntry "sys_pipe" 0, ArityEntry "sys_waitpid" 2, ArityEntry "sys_username" 1, ArityEntry "sys_user_groups" 1, ArityEntry "sys_lookup_uid_gid" 1, ArityEntry "sys_setresgid" 1, ArityEntry "sys_setgroups" 1, ArityEntry "sys_setresuid" 1, ArityEntry "sys_execve" 3, ArityEntry "remove_file" 1, ArityEntry "remove_dir" 1, ArityEntry "rename_path" 2, ArityEntry "net_connect" 3, ArityEntry "net_listen" 3, ArityEntry "net_accept" 2, ArityEntry "net_send" 3, ArityEntry "net_recv_into" 5, ArityEntry "net_recv" 3, ArityEntry "net_shutdown" 2, ArityEntry "net_option" 3, ArityEntry "net_local_port" 1, ArityEntry "net_peer_ip" 1, ArityEntry "net_resolve" 1, ArityEntry "sys_read_pass" 1, ArityEntry "cli_args" 0, ArityEntry "cmm_live_blocks" 0, ArityEntry "cmm_cond_spared" 0, ArityEntry "cmm_cond_freed" 0, ArityEntry "cmm_same_ptr" 2, ArityEntry "seq_map" 2, ArityEntry "par_map" 2, ArityEntry "seq_filter" 2, ArityEntry "par_filter" 2]
+        [ArityEntry "tensor_from_list" 1, ArityEntry "sort_by_ints" 2, ArityEntry "sort_by_texts" 2, ArityEntry "tensor_to_list" 1, ArityEntry "tensor_sum" 1, ArityEntry "tensor_bytes" 1, ArityEntry "tensor_put_le16" 4, ArityEntry "tensor_put_le32" 4, ArityEntry "tensor_put_le64" 4, ArityEntry "tensor_put_be16" 4, ArityEntry "tensor_put_be32" 4, ArityEntry "tensor_put_be64" 4, ArityEntry "tensor_get_le16" 4, ArityEntry "tensor_get_le32" 4, ArityEntry "tensor_get_le64" 4, ArityEntry "tensor_get_be16" 4, ArityEntry "tensor_get_be32" 4, ArityEntry "tensor_get_be64" 4, ArityEntry "tensor_u16_from_bytes" 1, ArityEntry "tensor_u32_from_bytes" 1, ArityEntry "tensor_interleave" 1, ArityEntry "tensor_min" 1, ArityEntry "tensor_max" 1, ArityEntry "assert_equals" 2, ArityEntry "assert_true" 1, ArityEntry "send_to" 2, ArityEntry "ask_to" 2, ArityEntry "send_through" 2, ArityEntry "receive_from" 1, ArityEntry "try_receive_from" 1, ArityEntry "receive_from_timeout" 2, ArityEntry "stop" 1, ArityEntry "agent_alive" 1, ArityEntry "agent_dropped" 1, ArityEntry "agent_flush" 1, ArityEntry "agent_state" 1, ArityEntry "new_mailbox" 0, ArityEntry "new_channel" 0, ArityEntry "new_bounded_channel" 1, ArityEntry "chan_send" 2, ArityEntry "chan_recv" 1, ArityEntry "chan_try_recv" 1, ArityEntry "str_len" 1, ArityEntry "str_char_at" 2, ArityEntry "str_slice" 3, ArityEntry "str_contains" 2, ArityEntry "str_starts_with" 2, ArityEntry "str_concat" 2, ArityEntry "int_to_str" 1, ArityEntry "str_to_int" 1, ArityEntry "int_to_real" 1, ArityEntry "real_to_int" 1, ArityEntry "real_round" 1, ArityEntry "real_floor" 1, ArityEntry "real_ceil" 1, ArityEntry "char_from_code" 1, ArityEntry "trim_str" 1, ArityEntry "read_file" 1, ArityEntry "load_rg_source" 1, ArityEntry "read_bytes" 1, ArityEntry "write_bytes" 2, ArityEntry "write_file" 2, ArityEntry "shell_exec" 1, ArityEntry "list_str_len" 1, ArityEntry "list_dir" 1, ArityEntry "file_lstat" 1, ArityEntry "sha256_file" 1, ArityEntry "sha256_str" 1, ArityEntry "sha256_raw" 1, ArityEntry "sha256_bytes" 1, ArityEntry "sys_os" 0, ArityEntry "sys_arch" 0, ArityEntry "sys_mkdir" 2, ArityEntry "sys_chmod" 2, ArityEntry "sys_exec" 3, ArityEntry "sys_chdir" 1, ArityEntry "sys_getcwd" 0, ArityEntry "sys_getenv" 1, ArityEntry "sys_setenv" 2, ArityEntry "sys_exit" 1, ArityEntry "sys_getuid" 0, ArityEntry "sys_getgid" 0, ArityEntry "sys_getpid" 0, ArityEntry "sys_time_ms" 0, ArityEntry "sys_time_ns" 0, ArityEntry "sys_wall_time_ms" 0, ArityEntry "crc32_range" 4, ArityEntry "tensor_from_str" 1, ArityEntry "tensor_u8_from_list" 1, ArityEntry "tensor_to_str" 1, ArityEntry "sha256_digest" 1, ArityEntry "sys_read_into" 4, ArityEntry "sys_write_from" 4, ArityEntry "sys_deadline_ms" 0, ArityEntry "sys_remaining_ms" 0, ArityEntry "sys_sleep_ms" 1, ArityEntry "sys_open_mode" 2, ArityEntry "sys_open" 3, ArityEntry "sys_close" 1, ArityEntry "sys_read_fd" 2, ArityEntry "sys_write_fd" 2, ArityEntry "sys_poll" 3, ArityEntry "sys_terminate" 2, ArityEntry "sys_kill" 2, ArityEntry "sys_call" 7, ArityEntry "sys_pipe" 0, ArityEntry "sys_waitpid" 2, ArityEntry "sys_username" 1, ArityEntry "sys_user_groups" 1, ArityEntry "sys_lookup_uid_gid" 1, ArityEntry "sys_setresgid" 1, ArityEntry "sys_setgroups" 1, ArityEntry "sys_setresuid" 1, ArityEntry "sys_execve" 3, ArityEntry "remove_file" 1, ArityEntry "remove_dir" 1, ArityEntry "rename_path" 2, ArityEntry "net_connect" 3, ArityEntry "net_listen" 3, ArityEntry "net_accept" 2, ArityEntry "net_send" 3, ArityEntry "net_recv_into" 5, ArityEntry "net_recv" 3, ArityEntry "net_shutdown" 2, ArityEntry "net_option" 3, ArityEntry "net_local_port" 1, ArityEntry "net_peer_ip" 1, ArityEntry "net_resolve" 1, ArityEntry "sys_read_pass" 1, ArityEntry "cli_args" 0, ArityEntry "cmm_live_blocks" 0, ArityEntry "cmm_cond_spared" 0, ArityEntry "cmm_cond_freed" 0, ArityEntry "cmm_same_ptr" 2, ArityEntry "seq_map" 2, ArityEntry "par_map" 2, ArityEntry "seq_filter" 2, ArityEntry "par_filter" 2]
 
 fn :: collect fn arities [RFnDef] => [RArityEntry]
       collect fn arities [] = builtin arity entries
@@ -3153,6 +3355,18 @@ fn :: is std builtin String             => Bool
       is std builtin "real_floor"      =  True
       is std builtin "tensor_sum"      =  True
       is std builtin "tensor_bytes"      =  True
+      is std builtin "tensor_put_le16"      =  True
+      is std builtin "tensor_put_le32"      =  True
+      is std builtin "tensor_put_le64"      =  True
+      is std builtin "tensor_put_be16"      =  True
+      is std builtin "tensor_put_be32"      =  True
+      is std builtin "tensor_put_be64"      =  True
+      is std builtin "tensor_get_le16"      =  True
+      is std builtin "tensor_get_le32"      =  True
+      is std builtin "tensor_get_le64"      =  True
+      is std builtin "tensor_get_be16"      =  True
+      is std builtin "tensor_get_be32"      =  True
+      is std builtin "tensor_get_be64"      =  True
       is std builtin "tensor_u16_from_bytes"      =  True
       is std builtin "tensor_u32_from_bytes"      =  True
       is std builtin "tensor_interleave"      =  True
@@ -3294,6 +3508,18 @@ fn :: std builtin arity String     => Int
       std builtin arity "real_floor" = 1
       std builtin arity "tensor_sum" = 1
       std builtin arity "tensor_bytes" = 1
+      std builtin arity "tensor_put_le16" = 4
+      std builtin arity "tensor_put_le32" = 4
+      std builtin arity "tensor_put_le64" = 4
+      std builtin arity "tensor_put_be16" = 4
+      std builtin arity "tensor_put_be32" = 4
+      std builtin arity "tensor_put_be64" = 4
+      std builtin arity "tensor_get_le16" = 4
+      std builtin arity "tensor_get_le32" = 4
+      std builtin arity "tensor_get_le64" = 4
+      std builtin arity "tensor_get_be16" = 4
+      std builtin arity "tensor_get_be32" = 4
+      std builtin arity "tensor_get_be64" = 4
       std builtin arity "tensor_u16_from_bytes" = 1
       std builtin arity "tensor_u32_from_bytes" = 1
       std builtin arity "tensor_interleave" = 1

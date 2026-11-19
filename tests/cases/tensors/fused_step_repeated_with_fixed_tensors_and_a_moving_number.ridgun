@@ -1,0 +1,57 @@
+-- @tests TS-COMP-031
+-- case: a step that a function repeats by calling itself may get tensors that do not change, a tensor read by index and a number that moves by a constant each time; the result is that of doing the step that many times, for 0, 1, 2 and 9 times
+-- source: FR-COMP-031 AC-20
+-- expect-output:
+--   0 times: one loop and 0 loops agree: True  a = 11 2571253594 930722059 3402310086  b = 1401181165  kept: 11 3402310108 1401181187
+--   1 times: one loop and 1 loops agree: True  a = 2654435738 2571253592 2840512666 2987837224  b = 2176  kept: 11 3402310108 1401181187
+--   2 times: one loop and 2 loops agree: True  a = 56222 847542140 2130647966 71043708  b = 2220091475  kept: 11 3402310108 1401181187
+--   9 times: one loop and 9 loops agree: True  a = 1192793109 1669254705 208917177 1391137748  b = 3630881185  kept: 11 3402310108 1401181187
+
+-- a step with a state (a, b), a tensor that does not change (key), a table read by index (tab)
+-- and a number that moves (at): done k times
+fn :: mix Tensor[U32 * n] Tensor[U32 * n] Tensor[U32 * n] Tensor[U32 * m] Int Int => Tensor[U32 * n] Tensor[U32 * n]
+      mix a b key tab at k
+        | k <= 0 = (a, b)
+        | otherwise =
+          a1 = (a_i + (b_i xor key_i)) + at
+          b1 = (b_i xor a1_i) rotl 7
+          a2 = a1_i xor tab_(key_i and 7)
+          mix a2 b1 key tab (at + 3) (k - 1)
+
+-- the same, one step for each call
+fn :: step Tensor[U32 * n] Tensor[U32 * n] Tensor[U32 * n] Tensor[U32 * m] Int => Tensor[U32 * n] Tensor[U32 * n]
+      step a b key tab at =  mix a b key tab at 1
+
+fn :: by steps Tensor[U32 * n] Tensor[U32 * n] Tensor[U32 * n] Tensor[U32 * m] Int Int => Tensor[U32 * n] Tensor[U32 * n]
+      by steps a b key tab at k
+        | k <= 0 = (a, b)
+        | otherwise =
+          a1, b1 = step a b key tab at
+          by steps a1 b1 key tab (at + 3) (k - 1)
+
+fn :: numbered Tensor[U32 * n] Int Int Int => Tensor[U32 * n]
+      numbered t first i n
+        | i >= n = t
+        | otherwise =
+          t_(i) = (first + (i * 2654435761)) % 4294967296
+          numbered t first (i + 1) n
+
+fn :: same Tensor[U32 * n] Tensor[U32 * n] => Bool
+      same x y =  (tensor max (x_i xor y_i)) == 0
+
+fn :: check Int => ()
+      check k =
+        a = numbered (Tensor[U32 * 300]) 11 0 300
+        b = numbered (Tensor[U32 * 300]) 22 0 300
+        key = numbered (Tensor[U32 * 300]) 33 0 300
+        tab = numbered (Tensor[U32 * 8]) 44 0 8
+        a1, b1 = mix a b key tab 5 k
+        a2, b2 = by steps a b key tab 5 k
+        echo "{k} times: one loop and {k} loops agree: {(same a1 a2) and (same b1 b2)}  a = {a1_(0)} {a1_(255)} {a1_(256)} {a1_(299)}  b = {b1_(7)}  kept: {a_(0)} {key_(299)} {tab_(7)}"
+
+fn :: main => ()
+      main =
+        check 0
+        check 1
+        check 2
+        check 9
