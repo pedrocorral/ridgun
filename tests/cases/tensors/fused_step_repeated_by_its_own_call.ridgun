@@ -1,0 +1,69 @@
+-- @tests TS-COMP-031
+-- case: a function that does one fused step and calls itself with the results and one less in its counter runs as one loop that many times; the result is that of doing the step that many times, for 0, 1, 2 and 20 times and across pieces of 256 elements; the operands keep their values
+-- source: FR-COMP-031 AC-17
+-- expect-output:
+--   0 times: one loop and 0 loops agree: True  a = 1634760805 4206014388 2565482853 742103584  operands kept: 1634760805 904628015
+--   1 times: one loop and 1 loops agree: True  a = 957979861 584687060 2586323460 3098550704  operands kept: 1634760805 904628015
+--   2 times: one loop and 2 loops agree: True  a = 1833264003 1331988253 4041862426 1498118797  operands kept: 1634760805 904628015
+--   20 times: one loop and 20 loops agree: True  a = 1315309249 1312696178 3981775406 4069956205  operands kept: 1634760805 904628015
+--   RFC 8439 2.1.1: 3928658676 3407673550 1166100270 1484899515
+
+-- the quarter round of ChaCha20 done k times: a function that calls itself with its results runs
+-- as one loop
+fn :: rounds Tensor[U32 * n] Tensor[U32 * n] Tensor[U32 * n] Tensor[U32 * n] Int => Tensor[U32 * n] Tensor[U32 * n] Tensor[U32 * n] Tensor[U32 * n]
+      rounds a b c d k
+        | k <= 0 = (a, b, c, d)
+        | otherwise =
+          a1 = a_i + b_i
+          d1 = (d_i xor a1_i) rotl 16
+          c1 = c_i + d1_i
+          b1 = (b_i xor c1_i) rotl 12
+          a2 = a1_i + b1_i
+          d2 = (d1_i xor a2_i) rotl 8
+          c2 = c1_i + d2_i
+          b2 = (b1_i xor c2_i) rotl 7
+          rounds a2 b2 c2 d2 (k - 1)
+
+-- the same with a call in between: one loop for each time
+fn :: quarter Tensor[U32 * n] Tensor[U32 * n] Tensor[U32 * n] Tensor[U32 * n] => Tensor[U32 * n] Tensor[U32 * n] Tensor[U32 * n] Tensor[U32 * n]
+      quarter a b c d =  rounds a b c d 1
+
+fn :: by steps Tensor[U32 * n] Tensor[U32 * n] Tensor[U32 * n] Tensor[U32 * n] Int => Tensor[U32 * n] Tensor[U32 * n] Tensor[U32 * n] Tensor[U32 * n]
+      by steps a b c d k
+        | k <= 0 = (a, b, c, d)
+        | otherwise =
+          a1, b1, c1, d1 = quarter a b c d
+          by steps a1 b1 c1 d1 (k - 1)
+
+fn :: numbered Tensor[U32 * n] Int Int Int => Tensor[U32 * n]
+      numbered t first i n
+        | i >= n = t
+        | otherwise =
+          t_(i) = (first + (i * 2654435761)) % 4294967296
+          numbered t first (i + 1) n
+
+fn :: same Tensor[U32 * n] Tensor[U32 * n] => Bool
+      same x y =  (tensor max (x_i xor y_i)) == 0
+
+fn :: check Int => ()
+      check k =
+        a = numbered (Tensor[U32 * 300]) 0x61707865 0 300
+        b = numbered (Tensor[U32 * 300]) 0x3320646e 0 300
+        c = numbered (Tensor[U32 * 300]) 0x79622d32 0 300
+        d = numbered (Tensor[U32 * 300]) 0x6b206574 0 300
+        a1, b1, c1, d1 = rounds a b c d k
+        a2, b2, c2, d2 = by steps a b c d k
+        echo "{k} times: one loop and {k} loops agree: {(same a1 a2) and (same b1 b2) and (same c1 c2) and (same d1 d2)}  a = {a1_(0)} {a1_(255)} {a1_(256)} {a1_(299)}  operands kept: {a_(0)} {d_(299)}"
+
+fn :: main => ()
+      main =
+        check 0
+        check 1
+        check 2
+        check 20
+        x = Tensor[U32 * 2] with 0x11111111
+        y = Tensor[U32 * 2] with 0x01020304
+        z = Tensor[U32 * 2] with 0x9b8d6f43
+        w = Tensor[U32 * 2] with 0x01234567
+        p, q, r, s = rounds x y z w 1
+        echo "RFC 8439 2.1.1: {p_(0)} {q_(0)} {r_(0)} {s_(0)}"

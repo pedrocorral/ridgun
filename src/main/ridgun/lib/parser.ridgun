@@ -1015,6 +1015,8 @@ fn :: fuse late leaves [RFuseTok] [RExpr] String [RExpr] => RExpr
       fuse late leaves (FtScalar:ts) (leaf:ls) code acc =  fuse late leaves ts ls (fuse code add code "s") (acc :: [leaf])
       fuse late leaves (FtGather:ts) (leaf:ls) code acc =  fuse late leaves ts ls (fuse code add code "g") (acc :: [leaf])
       fuse late leaves (FtIdx:ts) ls code acc =  fuse late leaves ts ls (fuse code add code "b") acc
+      fuse late leaves ((FtFeed k):ts) ls code acc =  fuse late leaves ts ls (fuse code add code ("f" + (int to str k))) acc
+      fuse late leaves (FtCount:ts) (leaf:ls) code acc =  fuse late leaves ts ls (fuse code add code "n") (acc :: [leaf])
       fuse late leaves ((FtReduce id):ts) ls code acc =  fuse late leaves ts ls (fuse code add code ("r" + (int to str id))) acc
       fuse late leaves ((FtConst n):ts) ls code acc =  fuse late leaves ts ls (fuse code add code ("c" + (int to str n))) acc
       fuse late leaves ((FtOp id):ts) ls code acc =  fuse late leaves ts ls (fuse code add code ("x" + (int to str id))) acc
@@ -1072,6 +1074,7 @@ fn :: fuse leaves one kind [(String, String)] [RFuseTok] [RExpr] String => Strin
       fuse leaves one kind _ ((FtTensor _):_) _ _ =  ""
       fuse leaves one kind _ (FtGather:_) _ _ =  ""
       fuse leaves one kind _ ((FtReduce _):_) _ _ =  ""
+      fuse leaves one kind _ (FtCount:_) _ _ =  ""
       fuse leaves one kind kinds (FtScalar:ts) (_:ls) kind =  fuse leaves one kind kinds ts ls kind
       fuse leaves one kind kinds (_:ts) ls kind =  fuse leaves one kind kinds ts ls kind
 
@@ -1112,6 +1115,7 @@ fn :: fuse all same subs [RFuseTok] String => Bool
       fuse all same subs (FtOut:_) _ =  False
       fuse all same subs (FtGather:_) _ =  False
       fuse all same subs ((FtReduce _):_) _ =  False
+      fuse all same subs (FtCount:_) _ =  False
       fuse all same subs (_:ts) out =  fuse all same subs ts out
 
 -- A number a statement reads must not come from the statements already in the loop.
@@ -1263,7 +1267,148 @@ fn :: fuse blocks case [String] RFnCase => RFnCase
         FnCase pats (guards map exprs guards (x => fuse blocks expr kinds x)) (fuse blocks expr kinds body)
 
 fn :: fuse blocks fn RFnDef => RFnDef
-      fuse blocks fn (FnDef name tys ret cs) =  FnDef name tys ret (map (c => fuse blocks case tys c) cs)
+      fuse blocks fn (FnDef name tys ret cs) =  FnDef name tys ret (map (c => fuse repeat case name (fuse blocks case tys c)) cs)
+
+-- ── A loop that runs a number of times (FR-COMP-031) ──────────
+-- A function that does one fused step on its tensors and calls itself with the results and one
+-- less in its counter is the same step done that many times:
+--     fn :: rounds T T Int => T T
+--           rounds a b k
+--             | k <= 0 = (a, b)
+--             | otherwise =
+--               a1 = a_i + b_i
+--               b1 = (b_i xor a1_i) rotl 7
+--               rounds a1 b1 (k - 1)
+-- The second branch becomes one fused expression that runs `k` times: its results come in the
+-- order of the parameters and each says which tensor it replaces (`f<leaf>`). The values then go
+-- from one time to the next without a call, a tuple or a new tensor. Shape of what is taken: every
+-- parameter but the last is a plain name, the first branch gives them back as they came, and the
+-- second is one loop (`fuse blocks`) followed by the call with one new name for each.
+fn :: fuse repeat case String RFnCase => RFnCase
+      fuse repeat case name (FnCase pats ((GuardBranch (EBin OpLtEq (EVar k) (EInt 0)) (ETuple base)):(GuardBranch (EBool True) (EBlock stmts)):[]) body) =
+        fuse repeat built name pats k base stmts body (fuse repeat params pats [])
+      fuse repeat case _ c =  c
+
+fn :: fuse repeat params [RPattern] [String] => [String]
+      fuse repeat params [] acc =  acc
+      fuse repeat params ((PatVar v):ps) acc =  fuse repeat params ps (acc :: [v])
+      fuse repeat params (_:ps) acc =  fuse repeat params ps (acc :: [""])
+
+fn :: fuse repeat built String [RPattern] String [RExpr] [RStmt] RExpr [String] => RFnCase
+      fuse repeat built name pats k base stmts body params
+        | fuse repeat fits name k base stmts params = FnCase pats [GuardBranch (EBin OpLtEq (EVar k) (EInt 0)) (ETuple base), GuardBranch (EBool True) (fuse repeat node k stmts params)] body
+        | otherwise = FnCase pats [GuardBranch (EBin OpLtEq (EVar k) (EInt 0)) (ETuple base), GuardBranch (EBool True) (EBlock stmts)] body
+
+fn :: fuse names of [RExpr] [String] => [String]
+      fuse names of [] acc =  acc
+      fuse names of ((EVar v):es) acc =  fuse names of es (acc :: [v])
+      fuse names of (_:es) acc =  fuse names of es (acc :: [""])
+
+fn :: fuse drop last [String] [String] => [String]
+      fuse drop last [] acc =  acc
+      fuse drop last (_:[]) acc =  acc
+      fuse drop last (x:xs) acc =  fuse drop last xs (acc :: [x])
+
+fn :: fuse repeat fits String String [RExpr] [RStmt] [String] => Bool
+      fuse repeat fits name k base ((StmtMut tmp (ECall ":fuse:" ((EStr code):leaves))):rest) params =
+        tensors = fuse drop last params []
+        (list len params) >= 2 and (list last or params "") == k and (fuse names of base []) == tensors and not (list contains tensors "") and (fuse repeat call ok name k tmp rest (list len tensors)) and not (fuse expr mentions any (ETuple leaves) [k])
+      fuse repeat fits _ _ _ _ _ =  False
+
+-- The statements after the loop: one `v = tmp_(j)` for each result, then the call with those
+-- names, each once, and `k - 1`.
+fn :: fuse repeat call ok String String String [RStmt] Int => Bool
+      fuse repeat call ok name k tmp rest n =
+        fuse repeat call args name k (fuse unpack names rest tmp []) (list last or rest (StmtExpr EUnit)) n ((list len rest) - 1)
+
+fn :: fuse unpack names [RStmt] String [String] => [String]
+      fuse unpack names ((StmtLet v (EIndex (EVar t) ((EInt _):[]))):ss) tmp acc
+        | t == tmp = fuse unpack names ss tmp (acc :: [v])
+      fuse unpack names ((StmtMut v (EIndex (EVar t) ((EInt _):[]))):ss) tmp acc
+        | t == tmp = fuse unpack names ss tmp (acc :: [v])
+      fuse unpack names _ _ acc =  acc
+
+fn :: fuse repeat call args String String [String] RStmt Int Int => Bool
+      fuse repeat call args name k outs (StmtExpr (ECall f args)) n unpacked =
+        f == name and (list len outs) == unpacked and (list len args) == (n + 1) and (fuse repeat last arg k (list last or args EUnit)) and (fuse all in (fuse drop last (fuse names of args []) []) outs) and (fuse all distinct (fuse drop last (fuse names of args []) []))
+      fuse repeat call args _ _ _ _ _ _ =  False
+
+fn :: fuse repeat last arg String RExpr => Bool
+      fuse repeat last arg k (EBin OpSub (EVar v) (EInt 1)) =  v == k
+      fuse repeat last arg _ _ =  False
+
+fn :: fuse all in [String] [String] => Bool
+      fuse all in [] _ =  True
+      fuse all in (x:xs) set =  x != "" and (list contains set x) and (fuse all in xs set)
+
+fn :: fuse all distinct [String] => Bool
+      fuse all distinct [] =  True
+      fuse all distinct (x:xs) =  (not (list contains xs x)) and (fuse all distinct xs)
+
+-- The values the results of the loop hold, in the order of its `o` tokens.
+fn :: fuse out locals [RFuseTok] Int [Int] => [Int]
+      fuse out locals [] _ acc =  acc
+      fuse out locals ((FtGet k):ts) _ acc =  fuse out locals ts k acc
+      fuse out locals (FtOut:ts) last acc =  fuse out locals ts last (acc :: [last])
+      fuse out locals (_:ts) last acc =  fuse out locals ts last acc
+
+-- The program up to its results: the tokens before the first `l<k> o` of the tail.
+fn :: fuse body code [RFuseTok] Int String => String
+      fuse body code toks outs code =  fuse body toks toks ((fuse count toks 0) - (outs * 2)) code
+
+fn :: fuse count [RFuseTok] Int => Int
+      fuse count [] n =  n
+      fuse count (_:ts) n =  fuse count ts (n + 1)
+
+fn :: fuse body toks [RFuseTok] Int String => String
+      fuse body toks [] _ code =  code
+      fuse body toks (t:ts) left code
+        | left <= 0 = code
+        | otherwise = fuse body toks ts (left - 1) (fuse code add code (fuse tok text t))
+
+fn :: fuse tok text RFuseTok => String
+      fuse tok text (FtTensor subs) =  "t" + subs
+      fuse tok text FtScalar =  "s"
+      fuse tok text (FtConst n) =  "c" + (int to str n)
+      fuse tok text (FtOp id) =  "x" + (int to str id)
+      fuse tok text (FtSet k) =  "w" + (int to str k)
+      fuse tok text (FtGet k) =  "l" + (int to str k)
+      fuse tok text FtOut =  "o"
+      fuse tok text FtIdx =  "b"
+      fuse tok text FtGather =  "g"
+      fuse tok text (FtReduce id) =  "r" + (int to str id)
+      fuse tok text (FtFeed k) =  "f" + (int to str k)
+      fuse tok text FtCount =  "n"
+
+fn :: fuse index of [String] String Int => Int
+      fuse index of [] _ _ =  0 - 1
+      fuse index of (x:xs) v i
+        | x == v = i
+        | otherwise = fuse index of xs v (i + 1)
+
+fn :: fuse repeat node String [RStmt] [String] => RExpr
+      fuse repeat node k ((StmtMut tmp (ECall ":fuse:" ((EStr code):leaves))):rest) params =
+        toks = fuse toks code
+        outs = fuse unpack names rest tmp []
+        ECall ":fuse:" ([EStr ((fuse repeat tail (fuse drop last (fuse names of (fuse call args (list last or rest (StmtExpr EUnit))) []) []) (fuse drop last params []) outs (fuse out locals toks 0 []) leaves (fuse body code toks (list len outs) "")) + " n")] :: leaves :: [EVar k])
+      fuse repeat node _ stmts _ =  EBlock stmts
+
+fn :: fuse call args RStmt => [RExpr]
+      fuse call args (StmtExpr (ECall _ args)) =  args
+      fuse call args _ =  []
+
+-- One result for each parameter, in their order: the value of the name the call gives in its
+-- place, and the leaf that reads that parameter (when the loop reads it).
+fn :: fuse repeat tail [String] [String] [String] [Int] [RExpr] String => String
+      fuse repeat tail [] _ _ _ _ code =  code
+      fuse repeat tail (arg:args) (param:params) outs locals leaves code =
+        fuse repeat tail args params outs locals leaves (code + " l" + (int to str (list nth or locals (fuse index of outs arg 0) 0)) + " o" + (fuse feed text (fuse leaf pos leaves param 0)))
+      fuse repeat tail _ _ _ _ _ code =  code
+
+fn :: fuse feed text Int => String
+      fuse feed text pos
+        | pos < 0 = ""
+        | otherwise = " f" + (int to str pos)
 
 fn :: fuse late cases [RFnCase] => [RFnCase]
       fuse late cases cs =  map (c => fuse late case c) cs

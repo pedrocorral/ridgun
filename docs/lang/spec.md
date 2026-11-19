@@ -578,6 +578,7 @@ m = (a_ij shr 4) and 0xFF
 - A shift or rotation count is taken modulo the width; `shr` is logical; `/` and `%` by zero give 0.
 - A tensor read has the subscripts of the result, its first ones (`c_i` in `a_ij * c_i`) or its last ones (`b_j` in `a_ij + b_j`).
 - Consecutive statements that bind such expressions over tensors of one type run as one loop. A tensor read for the last time, with no other owner, takes the result in place.
+- A function that does one such loop and calls itself with the results and one less in its counter (`| k <= 0 = (a, b)` then the statements and `f a1 b1 (k - 1)`) runs as that loop done `k` times, with no call in between.
 - `t_(index)`, with an element-wise index, reads `t` at the index of each element: `sbox_(x_i)`, `t_((x_i shr 4) and 15)`. The index tensors are integers of any element type; an index outside `t` stops the program.
 - `tensor sum e`, `tensor min e` and `tensor max e` give one number from all the elements of an element-wise expression or of a tensor: `tensor sum (a_i * b_i)` is a dot product. The result is an `Int` (a `Real` for `Real` tensors); 0 when there are no elements.
 

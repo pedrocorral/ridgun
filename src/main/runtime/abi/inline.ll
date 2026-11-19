@@ -1080,6 +1080,9 @@ t:
   ret i1 %l2
 }
 
+; t_(i) and t_(i) = v on a packed tensor of one dimension (U8, U16, U32: the
+; first data word is 1 + (lg << 32), lg the element size as a power of two);
+; anything else goes to the runtime.
 define i64 @__rg_u8_get1(i64 %t, i64 %iv) alwaysinline nounwind {
 entry:
   %tb = inttoptr i64 %t to ptr
@@ -1087,21 +1090,40 @@ entry:
   %dh = load ptr, ptr %dhp, align 8, !invariant.load !0
   %wpp = getelementptr inbounds i8, ptr %dh, i64 8
   %w = load ptr, ptr %wpp, align 8, !invariant.load !0
-  %rk = load i64, ptr %w, align 8, !invariant.load !0
+  %hd = load i64, ptr %w, align 8, !invariant.load !0
+  %rk = and i64 %hd, 4294967295
+  %lg = lshr i64 %hd, 32
   %d1p = getelementptr inbounds i64, ptr %w, i64 1
   %d1 = load i64, ptr %d1p, align 8, !invariant.load !0
   %i = ashr i64 %iv, 1
   %isint = trunc i64 %iv to i1
   %r1 = icmp eq i64 %rk, 1
   %inb = icmp ult i64 %i, %d1
+  %lgok = icmp ult i64 %lg, 3
   %c0 = and i1 %isint, %r1
-  %ok = and i1 %c0, %inb
+  %c1 = and i1 %c0, %lgok
+  %ok = and i1 %c1, %inb
   br i1 %ok, label %fast, label %slow
 fast:
   %bp0 = getelementptr inbounds i64, ptr %w, i64 2
-  %bp = getelementptr inbounds i8, ptr %bp0, i64 %i
-  %b = load i8, ptr %bp, align 1
-  %bz = zext i8 %b to i64
+  %off = shl i64 %i, %lg
+  %bp = getelementptr inbounds i8, ptr %bp0, i64 %off
+  switch i64 %lg, label %g1 [ i64 1, label %g2
+                              i64 2, label %g4 ]
+g1:
+  %b1 = load i8, ptr %bp, align 1
+  %z1 = zext i8 %b1 to i64
+  br label %got
+g2:
+  %b2 = load i16, ptr %bp, align 1
+  %z2 = zext i16 %b2 to i64
+  br label %got
+g4:
+  %b4 = load i32, ptr %bp, align 1
+  %z4 = zext i32 %b4 to i64
+  br label %got
+got:
+  %bz = phi i64 [ %z1, %g1 ], [ %z2, %g2 ], [ %z4, %g4 ]
   %bs = shl i64 %bz, 1
   %r = or i64 %bs, 1
   ret i64 %r
@@ -1117,7 +1139,9 @@ entry:
   %dh = load ptr, ptr %dhp, align 8, !invariant.load !0
   %wpp = getelementptr inbounds i8, ptr %dh, i64 8
   %w = load ptr, ptr %wpp, align 8, !invariant.load !0
-  %rk = load i64, ptr %w, align 8, !invariant.load !0
+  %hd = load i64, ptr %w, align 8, !invariant.load !0
+  %rk = and i64 %hd, 4294967295
+  %lg = lshr i64 %hd, 32
   %d1p = getelementptr inbounds i64, ptr %w, i64 1
   %d1 = load i64, ptr %d1p, align 8, !invariant.load !0
   %i = ashr i64 %iv, 1
@@ -1126,16 +1150,33 @@ entry:
   %isint = trunc i64 %ii to i1
   %r1 = icmp eq i64 %rk, 1
   %inb = icmp ult i64 %i, %d1
-  %vok = icmp ult i64 %v, 256
+  %lgok = icmp ult i64 %lg, 3
+  %lgc = select i1 %lgok, i64 %lg, i64 0
+  %bits = shl i64 8, %lgc
+  %top = shl i64 1, %bits
+  %vok = icmp ult i64 %v, %top
   %c0 = and i1 %isint, %r1
   %c1 = and i1 %c0, %inb
-  %ok = and i1 %c1, %vok
+  %c2 = and i1 %c1, %lgok
+  %ok = and i1 %c2, %vok
   br i1 %ok, label %fast, label %slow
 fast:
   %bp0 = getelementptr inbounds i64, ptr %w, i64 2
-  %bp = getelementptr inbounds i8, ptr %bp0, i64 %i
-  %b = trunc i64 %v to i8
-  store i8 %b, ptr %bp, align 1
+  %off = shl i64 %i, %lg
+  %bp = getelementptr inbounds i8, ptr %bp0, i64 %off
+  switch i64 %lg, label %s1 [ i64 1, label %s2
+                              i64 2, label %s4 ]
+s1:
+  %b1 = trunc i64 %v to i8
+  store i8 %b1, ptr %bp, align 1
+  ret void
+s2:
+  %b2 = trunc i64 %v to i16
+  store i16 %b2, ptr %bp, align 1
+  ret void
+s4:
+  %b4 = trunc i64 %v to i32
+  store i32 %b4, ptr %bp, align 1
   ret void
 slow:
   call void @__rg_u8_set1_slow(i64 %t, i64 %iv, i64 %vv)

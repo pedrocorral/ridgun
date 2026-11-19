@@ -20,6 +20,9 @@
 ;   w<k>   take the value on top as value k
 ;   l<k>   value k
 ;   o      take the value on top as the next result
+;   f<k>   after `o`: that result is what leaf k holds the next time round
+;   n      the next leaf: a number; the program runs that many times (at
+;          least once), each time on the results of the time before
 ;   r<id>  the last token: the program gives one number, the values of all
 ;          the elements joined: 0 their sum, 30 the smallest, 31 the largest
 ;          (0 when there is no element). Integers are joined as 64-bit
@@ -644,6 +647,12 @@ entry:
   %endp = alloca i64, align 8
   %fromp = alloca i64, align 8
   store i64 0, ptr %fromp, align 8
+  %leaftoks = alloca [2048 x i64], align 8
+  %feeds = alloca [96 x i64], align 8
+  %repsp = alloca i64, align 8
+  store i64 1, ptr %repsp, align 8
+  %ltk = ptrtoint ptr %leaftoks to i64
+  %fd = ptrtoint ptr %feeds to i64
   %redp = alloca i64, align 8
   %redkp = alloca i64, align 8
   %accp = alloca i64, align 8
@@ -709,7 +718,33 @@ tok1:
                                i64 119, label %tw
                                i64 108, label %tl
                                i64 111, label %to
-                               i64 114, label %tr ]
+                               i64 114, label %tr
+                               i64 110, label %tn
+                               i64 102, label %tf ]
+tn:
+  ; the number of times: at least once
+  %nv0 = call i64 @rg_ld(i64 %ls)
+  %nv = call i64 @rg_raw_word(i64 %nv0)
+  %npos = icmp sgt i64 %nv, 1
+  %nreps = select i1 %npos, i64 %nv, i64 1
+  store i64 %nreps, ptr %repsp, align 8
+  call void @rg_st(i64 %tp, i64 10)
+  %nl3 = add i64 %nl, 1
+  br label %next
+tf:
+  %fv = call i64 @rg_fuse_num(i64 %p1, i64 %end, ptr %endp)
+  %pf = load i64, ptr %endp, align 8
+  %fhas = icmp uge i64 %no, 1
+  %fok = icmp ult i64 %fv, 2048
+  %fboth = and i1 %fhas, %fok
+  br i1 %fboth, label %tf1, label %bad
+tf1:
+  %fj = sub i64 %no, 1
+  %fjo = shl i64 %fj, 3
+  %fja = add i64 %fd, %fjo
+  call void @rg_st(i64 %fja, i64 %fv)
+  call void @rg_st(i64 %tp, i64 10)
+  br label %next
 tr:
   %rv9 = call i64 @rg_fuse_num(i64 %p1, i64 %end, ptr %endp)
   %pr = load i64, ptr %endp, align 8
@@ -745,6 +780,8 @@ tens:
   %td = call i64 @rg_fuse_data(i64 %tv, i64 %klg)
   %tlen = call i64 @rg_fuse_len(i64 %tv, i64 %klg)
   call void @rg_st(i64 %tp, i64 %tk)
+  %lto = add i64 %ltk, %lo
+  call void @rg_st(i64 %lto, i64 %nt)
   call void @rg_st(i64 %ap, i64 %td)
   call void @rg_st(i64 %lp, i64 %tlen)
   call void @rg_st(i64 %vp, i64 %kd)
@@ -844,19 +881,21 @@ to1:
   %oko = shl i64 %no, 3
   %oka = add i64 %ok, %oko
   call void @rg_st(i64 %oka, i64 %okk)
+  %fia = add i64 %fd, %oko
+  call void @rg_st(i64 %fia, i64 -1)
   call void @rg_st(i64 %tp, i64 7)
   call void @rg_st(i64 %ap, i64 %no)
   %no1 = add i64 %no, 1
   %kspo = sub i64 %ksp, 1
   br label %next
 next:
-  %pa = phi i64 [ %p1, %tens ], [ %p1, %ts ], [ %pc, %tc ], [ %px, %tx1 ], [ %pw, %tw1 ], [ %pl, %tl1 ], [ %p1, %to1 ], [ %pr, %tr1 ]
-  %nln = phi i64 [ %nl1, %tens ], [ %nl2, %ts ], [ %nl, %tc ], [ %nl, %tx1 ], [ %nl, %tw1 ], [ %nl, %tl1 ], [ %nl, %to1 ], [ %nl, %tr1 ]
-  %ntnn = phi i64 [ %ntn1, %tens ], [ %ntn, %ts ], [ %ntn, %tc ], [ %ntn, %tx1 ], [ %ntn, %tw1 ], [ %ntn, %tl1 ], [ %ntn, %to1 ], [ %ntn, %tr1 ]
-  %non = phi i64 [ %no, %tens ], [ %no, %ts ], [ %no, %tc ], [ %no, %tx1 ], [ %no, %tw1 ], [ %no, %tl1 ], [ %no1, %to1 ], [ %no, %tr1 ]
-  %kspn = phi i64 [ %kspt, %tens ], [ %ksps, %ts ], [ %kspc, %tc ], [ %kspx, %tx1 ], [ %kspw, %tw1 ], [ %kspl, %tl1 ], [ %kspo, %to1 ], [ %kspr, %tr1 ]
-  %modeln = phi i64 [ %model1, %tens ], [ %model, %ts ], [ %model, %tc ], [ %model, %tx1 ], [ %model, %tw1 ], [ %model, %tl1 ], [ %model, %to1 ], [ %model, %tr1 ]
-  %mlgn = phi i64 [ %mlg1, %tens ], [ %mlg, %ts ], [ %mlg, %tc ], [ %mlg, %tx1 ], [ %mlg, %tw1 ], [ %mlg, %tl1 ], [ %mlg, %to1 ], [ %mlg, %tr1 ]
+  %pa = phi i64 [ %p1, %tens ], [ %p1, %ts ], [ %pc, %tc ], [ %px, %tx1 ], [ %pw, %tw1 ], [ %pl, %tl1 ], [ %p1, %to1 ], [ %pr, %tr1 ], [ %p1, %tn ], [ %pf, %tf1 ]
+  %nln = phi i64 [ %nl1, %tens ], [ %nl2, %ts ], [ %nl, %tc ], [ %nl, %tx1 ], [ %nl, %tw1 ], [ %nl, %tl1 ], [ %nl, %to1 ], [ %nl, %tr1 ], [ %nl3, %tn ], [ %nl, %tf1 ]
+  %ntnn = phi i64 [ %ntn1, %tens ], [ %ntn, %ts ], [ %ntn, %tc ], [ %ntn, %tx1 ], [ %ntn, %tw1 ], [ %ntn, %tl1 ], [ %ntn, %to1 ], [ %ntn, %tr1 ], [ %ntn, %tn ], [ %ntn, %tf1 ]
+  %non = phi i64 [ %no, %tens ], [ %no, %ts ], [ %no, %tc ], [ %no, %tx1 ], [ %no, %tw1 ], [ %no, %tl1 ], [ %no1, %to1 ], [ %no, %tr1 ], [ %no, %tn ], [ %no, %tf1 ]
+  %kspn = phi i64 [ %kspt, %tens ], [ %ksps, %ts ], [ %kspc, %tc ], [ %kspx, %tx1 ], [ %kspw, %tw1 ], [ %kspl, %tl1 ], [ %kspo, %to1 ], [ %kspr, %tr1 ], [ %ksp, %tn ], [ %ksp, %tf1 ]
+  %modeln = phi i64 [ %model1, %tens ], [ %model, %ts ], [ %model, %tc ], [ %model, %tx1 ], [ %model, %tw1 ], [ %model, %tl1 ], [ %model, %to1 ], [ %model, %tr1 ], [ %model, %tn ], [ %model, %tf1 ]
+  %mlgn = phi i64 [ %mlg1, %tens ], [ %mlg, %ts ], [ %mlg, %tc ], [ %mlg, %tx1 ], [ %mlg, %tw1 ], [ %mlg, %tl1 ], [ %mlg, %to1 ], [ %mlg, %tr1 ], [ %mlg, %tn ], [ %mlg, %tf1 ]
   %nt1 = add i64 %nt, 1
   ; skip the space after the token
   %pn = add i64 %pa, 1
@@ -892,7 +931,7 @@ chk0:
 chk:
   %ci = phi i64 [ 0, %chk0 ], [ %ci1, %chknext ]
   %cm = icmp ult i64 %ci, %nt
-  br i1 %cm, label %chkone, label %mk
+  br i1 %cm, label %chkone, label %elig
 chkone:
   %co = shl i64 %ci, 3
   %ctp = add i64 %ty, %co
@@ -923,8 +962,39 @@ chknext:
 differ:
   call void @rg_fuse_shapes()
   unreachable
+elig:
+  ; a program that runs several times: only a leaf that a result feeds can
+  ; take a result (another leaf is read again after the first time)
+  %ereps = load i64, ptr %repsp, align 8
+  %emany = icmp ugt i64 %ereps, 1
+  br i1 %emany, label %el, label %mk
+el:
+  %eli = phi i64 [ 0, %elig ], [ %eli1, %elnext ]
+  %elm = icmp ult i64 %eli, %nl
+  br i1 %elm, label %elf, label %mk
+elf:
+  %elj = phi i64 [ 0, %el ], [ %elj1, %elfn ]
+  %eljm = icmp ult i64 %elj, %no
+  br i1 %eljm, label %elfc, label %elclear
+elfc:
+  %eljo = shl i64 %elj, 3
+  %elfa = add i64 %fd, %eljo
+  %elfv = call i64 @rg_ld(i64 %elfa)
+  %elhit = icmp eq i64 %elfv, %eli
+  br i1 %elhit, label %elnext, label %elfn
+elfn:
+  %elj1 = add i64 %elj, 1
+  br label %elf
+elclear:
+  %elo = shl i64 %eli, 3
+  %elka = add i64 %lfk, %elo
+  call void @rg_st(i64 %elka, i64 0)
+  br label %elnext
+elnext:
+  %eli1 = add i64 %eli, 1
+  br label %el
 mk:
-  %mi = phi i64 [ 0, %chk ], [ %mi1, %mkone ]
+  %mi = phi i64 [ 0, %elig ], [ 0, %el ], [ %mi1, %mkone ]
   %mm = icmp ult i64 %mi, %nres
   br i1 %mm, label %mkone, label %elem
 mkone:
@@ -941,9 +1011,42 @@ mkone:
   %mi1 = add i64 %mi, 1
   br label %mk
 elem:
-  %e = phi i64 [ 0, %mk ], [ %e1, %stored ]
+  %e = phi i64 [ 0, %mk ], [ %e1, %stored ], [ 0, %again ]
+  %rep = phi i64 [ 1, %mk ], [ %rep, %stored ], [ %rep1, %again ]
   %em = icmp ult i64 %e, %total
-  br i1 %em, label %run, label %finish
+  br i1 %em, label %run, label %round
+round:
+  ; one time is done: when another follows, each leaf a result feeds reads
+  ; that result from now on
+  %reps = load i64, ptr %repsp, align 8
+  %rmore = icmp ult i64 %rep, %reps
+  br i1 %rmore, label %feed, label %finish
+feed:
+  %fi = phi i64 [ 0, %round ], [ %fi1, %feednext ]
+  %fim = icmp ult i64 %fi, %no
+  br i1 %fim, label %feedone, label %again
+feedone:
+  %fio = shl i64 %fi, 3
+  %ffa = add i64 %fd, %fio
+  %fleaf = call i64 @rg_ld(i64 %ffa)
+  %fneg = icmp slt i64 %fleaf, 0
+  br i1 %fneg, label %feednext, label %feedset
+feedset:
+  %flo = shl i64 %fleaf, 3
+  %flta = add i64 %ltk, %flo
+  %ftok = call i64 @rg_ld(i64 %flta)
+  %fto = shl i64 %ftok, 3
+  %fap = add i64 %ar, %fto
+  %foda = add i64 %od, %fio
+  %fod = call i64 @rg_ld(i64 %foda)
+  call void @rg_st(i64 %fap, i64 %fod)
+  br label %feednext
+feednext:
+  %fi1 = add i64 %fi, 1
+  br label %feed
+again:
+  %rep1 = add i64 %rep, 1
+  br label %elem
 run:
   br label %step
 step:
@@ -974,7 +1077,10 @@ one:
                                 i64 6, label %olget
                                 i64 7, label %oo
                                 i64 8, label %og
-                                i64 9, label %ored ]
+                                i64 9, label %ored
+                                i64 10, label %onop ]
+onop:
+  br label %pushed
 ored:
   ; join the value on top with the ones before
   %dv = call i64 @rg_ld(i64 %topa)
@@ -1049,7 +1155,7 @@ oop:
   call void @rg_st(i64 %aa, i64 %rv)
   br label %pushed
 pushed:
-  %spn = phi i64 [ %sp1, %push1 ], [ %sp, %og1 ], [ %topi, %ow ], [ %topi, %oo ], [ %topi, %oop ], [ %topi, %ored ]
+  %spn = phi i64 [ %sp1, %push1 ], [ %sp, %og1 ], [ %topi, %ow ], [ %topi, %oo ], [ %topi, %oop ], [ %topi, %ored ], [ %sp, %onop ]
   %ti1 = add i64 %ti, 1
   br label %step
 store:

@@ -710,6 +710,7 @@ fn :: fuse result dims [RFuseTok] [RType] String => [String]
       fuse result dims ((FtTensor _):ts) (_:tys) out =  fuse result dims ts tys out
       fuse result dims (FtScalar:ts) (_:tys) out =  fuse result dims ts tys out
       fuse result dims (FtGather:ts) (_:tys) out =  fuse result dims ts tys out
+      fuse result dims (FtCount:ts) (_:tys) out =  fuse result dims ts tys out
       fuse result dims (_:ts) tys out =  fuse result dims ts tys out
       fuse result dims [] _ _ =  []
 
@@ -753,6 +754,9 @@ fn :: fuse walk [RFuseTok] [RType] [RType] String [RTypeError] => RType [RTypeEr
       fuse walk ((FtOp id):ts) tys (elem:ctx) fn_name errs
         | (fuse elem class elem) == "R" and id > 3 = fuse walk ts tys ([elem] :: ctx) fn_name (errs :: [TypeError fn_name ("element-wise operator " + (fuse op symbol id) + " needs tensors of integers, got a tensor of Real")])
         | otherwise = fuse walk ts tys ([elem] :: ctx) fn_name errs
+      fuse walk (FtCount:ts) (ty:tys) ctx fn_name errs
+        | is int or poly ty = fuse walk ts tys ctx fn_name errs
+        | otherwise = fuse walk ts tys ctx fn_name (errs :: [TypeError fn_name ("the number of times a loop runs is an Int, got " + (rtype to str ty))])
       fuse walk (FtIdx:ts) tys ctx fn_name errs =  fuse walk ts tys ([TyVar "?"] :: ctx) fn_name errs
       fuse walk (FtGather:ts) ((TyTensor e d):tys) (idx:elem:ctx) fn_name errs =
         fuse walk ts tys ([fuse gather elem e elem] :: ctx) fn_name (errs :: (fuse index errs idx fn_name) :: (fuse gather errs (TyTensor e d) elem fn_name))

@@ -580,7 +580,7 @@ fn :: llvm target triple String           => String
 -- with no call inside, so `opt` can keep the values in registers and use vector instructions. The
 -- runtime keeps the general routine (`rg_fuse`) for the other back ends; both must give the same
 -- result.
-type RFz = FzT Int Int | FzS Int | FzC Int | FzX Int | FzW Int | FzL Int | FzO Int | FzG Int | FzR Int
+type RFz = FzT Int Int | FzS Int | FzC Int | FzX Int | FzW Int | FzL Int | FzO Int | FzG Int | FzR Int | FzN Int | FzF Int Int
 
 fn :: fz scan String Int Int Int [RFz] => [RFz]
       fz scan s pos len nl acc
@@ -598,6 +598,8 @@ fn :: fz tok String Int Int Int [RFz] Int => [RFz]
       fz tok s pos len nl acc 119 =  fz scan s (fz num end s (pos + 1) len) len nl (acc :: [FzW (fz num s (pos + 1) (fz num end s (pos + 1) len))])
       fz tok s pos len nl acc 108 =  fz scan s (fz num end s (pos + 1) len) len nl (acc :: [FzL (fz num s (pos + 1) (fz num end s (pos + 1) len))])
       fz tok s pos len nl acc 111 =  fz scan s (pos + 1) len nl (acc :: [FzO (fz outs acc 0)])
+      fz tok s pos len nl acc 110 =  fz scan s (pos + 1) len (nl + 1) (acc :: [FzN nl])
+      fz tok s pos len nl acc 102 =  fz scan s (fz num end s (pos + 1) len) len nl (acc :: [FzF ((fz outs acc 0) - 1) (fz num s (pos + 1) (fz num end s (pos + 1) len))])
       fz tok s pos len nl acc 114 =  fz scan s (fz num end s (pos + 1) len) len nl (acc :: [FzR (fz num s (pos + 1) (fz num end s (pos + 1) len))])
       fz tok s pos len nl acc _ =  fz scan s (pos + 1) len nl acc
 
@@ -649,6 +651,7 @@ fn :: fz leaf kinds [RFz] Int Int [String] => [String]
       fz leaf kinds ((FzT _ _):ts) kinds n acc =  fz leaf kinds ts kinds (n + 1) (acc :: [fz kind letter (fz kind digit kinds n)])
       fz leaf kinds ((FzG _):ts) kinds n acc =  fz leaf kinds ts kinds (n + 1) (acc :: [fz kind letter (fz kind digit kinds n)])
       fz leaf kinds ((FzS _):ts) kinds n acc =  fz leaf kinds ts kinds n (acc :: [""])
+      fz leaf kinds ((FzN _):ts) kinds n acc =  fz leaf kinds ts kinds n (acc :: [""])
       fz leaf kinds (_:ts) kinds n acc =  fz leaf kinds ts kinds n acc
 
 fn :: fz ty String => String
@@ -686,6 +689,25 @@ fn :: fz nested [RFz] => Bool
       fz nested ((FzT 2 _):_) =  True
       fz nested (_:ts) =  fz nested ts
 
+-- The leaf that says how many times the program runs (-1: once), and the leaves its results feed.
+fn :: fz count leaf [RFz] => Int
+      fz count leaf [] =  0 - 1
+      fz count leaf ((FzN i):_) =  i
+      fz count leaf (_:ts) =  fz count leaf ts
+
+fn :: fz fed leaves [RFz] [Int] => [Int]
+      fz fed leaves [] acc =  acc
+      fz fed leaves ((FzF _ leaf):ts) acc =  fz fed leaves ts (acc :: [leaf])
+      fz fed leaves (_:ts) acc =  fz fed leaves ts acc
+
+-- The result that feeds a leaf (-1: none).
+fn :: fz feeder [RFz] Int => Int
+      fz feeder [] _ =  0 - 1
+      fz feeder ((FzF out leaf):ts) want
+        | leaf == want = out
+        | otherwise = fz feeder ts want
+      fz feeder (_:ts) want =  fz feeder ts want
+
 fn :: fz reduces [RFz] => Bool
       fz reduces [] =  False
       fz reduces ((FzR _):_) =  True
@@ -698,19 +720,21 @@ fn :: fz gathers [RFz] => Bool
 
 -- The leaves: a tensor gives its elements (%p) and their number (%n), a number its word (%w). %lk
 -- holds, for each leaf, its kind when it can take a result (a tensor read element by element).
-fn :: fz load leaves [RFz] [String] [String] => [String]
-      fz load leaves [] _ acc =  acc
-      fz load leaves ((FzT mode i):ts) kinds acc =
-        fz load leaves ts kinds (acc :: [fz load tensor i (fz lg (list nth or kinds i "N")) (fz take kind mode (list nth or kinds i "N"))])
-      fz load leaves ((FzG i):ts) kinds acc =
-        fz load leaves ts kinds (acc :: [fz load tensor i (fz lg (list nth or kinds i "N")) 0])
-      fz load leaves ((FzS i):ts) kinds acc =
-        fz load leaves ts kinds (acc :: ["  %sp{i} = getelementptr inbounds i64, ptr %slots, i64 {i}\n  %v{i} = load i64, ptr %sp{i}, align 8\n  %w{i} = call i64 @rg_raw_word(i64 %v{i})\n  %lka{i} = getelementptr inbounds i64, ptr %lk, i64 {i}\n  store i64 0, ptr %lka{i}, align 8\n"])
-      fz load leaves (_:ts) kinds acc =  fz load leaves ts kinds acc
+fn :: fz load leaves [RFz] [String] [Int] [String] => [String]
+      fz load leaves [] _ _ acc =  acc
+      fz load leaves ((FzT mode i):ts) kinds elig acc =
+        fz load leaves ts kinds elig (acc :: [fz load tensor i (fz lg (list nth or kinds i "N")) (fz take kind mode (list nth or kinds i "N") ((list contains elig (0 - 1)) or (list contains elig i)))])
+      fz load leaves ((FzG i):ts) kinds elig acc =
+        fz load leaves ts kinds elig (acc :: [fz load tensor i (fz lg (list nth or kinds i "N")) 0])
+      fz load leaves ((FzN i):ts) kinds elig acc =
+        fz load leaves ts kinds elig (acc :: ["  %sp{i} = getelementptr inbounds i64, ptr %slots, i64 {i}\n  %v{i} = load i64, ptr %sp{i}, align 8\n  %w{i} = call i64 @rg_raw_word(i64 %v{i})\n  %lka{i} = getelementptr inbounds i64, ptr %lk, i64 {i}\n  store i64 0, ptr %lka{i}, align 8\n"])
+      fz load leaves ((FzS i):ts) kinds elig acc =
+        fz load leaves ts kinds elig (acc :: ["  %sp{i} = getelementptr inbounds i64, ptr %slots, i64 {i}\n  %v{i} = load i64, ptr %sp{i}, align 8\n  %w{i} = call i64 @rg_raw_word(i64 %v{i})\n  %lka{i} = getelementptr inbounds i64, ptr %lk, i64 {i}\n  store i64 0, ptr %lka{i}, align 8\n"])
+      fz load leaves (_:ts) kinds elig acc =  fz load leaves ts kinds elig acc
 
-fn :: fz take kind Int String => Int
-      fz take kind 0 k =  fz kind num k
-      fz take kind _ _ =  0
+fn :: fz take kind Int String Bool => Int
+      fz take kind 0 k True =  fz kind num k
+      fz take kind _ _ _ =  0
 
 fn :: fz load tensor Int Int Int => String
       fz load tensor i lg tk =
@@ -752,46 +776,46 @@ fn :: fz row heads [RFz] [String] [String] => [String]
 -- flags of the indices that were outside their tensor, and the lines.
 type RFzSt = FzSt [String] [String] [(Int, String, String)] [String] [String] [String]
 
-fn :: fz body [RFz] [String] Int RFzSt => RFzSt
-      fz body [] _ _ st =  st
-      fz body ((FzT 0 i):ts) kinds n (FzSt names ks locs outs flags code) =
+fn :: fz body [RFz] [String] String Int RFzSt => RFzSt
+      fz body [] _ _ _ st =  st
+      fz body ((FzT 0 i):ts) kinds pp n (FzSt names ks locs outs flags code) =
         k = list nth or kinds i "N"
         ty = fz ty k
         al = fz align k
-        fz body ts kinds (n + 1) (FzSt (["%x{n}"] :: names) ([k] :: ks) locs outs flags (code :: ["  %a{n} = getelementptr inbounds {ty}, ptr %p{i}, i64 %e\n  %x{n} = load {ty}, ptr %a{n}, align {al}, !llvm.access.group !7001\n"]))
-      fz body ((FzT 1 i):ts) kinds n (FzSt names ks locs outs flags code) =
-        fz body ts kinds (n + 1) (FzSt (["%pv{i}"] :: names) ([list nth or kinds i "N"] :: ks) locs outs flags code)
-      fz body ((FzT _ i):ts) kinds n (FzSt names ks locs outs flags code) =
+        fz body ts kinds pp (n + 1) (FzSt (["%x{n}"] :: names) ([k] :: ks) locs outs flags (code :: ["  %a{n} = getelementptr inbounds {ty}, ptr {pp}{i}, i64 %e\n  %x{n} = load {ty}, ptr %a{n}, align {al}, !llvm.access.group !7001\n"]))
+      fz body ((FzT 1 i):ts) kinds pp n (FzSt names ks locs outs flags code) =
+        fz body ts kinds pp (n + 1) (FzSt (["%pv{i}"] :: names) ([list nth or kinds i "N"] :: ks) locs outs flags code)
+      fz body ((FzT _ i):ts) kinds pp n (FzSt names ks locs outs flags code) =
         k = list nth or kinds i "N"
         ty = fz ty k
         al = fz align k
-        fz body ts kinds (n + 1) (FzSt (["%x{n}"] :: names) ([k] :: ks) locs outs flags (code :: ["  %u{n} = add i64 %ub{i}, %j\n  %a{n} = getelementptr inbounds {ty}, ptr %p{i}, i64 %u{n}\n  %x{n} = load {ty}, ptr %a{n}, align {al}, !llvm.access.group !7001\n"]))
-      fz body ((FzS i):ts) kinds n (FzSt names ks locs outs flags code) =
-        fz body ts kinds (n + 1) (FzSt (["%w{i}"] :: names) ([""] :: ks) locs outs flags code)
-      fz body ((FzC c):ts) kinds n (FzSt names ks locs outs flags code) =
-        fz body ts kinds (n + 1) (FzSt (["#" + (int to str c)] :: names) ([""] :: ks) locs outs flags code)
-      fz body ((FzX id):ts) kinds n (FzSt (b:a:names) (kb:ka:ks) locs outs flags code) =
+        fz body ts kinds pp (n + 1) (FzSt (["%x{n}"] :: names) ([k] :: ks) locs outs flags (code :: ["  %u{n} = add i64 %ub{i}, %j\n  %a{n} = getelementptr inbounds {ty}, ptr %p{i}, i64 %u{n}\n  %x{n} = load {ty}, ptr %a{n}, align {al}, !llvm.access.group !7001\n"]))
+      fz body ((FzS i):ts) kinds pp n (FzSt names ks locs outs flags code) =
+        fz body ts kinds pp (n + 1) (FzSt (["%w{i}"] :: names) ([""] :: ks) locs outs flags code)
+      fz body ((FzC c):ts) kinds pp n (FzSt names ks locs outs flags code) =
+        fz body ts kinds pp (n + 1) (FzSt (["#" + (int to str c)] :: names) ([""] :: ks) locs outs flags code)
+      fz body ((FzX id):ts) kinds pp n (FzSt (b:a:names) (kb:ka:ks) locs outs flags code) =
         k = fz op kind ka kb
-        fz body ts kinds (n + 1) (FzSt (["%x{n}"] :: names) ([k] :: ks) locs outs flags (code :: [(fz typed line a ka k n "a") + (fz typed line b kb k n "b") + (fz op k id n (fz typed name a ka k n "a") (fz typed name b kb k n "b"))]))
-      fz body ((FzW w):ts) kinds n (FzSt (top:names) (kt:ks) locs outs flags code) =
-        fz body ts kinds (n + 1) (FzSt names ks ([(w, top, kt)] :: locs) outs flags code)
-      fz body ((FzL w):ts) kinds n (FzSt names ks locs outs flags code) =
-        fz body ts kinds (n + 1) (FzSt ([fz loc name locs w] :: names) ([fz loc kind locs w] :: ks) locs outs flags code)
-      fz body ((FzO o):ts) kinds n (FzSt (top:names) (kt:ks) locs outs flags code) =
+        fz body ts kinds pp (n + 1) (FzSt (["%x{n}"] :: names) ([k] :: ks) locs outs flags (code :: [(fz typed line a ka k n "a") + (fz typed line b kb k n "b") + (fz op k id n (fz typed name a ka k n "a") (fz typed name b kb k n "b"))]))
+      fz body ((FzW w):ts) kinds pp n (FzSt (top:names) (kt:ks) locs outs flags code) =
+        fz body ts kinds pp (n + 1) (FzSt names ks ([(w, top, kt)] :: locs) outs flags code)
+      fz body ((FzL w):ts) kinds pp n (FzSt names ks locs outs flags code) =
+        fz body ts kinds pp (n + 1) (FzSt ([fz loc name locs w] :: names) ([fz loc kind locs w] :: ks) locs outs flags code)
+      fz body ((FzO o):ts) kinds pp n (FzSt (top:names) (kt:ks) locs outs flags code) =
         k = fz op kind kt ""
         ty = fz ty k
         al = fz align k
-        fz body ts kinds (n + 1) (FzSt names ks locs (outs :: [k]) flags (code :: [(fz typed line top kt k n "a") + "  %dst{n} = getelementptr inbounds {ty}, ptr %rp{o}, i64 %e\n  store {ty} " + (fz typed name top kt k n "a") + ", ptr %dst{n}, align {al}, !llvm.access.group !7001\n"]))
-      fz body ((FzG i):ts) kinds n (FzSt (top:names) (kt:ks) locs outs flags code) =
+        fz body ts kinds pp (n + 1) (FzSt names ks locs (outs :: [k]) flags (code :: [(fz typed line top kt k n "a") + "  %dst{n} = getelementptr inbounds {ty}, ptr %rp{o}, i64 %e\n  store {ty} " + (fz typed name top kt k n "a") + ", ptr %dst{n}, align {al}, !llvm.access.group !7001\n"]))
+      fz body ((FzG i):ts) kinds pp n (FzSt (top:names) (kt:ks) locs outs flags code) =
         k = list nth or kinds i "N"
         ty = fz ty k
         al = fz align k
         ix = fz index name top kt n
-        fz body ts kinds (n + 1) (FzSt (["%x{n}"] :: names) ([k] :: ks) locs outs (flags :: ["%gb{n}"]) (code :: [(fz index line top kt n) + "  %gb{n} = icmp uge i64 {ix}, %n{i}\n  %gs{n} = select i1 %gb{n}, i64 0, i64 {ix}\n  %ga{n} = getelementptr inbounds {ty}, ptr %p{i}, i64 %gs{n}\n  %x{n} = load {ty}, ptr %ga{n}, align {al}, !llvm.access.group !7001\n"]))
-      fz body ((FzR id):ts) kinds n (FzSt (top:names) (kt:ks) locs outs flags code) =
+        fz body ts kinds pp (n + 1) (FzSt (["%x{n}"] :: names) ([k] :: ks) locs outs (flags :: ["%gb{n}"]) (code :: [(fz index line top kt n) + "  %gb{n} = icmp uge i64 {ix}, %n{i}\n  %gs{n} = select i1 %gb{n}, i64 0, i64 {ix}\n  %ga{n} = getelementptr inbounds {ty}, ptr %p{i}, i64 %gs{n}\n  %x{n} = load {ty}, ptr %ga{n}, align {al}, !llvm.access.group !7001\n"]))
+      fz body ((FzR id):ts) kinds pp n (FzSt (top:names) (kt:ks) locs outs flags code) =
         k = fz op kind kt ""
-        fz body ts kinds (n + 1) (FzSt names ks locs ["=" + k] flags (code :: [(fz typed line top kt k n "a") + (fz join lines k id (fz typed name top kt k n "a"))]))
-      fz body (_:ts) kinds n st =  fz body ts kinds (n + 1) st
+        fz body ts kinds pp (n + 1) (FzSt names ks locs ["=" + k] flags (code :: [(fz typed line top kt k n "a") + (fz join lines k id (fz typed name top kt k n "a"))]))
+      fz body (_:ts) kinds pp n st =  fz body ts kinds pp (n + 1) st
 
 -- `r<id>`: the value joined with those of the elements before (%acc), as a 64-bit integer or a
 -- double: %acc1.
@@ -1014,13 +1038,47 @@ fn :: llvm fuse loops Bool [RFz] [String] [String] String String String => [Stri
       llvm fuse loops True toks kinds body pre _ _ =
         ["  br label %ohead\nohead:\n  %o = phi i64 [ 0, %" + pre + " ], [ %o1, %olatch ]\n  %omore = icmp ult i64 %o, %outer\n  br i1 %omore, label %obody, label %done\nobody:\n  %base = mul i64 %o, %inner\n"] :: (fz row heads toks kinds []) :: ["  br label %head\nhead:\n  %j = phi i64 [ 0, %obody ], [ %j1, %body ]\n  %more = icmp ult i64 %j, %inner\n  br i1 %more, label %body, label %olatch\nbody:\n  %e = add i64 %base, %j\n"] :: body :: ["  %j1 = add nuw i64 %j, 1\n  br label %head, !llvm.loop !7002\nolatch:\n  %o1 = add nuw i64 %o, 1\n  br label %ohead\n"]
 
+-- In a program that runs several times only a leaf that a result feeds can take a result; [-1]:
+-- any leaf can.
+fn :: fz elig leaves Int [Int] => [Int]
+      fz elig leaves cl fed
+        | cl < 0 = [0 - 1]
+        | otherwise = fed
+
+fn :: fz ptr prefix Int => String
+      fz ptr prefix cl
+        | cl < 0 = "%p"
+        | otherwise = "%src"
+
+fn :: llvm fuse loops pick Int Bool [RFz] [String] [String] String String String => [String]
+      llvm fuse loops pick cl nested toks kinds body pre bad accphi
+        | cl < 0 = llvm fuse loops nested toks kinds body pre bad accphi
+        | otherwise = llvm fuse repeat loops cl toks toks body pre []
+
+-- A program that runs `reps` times (FR-COMP-031): the elements go in pieces of 256, and each piece
+-- runs all its times before the next, so its values stay in the first cache. The first time a
+-- leaf is read where it is (%p); after it, a leaf that a result feeds is read in that result
+-- (%src), which is written in place.
+fn :: llvm fuse repeat loops Int [RFz] [RFz] [String] String [String] => [String]
+      llvm fuse repeat loops cl all [] body pre srcs =
+        ["  %rpos = icmp sgt i64 %w{cl}, 1\n  %reps = select i1 %rpos, i64 %w{cl}, i64 1\n  br label %chead\nchead:\n  %cs = phi i64 [ 0, %" + pre + " ], [ %ce, %rdone ]\n  %cmore = icmp ult i64 %cs, %total\n  br i1 %cmore, label %cbody, label %done\ncbody:\n  %ce0 = add i64 %cs, 256\n  %cfit = icmp ult i64 %ce0, %total\n  %ce = select i1 %cfit, i64 %ce0, i64 %total\n  br label %rhead\nrhead:\n  %rr = phi i64 [ 0, %cbody ], [ %rr1, %rlatch ]\n"] :: srcs :: ["  br label %head\nhead:\n  %e = phi i64 [ %cs, %rhead ], [ %e1, %body ]\n  %more = icmp ult i64 %e, %ce\n  br i1 %more, label %body, label %rlatch\nbody:\n"] :: body :: ["  %e1 = add nuw i64 %e, 1\n  br label %head, !llvm.loop !7002\nrlatch:\n  %rr1 = add nuw i64 %rr, 1\n  %rmore = icmp ult i64 %rr1, %reps\n  br i1 %rmore, label %rhead, label %rdone\nrdone:\n  br label %chead\n"]
+      llvm fuse repeat loops cl all ((FzT 0 i):ts) body pre srcs =
+        llvm fuse repeat loops cl all ts body pre (srcs :: ["  %src{i} = phi ptr [ %p{i}, %cbody ], [ " + (fz src after (fz feeder all i) i) + ", %rlatch ]\n"])
+      llvm fuse repeat loops cl all (_:ts) body pre srcs =  llvm fuse repeat loops cl all ts body pre srcs
+
+fn :: fz src after Int Int => String
+      fz src after out leaf
+        | out < 0 = "%p" + (int to str leaf)
+        | otherwise = "%rp" + (int to str out)
+
 fn :: llvm fuse fn Int Int Int String => String
       llvm fuse fn off len kinds prog =
         toks = fz scan prog 0 (str len prog) 0 []
-        llvm fuse fn pick off len kinds toks (((fz gathers toks) or (fz reduces toks)) and (fz nested toks))
+        llvm fuse fn pick off len kinds toks ((((fz gathers toks) or (fz reduces toks) or (fz count leaf toks) >= 0) and (fz nested toks)) or ((fz count leaf toks) >= 0 and ((fz gathers toks) or (fz reduces toks))))
 
--- A program that reads by index, or gives one number, and reads along rows at once runs in the
--- runtime.
+-- A program that reads by index, gives one number or runs several times, and reads along rows at
+-- once, runs in the runtime; so does one that runs several times and reads by index or gives one
+-- number.
 fn :: llvm fuse fn pick Int Int Int [RFz] Bool => String
       llvm fuse fn pick off len kinds _ True =
         opk = 1000 + kinds
@@ -1033,17 +1091,18 @@ fn :: llvm fuse fn of Int Int [RFz] [String] Int Bool => String
         lgm = fz lg (list nth or lkinds m "N")
         nl = list len lkinds
         nla = llvm alloc slots nl
-        loads = fz load leaves toks lkinds []
+        cl = fz count leaf toks
+        loads = fz load leaves toks lkinds (fz elig leaves cl (fz fed leaves toks [])) []
         chk = fz checks toks "true" []
         tabs = fz empty tables toks "false" []
-        st = fz finish (fz body toks lkinds 0 (FzSt [] [] [] [] [] [])) 9000
+        st = fz finish (fz body toks lkinds (fz ptr prefix cl) 0 (FzSt [] [] [] [] [] [])) 9000
         nout = fz outs toks 0
         gat = fz gathers toks
         head = "  %lk = alloca [{nla} x i64], align 8\n  %lki = ptrtoint ptr %lk to i64\n  %from = alloca i64, align 8\n  store i64 0, ptr %from, align 8\n"
         shape = "  %si = ptrtoint ptr %slots to i64\n  %total = add i64 %n{m}, 0\n  %empty = icmp eq i64 %total, 0\n" + (fz row shape nested m lgm)
         good = "  br i1 " + (fz chk name chk) + ", label %good, label %differ\ndiffer:\n  call void @rg_fuse_shapes()\n  unreachable\ngood:\n" + (fz results (fz tensor outs (fz st outs st)) m lgm nl 0 "") + (join str tree (fz chk code tabs)) + "  %full = xor i1 %empty, true\n  %gbad = and i1 " + (fz chk name tabs) + ", %full\n  br i1 %gbad, label %oob, label %start\noob:\n  call void @rg_oob()\n  unreachable\nstart:\n"
-        done = "done:\n" + (fz done check nested) + "  call void @rg_drop_slots(i64 %si, i64 {nl})\n" + (fz give or number (fz st outs st) nout) + "}}\n\n"
-        rest = join str tree ([head] :: loads :: [shape] :: (fz chk code chk) :: [good] :: (llvm fuse loops nested toks lkinds (fz st code st) "start" (fz bad lines (fz st flags st) "%bad" 0 "") (fz acc phi (fz st outs st) (fz reduce id toks))) :: [done])
+        done = "done:\n" + (fz done check (nested or cl >= 0)) + "  call void @rg_drop_slots(i64 %si, i64 {nl})\n" + (fz give or number (fz st outs st) nout) + "}}\n\n"
+        rest = join str tree ([head] :: loads :: [shape] :: (fz chk code chk) :: [good] :: (llvm fuse loops pick cl nested toks lkinds (fz st code st) "start" (fz bad lines (fz st flags st) "%bad" 0 "") (fz acc phi (fz st outs st) (fz reduce id toks))) :: [done])
         (llvm fuse dispatch off kinds) + (llvm fuse head off kinds "b" "") + rest + (llvm fuse head off kinds "x" " \"target-features\"=\"+avx,+avx2\"") + rest + (llvm fuse head off kinds "z" " \"target-features\"=\"+avx,+avx2,+avx512f,+avx512bw,+avx512dq,+avx512vl\" \"prefer-vector-width\"=\"512\"") + rest
 
 -- A reduction has no result tensor: its one "result" is `=<kind>`.

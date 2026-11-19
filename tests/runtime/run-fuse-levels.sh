@@ -10,7 +10,7 @@ ridgunc=${RIDGUNC:-bin/ridgunc}
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 failed=0
-for case in fused_elementwise_expressions packed_u16_and_u32_tensors_wrap_at_their_width fused_statements_share_one_loop elementwise_selection_by_index tensor_sum_min_and_max_run_in_the_loop mulhi_and_clmul_on_numbers_and_tensors; do
+for case in fused_elementwise_expressions packed_u16_and_u32_tensors_wrap_at_their_width fused_statements_share_one_loop elementwise_selection_by_index tensor_sum_min_and_max_run_in_the_loop mulhi_and_clmul_on_numbers_and_tensors fused_step_repeated_by_its_own_call; do
   src=tests/cases/tensors/$case.ridgun
   sed -n '/^-- expect-output:/,/^$/p' "$src" | sed -e '1d' -e '/^$/d' -e 's/^--   //' > "$tmp/want"
   "$ridgunc" build "$src" -o "$tmp/prog" --quiet

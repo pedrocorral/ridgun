@@ -26,6 +26,17 @@ verified_by: []
 4. **Packed tensors.** `Tensor[U16]` and `Tensor[U32]` store 2 and 4 bytes per element, as `Tensor[U8]` stores 1 (FR-COMP-022). Each is its own type: compatible only with a tensor of the same element type. An element reads as an `Int`; writing an `Int` outside the range of the type stops the program (`runtime error: U32 element out of 0..4294967295`). The interfaces of bytes (strings, files, hashes, system calls) take `Tensor[U8]` only.
 5. **One loop.** An expression runs as one pass over the elements: each operand is read once and the result written once, with no call and no allocation per operator.
 6. **Several statements, one loop.** Consecutive statements of a block that each bind an element-wise expression, over tensors of one element type and with the same subscripts, run as one loop with several results; a value one statement gives to a later one is not stored in between. The element type must be known from the text: a parameter typed `Tensor[U32 * n]`, a tensor made with `Tensor[U32 * n]`, or a result of such a statement.
+   A function that does one such loop on its tensors and then calls itself with the results and one less in its counter runs as that loop done that many times, without a call in between:
+   ```ridgun
+   fn :: rounds Tensor[U32 * n] Tensor[U32 * n] Int => Tensor[U32 * n] Tensor[U32 * n]
+         rounds a b k
+           | k <= 0 = (a, b)
+           | otherwise =
+             a1 = a_i + b_i
+             b1 = (b_i xor a1_i) rotl 7
+             rounds a1 b1 (k - 1)
+   ```
+   The form that is recognised: the counter is the last parameter, the first branch is `k <= 0` and gives the tensor parameters back in their order, and the second is the statements of one loop followed by the call with one new name for each tensor and `k - 1`.
 7. **In place.** A tensor that the expression reads for the last time, and that nothing else holds, takes a result instead of a new tensor. A tensor with another name or another owner is never written.
 8. **The instructions of the machine.** With the LLVM back end the loop is in the program itself, on untagged elements of the machine type, in three versions: plain x86-64, AVX2 and AVX-512. The program runs the widest the machine has; `RIDGUN_CPU=2` or `RIDGUN_CPU=3` in the environment keeps it at the plain or the AVX2 version. The other back ends (the pure x86-64 encoder, WebAssembly) run the same expression in the runtime, element by element: the same result, slower.
 9. **Wide and carry-less products.** Three operators on integers, on plain `Int`s and element-wise:
@@ -55,6 +66,7 @@ The cryptography of the libraries used tensors as arrays and did every step elem
 13. **AC-13**: `tensor sum (a_i * b_i)` on `Real` tensors is the dot product; `tensor sum` of 1000 bytes of 255 is 255000; `tensor max (a_i xor b_i)` is 0 for equal tensors; `tensor sum`, `tensor min` and `tensor max` of a tensor of no elements are 0.
 14. **AC-14**: `(0 - 1) mulhi (0 - 1)` is `-2` (2^64 - 2), `0x100000000 mulhi 0x100000000` is 1; on `Tensor[U32]`, `0xFFFFFFFF mulhi 0x10000` is `65535`.
 15. **AC-15**: `3 clmul 3` is 5, `7 clmul 5` is 27, `0x8000000000000000 clmulhi 2` is 1; element-wise on `U64` and `U8` the results are those of the bit-by-bit definition, with and without the instruction of the processor.
+17. **AC-17**: the quarter round of ChaCha20 written as such a function gives, for 0, 1, 2 and 20 times on 300 elements, the result of doing the step that many times one call at a time, and for 1 time the result of RFC 8439 2.1.1; the tensors given to it keep their values.
 16. **AC-16**: every integer operator on `U8`, `U16`, `U32` and `U64` tensors gives the value of its definition (`src/test/ridgun/test operator matrix.ridgun`, rows `E`).
 
 ## Not in scope

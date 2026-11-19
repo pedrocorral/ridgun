@@ -5118,6 +5118,7 @@ fn :: fuse kinds code RNativeEnv [RFuseTok] [RExpr] Int Int => Int
       fuse kinds code env ((FtTensor _):ts) (leaf:ls) place acc =  fuse kinds code env ts ls (fuse next place place) (acc + ((fuse place digit place (expr tensor raw kind env leaf))))
       fuse kinds code env (FtGather:ts) (leaf:ls) place acc =  fuse kinds code env ts ls (fuse next place place) (acc + ((fuse place digit place (expr tensor raw kind env leaf))))
       fuse kinds code env (FtScalar:ts) (_:ls) place acc =  fuse kinds code env ts ls place acc
+      fuse kinds code env (FtCount:ts) (_:ls) place acc =  fuse kinds code env ts ls place acc
       fuse kinds code env (_:ts) ls place acc =  fuse kinds code env ts ls place acc
 
 fn :: fuse next place Int => Int
@@ -5139,6 +5140,7 @@ fn :: fuse result kind RNativeEnv [RFuseTok] [RExpr] [String] [(Int, String)] =>
       fuse result kind _ [] _ [] _ =  "U"
       fuse result kind env ((FtTensor _):ts) (leaf:ls) stack vals =  fuse result kind env ts ls ([expr tensor raw kind env leaf] :: stack) vals
       fuse result kind env (FtScalar:ts) (_:ls) stack vals =  fuse result kind env ts ls ([""] :: stack) vals
+      fuse result kind env (FtCount:ts) (_:ls) stack vals =  fuse result kind env ts ls stack vals
       fuse result kind env ((FtConst _):ts) ls stack vals =  fuse result kind env ts ls ([""] :: stack) vals
       fuse result kind env ((FtOp _):ts) ls (b:a:stack) vals =  fuse result kind env ts ls ([fuse kind of two a b] :: stack) vals
       fuse result kind env (FtGather:ts) (leaf:ls) (_:stack) vals =  fuse result kind env ts ls ([expr tensor raw kind env leaf] :: stack) vals
