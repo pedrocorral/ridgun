@@ -1,0 +1,13 @@
+-- @tests TS-COMP-031
+-- case: an element-wise expression on tensors of different numbers of elements stops the program
+-- source: FR-COMP-031 AC-10
+-- expect-output:
+--   runtime error: element-wise expression: the shapes differ
+-- expect-exit: 1
+
+fn :: add Tensor[U64 * n] Tensor[U64 * n] => Tensor[U64 * n]
+      add a b =  a_i + b_i
+
+fn :: main => ()
+      main =
+        echo (add (Tensor[U64 * 3]) (Tensor[U64 * 4]))

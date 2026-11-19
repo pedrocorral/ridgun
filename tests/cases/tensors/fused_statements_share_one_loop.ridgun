@@ -1,0 +1,54 @@
+-- @tests TS-COMP-031
+-- case: consecutive statements over tensors of one type run as one loop (the quarter round of RFC 8439 2.1.1); a tensor with another name is not written, one read for the last time takes the result
+-- source: FR-COMP-031 AC-7, AC-8
+-- expect-output:
+--   a 3928658676 957979861
+--   b 3407673550 4071174186
+--   c 1166100270 4050489954
+--   d 1484899515 3194185088
+--   the operands keep their values: 286331153 1634760805 16909060 857760878
+--   a tensor with two names is not written: 5 5 5 5 12 12
+--   a tensor read for the last time takes the result: 19 19 7 7
+
+-- one ChaCha quarter round on every element: eight statements, one loop
+fn :: quarter Tensor[U32 * n] Tensor[U32 * n] Tensor[U32 * n] Tensor[U32 * n] => Tensor[U32 * n] Tensor[U32 * n] Tensor[U32 * n] Tensor[U32 * n]
+      quarter a b c d =
+        a1 = a_i + b_i
+        d1 = (d_i xor a1_i) rotl 16
+        c1 = c_i + d1_i
+        b1 = (b_i xor c1_i) rotl 12
+        a2 = a1_i + b1_i
+        d2 = (d1_i xor a2_i) rotl 8
+        c2 = c1_i + d2_i
+        b2 = (b1_i xor c2_i) rotl 7
+        (a2, b2, c2, d2)
+
+fn :: add Tensor[U32 * n] Tensor[U32 * n] => Tensor[U32 * n]
+      add a b =  a_i + b_i
+
+fn :: show Tensor[U32 * n] => String
+      show t =  "{t_(0)} {t_(1)}"
+
+fn :: main => ()
+      main =
+        a = Tensor[U32 * 2] with 0x11111111
+        b = Tensor[U32 * 2] with 0x01020304
+        c = Tensor[U32 * 2] with 0x9b8d6f43
+        d = Tensor[U32 * 2] with 0x01234567
+        a_(1) = 0x61707865
+        b_(1) = 0x3320646e
+        c_(1) = 0x79622d32
+        d_(1) = 0x6b206574
+        a2, b2, c2, d2 = quarter a b c d
+        echo ("a " + (show a2))
+        echo ("b " + (show b2))
+        echo ("c " + (show c2))
+        echo ("d " + (show d2))
+        echo ("the operands keep their values: " + (show a) + " " + (show b))
+        x = Tensor[U32 * 2] with 5
+        y = Tensor[U32 * 2] with 7
+        kept = x
+        s = add x y
+        echo ("a tensor with two names is not written: " + (show x) + " " + (show kept) + " " + (show s))
+        s2 = add s y
+        echo ("a tensor read for the last time takes the result: " + (show s2) + " " + (show y))

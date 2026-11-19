@@ -1,0 +1,51 @@
+-- @tests TS-COMP-031
+-- case: Tensor[U16] and Tensor[U32] keep 2 and 4 bytes per element: element-wise + - * rotl rotr wrap at that width, / and % by zero give 0, elements read and write as Int
+-- source: FR-COMP-031 AC-5, AC-6
+-- expect-output:
+--   U32 + wraps at 2^32 Tensor(shape=[4], data=[1, 6, 1, 4294967295])
+--   U32 rotl in 32 bits Tensor(shape=[4], data=[4294836223, 4294508543, 4294836223, 4294967295])
+--   U32 - wraps Tensor(shape=[2], data=[4294967295, 4294967295])
+--   U32 / and % (by zero: 0) Tensor(shape=[4], data=[2147483648, 613566759, 2147483648, 0])
+--   U16 Tensor(shape=[3], data=[64843, 64843, 64843])
+--   U32 elements Tensor(shape=[2, 3], data=[0, 7, 0, 0, 0, 4000000000]) 4000000000 8
+--   U16 with Tensor(shape=[2], data=[65535, 65535])
+
+fn :: add Tensor[U32 * n] Tensor[U32 * n] => Tensor[U32 * n]
+      add a b =  a_i + b_i
+
+fn :: mix Tensor[U32 * n] Tensor[U32 * n] => Tensor[U32 * n]
+      mix d a =  (d_i xor a_i) rotl 16
+
+fn :: sub one Tensor[U32 * n] => Tensor[U32 * n]
+      sub one a =  a_i - 1
+
+fn :: div Tensor[U32 * n] Tensor[U32 * n] => Tensor[U32 * n]
+      div a b =  (a_i / b_i) + (a_i % b_i)
+
+fn :: words Tensor[U16 * n] => Tensor[U16 * n]
+      words a =  ((a_i * 3) + 65535) rotr 4
+
+fn :: main => ()
+      main =
+        a = Tensor[U32 * 4] with 0xFFFFFFFF
+        b = Tensor[U32 * 4] with 2
+        b_(1) = 7
+        b_(3) = 0
+        s = add a b
+        echo "U32 + wraps at 2^32" s
+        m = mix a b
+        echo "U32 rotl in 32 bits" m
+        z = Tensor[U32 * 2]
+        u = sub one z
+        echo "U32 - wraps" u
+        d = div a b
+        echo "U32 / and % (by zero: 0)" d
+        h = Tensor[U16 * 3] with 40000
+        g = words h
+        echo "U16" g
+        t = Tensor[U32 * 2 * 3]
+        t_(1, 2) = 4000000000
+        t_(0, 1) = 7
+        echo "U32 elements" t t_(1, 2) (t_(0, 1) + 1)
+        k = Tensor[U16 * 2] with 65535
+        echo "U16 with" k

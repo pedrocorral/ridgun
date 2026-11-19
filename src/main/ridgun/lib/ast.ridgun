@@ -171,3 +171,125 @@ fn :: wheres map exprs [RWhereBind] (RExpr => RExpr) => [RWhereBind]
 
 fn :: where map exprs one RWhereBind (RExpr => RExpr) => RWhereBind
       where map exprs one (WhereBind e v idxs) f =  WhereBind (f e) v idxs
+
+-- ── Fused element-wise expressions (FR-COMP-031) ─────────────
+-- @implements FR-COMP-031
+-- `((a_ij + b_ij) xor d_ij) rotl 16` is one node, `ECall ":fuse:" ((EStr code):leaves)`, and one loop
+-- when it runs. `code` is the expression in postfix, its tokens separated by one space:
+--   t<subs>   the next leaf: a tensor read with those subscripts
+--   s         the next leaf: a number, the same for every element
+--   c<n>      the integer n
+--   x<id>     a binary operator (`binop id`)
+--   w<k>      take the value on top as value k        (several statements in one loop:
+--   l<k>      value k                                  `fuse blocks`, parser.ridgun)
+--   o         take the value on top as the next result
+-- A program with `o` gives a tuple of tensors, one for each `o`.
+-- Leaves are taken in the order of their tokens. The parser builds the node, the type checker types
+-- it, lowering puts the element kind in front (`W|code`) and every back end reads the same text.
+type RFuseTok = FtTensor String | FtScalar | FtConst Int | FtOp Int | FtSet Int | FtGet Int | FtOut
+
+fn :: fuse toks String => [RFuseTok]
+      fuse toks code =  fuse toks loop code 0 0 (str len code) []
+
+fn :: fuse toks loop String Int Int Int [RFuseTok] => [RFuseTok]
+      fuse toks loop code from pos len acc
+        | pos >= len and from >= len = acc
+        | pos >= len = acc :: [fuse tok (str slice code from len)]
+        | (str char at code pos) == 32 = fuse toks loop code (pos + 1) (pos + 1) len (acc :: [fuse tok (str slice code from pos)])
+        | otherwise = fuse toks loop code from (pos + 1) len acc
+
+fn :: fuse tok String => RFuseTok
+      fuse tok s
+        | (str char at s 0) == 116 = FtTensor (str slice s 1 (str len s))
+        | (str char at s 0) == 115 = FtScalar
+        | (str char at s 0) == 99 = FtConst (fuse int s 1)
+        | (str char at s 0) == 119 = FtSet (fuse int s 1)
+        | (str char at s 0) == 108 = FtGet (fuse int s 1)
+        | (str char at s 0) == 111 = FtOut
+        | otherwise = FtOp (fuse int s 1)
+
+fn :: fuse int String Int => Int
+      fuse int s pos
+        | (str char at s pos) == 45 = 0 - (fuse digits s (pos + 1) (str len s) 0)
+        | otherwise = fuse digits s pos (str len s) 0
+
+fn :: fuse digits String Int Int Int => Int
+      fuse digits s pos len acc
+        | pos >= len = acc
+        | otherwise = fuse digits s (pos + 1) len ((acc * 10) + ((str char at s pos) - 48))
+
+-- The subscripts of the result: those of the tensor read with the most of them.
+fn :: fuse out subs [RFuseTok] String => String
+      fuse out subs [] acc =  acc
+      fuse out subs ((FtTensor subs):ts) acc
+        | (str len subs) > (str len acc) = fuse out subs ts subs
+      fuse out subs (_:ts) acc =  fuse out subs ts acc
+
+-- A tensor read fits a result when its subscripts are the result's, their first ones (it is the same
+-- along the others) or their last ones.
+fn :: fuse subs fit String String => Bool
+      fuse subs fit subs out =
+        n = str len subs
+        m = str len out
+        n <= m and (((str slice out 0 n) == subs) or ((str slice out (m - n) m) == subs))
+
+fn :: fuse all fit [RFuseTok] String => Bool
+      fuse all fit [] _ =  True
+      fuse all fit ((FtTensor subs):ts) out =  (fuse subs fit subs out) and (fuse all fit ts out)
+      fuse all fit (_:ts) out =  fuse all fit ts out
+
+fn :: binop id RBinOp     => Int
+      binop id OpAdd      =  0
+      binop id OpSub      =  1
+      binop id OpMul      =  2
+      binop id OpDiv      =  3
+      binop id OpMod      =  4
+      binop id OpEq       =  5
+      binop id OpNeq      =  6
+      binop id OpGt       =  7
+      binop id OpLt       =  8
+      binop id OpGtEq     =  9
+      binop id OpLtEq     =  10
+      binop id OpAnd      =  11
+      binop id OpOr       =  12
+      binop id OpXor      =  13
+      binop id OpConcat   =  14
+      binop id OpFlatJoin =  15
+      binop id OpMatMul   =  16
+      binop id OpShl      =  17
+      binop id OpShr      =  18
+      binop id OpRotr     =  19
+      binop id OpRotl     =  20
+
+-- The program the runtime reads (src/main/runtime/core/fuse.ll): each tensor read says how it lies
+-- in the result: `e` the same shape, `p` its first dimensions, `u` its last ones.
+fn :: fuse rt code String => String
+      fuse rt code code =
+        toks = fuse toks code
+        fuse rt toks toks (fuse out subs toks "") ""
+
+fn :: fuse rt toks [RFuseTok] String String => String
+      fuse rt toks [] _ acc =  acc
+      fuse rt toks (t:ts) out acc =  fuse rt toks ts out (fuse rt add acc (fuse rt tok t out))
+
+fn :: fuse rt add String String => String
+      fuse rt add "" tok =  tok
+      fuse rt add acc tok =  acc + " " + tok
+
+fn :: fuse rt tok RFuseTok String => String
+      fuse rt tok (FtTensor subs) out
+        | subs == out = "e"
+        | (str slice out 0 (str len subs)) == subs = "p"
+        | otherwise = "u"
+      fuse rt tok FtScalar _ =  "s"
+      fuse rt tok (FtConst n) _ =  "c" + (int to str n)
+      fuse rt tok (FtOp id) _ =  "x" + (int to str id)
+      fuse rt tok (FtSet k) _ =  "w" + (int to str k)
+      fuse rt tok (FtGet k) _ =  "l" + (int to str k)
+      fuse rt tok FtOut _ =  "o"
+
+-- The number of results of a program (0: one tensor, not a tuple).
+fn :: fuse outs [RFuseTok] Int => Int
+      fuse outs [] n =  n
+      fuse outs (FtOut:ts) n =  fuse outs ts (n + 1)
+      fuse outs (_:ts) n =  fuse outs ts n

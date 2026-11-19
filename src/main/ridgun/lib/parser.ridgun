@@ -917,7 +917,329 @@ fn :: is hadamard bop RBinOp => Bool
       is hadamard bop OpRotr =  True
       is hadamard bop _      =  False
 
+-- ── Fused element-wise expressions (FR-COMP-031, ast.ridgun) ──
+-- An operand of an element-wise operator is a tensor read (`a_ij`, or `a_k`: a name that is not a
+-- local and ends in one subscript letter reaches here as `a__U__k`), a fused node, an integer or
+-- any other expression, which is then a number.
+fn :: one letter sub String => Int
+      one letter sub v =
+        n = str len v
+        one letter sub at v n
+
+fn :: one letter sub at String Int => Int
+      one letter sub at v n
+        | n < 7 or (str contains v ".") = 0 - 1
+        | (str slice v (n - 6) (n - 1)) != "__U__" = 0 - 1
+        | (str char at v (n - 1)) < 105 or (str char at v (n - 1)) > 108 = 0 - 1
+        | str contains (str slice v 0 (n - 6)) "__U__" = 0 - 1
+        | otherwise = n - 6
+
+fn :: is fuse read RExpr => Bool
+      is fuse read (EVar v) =  (is subscript ident v) or ((one letter sub v) > 0)
+      is fuse read (ECall ":fuse:" _) =  True
+      is fuse read _ =  False
+
+fn :: fuse operand RExpr => String [RExpr]
+      fuse operand (ECall ":fuse:" ((EStr code):leaves)) =  (code, leaves)
+      fuse operand (EInt n) =  ("c" + (int to str n), [])
+      fuse operand (EVar v)
+        | is subscript ident v = fuse read operand (split subscript v)
+        | (one letter sub v) > 0 = ("t" + (str slice v ((str len v) - 1) (str len v)), [EVar (str slice v 0 (one letter sub v))])
+      fuse operand e =  ("s", [e])
+
+fn :: fuse read operand (String, String) => String [RExpr]
+      fuse read operand (base, subs) =  ("t" + subs, [EVar base])
+
+fn :: fuse join RBinOp (String, [RExpr]) (String, [RExpr]) => RExpr
+      fuse join bop (lc, ll) (rc, rl) =  ECall ":fuse:" ([EStr (lc + " " + rc + " x" + (int to str (binop id bop)))] :: ll :: rl)
+
+fn :: fuse joined fits RExpr => Bool
+      fuse joined fits (ECall ":fuse:" ((EStr code):_)) =
+        toks = fuse toks code
+        fuse all fit toks (fuse out subs toks "")
+      fuse joined fits _ =  False
+
+fn :: can fuse RBinOp RExpr RExpr => Bool
+      can fuse bop left right =
+        (is hadamard bop bop) and ((is fuse read left) or (is fuse read right)) and (fuse joined fits (fuse join bop (fuse operand left) (fuse operand right)))
+
+-- After names are resolved: the one-letter reads, which the parser could not tell from plain names.
+fn :: fuse late expr RExpr => RExpr
+      fuse late expr e =  fuse late node (expr map kids e (x => fuse late expr x))
+
+fn :: fuse late node RExpr => RExpr
+      fuse late node (EBin bop left right)
+        | can fuse bop left right = fuse join bop (fuse operand left) (fuse operand right)
+      fuse late node (ECall ":fuse:" ((EStr code):leaves)) =  fuse late leaves (fuse toks code) leaves "" []
+      fuse late node e =  e
+
+fn :: fuse late leaves [RFuseTok] [RExpr] String [RExpr] => RExpr
+      fuse late leaves [] _ code acc =  ECall ":fuse:" ([EStr code] :: acc)
+      fuse late leaves ((FtTensor subs):ts) (leaf:ls) code acc =  fuse late leaves ts ls (fuse code add code ("t" + subs)) (acc :: [leaf])
+      fuse late leaves (FtScalar:ts) ((EVar v):ls) code acc
+        | (one letter sub v) > 0 = fuse late leaves ts ls (fuse code add code ("t" + (str slice v ((str len v) - 1) (str len v)))) (acc :: [EVar (str slice v 0 (one letter sub v))])
+      fuse late leaves (FtScalar:ts) ((ECall ":fuse:" ((EStr inner):inner_leaves)):ls) code acc =  fuse late leaves ts ls (fuse code add code inner) (acc :: inner_leaves)
+      fuse late leaves (FtScalar:ts) (leaf:ls) code acc =  fuse late leaves ts ls (fuse code add code "s") (acc :: [leaf])
+      fuse late leaves ((FtConst n):ts) ls code acc =  fuse late leaves ts ls (fuse code add code ("c" + (int to str n))) acc
+      fuse late leaves ((FtOp id):ts) ls code acc =  fuse late leaves ts ls (fuse code add code ("x" + (int to str id))) acc
+      fuse late leaves (_:ts) ls code acc =  fuse late leaves ts ls code acc
+
+fn :: fuse code add String String => String
+      fuse code add "" tok =  tok
+      fuse code add code tok =  code + " " + tok
+
+-- ── Several statements in one loop (FR-COMP-031) ──────────────
+-- Consecutive statements that each bind a fused expression over tensors of one element type and one
+-- shape become one fused expression with several results: the values a later statement reads from an
+-- earlier one stay in registers, and the loop runs once.
+--     a1 = a_i + b_i                    :tup-fza1: = <one program, results a1 and d1>
+--     d1 = (d_i xor a1_i) rotl 16   =>  a1 = :tup-fza1:_(0)
+--                                       d1 = :tup-fza1:_(1)
+-- The element type must be known from the text: a parameter typed `Tensor[U32 * n]`, a tensor made
+-- with `Tensor[U32 * n]`, or the result of a fused expression over such tensors. `kinds` holds what
+-- is known, the newest name first ("" for a name that is no longer such a tensor).
+fn :: fuse kind of [(String, String)] String => String
+      fuse kind of [] _ =  ""
+      fuse kind of ((name, kind):ks) v
+        | name == v = kind
+        | otherwise = fuse kind of ks v
+
+fn :: fuse type elem String => String
+      fuse type elem ty
+        | str starts with ty "Tensor:" = fuse type elem name ty 7 7 (str len ty)
+        | otherwise = ""
+
+fn :: fuse type elem name String Int Int Int => String
+      fuse type elem name ty from pos len
+        | pos >= len = str slice ty from len
+        | (str char at ty pos) == 64 = str slice ty from pos
+        | otherwise = fuse type elem name ty from (pos + 1) len
+
+fn :: fuse param kinds [String] [RPattern] [(String, String)] => [(String, String)]
+      fuse param kinds (ty:tys) ((PatVar v):pats) acc =  fuse param kinds tys pats ([(v, fuse type elem ty)] :: acc)
+      fuse param kinds (_:tys) (_:pats) acc =  fuse param kinds tys pats acc
+      fuse param kinds _ _ acc =  acc
+
+-- The element type of what an expression gives, when the text says it.
+fn :: fuse expr kind [(String, String)] RExpr => String
+      fuse expr kind kinds (ECall ":fuse:" ((EStr code):leaves)) =  fuse leaves one kind kinds (fuse toks code) leaves "?"
+      fuse expr kind _ (ECall ":typed-tensor:" ((EStr ty):_))
+        | ty == "Byte" = "U8"
+        | otherwise = ty
+      fuse expr kind _ _ =  ""
+
+-- The one element type of the tensors a program reads; "" when one is not known or two differ.
+fn :: fuse leaves one kind [(String, String)] [RFuseTok] [RExpr] String => String
+      fuse leaves one kind _ [] _ "?" =  ""
+      fuse leaves one kind _ [] _ kind =  kind
+      fuse leaves one kind kinds ((FtTensor _):ts) ((EVar v):ls) kind =  fuse leaves one kind next kinds ts ls kind (fuse kind of kinds v)
+      fuse leaves one kind _ ((FtTensor _):_) _ _ =  ""
+      fuse leaves one kind kinds (FtScalar:ts) (_:ls) kind =  fuse leaves one kind kinds ts ls kind
+      fuse leaves one kind kinds (_:ts) ls kind =  fuse leaves one kind kinds ts ls kind
+
+fn :: fuse leaves one kind next [(String, String)] [RFuseTok] [RExpr] String String => String
+      fuse leaves one kind next kinds ts ls kind k
+        | k == "" = ""
+        | kind == "?" or kind == k = fuse leaves one kind kinds ts ls k
+        | otherwise = ""
+
+-- A statement that can join a loop: it binds a fused expression of known element type, every tensor
+-- it reads has the subscripts of the result, and it is not yet a program with several results.
+fn :: fuse stmt code RStmt => String
+      fuse stmt code (StmtLet _ (ECall ":fuse:" ((EStr code):_))) =  code
+      fuse stmt code (StmtMut _ (ECall ":fuse:" ((EStr code):_))) =  code
+      fuse stmt code _ =  ""
+
+fn :: fuse stmt leaves RStmt => [RExpr]
+      fuse stmt leaves (StmtLet _ (ECall ":fuse:" (_:leaves))) =  leaves
+      fuse stmt leaves (StmtMut _ (ECall ":fuse:" (_:leaves))) =  leaves
+      fuse stmt leaves _ =  []
+
+fn :: fuse stmt var RStmt => String
+      fuse stmt var (StmtLet v _) =  v
+      fuse stmt var (StmtMut v _) =  v
+      fuse stmt var _ =  ""
+
+fn :: fuse stmt expr RStmt => RExpr
+      fuse stmt expr (StmtLet _ e) =  e
+      fuse stmt expr (StmtMut _ e) =  e
+      fuse stmt expr (StmtExpr e) =  e
+      fuse stmt expr _ =  EUnit
+
+fn :: fuse all same subs [RFuseTok] String => Bool
+      fuse all same subs [] _ =  True
+      fuse all same subs ((FtTensor subs):ts) out =  subs == out and (fuse all same subs ts out)
+      fuse all same subs ((FtSet _):_) _ =  False
+      fuse all same subs ((FtGet _):_) _ =  False
+      fuse all same subs (FtOut:_) _ =  False
+      fuse all same subs (_:ts) out =  fuse all same subs ts out
+
+-- A number a statement reads must not come from the statements already in the loop.
+fn :: fuse scalars free [RFuseTok] [RExpr] [String] => Bool
+      fuse scalars free [] _ _ =  True
+      fuse scalars free ((FtTensor _):ts) (_:ls) vars =  fuse scalars free ts ls vars
+      fuse scalars free (FtScalar:ts) (leaf:ls) vars =  (not (fuse expr mentions any leaf vars)) and (fuse scalars free ts ls vars)
+      fuse scalars free (_:ts) ls vars =  fuse scalars free ts ls vars
+
+fn :: fuse expr mentions any RExpr [String] => Bool
+      fuse expr mentions any _ [] =  False
+      fuse expr mentions any e (v:vs) =  (expr mentions var e v) or (fuse expr mentions any e vs)
+
+-- The kind and the subscripts of a statement that can join ("" when it cannot).
+fn :: fuse stmt joins [(String, String)] RStmt [String] => String String
+      fuse stmt joins kinds stmt vars =
+        code = fuse stmt code stmt
+        fuse stmt joins code kinds stmt vars code
+
+fn :: fuse stmt joins code [(String, String)] RStmt [String] String => String String
+      fuse stmt joins code _ _ _ "" =  ("", "")
+      fuse stmt joins code kinds stmt vars code =
+        toks = fuse toks code
+        out = fuse out subs toks ""
+        fuse stmt joins checked (fuse expr kind kinds (fuse stmt expr stmt)) out ((fuse all same subs toks out) and (fuse scalars free toks (fuse stmt leaves stmt) vars))
+
+fn :: fuse stmt joins checked String String Bool => String String
+      fuse stmt joins checked kind out True =  (kind, out)
+      fuse stmt joins checked _ _ False =  ("", "")
+
+-- The statements from the front of `stmts` that make one loop, and the rest.
+fn :: fuse take run [(String, String)] [RStmt] String String [String] [RStmt] => [RStmt] [RStmt]
+      fuse take run _ [] _ _ _ run =  (run, [])
+      fuse take run kinds (stmt:rest) kind out vars run =
+        fuse take run next kinds stmt rest kind out vars run (fuse stmt joins kinds stmt vars)
+
+fn :: fuse take run next [(String, String)] RStmt [RStmt] String String [String] [RStmt] (String, String) => [RStmt] [RStmt]
+      fuse take run next kinds stmt rest kind out vars run (k, o)
+        | k == "" or (kind != "" and (k != kind or o != out)) or (list len run) >= 150 = (run, [stmt] :: rest)
+        | otherwise = fuse take run ([(fuse stmt var stmt, k)] :: kinds) rest k o (vars :: [fuse stmt var stmt]) (run :: [stmt])
+
+-- One program for the statements of a loop. `locals`: the value each name of the loop has, the
+-- newest first.
+fn :: fuse run code [RStmt] [(String, Int)] Int String [RExpr] => String [RExpr] [(String, Int)]
+      fuse run code [] locals _ code leaves =  (code, leaves, locals)
+      fuse run code (stmt:rest) locals next code leaves =
+        fuse run code next rest stmt locals next (fuse run stmt (fuse toks (fuse stmt code stmt)) (fuse stmt leaves stmt) locals code leaves)
+
+fn :: fuse run code next [RStmt] RStmt [(String, Int)] Int (String, [RExpr]) => String [RExpr] [(String, Int)]
+      fuse run code next rest stmt locals next (code, leaves) =
+        fuse run code rest ([(fuse stmt var stmt, next)] :: locals) (next + 1) (fuse code add code ("w" + (int to str next))) leaves
+
+fn :: fuse local of [(String, Int)] String => Int
+      fuse local of [] _ =  0 - 1
+      fuse local of ((name, k):ls) v
+        | name == v = k
+        | otherwise = fuse local of ls v
+
+-- A tensor the loop reads in several statements is read once: leaf number p keeps its element as
+-- value 1000 + p (the statements use the values from 0 up; a loop has at most 150 statements).
+fn :: fuse leaf pos [RExpr] String Int => Int
+      fuse leaf pos [] _ _ =  0 - 1
+      fuse leaf pos ((EVar w):ls) v i
+        | w == v = i
+        | otherwise = fuse leaf pos ls v (i + 1)
+      fuse leaf pos (_:ls) v i =  fuse leaf pos ls v (i + 1)
+
+fn :: fuse run stmt [RFuseTok] [RExpr] [(String, Int)] String [RExpr] => String [RExpr]
+      fuse run stmt [] _ _ code leaves =  (code, leaves)
+      fuse run stmt ((FtTensor subs):ts) ((EVar v):ls) locals code leaves
+        | (fuse local of locals v) >= 0 = fuse run stmt ts ls locals (fuse code add code ("l" + (int to str (fuse local of locals v)))) leaves
+        | (fuse leaf pos leaves v 0) >= 0 = fuse run stmt ts ls locals (fuse code add code ("l" + (int to str (1000 + (fuse leaf pos leaves v 0))))) leaves
+        | otherwise = fuse run stmt ts ls locals (fuse code add code ("t" + subs + " w" + (int to str (1000 + (list len leaves))) + " l" + (int to str (1000 + (list len leaves))))) (leaves :: [EVar v])
+      fuse run stmt (FtScalar:ts) (leaf:ls) locals code leaves =  fuse run stmt ts ls locals (fuse code add code "s") (leaves :: [leaf])
+      fuse run stmt ((FtConst n):ts) ls locals code leaves =  fuse run stmt ts ls locals (fuse code add code ("c" + (int to str n))) leaves
+      fuse run stmt ((FtOp id):ts) ls locals code leaves =  fuse run stmt ts ls locals (fuse code add code ("x" + (int to str id))) leaves
+      fuse run stmt (_:ts) ls locals code leaves =  fuse run stmt ts ls locals code leaves
+
+-- The results: each name of the loop that the statements after it read, or that is assigned (`v_i =`),
+-- with its last value. When nothing reads any of them the last statement is the result.
+fn :: fuse run outs [RStmt] [RStmt] [RStmt] [RStmt] => [RStmt]
+      fuse run outs [] _ _ acc =  acc
+      fuse run outs (stmt:later) rest all acc
+        | fuse stmts bind later (fuse stmt var stmt) = fuse run outs later rest all acc
+        | (fuse is mut stmt) or (stmt list mentions var rest (fuse stmt var stmt)) = fuse run outs later rest all (acc :: [stmt])
+        | otherwise = fuse run outs later rest all acc
+
+fn :: fuse is mut RStmt => Bool
+      fuse is mut (StmtMut _ _) =  True
+      fuse is mut _ =  False
+
+fn :: fuse stmts bind [RStmt] String => Bool
+      fuse stmts bind [] _ =  False
+      fuse stmts bind (stmt:ss) v =  (fuse stmt var stmt) == v or (fuse stmts bind ss v)
+
+fn :: fuse last stmt [RStmt] => [RStmt]
+      fuse last stmt [] =  []
+      fuse last stmt (stmt:[]) =  [stmt]
+      fuse last stmt (_:ss) =  fuse last stmt ss
+
+fn :: fuse outs or last [RStmt] [RStmt] => [RStmt]
+      fuse outs or last [] run =  fuse last stmt run
+      fuse outs or last outs _ =  outs
+
+fn :: fuse run merged [RStmt] [RStmt] => [RStmt]
+      fuse run merged run rest =
+        fuse run emit (fuse run code run [] 0 "" []) (fuse outs or last (fuse run outs run rest run []) run) (":tup-fz" + (fuse stmt var (list nth or run 0 (StmtExpr EUnit))) + ":")
+
+fn :: fuse run emit (String, [RExpr], [(String, Int)]) [RStmt] String => [RStmt]
+      fuse run emit (code, leaves, locals) outs tmp =
+        [StmtMut tmp (ECall ":fuse:" ([EStr (fuse run out code outs locals code)] :: leaves))] :: (fuse run unpack outs tmp 0 [])
+
+fn :: fuse run out code [RStmt] [(String, Int)] String => String
+      fuse run out code [] _ code =  code
+      fuse run out code (stmt:ss) locals code =
+        fuse run out code ss locals (code + " l" + (int to str (fuse local of locals (fuse stmt var stmt))) + " o")
+
+fn :: fuse run unpack [RStmt] String Int [RStmt] => [RStmt]
+      fuse run unpack [] _ _ acc =  acc
+      fuse run unpack ((StmtLet v _):ss) tmp idx acc =  fuse run unpack ss tmp (idx + 1) (acc :: [StmtLet v (EIndex (EVar tmp) [EInt idx])])
+      fuse run unpack ((StmtMut v _):ss) tmp idx acc =  fuse run unpack ss tmp (idx + 1) (acc :: [StmtMut v (EIndex (EVar tmp) [EInt idx])])
+      fuse run unpack (_:ss) tmp idx acc =  fuse run unpack ss tmp idx acc
+
+fn :: fuse blocks stmts [(String, String)] [RStmt] [RStmt] => [RStmt]
+      fuse blocks stmts _ [] acc =  acc
+      fuse blocks stmts kinds stmts acc =
+        fuse blocks after run kinds stmts acc (fuse take run kinds stmts "" "" [] [])
+
+fn :: fuse blocks after run [(String, String)] [RStmt] [RStmt] ([RStmt], [RStmt]) => [RStmt]
+      fuse blocks after run kinds (stmt:others) acc (run, rest)
+        | (list len run) >= 2 = fuse blocks stmts (fuse run kinds kinds run) rest (acc :: (fuse run merged run rest))
+        | otherwise = fuse blocks stmts ([(fuse stmt var stmt, fuse expr kind kinds (fuse stmt expr stmt))] :: kinds) others (acc :: [fuse blocks stmt kinds stmt])
+      fuse blocks after run _ [] acc _ =  acc
+
+fn :: fuse run kinds [(String, String)] [RStmt] => [(String, String)]
+      fuse run kinds kinds [] =  kinds
+      fuse run kinds kinds (stmt:ss) =  fuse run kinds ([(fuse stmt var stmt, fuse expr kind kinds (fuse stmt expr stmt))] :: kinds) ss
+
+fn :: fuse blocks stmt [(String, String)] RStmt => RStmt
+      fuse blocks stmt kinds stmt =  stmt map exprs one stmt (x => fuse blocks expr kinds x)
+
+fn :: fuse blocks expr [(String, String)] RExpr => RExpr
+      fuse blocks expr kinds (EBlock stmts) =  EBlock (fuse blocks stmts kinds stmts [])
+      fuse blocks expr kinds e =  expr map kids e (x => fuse blocks expr kinds x)
+
+fn :: fuse blocks case [String] RFnCase => RFnCase
+      fuse blocks case tys (FnCase pats guards body) =
+        kinds = fuse param kinds tys pats []
+        FnCase pats (guards map exprs guards (x => fuse blocks expr kinds x)) (fuse blocks expr kinds body)
+
+fn :: fuse blocks fn RFnDef => RFnDef
+      fuse blocks fn (FnDef name tys ret cs) =  FnDef name tys ret (map (c => fuse blocks case tys c) cs)
+
+fn :: fuse late cases [RFnCase] => [RFnCase]
+      fuse late cases cs =  map (c => fuse late case c) cs
+
+fn :: fuse late case RFnCase => RFnCase
+      fuse late case (FnCase pats guards body) =  FnCase pats (guards map exprs guards (x => fuse late expr x)) (fuse late expr body)
+
+fn :: fuse late fns [RFnDef] => [RFnDef]
+      fuse late fns fns =  map (f => fuse late fn f) fns
+
+fn :: fuse late fn RFnDef => RFnDef
+      fuse late fn (FnDef name ps ret cs) =  fuse blocks fn (FnDef name ps ret (fuse late cases cs))
+
 fn :: make add or hadamard RBinOp RExpr RExpr => RExpr
+      make add or hadamard bop left right
+        | can fuse bop left right = fuse join bop (fuse operand left) (fuse operand right)
       make add or hadamard bop (EVar v1) (EVar v2)
         | (is hadamard bop bop) and (is subscript ident v1) and (is subscript ident v2) = build hadamard node bop (split subscript v1) (split subscript v2)
       make add or hadamard bop (EHadamard b1 l1 s1 r1 s2) (EVar v2)
@@ -4065,7 +4387,7 @@ fn :: normalize program RProgram          => RProgram
         raw_arities = (collect fn arities fns1) :: (collect type arities tys)
         arities = (filter zero arities raw_arities) :: (filter nonzero arities raw_arities)
         pmap = build prep arity map arities PrepArityEmpty
-        Program (norm fndef list fns1 pmap) tys
+        Program (fuse late fns (norm fndef list fns1 pmap)) tys
 
 -- ── Library & Module Import Resolution (`.ridgunlib` / `.ridgun`) ────
 

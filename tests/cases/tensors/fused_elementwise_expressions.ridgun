@@ -1,0 +1,79 @@
+-- @tests TS-COMP-031
+-- case: an element-wise expression of any depth, with numbers, on one dimension, along the first or the last dimensions, on U8 and on Real tensors, gives the value of the operators on each element
+-- source: FR-COMP-031 AC-1 to AC-4
+-- expect-output:
+--   number and constant Tensor(shape=[2, 3], data=[4, 7, 10, 12001, 16, 19])
+--   shift and mask Tensor(shape=[2, 3], data=[0, 0, 0, 250, 0, 0])
+--   nested Tensor(shape=[2, 3], data=[65536, 393216, 458752, 262144000, 327680, 1703936])
+--   one dimension Tensor(shape=[3], data=[16, 200, 16])
+--   last dimension Tensor(shape=[2, 3], data=[101, 202, 303, 4100, 205, 306])
+--   first dimension Tensor(shape=[2, 3], data=[2, 4, 6, 12000, 15, 18])
+--   U8 wraps Tensor(shape=[3], data=[199, 199, 199])
+--   Real Tensor(shape=[2], data=[3.5, -4.0])
+--   number on the left Tensor(shape=[3], data=[100, -100, 100])
+
+fn :: scale Tensor[U64 * r * c] Int => Tensor[U64 * r * c]
+      scale a k =  (a_ij * k) + 1
+
+fn :: mask Tensor[U64 * r * c] => Tensor[U64 * r * c]
+      mask a =  (a_ij shr 4) and 0xFF
+
+fn :: nested Tensor[U64 * r * c] Tensor[U64 * r * c] Tensor[U64 * r * c] => Tensor[U64 * r * c]
+      nested a b d =  ((a_ij + b_ij) xor d_ij) rotl 16
+
+fn :: line Tensor[U64 * n] Tensor[U64 * n] => Tensor[U64 * n]
+      line a b =  (a_k xor b_k) + 1
+
+fn :: by col Tensor[U64 * r * c] Tensor[U64 * c] => Tensor[U64 * r * c]
+      by col a b =  a_ij + b_j
+
+fn :: by row Tensor[U64 * r * c] Tensor[U64 * r] => Tensor[U64 * r * c]
+      by row a b =  a_ij * b_i
+
+fn :: bytes Tensor[U8 * n] Tensor[U8 * n] => Tensor[U8 * n]
+      bytes a b =  (a_i xor b_i) + 200
+
+fn :: reals Tensor[Real * n] Tensor[Real * n] Real => Tensor[Real * n]
+      reals a b k =  ((a_i * k) + b_i) / 2.0
+
+fn :: left Tensor[U64 * n] => Tensor[U64 * n]
+      left a =  100 - a_i
+
+fn :: main => ()
+      main =
+        a = Tensor[U64 * 2 * 3]
+        b = Tensor[U64 * 2 * 3] with 10
+        a_(0, 0) = 1
+        a_(0, 1) = 2
+        a_(0, 2) = 3
+        a_(1, 0) = 4000
+        a_(1, 1) = 5
+        a_(1, 2) = 6
+        echo "number and constant" (scale a 3)
+        echo "shift and mask" (mask a)
+        echo "nested" (nested a b b)
+        v = Tensor[U64 * 3]
+        w = Tensor[U64 * 3] with 15
+        v_(1) = 200
+        echo "one dimension" (line v w)
+        cols = Tensor[U64 * 3]
+        cols_(0) = 100
+        cols_(1) = 200
+        cols_(2) = 300
+        echo "last dimension" (by col a cols)
+        rows = Tensor[U64 * 2]
+        rows_(0) = 2
+        rows_(1) = 3
+        echo "first dimension" (by row a rows)
+        p = Tensor[U8 * 3] with 0xF0
+        q = Tensor[U8 * 3] with 0x0F
+        r = bytes p q
+        echo "U8 wraps" r
+        x = Tensor[Real * 2]
+        y = Tensor[Real * 2]
+        x_(0) = 1.5
+        x_(1) = 0.0 - 2.0
+        y_(0) = 1.0
+        z = reals x y 4.0
+        echo "Real" z
+        echo "number on the left" (left v)

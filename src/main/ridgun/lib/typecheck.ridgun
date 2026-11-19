@@ -194,7 +194,7 @@ fn :: types compatible RType              RType              => Bool
       types compatible TyBool             TyBool             =  True
       types compatible TyUnit             TyUnit             =  True
       types compatible (TyTensor e1 d1)   (TyTensor e2 d2)
-        | (is u8 elem e1) != (is u8 elem e2) = False
+        | (packed elem name e1) != (packed elem name e2) = False
         | otherwise = (types compatible e1 e2) and (tensor dims unify d1 d2)
       types compatible (TyVariadic inner) other              =
         (types compatible inner other) or (types compatible (TyList inner) other)
@@ -662,6 +662,84 @@ fn :: hadamard op errs RBinOp (RType, [RTypeError]) RType RType String => RType 
           (ty, errs :: [TypeError fn_name ("element-wise operator " + (binop symbol bop) + " needs two tensors of the same element type, got " + (rtype to str l) + " and " + (rtype to str r))])
         | otherwise = (ty, errs)
 
+-- ── Fused element-wise expressions (FR-COMP-031) ─────────────
+-- Every tensor read has the element type of the result; a number is an Int (a Real for tensors of
+-- Real); a tensor of Real takes + - * / only; the subscripts of every read fit those of the result.
+fn :: fuse check [RFuseTok] ([RType], [RTypeError]) String => RType [RTypeError]
+      fuse check toks (tys, errs) fn_name =
+        out = fuse out subs toks ""
+        res = fuse result ty toks tys out
+        (fuse results ty res (fuse outs toks 0), errs :: (fuse fit errs toks out fn_name) :: (fuse leaf errs toks tys (fuse elem of res) fn_name))
+
+-- A program with several results gives a tuple of tensors of the type of one result.
+fn :: fuse results ty RType Int => RType
+      fuse results ty res 0 =  res
+      fuse results ty res n =  TyTuple (fuse repeat ty res n [])
+
+fn :: fuse repeat ty RType Int [RType] => [RType]
+      fuse repeat ty res n acc
+        | n <= 0 = acc
+        | otherwise = fuse repeat ty res (n - 1) (acc :: [res])
+
+fn :: fuse result ty [RFuseTok] [RType] String => RType
+      fuse result ty ((FtTensor subs):ts) (ty:tys) out
+        | subs == out = ty
+        | otherwise = fuse result ty ts tys out
+      fuse result ty (FtScalar:ts) (_:tys) out =  fuse result ty ts tys out
+      fuse result ty (_:ts) tys out =  fuse result ty ts tys out
+      fuse result ty [] _ _ =  TyTensor (tensor elem any) []
+
+fn :: fuse elem of RType => RType
+      fuse elem of (TyTensor e _) =  e
+      fuse elem of _ =  tensor elem any
+
+fn :: fuse fit errs [RFuseTok] String String => [RTypeError]
+      fuse fit errs toks out fn_name
+        | fuse all fit toks out = []
+        | otherwise = [TypeError fn_name ("element-wise expression: every tensor needs the subscripts of the result (" + out + "), its first ones or its last ones")]
+
+-- The kind of number an element type is: "R" a Real, "N" an integer of 64 bits, the type name for the
+-- packed ones, "" when it is not a number.
+fn :: fuse elem class RType => String
+      fuse elem class TyReal =  "R"
+      fuse elem class TyInt =  "N"
+      fuse elem class (TyVar "_any") =  "N"
+      fuse elem class (TyVar "U8") =  "U8"
+      fuse elem class (TyVar "U16") =  "U16"
+      fuse elem class (TyVar "U32") =  "U32"
+      fuse elem class _ =  ""
+
+fn :: fuse leaf errs [RFuseTok] [RType] RType String => [RTypeError]
+      fuse leaf errs [] _ _ _ =  []
+      fuse leaf errs ((FtTensor _):ts) ((TyTensor e d):tys) elem fn_name
+        | (fuse elem class e) == "" = [TypeError fn_name ("element-wise operator needs tensors of numbers, got a tensor of " + (rtype to str e))] :: (fuse leaf errs ts tys elem fn_name)
+        | (fuse elem class e) != (fuse elem class elem) = [TypeError fn_name ("element-wise operators need tensors of the same element type, got " + (rtype to str (TyTensor e d)) + " with a tensor of " + (rtype to str elem))] :: (fuse leaf errs ts tys elem fn_name)
+        | otherwise = fuse leaf errs ts tys elem fn_name
+      fuse leaf errs ((FtTensor subs):ts) (ty:tys) elem fn_name =
+        [TypeError fn_name ("subscripts '" + subs + "' need a tensor, got " + (rtype to str ty))] :: (fuse leaf errs ts tys elem fn_name)
+      fuse leaf errs (FtScalar:ts) (ty:tys) elem fn_name
+        | (fuse elem class elem) == "R" and not (is real or poly ty) = [TypeError fn_name ("element-wise operator on a tensor of Real needs a Real, got " + (rtype to str ty))] :: (fuse leaf errs ts tys elem fn_name)
+        | (fuse elem class elem) != "R" and not (is int or poly ty) = [TypeError fn_name ("element-wise operator on a tensor of integers needs an Int, got " + (rtype to str ty))] :: (fuse leaf errs ts tys elem fn_name)
+        | otherwise = fuse leaf errs ts tys elem fn_name
+      fuse leaf errs ((FtConst n):ts) tys elem fn_name
+        | (fuse elem class elem) == "R" = [TypeError fn_name ("element-wise operator on a tensor of Real needs a Real, got the Int " + (int to str n))] :: (fuse leaf errs ts tys elem fn_name)
+        | otherwise = fuse leaf errs ts tys elem fn_name
+      fuse leaf errs ((FtOp id):ts) tys elem fn_name
+        | (fuse elem class elem) == "R" and id > 3 = [TypeError fn_name ("element-wise operator " + (fuse op symbol id) + " needs tensors of integers, got a tensor of Real")] :: (fuse leaf errs ts tys elem fn_name)
+        | otherwise = fuse leaf errs ts tys elem fn_name
+      fuse leaf errs (_:ts) tys elem fn_name =  fuse leaf errs ts tys elem fn_name
+
+fn :: fuse op symbol Int => String
+      fuse op symbol 4 =  "%"
+      fuse op symbol 11 =  "and"
+      fuse op symbol 12 =  "or"
+      fuse op symbol 13 =  "xor"
+      fuse op symbol 17 =  "shl"
+      fuse op symbol 18 =  "shr"
+      fuse op symbol 19 =  "rotr"
+      fuse op symbol 20 =  "rotl"
+      fuse op symbol _ =  "?"
+
 fn :: check arith binop RBinOp RType RType [RTypeBind] String => RType [RTypeError]
       check arith binop bop (TyTensor e1 d1) (TyTensor e2 d2) _ fn_name = (TyTensor e1 d1, (numeric tensor errs ("arithmetic operator " + (binop symbol bop)) (TyTensor e1 d1) (TyTensor e2 d2) fn_name) :: [TypeError fn_name ("operator " + (binop symbol bop) + " between two tensors needs subscripts, as in a_ij " + (binop symbol bop) + " b_ij")])
       check arith binop bop l_ty r_ty fns fn_name
@@ -1105,6 +1183,8 @@ fn :: check expr RExpr String [RTypeBind] [RTypeBind] => RType [RTypeError]
       check expr (EEinsum es subs) fn_name locals fns =
         e_res = check einsum terms es subs fn_name locals fns []
         finish einsum check (einsum elem es fn_name locals fns) e_res
+      check expr (ECall ":fuse:" ((EStr code):leaves)) fn_name locals fns =
+        fuse check (fuse toks code) (check expr list leaves fn_name locals fns) fn_name
       check expr (EHadamard bop l _ r _) fn_name locals fns =
         l_res = check expr l fn_name locals fns
         r_res = check expr r fn_name locals fns
@@ -1210,6 +1290,8 @@ fn :: tensor elem suffix RType => String
 fn :: tensor elem read ty RType => RType
       tensor elem read ty (TyVar "_any") =  TyInt
       tensor elem read ty (TyVar "U8")   =  TyInt
+      tensor elem read ty (TyVar "U16")  =  TyInt
+      tensor elem read ty (TyVar "U32")  =  TyInt
       tensor elem read ty e              =  e
 
 fn :: tc expr count [RExpr] => Int
@@ -1270,6 +1352,7 @@ fn :: typed tensor result String (RType, [RTypeError]) => RType [RTypeError]
 fn :: tensor elem type str String => RType
       tensor elem type str e
         | e == "U8" or e == "Byte" = u8 elem ty
+        | e == "U16" or e == "U32" = TyVar e
         | otherwise = parse type str e
 
 fn :: u8 elem ty => RType
@@ -1281,6 +1364,25 @@ fn :: u8 tensor ty => RType
 fn :: is u8 elem RType => Bool
       is u8 elem (TyVar "U8") =  True
       is u8 elem _            =  False
+
+-- `U16` and `U32` in element position are packed in the same way (FR-COMP-031): two and four bytes
+-- per element, each its own type. The byte interfaces (strings, files, hashes) take `Tensor[U8]` only.
+fn :: packed elem name RType => String
+      packed elem name (TyVar "U8")  =  "U8"
+      packed elem name (TyVar "U16") =  "U16"
+      packed elem name (TyVar "U32") =  "U32"
+      packed elem name _             =  ""
+
+fn :: is packed elem RType => Bool
+      is packed elem e =  (packed elem name e) != ""
+
+fn :: is packed tensor RType => Bool
+      is packed tensor (TyTensor e _) =  is packed elem e
+      is packed tensor _              =  False
+
+fn :: packed tensor name RType => String
+      packed tensor name (TyTensor e _) =  "Tensor[" + (packed elem name e) + "]"
+      packed tensor name _              =  "Tensor"
 
 fn :: is u8 tensor RType => Bool
       is u8 tensor (TyTensor (TyVar "U8") _) =  True
@@ -1305,7 +1407,7 @@ fn :: check tensor elem write String RType String [RTypeBind] => [RTypeError]
 
 fn :: tensor elem write errs String RType String (Bool, RType) => [RTypeError]
       tensor elem write errs tname val_ty fn_name (True, (TyTensor e _))
-        | is u8 elem e and (types compatible TyInt val_ty) = []
+        | is packed elem e and (types compatible TyInt val_ty) = []
         | types compatible e val_ty = []
         | otherwise = [TypeError fn_name ("cannot store " + (rtype to str val_ty) + " in an element of tensor '" + tname + "' of " + (rtype to str e))]
       tensor elem write errs _ _ _ _ =  []
@@ -2100,8 +2202,10 @@ fn :: strict ident call err String String => [RTypeError]
         | otherwise = []
 
 fn :: strict expr errors RExpr String => [RTypeError]
-      strict expr errors (EVar v) fn_name =
-        strict ident call err fn_name v
+      strict expr errors (EVar v) fn_name
+        -- `a_i`: a tensor read with one subscript (FR-COMP-031); a name that is not one is undefined
+        | (one letter sub v) > 0 = []
+        | otherwise = strict ident call err fn_name v
       strict expr errors (ECall "__lambda__" args) fn_name =
         strict expr list errors args fn_name
       strict expr errors (ECall "__record_update__" (base_e:rest)) fn_name =
@@ -2151,6 +2255,8 @@ fn :: check strict tokens [RToken] => [RTypeError]
 
 fn :: tensor elem kind RType => String
       tensor elem kind (TyVar "U8")  =  "B"
+      tensor elem kind (TyVar "U16") =  "H"
+      tensor elem kind (TyVar "U32") =  "W"
       tensor elem kind TyInt         =  "N"
       tensor elem kind TyReal        =  "R"
       tensor elem kind TyString      =  "G"
@@ -2182,8 +2288,8 @@ fn :: gen tensor elem str RType => String
 
 fn :: numeric tensor errs String RType RType String => [RTypeError]
       numeric tensor errs what l r fn_name
-        | is u8 tensor l = [TypeError fn_name (what + " is not available on Tensor[U8]")]
-        | is u8 tensor r = [TypeError fn_name (what + " is not available on Tensor[U8]")]
+        | is packed tensor l = [TypeError fn_name (what + " is not available on " + (packed tensor name l))]
+        | is packed tensor r = [TypeError fn_name (what + " is not available on " + (packed tensor name r))]
         | gen tensor ty l = [TypeError fn_name (what + " needs tensors of numbers, got a tensor of " + (gen tensor elem str l))]
         | gen tensor ty r = [TypeError fn_name (what + " needs tensors of numbers, got a tensor of " + (gen tensor elem str r))]
         | otherwise = []
@@ -2191,8 +2297,8 @@ fn :: numeric tensor errs String RType RType String => [RTypeError]
 fn :: numeric tensor arg errs String [RType] String => [RTypeError]
       numeric tensor arg errs _ [] _ =  []
       numeric tensor arg errs what (t:ts) fn_name
-        | is u8 tensor t and what == "a tensor copy (t_)" = numeric tensor arg errs what ts fn_name
-        | is u8 tensor t = [TypeError fn_name (what + " is not available on Tensor[U8]")]
+        | is packed tensor t and what == "a tensor copy (t_)" = numeric tensor arg errs what ts fn_name
+        | is packed tensor t = [TypeError fn_name (what + " is not available on " + (packed tensor name t))]
         | gen tensor ty t = [TypeError fn_name (what + " needs a tensor of numbers, got a tensor of " + (gen tensor elem str t))]
         | otherwise = numeric tensor arg errs what ts fn_name
 
@@ -2212,7 +2318,7 @@ fn :: numeric tensor helper name String => String
 
 fn :: par write errs String (Bool, RType) String => [RTypeError]
       par write errs target (True, t) fn_name
-        | is u8 tensor t = [TypeError fn_name ("parallel writes into tensor '" + target + "' of U8 are not supported")]
+        | is packed tensor t = [TypeError fn_name ("parallel writes into tensor '" + target + "' of " + (gen tensor elem str t) + " are not supported")]
         | gen tensor ty t = [TypeError fn_name ("parallel writes into tensor '" + target + "' of " + (gen tensor elem str t) + " are not supported: its elements are not numbers")]
       par write errs _ _ _ =  []
 
@@ -2304,8 +2410,8 @@ fn :: show tensor facts String [RExpr] [RType] => [RTypeError]
       show tensor facts _ _ _ =  []
 
 fn :: show tensor fact String RExpr RType => [RTypeError]
-      show tensor fact fn_name e (TyTensor (TyVar "U8") d)
-        | not (u8 visible e) = u8 use errs fn_name e (TyTensor (TyVar "U8") d)
+      show tensor fact fn_name e (TyTensor el d)
+        | (is packed elem el) and not (u8 visible e) = u8 use errs fn_name e (TyTensor el d)
       show tensor fact fn_name (ECall f _) (TyTensor el d)
         | not (str starts with f ":") = (tensor elem info fn_name ":show" (TyTensor el d)) :: (tensor elem info fn_name ("()" + f) (TyTensor el d))
       show tensor fact fn_name _ (TyTensor el d) =  tensor elem info fn_name ":show" (TyTensor el d)
@@ -2315,7 +2421,7 @@ fn :: show tensor fact String RExpr RType => [RTypeError]
 -- lowering knows the tensor is packed wherever the call is used.
 fn :: with u8 call fact String String (RType, [RTypeError]) => RType [RTypeError]
       with u8 call fact fn_name callee (t, errs)
-        | (is u8 tensor t) and not (str starts with callee ":") = (t, errs :: (tensor elem info fn_name ("()" + callee) t))
+        | (is packed tensor t) and not (str starts with callee ":") = (t, errs :: (tensor elem info fn_name ("()" + callee) t))
         | otherwise = (t, errs)
 
 -- Lowering finds the element kind of a variable, of a call, of a typed
@@ -2323,12 +2429,12 @@ fn :: with u8 call fact String String (RType, [RTypeError]) => RType [RTypeError
 -- into a list must be one of those.
 fn :: u8 visible RExpr => Bool
       u8 visible (EVar _) =  True
-      u8 visible (ECall f _) =  (not (str starts with f ":")) or f == ":typed-tensor:" or f == ":tensor-clone:"
+      u8 visible (ECall f _) =  (not (str starts with f ":")) or f == ":typed-tensor:" or f == ":tensor-clone:" or f == ":fuse:"
       u8 visible _ =  False
 
 fn :: u8 use errs String RExpr RType => [RTypeError]
       u8 use errs fn_name e t
-        | (is u8 tensor t) and not (u8 visible e) = [TypeError fn_name "bind this Tensor[U8] to a variable before using it here"]
+        | (is packed tensor t) and not (u8 visible e) = [TypeError fn_name ("bind this " + (packed tensor name t) + " to a variable before using it here")]
         | otherwise = []
 
 fn :: with u8 use errs String RExpr RType (RType, [RTypeError]) => RType [RTypeError]

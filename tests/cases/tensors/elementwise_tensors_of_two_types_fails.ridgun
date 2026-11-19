@@ -1,0 +1,11 @@
+-- @tests TS-COMP-031
+-- case: an element-wise operator between a Tensor[U32] and a Tensor[U8] is a compile error
+-- source: FR-COMP-031 AC-9
+-- expect-build-error: element-wise operators need tensors of the same element type
+
+fn :: mix Tensor[U32 * n] Tensor[U8 * n] => Tensor[U32 * n]
+      mix a b =  a_i xor b_i
+
+fn :: main => ()
+      main =
+        echo (mix (Tensor[U32 * 2]) (Tensor[U8 * 2]))

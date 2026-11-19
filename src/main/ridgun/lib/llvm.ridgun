@@ -366,6 +366,8 @@ fn :: emit llvm instr RNativeInstr Int Int Int => String
         "  %s_{step} = getelementptr inbounds i64, ptr %frame, i64 {start_slot}\n  %p_{step} = getelementptr inbounds [{rodata_len} x i8], ptr @__rg_rodata, i64 0, i64 {spec_off}\n  %r_{step} = call i64 @__rg_fast_einsum(ptr %s_{step}, i64 {count}, ptr %p_{step}, i64 {spec_len})\n  store i64 %r_{step}, ptr %acc, align 8\n"
       emit llvm instr (NEinsumReal start_slot count spec_off spec_len) step _ rodata_len =
         "  %s_{step} = getelementptr inbounds i64, ptr %frame, i64 {start_slot}\n  %p_{step} = getelementptr inbounds [{rodata_len} x i8], ptr @__rg_rodata, i64 0, i64 {spec_off}\n  %r_{step} = call i64 @__rg_fast_einsum_real(ptr %s_{step}, i64 {count}, ptr %p_{step}, i64 {spec_len})\n  store i64 %r_{step}, ptr %acc, align 8\n"
+      emit llvm instr (NHadamard 99 lhs_slot subs_off _) step _ _ =
+        "  %s_{step} = getelementptr inbounds i64, ptr %frame, i64 {lhs_slot}\n  %r_{step} = call i64 @__rg_fuse_{subs_off}(ptr %s_{step})\n  store i64 %r_{step}, ptr %acc, align 8\n"
       emit llvm instr (NHadamard op_id lhs_slot subs_off subs_len) step _ rodata_len =
         "  %s_{step} = getelementptr inbounds i64, ptr %frame, i64 {lhs_slot}\n  %a_{step} = load i64, ptr %acc, align 8\n  %p_{step} = getelementptr inbounds [{rodata_len} x i8], ptr @__rg_rodata, i64 0, i64 {subs_off}\n  %r_{step} = call i64 @__rg_rt_hadamard(i64 {op_id}, ptr %s_{step}, i64 %a_{step}, ptr %p_{step}, i64 {subs_len})\n  store i64 %r_{step}, ptr %acc, align 8\n"
       emit llvm instr NEnterRegion step _ _ =
@@ -568,6 +570,329 @@ fn :: llvm target triple String           => String
 -- lives in the runtime object (abi/helpers.ll), then the functions. The
 -- builtins the runtime owns (channels, jobs, replies) are marked first, as the
 -- pure encoder does, and go through `__rg_rt_builtin`.
+-- ── Fused element-wise expressions (FR-COMP-031) ─────────────
+-- `NHadamard 99 slot off len` runs the program whose text is in the read-only data at `off`
+-- (src/main/runtime/core/fuse.ll gives the format and the meaning). Here each program becomes a
+-- function of the module, `@__rg_fuse_<off>`: one loop over untagged elements of the machine type of
+-- the kind, with no call inside, so `opt` can keep the values in registers and use vector
+-- instructions. The runtime keeps the general routine (`rg_fuse`) for the other back ends; both
+-- must give the same result.
+type RFz = FzT Int Int | FzS Int | FzC Int | FzX Int | FzW Int | FzL Int | FzO Int
+
+fn :: fz scan String Int Int Int [RFz] => [RFz]
+      fz scan s pos len nl acc
+        | pos >= len = acc
+        | otherwise = fz tok s pos len nl acc (str char at s pos)
+
+fn :: fz tok String Int Int Int [RFz] Int => [RFz]
+      fz tok s pos len nl acc 101 =  fz scan s (pos + 1) len (nl + 1) (acc :: [FzT 0 nl])
+      fz tok s pos len nl acc 112 =  fz scan s (pos + 1) len (nl + 1) (acc :: [FzT 1 nl])
+      fz tok s pos len nl acc 117 =  fz scan s (pos + 1) len (nl + 1) (acc :: [FzT 2 nl])
+      fz tok s pos len nl acc 115 =  fz scan s (pos + 1) len (nl + 1) (acc :: [FzS nl])
+      fz tok s pos len nl acc 99 =  fz scan s (fz num end s (pos + 1) len) len nl (acc :: [FzC (fz num s (pos + 1) (fz num end s (pos + 1) len))])
+      fz tok s pos len nl acc 120 =  fz scan s (fz num end s (pos + 1) len) len nl (acc :: [FzX (fz num s (pos + 1) (fz num end s (pos + 1) len))])
+      fz tok s pos len nl acc 119 =  fz scan s (fz num end s (pos + 1) len) len nl (acc :: [FzW (fz num s (pos + 1) (fz num end s (pos + 1) len))])
+      fz tok s pos len nl acc 108 =  fz scan s (fz num end s (pos + 1) len) len nl (acc :: [FzL (fz num s (pos + 1) (fz num end s (pos + 1) len))])
+      fz tok s pos len nl acc 111 =  fz scan s (pos + 1) len nl (acc :: [FzO (fz outs acc 0)])
+      fz tok s pos len nl acc _ =  fz scan s (pos + 1) len nl acc
+
+-- The number of results among the tokens (0: the program gives one tensor, the value left).
+fn :: fz outs [RFz] Int => Int
+      fz outs [] n =  n
+      fz outs ((FzO _):ts) n =  fz outs ts (n + 1)
+      fz outs (_:ts) n =  fz outs ts n
+
+fn :: fz num end String Int Int => Int
+      fz num end s pos len
+        | pos >= len = pos
+        | (str char at s pos) == 32 = pos
+        | otherwise = fz num end s (pos + 1) len
+
+fn :: fz num String Int Int => Int
+      fz num s pos end
+        | (str char at s pos) == 45 = 0 - (fz digits s (pos + 1) end 0)
+        | otherwise = fz digits s pos end 0
+
+fn :: fz digits String Int Int Int => Int
+      fz digits s pos end acc
+        | pos >= end = acc
+        | otherwise = fz digits s (pos + 1) end ((acc * 10) + ((str char at s pos) - 48))
+
+fn :: fz ty String => String
+      fz ty "R" =  "double"
+      fz ty "B" =  "i8"
+      fz ty "H" =  "i16"
+      fz ty "W" =  "i32"
+      fz ty _ =  "i64"
+
+fn :: fz lg String => Int
+      fz lg "B" =  0
+      fz lg "H" =  1
+      fz lg "W" =  2
+      fz lg _ =  3
+
+fn :: fz bits String => Int
+      fz bits "B" =  8
+      fz bits "H" =  16
+      fz bits "W" =  32
+      fz bits _ =  64
+
+fn :: fz align String => Int
+      fz align "R" =  8
+      fz align "N" =  8
+      fz align _ =  1
+
+fn :: fz leaves [RFz] Int => Int
+      fz leaves [] n =  n
+      fz leaves ((FzT _ _):ts) n =  fz leaves ts (n + 1)
+      fz leaves ((FzS _):ts) n =  fz leaves ts (n + 1)
+      fz leaves (_:ts) n =  fz leaves ts n
+
+fn :: fz model [RFz] => Int
+      fz model ((FzT 0 i):_) =  i
+      fz model (_:ts) =  fz model ts
+      fz model [] =  0
+
+fn :: fz nested [RFz] => Bool
+      fz nested [] =  False
+      fz nested ((FzT 1 _):_) =  True
+      fz nested ((FzT 2 _):_) =  True
+      fz nested (_:ts) =  fz nested ts
+
+-- The leaves: a tensor gives its elements (%p) and their number (%n), a number its word as an
+-- element (%s).
+fn :: fz load leaves [RFz] String [String] => [String]
+      fz load leaves [] _ acc =  acc
+      fz load leaves ((FzT _ i):ts) k acc =
+        lg = fz lg k
+        fz load leaves ts k (acc :: ["  %sp{i} = getelementptr inbounds i64, ptr %slots, i64 {i}\n  %t{i} = load i64, ptr %sp{i}, align 8\n  %np{i} = alloca i64, align 8\n  %d{i} = call i64 @rg_fuse_open(i64 %t{i}, i64 {lg}, ptr %np{i})\n  %n{i} = load i64, ptr %np{i}, align 8\n  %p{i} = inttoptr i64 %d{i} to ptr\n  %z{i} = icmp eq i64 %n{i}, 0\n  %q{i} = select i1 %z{i}, i64 1, i64 %n{i}\n"])
+      fz load leaves ((FzS i):ts) k acc =
+        fz load leaves ts k (acc :: ["  %sp{i} = getelementptr inbounds i64, ptr %slots, i64 {i}\n  %v{i} = load i64, ptr %sp{i}, align 8\n  %w{i} = call i64 @rg_raw_word(i64 %v{i})\n" + (fz word to elem k i)])
+      fz load leaves (_:ts) k acc =  fz load leaves ts k acc
+
+fn :: fz word to elem String Int => String
+      fz word to elem "R" i =  "  %s{i} = bitcast i64 %w{i} to double\n"
+      fz word to elem "N" i =  "  %s{i} = add i64 %w{i}, 0\n"
+      fz word to elem k i =  "  %s{i} = trunc i64 %w{i} to " + (fz ty k) + "\n"
+
+-- The shapes: a tensor of the shape of the result has its number of elements; one of the first
+-- dimensions divides the number of rows; one of the last dimensions is a whole number of rows.
+fn :: fz checks [RFz] String [String] => String [String]
+      fz checks [] prev acc =  (prev, acc)
+      fz checks ((FzT 0 i):ts) prev acc =
+        fz checks ts "%ok{i}" (acc :: ["  %c{i} = icmp eq i64 %n{i}, %total\n  %ok{i} = and i1 {prev}, %c{i}\n"])
+      fz checks ((FzT 1 i):ts) prev acc =
+        fz checks ts "%ok{i}" (acc :: ["  %r{i} = urem i64 %outer, %q{i}\n  %f{i} = icmp eq i64 %r{i}, 0\n  %nz{i} = xor i1 %z{i}, true\n  %g{i} = and i1 %f{i}, %nz{i}\n  %c{i} = or i1 %g{i}, %empty\n  %ok{i} = and i1 {prev}, %c{i}\n  %per0{i} = udiv i64 %outer, %q{i}\n  %perz{i} = icmp eq i64 %per0{i}, 0\n  %per{i} = select i1 %perz{i}, i64 1, i64 %per0{i}\n"])
+      fz checks ((FzT _ i):ts) prev acc =
+        fz checks ts "%ok{i}" (acc :: ["  %r{i} = urem i64 %n{i}, %inner\n  %f{i} = icmp eq i64 %r{i}, 0\n  %nz{i} = xor i1 %z{i}, true\n  %g{i} = and i1 %f{i}, %nz{i}\n  %c{i} = or i1 %g{i}, %empty\n  %ok{i} = and i1 {prev}, %c{i}\n  %blk0{i} = udiv i64 %n{i}, %inner\n  %blkz{i} = icmp eq i64 %blk0{i}, 0\n  %blk{i} = select i1 %blkz{i}, i64 1, i64 %blk0{i}\n"])
+      fz checks (_:ts) prev acc =  fz checks ts prev acc
+
+-- What a row needs before its elements: the element of each tensor of the first dimensions, and
+-- where the row starts in each tensor of the last ones.
+fn :: fz row heads [RFz] String [String] => [String]
+      fz row heads [] _ acc =  acc
+      fz row heads ((FzT 1 i):ts) k acc =
+        ty = fz ty k
+        al = fz align k
+        fz row heads ts k (acc :: ["  %pi{i} = udiv i64 %o, %per{i}\n  %pa{i} = getelementptr inbounds {ty}, ptr %p{i}, i64 %pi{i}\n  %pv{i} = load {ty}, ptr %pa{i}, align {al}\n"])
+      fz row heads ((FzT 2 i):ts) k acc =
+        fz row heads ts k (acc :: ["  %um{i} = urem i64 %o, %blk{i}\n  %ub{i} = mul i64 %um{i}, %inner\n"])
+      fz row heads (_:ts) k acc =  fz row heads ts k acc
+
+-- The expression on element %e (%j inside its row): `n` numbers the values, the stack holds their
+-- names, the last one first.
+fn :: fz body [RFz] String Int [String] [(Int, String)] [String] => [String] [String]
+      fz body [] _ _ stack _ acc =  (stack, acc)
+      fz body ((FzT 0 i):ts) k n stack locs acc =
+        ty = fz ty k
+        al = fz align k
+        fz body ts k (n + 1) (["%x{n}"] :: stack) locs (acc :: ["  %a{n} = getelementptr inbounds {ty}, ptr %p{i}, i64 %e\n  %x{n} = load {ty}, ptr %a{n}, align {al}, !llvm.access.group !7001\n"])
+      fz body ((FzT 1 i):ts) k n stack locs acc =
+        fz body ts k (n + 1) (["%pv{i}"] :: stack) locs acc
+      fz body ((FzT _ i):ts) k n stack locs acc =
+        ty = fz ty k
+        al = fz align k
+        fz body ts k (n + 1) (["%x{n}"] :: stack) locs (acc :: ["  %u{n} = add i64 %ub{i}, %j\n  %a{n} = getelementptr inbounds {ty}, ptr %p{i}, i64 %u{n}\n  %x{n} = load {ty}, ptr %a{n}, align {al}, !llvm.access.group !7001\n"])
+      fz body ((FzS i):ts) k n stack locs acc =
+        fz body ts k (n + 1) (["%s{i}"] :: stack) locs acc
+      fz body ((FzC c):ts) k n stack locs acc =
+        fz body ts k (n + 1) ([fz const k c] :: stack) locs acc
+      fz body ((FzX id):ts) k n (b:a:stack) locs acc =
+        fz body ts k (n + 1) (["%x{n}"] :: stack) locs (acc :: [fz op k id n a b])
+      fz body ((FzW w):ts) k n (top:stack) locs acc =
+        fz body ts k (n + 1) stack ([(w, top)] :: locs) acc
+      fz body ((FzL w):ts) k n stack locs acc =
+        fz body ts k (n + 1) ([fz loc locs w] :: stack) locs acc
+      fz body ((FzO o):ts) k n (top:stack) locs acc =
+        ty = fz ty k
+        al = fz align k
+        fz body ts k (n + 1) stack locs (acc :: ["  %dst{n} = getelementptr inbounds {ty}, ptr %rp{o}, i64 %e\n  store {ty} {top}, ptr %dst{n}, align {al}, !llvm.access.group !7001\n"])
+      fz body (_:ts) k n stack locs acc =  fz body ts k (n + 1) stack locs acc
+
+fn :: fz loc [(Int, String)] Int => String
+      fz loc [] _ =  "undef"
+      fz loc ((w, name):ls) want
+        | w == want = name
+        | otherwise = fz loc ls want
+
+-- An integer as an element of the kind: wrapped to its width (a Real takes no integer: the type
+-- checker refuses it).
+fn :: fz const String Int => String
+      fz const "B" c =  int to str (((c % 256) + 256) % 256)
+      fz const "H" c =  int to str (((c % 65536) + 65536) % 65536)
+      fz const "W" c =  int to str (((c % 4294967296) + 4294967296) % 4294967296)
+      fz const "R" c =  (int to str c) + ".0"
+      fz const _ c =  int to str c
+
+fn :: fz op String Int Int String String => String
+      fz op "R" 0 n a b =  "  %x{n} = fadd double {a}, {b}\n"
+      fz op "R" 1 n a b =  "  %x{n} = fsub double {a}, {b}\n"
+      fz op "R" 2 n a b =  "  %x{n} = fmul double {a}, {b}\n"
+      fz op "R" _ n a b =  "  %x{n} = fdiv double {a}, {b}\n"
+      fz op k 0 n a b =  fz plain op k "add" n a b
+      fz op k 1 n a b =  fz plain op k "sub" n a b
+      fz op k 2 n a b =  fz plain op k "mul" n a b
+      fz op k 11 n a b =  fz plain op k "and" n a b
+      fz op k 12 n a b =  fz plain op k "or" n a b
+      fz op k 17 n a b =  fz shift op k "shl" n a b
+      fz op k 18 n a b =  fz shift op k "lshr" n a b
+      fz op k 19 n a b =  fz rot op k "fshr" n a b
+      fz op k 20 n a b =  fz rot op k "fshl" n a b
+      fz op "N" 3 n a b =
+        "  %dz{n} = icmp eq i64 {b}, 0\n  %dm{n} = icmp eq i64 {b}, -1\n  %ds{n} = select i1 %dz{n}, i64 1, i64 {b}\n  %dt{n} = select i1 %dm{n}, i64 1, i64 %ds{n}\n  %dq{n} = sdiv i64 {a}, %dt{n}\n  %dn{n} = sub i64 0, {a}\n  %dr{n} = select i1 %dm{n}, i64 %dn{n}, i64 %dq{n}\n  %x{n} = select i1 %dz{n}, i64 0, i64 %dr{n}\n"
+      fz op "N" 4 n a b =
+        "  %dz{n} = icmp eq i64 {b}, 0\n  %dm{n} = icmp eq i64 {b}, -1\n  %ds{n} = select i1 %dz{n}, i64 1, i64 {b}\n  %dt{n} = select i1 %dm{n}, i64 1, i64 %ds{n}\n  %dq{n} = srem i64 {a}, %dt{n}\n  %db{n} = or i1 %dz{n}, %dm{n}\n  %x{n} = select i1 %db{n}, i64 0, i64 %dq{n}\n"
+      fz op k 3 n a b =  fz udiv op k "udiv" n a b
+      fz op k 4 n a b =  fz udiv op k "urem" n a b
+      fz op k _ n a b =  fz plain op k "xor" n a b
+
+fn :: fz plain op String String Int String String => String
+      fz plain op k name n a b =
+        ty = fz ty k
+        "  %x{n} = {name} {ty} {a}, {b}\n"
+
+fn :: fz shift op String String Int String String => String
+      fz shift op k name n a b =
+        ty = fz ty k
+        m = (fz bits k) - 1
+        "  %sc{n} = and {ty} {b}, {m}\n  %x{n} = {name} {ty} {a}, %sc{n}\n"
+
+fn :: fz rot op String String Int String String => String
+      fz rot op k name n a b =
+        ty = fz ty k
+        "  %x{n} = call {ty} @llvm.{name}.{ty}({ty} {a}, {ty} {a}, {ty} {b})\n"
+
+fn :: fz udiv op String String Int String String => String
+      fz udiv op k name n a b =
+        ty = fz ty k
+        "  %dz{n} = icmp eq {ty} {b}, 0\n  %ds{n} = select i1 %dz{n}, {ty} 1, {ty} {b}\n  %dq{n} = {name} {ty} {a}, %ds{n}\n  %x{n} = select i1 %dz{n}, {ty} 0, {ty} %dq{n}\n"
+
+fn :: fz top [String] => String
+      fz top (x:_) =  x
+      fz top [] =  "undef"
+
+fn :: llvm fuse fn Int String => String
+      llvm fuse fn off prog =
+        k = str slice prog 0 1
+        toks = fz scan prog 2 (str len prog) 0 []
+        llvm fuse fn of off k toks (fz model toks) (fz nested toks)
+
+fn :: llvm fuse fn of Int String [RFz] Int Bool => String
+      llvm fuse fn of off k toks m nested =
+        ty = fz ty k
+        lg = fz lg k
+        al = fz align k
+        nl = fz leaves toks 0
+        loads = fz load leaves toks k []
+        chk = fz checks toks "true" []
+        body = fz body toks k 0 [] [] []
+        nout = fz outs toks 0
+        top = fz top (fz pair names body)
+        shape = "  %si = ptrtoint ptr %slots to i64\n  %total = add i64 %n{m}, 0\n  %empty = icmp eq i64 %total, 0\n" + (fz row shape nested m lg)
+        good = "  br i1 " + (fz chk name chk) + ", label %good, label %differ\ndiffer:\n  call void @rg_fuse_shapes()\n  unreachable\ngood:\n" + (fz results m lg nl nout 0 "")
+        store = fz store ty top al nout
+        done = "done:\n  call void @rg_drop_slots(i64 %si, i64 {nl})\n" + (fz give nout) + "}}\n\n"
+        rest = join str tree (loads :: [shape] :: (fz chk code chk) :: [good] :: (llvm fuse loops nested toks k (fz pair lines body) store) :: [done])
+        (llvm fuse dispatch off) + (llvm fuse head off "b" "") + rest + (llvm fuse head off "x" " \"target-features\"=\"+avx,+avx2\"") + rest + (llvm fuse head off "z" " \"target-features\"=\"+avx,+avx2,+avx512f,+avx512bw,+avx512dq,+avx512vl\" \"prefer-vector-width\"=\"512\"") + rest
+
+-- The same loop for the plain instructions (b), AVX2 (x) and AVX-512 (z); the program calls the
+-- widest one the machine has (`rg_cpu_level`, fuse.ll).
+fn :: llvm fuse head Int String String => String
+      llvm fuse head off v attrs =  "define internal i64 @__rg_fuse_{off}_{v}(ptr %slots) nounwind noinline" + attrs + " {{\nentry:\n"
+
+fn :: llvm fuse dispatch Int => String
+      llvm fuse dispatch off =
+        "define internal i64 @__rg_fuse_{off}(ptr %slots) nounwind {{\nentry:\n  %l = call i64 @rg_cpu_level()\n  switch i64 %l, label %b [ i64 3, label %x\n    i64 4, label %z ]\nb:\n  %rb = call i64 @__rg_fuse_{off}_b(ptr %slots)\n  ret i64 %rb\nx:\n  %rx = call i64 @__rg_fuse_{off}_x(ptr %slots)\n  ret i64 %rx\nz:\n  %rz = call i64 @__rg_fuse_{off}_z(ptr %slots)\n  ret i64 %rz\n}}\n\n"
+
+-- The result tensors: %rp<j> are their elements. A program without `o` has one, %rp0, for the value
+-- left on the stack.
+fn :: fz results Int Int Int Int Int String => String
+      fz results m lg nl nout j acc
+        | j >= nout and j >= 1 = acc
+        | otherwise = fz results m lg nl nout (j + 1) (acc + "  %res{j} = call i64 @rg_fuse_take(i64 %si, i64 {nl}, i64 %t{m}, i64 {lg})\n  %rd{j} = call i64 @rg_fuse_data(i64 %res{j}, i64 {lg})\n  %rp{j} = inttoptr i64 %rd{j} to ptr\n")
+
+fn :: fz store String String Int Int => String
+      fz store ty top al 0 =  "  %dst = getelementptr inbounds {ty}, ptr %rp0, i64 %e\n  store {ty} {top}, ptr %dst, align {al}, !llvm.access.group !7001\n"
+      fz store _ _ _ _ =  ""
+
+fn :: fz give Int => String
+      fz give 0 =  "  ret i64 %res0\n"
+      fz give nout =  "  %tp = alloca [{nout} x i64], align 8\n" + (fz give stores nout 0 "") + "  %tup = call i64 @__rg_rt_make_tuple(ptr %tp, i64 {nout})\n  ret i64 %tup\n"
+
+fn :: fz give stores Int Int String => String
+      fz give stores nout j acc
+        | j >= nout = acc
+        | otherwise = fz give stores nout (j + 1) (acc + "  %tpa{j} = getelementptr inbounds i64, ptr %tp, i64 {j}\n  store i64 %res{j}, ptr %tpa{j}, align 8\n")
+
+-- The rows, for a program with tensors of the first or of the last dimensions only.
+fn :: fz row shape Bool Int Int => String
+      fz row shape False _ _ =  ""
+      fz row shape True m lg =  "  %last = call i64 @rg_fuse_last(i64 %t{m}, i64 {lg})\n  %lz = icmp eq i64 %last, 0\n  %inner = select i1 %lz, i64 1, i64 %last\n  %outer = udiv i64 %total, %inner\n"
+
+fn :: fz chk name (String, [String]) => String
+      fz chk name (name, _) =  name
+
+fn :: fz chk code (String, [String]) => [String]
+      fz chk code (_, code) =  code
+
+fn :: fz pair names ([String], [String]) => [String]
+      fz pair names (stack, _) =  stack
+
+fn :: fz pair lines ([String], [String]) => [String]
+      fz pair lines (_, code) =  code
+
+fn :: llvm fuse loops Bool [RFz] String [String] String => [String]
+      llvm fuse loops False _ _ body store =
+        ["  br label %head\nhead:\n  %e = phi i64 [ 0, %good ], [ %e1, %body ]\n  %more = icmp ult i64 %e, %total\n  br i1 %more, label %body, label %done\nbody:\n"] :: body :: [store, "  %e1 = add nuw i64 %e, 1\n  br label %head, !llvm.loop !7002\n"]
+      llvm fuse loops True toks k body store =
+        ["  br label %ohead\nohead:\n  %o = phi i64 [ 0, %good ], [ %o1, %olatch ]\n  %omore = icmp ult i64 %o, %outer\n  br i1 %omore, label %obody, label %done\nobody:\n  %base = mul i64 %o, %inner\n"] :: (fz row heads toks k []) :: ["  br label %head\nhead:\n  %j = phi i64 [ 0, %obody ], [ %j1, %body ]\n  %more = icmp ult i64 %j, %inner\n  br i1 %more, label %body, label %olatch\nbody:\n  %e = add i64 %base, %j\n"] :: body :: [store, "  %j1 = add nuw i64 %j, 1\n  br label %head, !llvm.loop !7002\nolatch:\n  %o1 = add nuw i64 %o, 1\n  br label %ohead\n"]
+
+-- The programs of a module: one function for each place in the read-only data.
+fn :: llvm fuse offs [RNativeFn] [Int] [Int] => [Int] [Int]
+      llvm fuse offs [] offs lens =  (offs, lens)
+      llvm fuse offs ((NativeFn _ _ _ _ ins):fs) offs lens =
+        llvm fuse offs next fs (llvm fuse offs in ins offs lens)
+
+fn :: llvm fuse offs next [RNativeFn] ([Int], [Int]) => [Int] [Int]
+      llvm fuse offs next fs (offs, lens) =  llvm fuse offs fs offs lens
+
+fn :: llvm fuse offs in [RNativeInstr] [Int] [Int] => [Int] [Int]
+      llvm fuse offs in [] offs lens =  (offs, lens)
+      llvm fuse offs in ((NHadamard 99 _ off len):rest) offs lens
+        | list contains offs off = llvm fuse offs in rest offs lens
+        | otherwise = llvm fuse offs in rest (offs :: [off]) (lens :: [len])
+      llvm fuse offs in (_:rest) offs lens =  llvm fuse offs in rest offs lens
+
+fn :: llvm fuse defs ([Int], [Int]) String => [String]
+      llvm fuse defs ([], _) _ =  []
+      llvm fuse defs (offs, lens) rodata =
+        ["declare i64 @rg_cpu_level()\ndeclare i64 @rg_fuse_open(i64, i64, ptr)\ndeclare i64 @rg_fuse_data(i64, i64)\ndeclare i64 @rg_fuse_last(i64, i64)\ndeclare i64 @rg_fuse_take(i64, i64, i64, i64)\ndeclare void @rg_fuse_shapes() noreturn\ndeclare i64 @rg_raw_word(i64)\ndeclare void @rg_drop_slots(i64, i64)\ndeclare i8 @llvm.fshl.i8(i8, i8, i8)\ndeclare i8 @llvm.fshr.i8(i8, i8, i8)\ndeclare i16 @llvm.fshl.i16(i16, i16, i16)\ndeclare i16 @llvm.fshr.i16(i16, i16, i16)\ndeclare i32 @llvm.fshl.i32(i32, i32, i32)\n!7001 = distinct !{{}}\n!7002 = distinct !{{!7002, !{{!\"llvm.loop.parallel_accesses\", !7001}}}}\n\n"] :: (llvm fuse def list offs lens rodata [])
+
+fn :: llvm fuse def list [Int] [Int] String [String] => [String]
+      llvm fuse def list (off:offs) (len:lens) rodata acc =
+        llvm fuse def list offs lens rodata (acc :: [llvm fuse fn off (str slice rodata off (off + len))])
+      llvm fuse def list _ _ _ acc =  acc
+
 fn :: emit llvm ir RNativeProg => String
       emit llvm ir (NativeProg main_fid spawn_fid call2_fid binop_fid fns0 rodata_str) =
         fns = x86 mark ir fns False fns0 []
@@ -575,7 +900,8 @@ fn :: emit llvm ir RNativeProg => String
         resc = llvm escape rodata rodata_str
         mod_hdr = "target datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128\"\ntarget triple = \"x86_64-unknown-linux-gnu\"\n\n@__rg_page0 = global {{ ptr, ptr, ptr, ptr, [3936 x i8] }} {{ ptr @__rg_fn_{main_fid}, ptr @__rg_fn_{spawn_fid}, ptr @__rg_fn_{call2_fid}, ptr @__rg_fn_{binop_fid}, [3936 x i8] zeroinitializer }}, section \".rg_page0\", align 8\n@__rg_rodata = private unnamed_addr constant [{rlen} x i8] c\"{resc}\", align 16\n\n"
         fn_chunks = emit llvm fn list fns rlen []
-        join str tree ([mod_hdr, join str tree (llvm inline helper lines), "\n", join str tree (llvm helper declaration lines), "\n"] :: fn_chunks :: ["!0 = !{{}}\n"])
+        fuse_chunks = llvm fuse defs (llvm fuse offs fns [] []) rodata_str
+        join str tree ([mod_hdr, join str tree (llvm inline helper lines), "\n", join str tree (llvm helper declaration lines), "\n"] :: fuse_chunks :: fn_chunks :: ["!0 = !{{}}\n"])
 
 -- ── Linker Script & llc + ld Execution Driver ───────────────
 
@@ -675,6 +1001,11 @@ fn :: ensure ir build script file String => ()
           write file tmp ir build script text -> ()
           rename path tmp path -> ()
 
+-- RIDGUN_KEEP_IR=<file> keeps a copy of the LLVM IR of the program, to read what a build made.
+fn :: keep llvm ir String String => ()
+      keep llvm ir "" _ =  ()
+      keep llvm ir path ir_text =  write file path ir_text -> ()
+
 fn :: build llvm ir runtime executable RNativeProg String => Int
       build llvm ir runtime executable nprog output_bin =
         pid_s = int to str (sys getpid)
@@ -686,7 +1017,9 @@ fn :: build llvm ir runtime executable RNativeProg String => Int
         ensure ir runtime object rt_obj
         ensure ir build script file script
         t0 = timing now
-        emit llvm ir nprog -> write file ll_path _
+        ir_text = emit llvm ir nprog
+        write file ll_path ir_text -> ()
+        keep llvm ir (sys getenv "RIDGUN_KEEP_IR") ir_text
         ir runtime linker script -> write file lds_path _
         timing report "write the LLVM IR" t0 timing now
         t1 = timing now

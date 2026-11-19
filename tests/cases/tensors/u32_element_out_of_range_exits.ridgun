@@ -1,0 +1,12 @@
+-- @tests TS-COMP-031
+-- case: writing an Int outside 0..4294967295 into an element of a Tensor[U32] stops the program
+-- source: FR-COMP-031 AC-6
+-- expect-output:
+--   runtime error: U32 element out of 0..4294967295
+-- expect-exit: 1
+
+fn :: main => ()
+      main =
+        t = Tensor[U32 * 2]
+        t_(0) = 4294967296
+        echo t_(0)

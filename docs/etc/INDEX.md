@@ -12,3 +12,4 @@
 | `parallelism.md` | Green threads, work-stealing scheduler, mailboxes, channels | Working on scheduler, threads, or concurrency |
 | `interop.md` | C/C++ FFI and Python bridge specification | Working on FFI or PyO3 interop |
 | `process.md` | Spiral + V-Model + OWASP SAMM methodology | Planning verification and security gates |
+| `fused_elementwise.md` | How an element-wise tensor expression becomes one loop: the `:fuse:` node, the program text, joined statements, results in place, packed `U16`/`U32` tensors, the three vector versions (`FR-COMP-031`) | Changing element-wise operators, `core/fuse.ll`, `llvm fuse fn`, or reading why a tensor loop is slow |

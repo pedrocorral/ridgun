@@ -122,6 +122,8 @@ fn :: max int Int Int => Int
         | otherwise = b
 
 fn :: collect expr effects RExpr String RSummaryMap [String] Bool RCostTier => [String] Bool RCostTier
+      collect expr effects (ECall ":fuse:" (_:leaves)) cur_fn summaries muts yld cost =
+        collect expr list effects leaves cur_fn summaries muts yld (max cost tier cost TierHeavyCPU)
       collect expr effects (ECall callee args) cur_fn summaries muts yld cost =
         after_call = apply callee summary callee args cur_fn (summary map get summaries callee) muts yld cost
         collect expr list effects tuple args cur_fn summaries after_call

@@ -861,6 +861,7 @@ fn :: collect expr strs RExpr              RStrPoolAcc => RStrPoolAcc
       collect expr strs (EReal r)          acc      =  pool add str r acc
       collect expr strs (EStr s)           acc      =  pool add str s acc
       collect expr strs (EVar v)           acc      =  add ctor str v acc
+      collect expr strs (ECall ":fuse:" ((EStr code):leaves)) acc =  collect expr list strs leaves (pool add str list (fuse programs code) acc)
       collect expr strs (ECall fname args) acc      =  collect expr list strs args (add ctor str fname acc)
       collect expr strs (EEinsum es subs)  acc      =  collect expr list strs es (pool add str (str join subs ",") acc)
       collect expr strs (EHadamard _ l s1 r s2) acc =  collect expr strs r (collect expr strs l (pool add str (s1 + "," + s2) acc))
@@ -1086,6 +1087,7 @@ fn :: expr has heavy ops RExpr             => Bool
       expr has heavy ops (ETensor _)       =  True
       expr has heavy ops (EEinsum _ _)     =  True
       expr has heavy ops (EHadamard _ _ _ _ _) = True
+      expr has heavy ops (ECall ":fuse:" _) = True
       expr has heavy ops (EBin OpMatMul _ _) = True
       expr has heavy ops (EBin _ l r)      =  (expr has heavy ops l) or (expr has heavy ops r)
       expr has heavy ops (ENot inner)      =  expr has heavy ops inner
@@ -1324,29 +1326,6 @@ fn :: env var slot idx Int Int => Int
       env var slot idx arity idx
         | idx >= 0 = arity + idx
         | otherwise = 0
-
-fn :: binop id RBinOp     => Int
-      binop id OpAdd      =  0
-      binop id OpSub      =  1
-      binop id OpMul      =  2
-      binop id OpDiv      =  3
-      binop id OpMod      =  4
-      binop id OpEq       =  5
-      binop id OpNeq      =  6
-      binop id OpGt       =  7
-      binop id OpLt       =  8
-      binop id OpGtEq     =  9
-      binop id OpLtEq     =  10
-      binop id OpAnd      =  11
-      binop id OpOr       =  12
-      binop id OpXor      =  13
-      binop id OpConcat   =  14
-      binop id OpFlatJoin =  15
-      binop id OpMatMul   =  16
-      binop id OpShl      =  17
-      binop id OpShr      =  18
-      binop id OpRotr     =  19
-      binop id OpRotl     =  20
 
 fn :: binop op tag RBinOp => String
       binop op tag OpAdd  =  "+"
@@ -1786,6 +1765,11 @@ fn :: lower tensor helper RNativeEnv String [RExpr] [String] Int RNativeCode => 
           count = list len args
           st1 = lower expr list to slots env args boundLocals sp 0 st
           nc emit st1 (NCallBuiltin 104 sp count) (sp + count + 1)
+        | (ty == "U16" or ty == "U32") and (f == ":tensor-zeros:" or f == ":tensor-with:") =
+          count = list len args
+          st1 = nc emit list st [NLoadImmInt (packed elem lg ty), NStoreSlot sp] (sp + 1)
+          st2 = lower expr list to slots env args boundLocals (sp + 1) 0 st1
+          nc emit st2 (NCallBuiltin 141 sp (count + 1)) (sp + count + 2)
       lower tensor helper env ":typed-tensor:" (_:inner:_) boundLocals sp st =
         lower expr env inner boundLocals sp st
       lower tensor helper env ":tensor-zeros:" (fillE:d1:[]) boundLocals sp st =
@@ -2791,6 +2775,11 @@ fn :: lower expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
         unpack_ins = build tuple unpack instrs sp arity 0
         ins_list = [NStoreSlot sp, NMatchTuple sp arity, NJumpIfZero part_lbl] :: unpack_ins :: [NClearLocals sp (sp + 1), NCallFn fid (sp + 1) arity, NJump done_lbl, NLabel part_lbl, NMoveSlot sp, NStoreSlot (sp + 1), NMakeList (sp + 1) 1, NStoreSlot (sp + 1), NLoadStrLit off slen, NStoreSlot sp, NMakeTuple sp 2, NLabel done_lbl]
         nc emit list st1 ins_list (sp + arity + 2)
+      lower expr env (ECall ":fuse:" ((EStr code):leaves)) bound_locals sp st =
+        count = list len leaves
+        prog = (fuse kind letter (fuse leaves kind env (fuse toks code) leaves)) + "|" + (fuse rt code code)
+        st1 = lower expr list to slots env leaves bound_locals sp 0 st
+        nc emit st1 (NHadamard 99 sp (env str off env prog) (str len prog)) (sp + count + 1)
       lower expr env (ECall fname args) bound_locals sp st =
         lower call expr env fname args bound_locals sp st
       lower expr env (EEcho raw_args) bound_locals sp st =
@@ -2895,7 +2884,7 @@ fn :: lower final block expr RNativeEnv RExpr [String] [String] Int RNativeCode 
       lower final block expr env e bound_locals [] sp st =
         lower expr env e bound_locals sp st
       lower final block expr env e bound_locals dead_vars sp st =
-        st1 = lower expr env e bound_locals sp st
+        st1 = lower expr env (fuse with moves e dead_vars) bound_locals sp st
         st2 = nc emit st1 (NStoreSlot sp) (sp + 1)
         st3 = lower cmm drops env dead_vars (sp + 1) st2
         nc emit st3 (NMoveSlot sp) (sp + 1)
@@ -2906,7 +2895,7 @@ fn :: lower let binding stmt RNativeEnv String RExpr [String] [String] [RStmt] I
         live_after = cmm stmts vars rest []
         live_with_v = add unique str v live_after
         dead_inputs = cmm filter not in list (cmm remove str v used_in_e) live_with_v
-        st1 = lower expr env e bound_locals sp st
+        st1 = lower expr env (fuse with moves e (fuse dead leaves v used_in_e dead_inputs)) bound_locals sp st
         st2 = lower let var store env v bound_locals sp st1
         st3 = lower cmm drops env dead_inputs sp st2
         st4 = lower unused let drop env v live_after sp st3
@@ -3973,13 +3962,31 @@ fn :: move once case RFnCase String RStrIntMap => RFnCase
         uses = move count uses everything StrIntEmpty
         binders = move count binders everything (move count pat names (collect pat list vars pats []) StrIntEmpty)
         owned = move owned params pats 0 mask []
-        once = move pick once ((move let names everything []) :: owned) uses binders StrSetEmpty
-        move apply (FnCase pats guards body) once fam
+        cands = (move let names everything []) :: owned
+        once = move pick once cands uses binders StrSetEmpty
+        FnCase pats (map (g => move fuse branch g cands binders once fam) guards) (move body body (move fuse once body cands binders once) fam)
 
-fn :: move apply RFnCase RStrSet RStrIntMap => RFnCase
-      move apply (FnCase pats guards body) once fam
-        | once == StrSetEmpty = FnCase pats guards body
-        | otherwise = FnCase pats (move branches guards once fam) (move body body once fam)
+-- A tensor a fused expression reads may move when it is mentioned once in the branch that runs
+-- (FR-COMP-031): the branches of a clause exclude each other, and a condition is over before its
+-- branch starts. Such names are in the set as `#fz name`; only the leaves of a fused expression
+-- look at them. With one owner the tensor takes the result in place (`rg_fuse_take`, fuse.ll).
+fn :: move fuse branch RGuard [String] RStrIntMap RStrSet RStrIntMap => RGuard
+      move fuse branch (GuardBranch c b) cands binders once fam =  GuardBranch c (move body b (move fuse once b cands binders once) fam)
+
+fn :: move fuse once RExpr [String] RStrIntMap RStrSet => RStrSet
+      move fuse once b cands binders once =  move fuse pick cands (move count uses [b] StrIntEmpty) binders once
+
+fn :: move fuse pick [String] RStrIntMap RStrIntMap RStrSet => RStrSet
+      move fuse pick [] _ _ acc =  acc
+      move fuse pick (n:ns) uses binders acc
+        | (str int map lookup uses n) == 1 and (str int map lookup binders n) == 1 = move fuse pick ns uses binders (str set add acc ("#fz " + n))
+        | otherwise = move fuse pick ns uses binders acc
+
+fn :: move fuse leaves [RExpr] RStrSet [RExpr] => [RExpr]
+      move fuse leaves [] _ acc =  acc
+      move fuse leaves ((EVar u):ls) once acc
+        | (str set has once u) or (str set has once ("#fz " + u)) = move fuse leaves ls once (acc :: [ECall "#move" [EVar u]])
+      move fuse leaves (leaf:ls) once acc =  move fuse leaves ls once (acc :: [leaf])
 
 -- The names of the parameters the function owns that a plain variable pattern binds.
 fn :: move owned params [RPattern] Int Int [String] => [String]
@@ -4059,6 +4066,7 @@ fn :: move body RExpr RStrSet RStrIntMap => RExpr
       move body (EBlock stmts) once fam =  EBlock (move stmts stmts [] once fam)
       move body (EGuard gs) once fam =  EGuard (move branches gs once fam)
       move body (EWhere b binds) once fam =  EWhere (move body b once fam) binds
+      move body (ECall ":fuse:" (code:leaves)) once _ =  ECall ":fuse:" ([code] :: (move fuse leaves leaves once []))
       move body e _ _ =  e
 
 fn :: move stmts [RStmt] [RStmt] RStrSet RStrIntMap => [RStmt]
@@ -4067,6 +4075,8 @@ fn :: move stmts [RStmt] [RStmt] RStrSet RStrIntMap => [RStmt]
       move stmts (s:ss) acc once fam =  move stmts ss (acc :: [move stmt s once fam]) once fam
 
 fn :: move stmt RStmt RStrSet RStrIntMap => RStmt
+      move stmt (StmtLet v (ECall ":fuse:" (code:leaves))) once _ =  StmtLet v (ECall ":fuse:" ([code] :: (move fuse leaves leaves once [])))
+      move stmt (StmtMut v (ECall ":fuse:" (code:leaves))) once _ =  StmtMut v (ECall ":fuse:" ([code] :: (move fuse leaves leaves once [])))
       move stmt (StmtLet v (ECall f args)) once fam =  StmtLet v (move call f args once fam)
       move stmt s _ _ =  s
 
@@ -5043,8 +5053,18 @@ fn :: fn tensor elems [String] String [String] => [String]
         | str starts with i key = fn tensor elems is key ([str slice i (str len key) (str len i)] :: acc)
         | otherwise = fn tensor elems is key acc
 
+-- "H" (U16) and "W" (U32) are packed as "B" (U8) is, with wider elements; the size is in the tensor
+-- (bytes.ll), so everything but a fused expression treats the three as "B".
 fn :: env tensor kind RNativeEnv String => String
-      env tensor kind (NativeEnv _ _ _ _ _ _ _ _ elems) v =  tensor kind lookup elems (v + "|") ""
+      env tensor kind env v =  packed as b (env tensor raw kind env v)
+
+fn :: packed as b String => String
+      packed as b "H" =  "B"
+      packed as b "W" =  "B"
+      packed as b k =  k
+
+fn :: env tensor raw kind RNativeEnv String => String
+      env tensor raw kind (NativeEnv _ _ _ _ _ _ _ _ elems) v =  tensor kind lookup elems (v + "|") ""
 
 fn :: tensor kind lookup [String] String String => String
       tensor kind lookup [] _ "" =  "U"
@@ -5067,14 +5087,77 @@ fn :: merge tensor kind String String => String
 fn :: is u8 elem name String => Bool
       is u8 elem name s =  s == "U8" or s == "Byte"
 
+-- ── Fused element-wise expressions (FR-COMP-031, ast.ridgun) ──
+-- `NHadamard 99 slot off len`: the leaves are in the slots from `slot` on and the text at `off` is
+-- the program, `K|code`: K is the element kind of its tensors, N (64-bit integers), R (Real), B (U8),
+-- H (U16) or W (U32). The kind is known here, from the facts of the type checker, so the string pool
+-- holds the program with each of them.
+fn :: fuse programs String => [String]
+      fuse programs code =  fuse programs of (fuse rt code code)
+
+fn :: fuse programs of String => [String]
+      fuse programs of rt =  ["N|" + rt, "R|" + rt, "B|" + rt, "H|" + rt, "W|" + rt]
+
+fn :: fuse kind letter String => String
+      fuse kind letter "R" =  "R"
+      fuse kind letter "B" =  "B"
+      fuse kind letter "H" =  "H"
+      fuse kind letter "W" =  "W"
+      fuse kind letter _ =  "N"
+
+-- The kind of the first tensor a fused expression reads.
+fn :: fuse leaves kind RNativeEnv [RFuseTok] [RExpr] => String
+      fuse leaves kind env ((FtTensor _):_) (leaf:_) =  expr tensor raw kind env leaf
+      fuse leaves kind env (FtScalar:ts) (_:ls) =  fuse leaves kind env ts ls
+      fuse leaves kind env (_:ts) ls =  fuse leaves kind env ts ls
+      fuse leaves kind _ _ _ =  "U"
+
 fn :: expr tensor kind RNativeEnv RExpr => String
-      expr tensor kind env (EVar v) =  env tensor kind env v
-      expr tensor kind _ (ECall ":typed-tensor:" ((EStr ty):_))
+      expr tensor kind env e =  packed as b (expr tensor raw kind env e)
+
+fn :: packed elem lg String => Int
+      packed elem lg "U16" =  1
+      packed elem lg "U32" =  2
+      packed elem lg _ =  0
+
+-- A tensor a fused expression reads for the last time is given to it, not shared with it: the
+-- name is dropped right after the statement anyway (`dead`), and a tensor with one owner can take
+-- the result in place (`rg_fuse_take`, fuse.ll). A name the statement binds again counts too.
+fn :: fuse dead leaves String [String] [String] => [String]
+      fuse dead leaves v used dead
+        | list contains used v = dead :: [v]
+        | otherwise = dead
+
+fn :: fuse with moves RExpr [String] => RExpr
+      fuse with moves e [] =  e
+      fuse with moves (ECall ":fuse:" (code:leaves)) dead =  ECall ":fuse:" ([code] :: (fuse move leaves leaves leaves dead []))
+      fuse with moves e _ =  e
+
+fn :: fuse move leaves [RExpr] [RExpr] [String] [RExpr] => [RExpr]
+      fuse move leaves [] _ _ acc =  acc
+      fuse move leaves ((EVar v):ls) all dead acc
+        | (list contains dead v) and (fuse leaf uses all v 0) == 1 = fuse move leaves ls all dead (acc :: [ECall "#move" [EVar v]])
+      fuse move leaves (leaf:ls) all dead acc =  fuse move leaves ls all dead (acc :: [leaf])
+
+-- How many of the leaves mention a name (inside a number too).
+fn :: fuse leaf uses [RExpr] String Int => Int
+      fuse leaf uses [] _ n =  n
+      fuse leaf uses (leaf:ls) v n
+        | list contains (cmm expr vars leaf []) v = fuse leaf uses ls v (n + 1)
+        | otherwise = fuse leaf uses ls v n
+
+fn :: expr tensor raw kind RNativeEnv RExpr => String
+      expr tensor raw kind env (EVar v) =  env tensor raw kind env v
+      expr tensor raw kind env (ECall "#move" ((EVar v):_)) =  env tensor raw kind env v
+      expr tensor raw kind env (ECall ":fuse:" ((EStr code):leaves)) =  fuse leaves kind env (fuse toks code) leaves
+      expr tensor raw kind _ (ECall ":typed-tensor:" ((EStr "U16"):_)) =  "H"
+      expr tensor raw kind _ (ECall ":typed-tensor:" ((EStr "U32"):_)) =  "W"
+      expr tensor raw kind _ (ECall ":typed-tensor:" ((EStr ty):_))
         | is u8 elem name ty = "B"
-      expr tensor kind env (ECall ":tensor-clone:" (b:_)) =  expr tensor kind env b
-      expr tensor kind env (ECall f _)
-        | not (str starts with f ":") = env tensor kind env ("()" + f)
-      expr tensor kind _ _ =  "U"
+      expr tensor raw kind env (ECall ":tensor-clone:" (b:_)) =  expr tensor raw kind env b
+      expr tensor raw kind env (ECall f _)
+        | not (str starts with f ":") = env tensor raw kind env ("()" + f)
+      expr tensor raw kind _ _ =  "U"
 
 -- `t_(i ...)` on a `Tensor[U8]`: builtin 105 with slots [i ..., t]; t is
 -- borrowed (`NPeekSlot`), a temporary base is dropped after the read.

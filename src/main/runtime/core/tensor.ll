@@ -51,6 +51,7 @@ declare i64 @__rg_rt_drop_val(i64)
 declare i64 @__rg_rt_make_tuple(i64, i64)
 declare void @rg_fatal(ptr, i64) noreturn
 declare i64 @rg_builtin_bytes(i64, i64, i64)
+declare i64 @rg_fuse(i64, i64, i64)
 
 @rg_msg_oob = private constant [25 x i8] c"tensor index out of range"
 @rg_msg_sortlen = private constant [41 x i8] c"sort by: the lists have different lengths"
@@ -2034,6 +2035,13 @@ other:
 ; then the right letters the left one lacks; matching letters align, the
 ; others broadcast.
 define i64 @__rg_rt_hadamard(i64 %op, i64 %lslot, i64 %b, i64 %subs, i64 %len) {
+pre:
+  ; op 99: a fused element-wise program (fuse.ll); its leaves start at the slot
+  %isfuse = icmp eq i64 %op, 99
+  br i1 %isfuse, label %fuse, label %entry
+fuse:
+  %fused = call i64 @rg_fuse(i64 %lslot, i64 %subs, i64 %len)
+  ret i64 %fused
 entry:
   %dimt = alloca [256 x i64], align 8
   %valt = alloca [256 x i64], align 8

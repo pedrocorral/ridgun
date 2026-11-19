@@ -460,6 +460,8 @@ Tensors are Ridgun's native **mutable** N-dimensional indexed type. They general
 
 **Element types (`FR-COMP-020`):** a tensor holds elements of any type. A tensor of numbers (`Int`, `U16`, `U32`, `U64`, `I8`, `I16`, `I32`, `I64`, `Usize`, `Real`, `Float`) stores one 64-bit number per element. A tensor of other elements (`String`, `Bool`, `Char`, lists, tuples, records, ADTs) stores one value per element and has one or two dimensions. `Tensor_GPU` holds numbers only: another element type is a compile error (`FR-COMP-018`).
 
+**Sized integers (`FR-COMP-031`):** `Tensor[U16]` and `Tensor[U32]` store 2 and 4 bytes per element, as `Tensor[U8]` stores 1. Each is its own type, compatible only with a tensor of the same element type. An element reads as an `Int`; writing an `Int` outside the range stops the program (`runtime error: U32 element out of 0..4294967295`). In element-wise expressions their arithmetic wraps at the width of the type.
+
 **Bytes (`FR-COMP-022`):** `Tensor[U8]` (`Tensor[Byte]` is the same type) stores one byte per element, like `[]byte` or `Vec<u8>`. Reading an element gives an `Int` in 0..255; writing an `Int` outside 0..255 stops the program with `runtime error: U8 element out of 0..255` (exit status 1). A `Tensor[U8]` is only compatible with another `Tensor[U8]`: a parameter of type `Tensor[Int]`, `Tensor` or `Tensor[T]` does not take it. `@`, element-wise and bitwise operators, row and column slices and maps are not available on it. A `Tensor[U8]` that is indexed, shown, hashed or turned into a list must be a variable, a call, an allocation or a copy (`t_ij`).
 
 ```ridgun
@@ -561,6 +563,21 @@ D = A_ij / B_j                           -- B broadcasts along i
 ```
 
 This eliminates the need for `unsqueeze`, `expand_dims`, or manual reshaping — the indices **are** the broadcasting rules.
+
+**Element-wise expressions (`FR-COMP-031`):** the operators `+ - * / %`, `and or xor`, `shl shr rotl rotr` take tensor reads and numbers, with any depth, and the whole expression runs as one loop:
+
+```ridgun
+fn :: mix Tensor[U32 * n] Tensor[U32 * n] => Tensor[U32 * n]
+      mix d a =  (d_i xor a_i) rotl 16        -- one letter for one dimension
+
+s = (a_ij * k) + 1                            -- a number is used for every element
+m = (a_ij shr 4) and 0xFF
+```
+
+- Every tensor of an expression has the same element type. `U8`, `U16` and `U32` wrap and rotate at 8, 16 and 32 bits; `Int` and `U64` at 64; `Real` takes `+ - * /` with `Real` numbers.
+- A shift or rotation count is taken modulo the width; `shr` is logical; `/` and `%` by zero give 0.
+- A tensor read has the subscripts of the result, its first ones (`c_i` in `a_ij * c_i`) or its last ones (`b_j` in `a_ij + b_j`).
+- Consecutive statements that bind such expressions over tensors of one type run as one loop. A tensor read for the last time, with no other owner, takes the result in place.
 
 **GPU variant:** `Tensor_GPU` places the tensor on GPU memory for accelerated computation.
 

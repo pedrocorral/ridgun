@@ -1,0 +1,11 @@
+-- @tests TS-COMP-031
+-- case: an element-wise operator between a tensor of Real and an Int is a compile error
+-- source: FR-COMP-031 AC-9
+-- expect-build-error: element-wise operator on a tensor of Real needs a Real, got the Int 2
+
+fn :: twice Tensor[Real * n] => Tensor[Real * n]
+      twice a =  a_i * 2
+
+fn :: main => ()
+      main =
+        echo (twice (Tensor[Real * 2]))

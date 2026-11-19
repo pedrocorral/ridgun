@@ -23,6 +23,8 @@
 ; ============================================================
 
 declare i64 @rg_ld(i64)
+declare i64 @rg_fuse_get(i64, i64, i64)
+declare void @rg_fuse_put(i64, i64, i64, i64)
 declare void @rg_st(i64, i64)
 declare i64 @rg_ldb(i64)
 declare void @rg_stb(i64, i64)
@@ -63,6 +65,8 @@ declare i64 @__rg_pal_write(i64, i64, i64)
 declare i32 @llvm.fshr.i32(i32, i32, i32)
 
 @rg_msg_u8 = private constant [24 x i8] c"U8 element out of 0..255"
+@rg_msg_u16 = private constant [27 x i8] c"U16 element out of 0..65535"
+@rg_msg_u32 = private constant [32 x i8] c"U32 element out of 0..4294967295"
 @rg_msg_crc = private constant [32 x i8] c"crc32 range: range out of bounds"
 @rg_msg_wbytes = private constant [34 x i8] c"write bytes: element out of 0..255"
 @rg_msg_io = private constant [24 x i8] c"byte range out of bounds"
@@ -74,16 +78,27 @@ declare i32 @llvm.fshr.i32(i32, i32, i32)
 
 ; ── Tensor[U8] ───────────────────────────────────────────────
 
+; A packed tensor holds elements of 1, 2 or 4 bytes (U8, U16, U32): the first
+; data word is rank + (lg << 32), lg the size as a power of two. A Tensor[U8]
+; has lg 0, so its word is its rank.
 define i64 @rg_u8_rank(i64 %t) {
   %d = call i64 @rg_t_data(i64 %t)
-  %k = call i64 @rg_ld(i64 %d)
+  %h = call i64 @rg_ld(i64 %d)
+  %k = and i64 %h, 4294967295
   ret i64 %k
+}
+
+define i64 @rg_u8_lg(i64 %t) {
+  %d = call i64 @rg_t_data(i64 %t)
+  %h = call i64 @rg_ld(i64 %d)
+  %lg = lshr i64 %h, 32
+  ret i64 %lg
 }
 
 define i64 @rg_u8_count(i64 %t) {
 entry:
   %d = call i64 @rg_t_data(i64 %t)
-  %k = call i64 @rg_ld(i64 %d)
+  %k = call i64 @rg_u8_rank(i64 %t)
   br label %loop
 loop:
   %j = phi i64 [ 0, %entry ], [ %j1, %body ]
@@ -102,7 +117,7 @@ done:
 ; The address of the first byte.
 define i64 @rg_u8_bytes(i64 %t) {
   %d = call i64 @rg_t_data(i64 %t)
-  %k = call i64 @rg_ld(i64 %d)
+  %k = call i64 @rg_u8_rank(i64 %t)
   %w = add i64 %k, 1
   %o = shl i64 %w, 3
   %a = add i64 %d, %o
@@ -112,6 +127,12 @@ define i64 @rg_u8_bytes(i64 %t) {
 ; A new Tensor[U8] of rank k with the dimensions at dims (negative as 0),
 ; every byte fill.
 define i64 @rg_u8_new(i64 %k, i64 %dims, i64 %fill) {
+  %t = call i64 @rg_pk_new(i64 %k, i64 %dims, i64 %fill, i64 0)
+  ret i64 %t
+}
+
+; The same for elements of 2^lg bytes.
+define i64 @rg_pk_new(i64 %k, i64 %dims, i64 %fill, i64 %lg) {
 entry:
   br label %prod
 prod:
@@ -127,7 +148,8 @@ pbody:
   %j1 = add i64 %j, 1
   br label %prod
 make:
-  %n7 = add i64 %n, 7
+  %nb = shl i64 %n, %lg
+  %n7 = add i64 %nb, 7
   %nw = lshr i64 %n7, 3
   %h = add i64 %k, 1
   %w = add i64 %h, %nw
@@ -137,7 +159,9 @@ make:
   %d = call i64 @rg_t_data(i64 %t)
   %wb = shl i64 %w, 3
   call void @rg_fill(i64 %d, i8 0, i64 %wb)
-  call void @rg_st(i64 %d, i64 %k)
+  %lgs = shl i64 %lg, 32
+  %hdr = or i64 %k, %lgs
+  call void @rg_st(i64 %d, i64 %hdr)
   br label %dl
 dl:
   %i = phi i64 [ 0, %make ], [ %i1, %dbody ]
@@ -152,8 +176,17 @@ dbody:
   br label %dl
 bytes:
   %b = call i64 @rg_u8_bytes(i64 %t)
-  %f8 = trunc i64 %fill to i8
-  call void @rg_fill(i64 %b, i8 %f8, i64 %n)
+  %fz = icmp eq i64 %fill, 0
+  br i1 %fz, label %made, label %fl
+fl:
+  %fi = phi i64 [ 0, %bytes ], [ %fi1, %flb ]
+  %fm = icmp ult i64 %fi, %n
+  br i1 %fm, label %flb, label %made
+flb:
+  call void @rg_fuse_put(i64 %b, i64 %fi, i64 %lg, i64 %fill)
+  %fi1 = add i64 %fi, 1
+  br label %fl
+made:
   ret i64 %t
 }
 
@@ -199,7 +232,7 @@ no:
 define i64 @rg_u8_offset(i64 %t, i64 %idx, i64 %k) {
 entry:
   %d = call i64 @rg_t_data(i64 %t)
-  %rank = call i64 @rg_ld(i64 %d)
+  %rank = call i64 @rg_u8_rank(i64 %t)
   %same = icmp eq i64 %rank, %k
   br i1 %same, label %loop, label %bad
 loop:
@@ -242,6 +275,30 @@ define i64 @rg_slot_at(i64 %slots, i64 %i) alwaysinline {
   ret i64 %v
 }
 
+; An element of 2^lg bytes: 0 .. 2^(8 * 2^lg) - 1.
+define void @rg_pk_check(i64 %b, i64 %lg) {
+entry:
+  switch i64 %lg, label %w1 [ i64 1, label %w2
+                              i64 2, label %w4 ]
+w1:
+  call void @rg_u8_check(i64 %b)
+  ret void
+w2:
+  %ok2 = icmp ult i64 %b, 65536
+  br i1 %ok2, label %good, label %bad2
+w4:
+  %ok4 = icmp ult i64 %b, 4294967296
+  br i1 %ok4, label %good, label %bad4
+good:
+  ret void
+bad2:
+  call void @rg_fatal(ptr @rg_msg_u16, i64 27)
+  unreachable
+bad4:
+  call void @rg_fatal(ptr @rg_msg_u32, i64 32)
+  unreachable
+}
+
 define void @rg_u8_check(i64 %b) {
 entry:
   %ok = icmp ult i64 %b, 256
@@ -281,6 +338,37 @@ done:
   ret i64 %t
 }
 
+; 141 (lg, fill, d1 .. dk): a packed tensor of elements of 2^lg bytes.
+define i64 @rg_pk_new_b(i64 %slots, i64 %n) {
+entry:
+  %dims = alloca [16 x i64], align 8
+  %dp = ptrtoint ptr %dims to i64
+  %lv = call i64 @rg_slot_at(i64 %slots, i64 0)
+  %lg = call i64 @rg_int_arg(i64 %lv)
+  %fv = call i64 @rg_slot_at(i64 %slots, i64 1)
+  %fill = call i64 @rg_int_arg(i64 %fv)
+  call void @rg_pk_check(i64 %fill, i64 %lg)
+  %k0 = sub i64 %n, 2
+  %big = icmp sgt i64 %k0, 16
+  %k = select i1 %big, i64 16, i64 %k0
+  br label %loop
+loop:
+  %j = phi i64 [ 0, %entry ], [ %j1, %body ]
+  %more = icmp slt i64 %j, %k
+  br i1 %more, label %body, label %done
+body:
+  %j1 = add i64 %j, 1
+  %j2 = add i64 %j, 2
+  %dv = call i64 @rg_slot_at(i64 %slots, i64 %j2)
+  %d = call i64 @rg_int_arg(i64 %dv)
+  call void @rg_word_set(i64 %dp, i64 %j, i64 %d)
+  br label %loop
+done:
+  call void @rg_drop_slots(i64 %slots, i64 %n)
+  %t = call i64 @rg_pk_new(i64 %k, i64 %dp, i64 %fill, i64 %lg)
+  ret i64 %t
+}
+
 ; 105 (i1 .. ik, t borrowed)
 define i64 @rg_u8_get_b(i64 %slots, i64 %n) {
   %k = sub i64 %n, 1
@@ -290,8 +378,8 @@ define i64 @rg_u8_get_b(i64 %slots, i64 %n) {
   call void @rg_st(i64 %ta, i64 0)
   %off = call i64 @rg_u8_offset(i64 %t, i64 %slots, i64 %k)
   %b = call i64 @rg_u8_bytes(i64 %t)
-  %a = add i64 %b, %off
-  %x = call i64 @rg_ldb(i64 %a)
+  %lg = call i64 @rg_u8_lg(i64 %t)
+  %x = call i64 @rg_fuse_get(i64 %b, i64 %off, i64 %lg)
   %r = call i64 @rg_int(i64 %x)
   ret i64 %r
 }
@@ -308,13 +396,13 @@ define i64 @rg_u8_set_b(i64 %slots, i64 %n) {
   %va = add i64 %slots, %va0
   %vv = call i64 @rg_ld(i64 %va)
   %v = call i64 @rg_int_arg(i64 %vv)
-  call void @rg_u8_check(i64 %v)
+  %lg = call i64 @rg_u8_lg(i64 %t)
+  call void @rg_pk_check(i64 %v, i64 %lg)
   call void @rg_st(i64 %va, i64 0)
   %x = call i64 @__rg_rt_drop_val(i64 %vv)
   %off = call i64 @rg_u8_offset(i64 %t, i64 %slots, i64 %k)
   %b = call i64 @rg_u8_bytes(i64 %t)
-  %a = add i64 %b, %off
-  call void @rg_stb(i64 %a, i64 %v)
+  call void @rg_fuse_put(i64 %b, i64 %off, i64 %lg, i64 %v)
   ret i64 0
 }
 
@@ -328,7 +416,7 @@ entry:
   %t = call i64 @rg_ld(i64 %s1)
   call void @rg_st(i64 %s1, i64 0)
   %d = call i64 @rg_t_data(i64 %t)
-  %rank = call i64 @rg_ld(i64 %d)
+  %rank = call i64 @rg_u8_rank(i64 %t)
   %z = icmp eq i64 %k, 0
   br i1 %z, label %r, label %dim
 r:
@@ -351,6 +439,7 @@ define i64 @rg_u8_to_list(i64 %t) {
 entry:
   %n = call i64 @rg_u8_count(i64 %t)
   %b = call i64 @rg_u8_bytes(i64 %t)
+  %lg = call i64 @rg_u8_lg(i64 %t)
   %out = call i64 @rg_list_alloc(i64 %n, i64 %n)
   br label %loop
 loop:
@@ -358,8 +447,7 @@ loop:
   %more = icmp slt i64 %i, %n
   br i1 %more, label %body, label %done
 body:
-  %a = add i64 %b, %i
-  %x = call i64 @rg_ldb(i64 %a)
+  %x = call i64 @rg_fuse_get(i64 %b, i64 %i, i64 %lg)
   %v = call i64 @rg_int(i64 %x)
   %oa = call i64 @rg_list_at(i64 %out, i64 %i)
   call void @rg_st(i64 %oa, i64 %v)
@@ -373,7 +461,8 @@ done:
 define i64 @rg_u8_to_words(i64 %t) {
 entry:
   %d = call i64 @rg_t_data(i64 %t)
-  %k = call i64 @rg_ld(i64 %d)
+  %k = call i64 @rg_u8_rank(i64 %t)
+  %lg = call i64 @rg_u8_lg(i64 %t)
   %n = call i64 @rg_u8_count(i64 %t)
   %r = call i64 @rg_t_new(i64 %k, i64 %n)
   %rdims = call i64 @rg_t_dims(i64 %r)
@@ -388,8 +477,7 @@ loop:
   %more = icmp slt i64 %i, %n
   br i1 %more, label %body, label %done
 body:
-  %a = add i64 %b, %i
-  %x = call i64 @rg_ldb(i64 %a)
+  %x = call i64 @rg_fuse_get(i64 %b, i64 %i, i64 %lg)
   call void @rg_word_set(i64 %rd, i64 %i, i64 %x)
   %i1 = add i64 %i, 1
   br label %loop
@@ -1018,7 +1106,11 @@ entry:
                                 i64 113, label %writeb
                                 i64 114, label %range
                                 i64 115, label %range
-                                i64 119, label %fromlist ]
+                                i64 119, label %fromlist
+                                i64 141, label %pknew ]
+pknew:
+  %r141 = call i64 @rg_pk_new_b(i64 %slots, i64 %n)
+  ret i64 %r141
 sha:
   %r0 = call i64 @rg_sha_b(i64 %id, i64 %slots, i64 %n)
   ret i64 %r0
