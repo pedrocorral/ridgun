@@ -1,0 +1,27 @@
+-- @tests TS-VM-003
+-- case: the buffer handed to `net recv into`, `net send` and `sys call` is freed when the caller drops it: a loop leaves no live heap block behind (RMM)
+-- source: FR-VM-003; the report "server memory grows 70 KB per request" (1.0.14 .. 1.0.42)
+-- expect-output:
+--   leaked: 0
+
+fn :: one Int => Int
+      one n =
+        buf = Tensor[U8 * 65536]
+        got = net recv into 999 buf 0 65536 10
+        out = Tensor[U8 * 4096]
+        sent = net send 999 out 10
+        path = Tensor[U8 * 4096]
+        rc = sys call 21 path 0 0 0 0 0
+        got + sent + rc
+
+fn :: loop Int Int => Int
+      loop n acc
+        | n <= 0 = acc
+        | otherwise = loop (n - 1) (acc + one n)
+
+fn :: main => ()
+      main =
+        base = cmm live blocks
+        total = loop 200 0
+        leaked = (cmm live blocks) - base
+        echo ("leaked: " + (int to str leaked))

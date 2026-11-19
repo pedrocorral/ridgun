@@ -154,7 +154,7 @@ loop:
   %slot = getelementptr inbounds [7 x i64], ptr %a, i64 0, i64 0
   br i1 %go, label %arg, label %zero
 arg:
-  %v = call i64 @rg_arg(i64 %slots, i64 %i)
+  %v = call i64 @rgp_peek(i64 %slots, i64 %i)
   %isb = call i1 @rgp_is_buf(i64 %v)
   %ad = call i64 @rgp_addr(i64 %v)
   %iv = call i64 @rg_int_of(i64 %v)
@@ -190,6 +190,15 @@ call:
   call void @rg_drop_slots(i64 %slots, i64 %n)
   %res = call i64 @rg_box_int(i64 %r)
   ret i64 %res
+}
+
+; The value of slot i, left in the slot: the builtin's `rg_drop_slots` gives it
+; up at the end. (`rg_arg` takes it out, and then the builtin must drop it.)
+define internal i64 @rgp_peek(i64 %slots, i64 %i) alwaysinline {
+  %off = shl i64 %i, 3
+  %a = add i64 %slots, %off
+  %v = call i64 @rg_ld(i64 %a)
+  ret i64 %v
 }
 
 ; 1 when the value is a String or a Tensor[U8].
@@ -1707,7 +1716,7 @@ define internal i64 @rgn_str(i64 %p, i64 %n) {
 
 ; The Int of slot i, left alone (the value is dropped by the caller).
 define internal i64 @rgn_iarg(i64 %slots, i64 %i) {
-  %v = call i64 @rg_arg(i64 %slots, i64 %i)
+  %v = call i64 @rgp_peek(i64 %slots, i64 %i)
   %n = call i64 @rg_int_of(i64 %v)
   ret i64 %n
 }
@@ -1730,7 +1739,7 @@ bad:
   call void @rg_no_builtin(i64 %id)
   unreachable
 connect:
-  %hv = call i64 @rg_arg(i64 %slots, i64 0)
+  %hv = call i64 @rgp_peek(i64 %slots, i64 0)
   %port = call i64 @rgn_iarg(i64 %slots, i64 1)
   %tmo = call i64 @rgn_iarg(i64 %slots, i64 2)
   %h = call i64 @rgp_cstr(i64 %hv)
@@ -1764,7 +1773,7 @@ cdo:
   %crv = call i64 @rg_int(i64 %cr)
   ret i64 %crv
 listen:
-  %lh = call i64 @rg_arg(i64 %slots, i64 0)
+  %lh = call i64 @rgp_peek(i64 %slots, i64 0)
   %lport0 = call i64 @rgn_iarg(i64 %slots, i64 1)
   %lback = call i64 @rgn_iarg(i64 %slots, i64 2)
   %lc = call i64 @rgp_cstr(i64 %lh)
@@ -1814,7 +1823,7 @@ accept:
   ret i64 %arv
 send:
   %sfd = call i64 @rgn_iarg(i64 %slots, i64 0)
-  %sdata = call i64 @rg_arg(i64 %slots, i64 1)
+  %sdata = call i64 @rgp_peek(i64 %slots, i64 1)
   %stmo = call i64 @rgn_iarg(i64 %slots, i64 2)
   %sd = alloca i64, align 8
   %sl = alloca i64, align 8
@@ -1841,7 +1850,7 @@ ssend:
   ret i64 %srv
 recvinto:
   %rfd = call i64 @rgn_iarg(i64 %slots, i64 0)
-  %rt = call i64 @rg_arg(i64 %slots, i64 1)
+  %rt = call i64 @rgp_peek(i64 %slots, i64 1)
   %rfrom = call i64 @rgn_iarg(i64 %slots, i64 2)
   %rcount = call i64 @rgn_iarg(i64 %slots, i64 3)
   %rtmo = call i64 @rgn_iarg(i64 %slots, i64 4)
@@ -1906,7 +1915,7 @@ shutdown:
   ret i64 %hrv
 option:
   %ofd = call i64 @rgn_iarg(i64 %slots, i64 0)
-  %onm = call i64 @rg_arg(i64 %slots, i64 1)
+  %onm = call i64 @rgp_peek(i64 %slots, i64 1)
   %oval = call i64 @rgn_iarg(i64 %slots, i64 2)
   %oname = call i64 @rgp_cstr(i64 %onm)
   %olen = call i64 @rgp_len(i64 %onm)
@@ -1953,7 +1962,7 @@ qtext:
   %qs = call i64 @rgn_str(i64 %qba, i64 %ql)
   ret i64 %qs
 resolve:
-  %nv = call i64 @rg_arg(i64 %slots, i64 0)
+  %nv = call i64 @rgp_peek(i64 %slots, i64 0)
   %nc = call i64 @rgp_cstr(i64 %nv)
   %nl = call i64 @rgp_len(i64 %nv)
   %nlong = icmp sge i64 %nl, 256

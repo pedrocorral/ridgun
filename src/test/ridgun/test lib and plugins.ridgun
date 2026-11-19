@@ -291,7 +291,7 @@ fn :: main => ()
         shell exec "mkdir -p target/test_lib_work/ext_solstice/.stable/deps/ridgun-libs/src/main/ridgun/lib target/test_lib_work/ext_solstice/src/main/ridgun/lib target/test_lib_work/ext_solstice/src/main/ridgun/ext_solstice"
         shell exec "cp -f target/test_lib_work/mathkit/target/mathkit.ridgunlib target/test_lib_work/ext_solstice/.stable/deps/mathkit.rglib"
         ext_base_src = "type ExtMode = ModeFast | ModeSafe\n\ntype ExtCfg = ext_port: Int, ext_tag: String\n\nop :: String trim ext => String\n      s      trim ext =  s + \"_ok\"\n"
-        ext_mid_src = "import ext_base\n\nfn :: build ext cfg Int => ExtCfg\n      build ext cfg p   =  ExtCfg p (\"p\" trim ext)\n"
+        ext_mid_src = "import ext_base\nexport ext_base\n\nfn :: build ext cfg Int => ExtCfg\n      build ext cfg p   =  ExtCfg p (\"p\" trim ext)\n"
         local_hlp_src = "import ext_mid\nimport mathkit\n\nfn :: check mode ExtMode => Bool\n      check mode ModeFast = True\n      check mode ModeSafe = False\n\nfn :: format helper ExtCfg Bool => String\n      format helper cfg True = (greet (ext_tag cfg)) + \":\" + (int to str (ext_port cfg))\n      format helper _ False = \"bad\"\n\nfn :: run helper Int => String\n      run helper p   =\n        cfg = build ext cfg p\n        ok_m = check mode ModeFast\n        format helper cfg ok_m\n"
         ext_main_src = "import local_helper\nimport ext_base\n\nfn :: main => ()\n      main =  echo (run helper 8080)\n"
         write file "target/test_lib_work/ext_solstice/.stable/deps/ridgun-libs/src/main/ridgun/lib/ext_base.rg" ext_base_src
