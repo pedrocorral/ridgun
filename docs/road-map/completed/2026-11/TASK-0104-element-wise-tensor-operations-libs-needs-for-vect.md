@@ -1,9 +1,9 @@
 ---
 id: TASK-0104
 title: Element-wise tensor operations libs needs for vector crypto (shifts with scalar, U32 wrap, U8, one dimension, gather, wide and carry-less multiply)
-status: going-on
+status: completed
 created: 2026-11-18
-completed:
+completed: 2026-11-19
 requirements: []            # FR-*/NFR-* this task delivers or touches
 tests: []                   # TS-* to automate
 security: []                # VUL-* to address
