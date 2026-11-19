@@ -3225,6 +3225,36 @@ fn :: has arity prefix [RArityEntry] String => Bool
       has arity prefix arities       pref   =
         has arity prefix loop arities pref (str len pref)
 
+-- Words joined into one name (`v n` read as `v_n`) name a function, never a record field: a field is
+-- written with its underscore (ColdGrid report 2026-11-19, case 4). A field that no function shares
+-- its name with has a marker entry `.name`; the joined name is then looked for without that field.
+fn :: has word prefix [RArityEntry] String => Bool
+      has word prefix arities pref
+        | (lookup arity arities ("." + pref)) < 0 = has arity prefix arities pref
+        | otherwise = has arity prefix (drop arity key arities pref) pref
+
+fn :: drop arity key [RArityEntry] String => [RArityEntry]
+      drop arity key [] _ = []
+      drop arity key ((ArityEntry k v):rest) target
+        | k == target and v >= 0 = drop arity key rest target
+        | otherwise = [ArityEntry k v] :: (drop arity key rest target)
+
+fn :: field marker arities [RTypeDef] RStrSet => [RArityEntry]
+      field marker arities [] _ = []
+      field marker arities ((TypeDef _ _ fields):ts) fn_names =
+        (field markers of fields fn_names) :: (field marker arities ts fn_names)
+
+fn :: field markers of [RField] RStrSet => [RArityEntry]
+      field markers of [] _ = []
+      field markers of ((TypeField fname _):fs) fn_names
+        | (str contains (ident base name fname) "_") and (not (str set has fn_names (ident base name fname))) =
+          [ArityEntry ("." + (ident base name fname)) 1] :: (field markers of fs fn_names)
+        | otherwise = field markers of fs fn_names
+
+fn :: fn base name set [RFnDef] RStrSet => RStrSet
+      fn base name set [] acc = acc
+      fn base name set ((FnDef name _ _ _):fs) acc =  fn base name set fs (str set add acc (ident base name name))
+
 fn :: filter arity prefix loop [RArityEntry] String Int => [RArityEntry]
       filter arity prefix loop [] _ _ = []
       filter arity prefix loop ((ArityEntry k v):rest) pref plen
@@ -3249,7 +3279,7 @@ fn :: arity matches Int Int    => Bool
 
 fn :: builtin arity entries => [RArityEntry]
       builtin arity entries =
-        [ArityEntry "tensor_from_list" 1, ArityEntry "sort_by_ints" 2, ArityEntry "sort_by_texts" 2, ArityEntry "tensor_to_list" 1, ArityEntry "tensor_sum" 1, ArityEntry "tensor_bytes" 1, ArityEntry "tensor_put_le16" 4, ArityEntry "tensor_put_le32" 4, ArityEntry "tensor_put_le64" 4, ArityEntry "tensor_put_be16" 4, ArityEntry "tensor_put_be32" 4, ArityEntry "tensor_put_be64" 4, ArityEntry "tensor_get_le16" 4, ArityEntry "tensor_get_le32" 4, ArityEntry "tensor_get_le64" 4, ArityEntry "tensor_get_be16" 4, ArityEntry "tensor_get_be32" 4, ArityEntry "tensor_get_be64" 4, ArityEntry "tensor_u16_from_bytes" 1, ArityEntry "tensor_u32_from_bytes" 1, ArityEntry "tensor_interleave" 1, ArityEntry "tensor_min" 1, ArityEntry "tensor_max" 1, ArityEntry "assert_equals" 2, ArityEntry "assert_true" 1, ArityEntry "send_to" 2, ArityEntry "ask_to" 2, ArityEntry "send_through" 2, ArityEntry "receive_from" 1, ArityEntry "try_receive_from" 1, ArityEntry "receive_from_timeout" 2, ArityEntry "stop" 1, ArityEntry "agent_alive" 1, ArityEntry "agent_dropped" 1, ArityEntry "agent_flush" 1, ArityEntry "agent_state" 1, ArityEntry "new_mailbox" 0, ArityEntry "new_channel" 0, ArityEntry "new_bounded_channel" 1, ArityEntry "chan_send" 2, ArityEntry "chan_recv" 1, ArityEntry "chan_try_recv" 1, ArityEntry "str_len" 1, ArityEntry "str_char_at" 2, ArityEntry "str_slice" 3, ArityEntry "str_contains" 2, ArityEntry "str_starts_with" 2, ArityEntry "str_concat" 2, ArityEntry "int_to_str" 1, ArityEntry "str_to_int" 1, ArityEntry "int_to_real" 1, ArityEntry "real_to_int" 1, ArityEntry "real_round" 1, ArityEntry "real_floor" 1, ArityEntry "real_ceil" 1, ArityEntry "char_from_code" 1, ArityEntry "trim_str" 1, ArityEntry "read_file" 1, ArityEntry "load_rg_source" 1, ArityEntry "read_bytes" 1, ArityEntry "write_bytes" 2, ArityEntry "write_file" 2, ArityEntry "shell_exec" 1, ArityEntry "list_str_len" 1, ArityEntry "list_dir" 1, ArityEntry "file_lstat" 1, ArityEntry "sha256_file" 1, ArityEntry "sha256_str" 1, ArityEntry "sha256_raw" 1, ArityEntry "sha256_bytes" 1, ArityEntry "sys_os" 0, ArityEntry "sys_arch" 0, ArityEntry "sys_mkdir" 2, ArityEntry "sys_chmod" 2, ArityEntry "sys_exec" 3, ArityEntry "sys_chdir" 1, ArityEntry "sys_getcwd" 0, ArityEntry "sys_getenv" 1, ArityEntry "sys_setenv" 2, ArityEntry "sys_exit" 1, ArityEntry "sys_getuid" 0, ArityEntry "sys_getgid" 0, ArityEntry "sys_getpid" 0, ArityEntry "sys_time_ms" 0, ArityEntry "sys_time_ns" 0, ArityEntry "sys_wall_time_ms" 0, ArityEntry "crc32_range" 4, ArityEntry "tensor_from_str" 1, ArityEntry "tensor_u8_from_list" 1, ArityEntry "tensor_to_str" 1, ArityEntry "sha256_digest" 1, ArityEntry "sys_read_into" 4, ArityEntry "sys_write_from" 4, ArityEntry "sys_deadline_ms" 0, ArityEntry "sys_remaining_ms" 0, ArityEntry "sys_sleep_ms" 1, ArityEntry "sys_open_mode" 2, ArityEntry "sys_open" 3, ArityEntry "sys_close" 1, ArityEntry "sys_read_fd" 2, ArityEntry "sys_write_fd" 2, ArityEntry "sys_poll" 3, ArityEntry "sys_terminate" 2, ArityEntry "sys_kill" 2, ArityEntry "sys_call" 7, ArityEntry "sys_pipe" 0, ArityEntry "sys_waitpid" 2, ArityEntry "sys_username" 1, ArityEntry "sys_user_groups" 1, ArityEntry "sys_lookup_uid_gid" 1, ArityEntry "sys_setresgid" 1, ArityEntry "sys_setgroups" 1, ArityEntry "sys_setresuid" 1, ArityEntry "sys_execve" 3, ArityEntry "remove_file" 1, ArityEntry "remove_dir" 1, ArityEntry "rename_path" 2, ArityEntry "net_connect" 3, ArityEntry "net_listen" 3, ArityEntry "net_accept" 2, ArityEntry "net_send" 3, ArityEntry "net_recv_into" 5, ArityEntry "net_recv" 3, ArityEntry "net_shutdown" 2, ArityEntry "net_option" 3, ArityEntry "net_local_port" 1, ArityEntry "net_peer_ip" 1, ArityEntry "net_resolve" 1, ArityEntry "sys_read_pass" 1, ArityEntry "cli_args" 0, ArityEntry "cmm_live_blocks" 0, ArityEntry "cmm_cond_spared" 0, ArityEntry "cmm_cond_freed" 0, ArityEntry "cmm_same_ptr" 2, ArityEntry "seq_map" 2, ArityEntry "par_map" 2, ArityEntry "seq_filter" 2, ArityEntry "par_filter" 2]
+        [ArityEntry "tensor_from_list" 1, ArityEntry "sort_by_ints" 2, ArityEntry "sort_by_texts" 2, ArityEntry "tensor_to_list" 1, ArityEntry "tensor_sum" 1, ArityEntry "tensor_bytes" 1, ArityEntry "tensor_put_le16" 4, ArityEntry "tensor_put_le32" 4, ArityEntry "tensor_put_le64" 4, ArityEntry "tensor_put_be16" 4, ArityEntry "tensor_put_be32" 4, ArityEntry "tensor_put_be64" 4, ArityEntry "tensor_get_le16" 4, ArityEntry "tensor_get_le32" 4, ArityEntry "tensor_get_le64" 4, ArityEntry "tensor_get_be16" 4, ArityEntry "tensor_get_be32" 4, ArityEntry "tensor_get_be64" 4, ArityEntry "tensor_u16_from_bytes" 1, ArityEntry "tensor_u32_from_bytes" 1, ArityEntry "tensor_interleave" 1, ArityEntry "tensor_min" 1, ArityEntry "tensor_max" 1, ArityEntry "assert_equals" 2, ArityEntry "assert_true" 1, ArityEntry "send_to" 2, ArityEntry "ask_to" 2, ArityEntry "send_through" 2, ArityEntry "receive_from" 1, ArityEntry "try_receive_from" 1, ArityEntry "receive_from_timeout" 2, ArityEntry "stop" 1, ArityEntry "agent_alive" 1, ArityEntry "agent_dropped" 1, ArityEntry "agent_flush" 1, ArityEntry "agent_state" 1, ArityEntry "new_mailbox" 0, ArityEntry "new_channel" 0, ArityEntry "new_bounded_channel" 1, ArityEntry "chan_send" 2, ArityEntry "chan_recv" 1, ArityEntry "chan_try_recv" 1, ArityEntry "str_len" 1, ArityEntry "str_char_at" 2, ArityEntry "str_slice" 3, ArityEntry "str_contains" 2, ArityEntry "str_starts_with" 2, ArityEntry "str_concat" 2, ArityEntry "int_to_str" 1, ArityEntry "str_to_int" 1, ArityEntry "int_to_real" 1, ArityEntry "real_to_int" 1, ArityEntry "real_round" 1, ArityEntry "real_floor" 1, ArityEntry "real_ceil" 1, ArityEntry "char_from_code" 1, ArityEntry "trim_str" 1, ArityEntry "read_file" 1, ArityEntry "load_rg_source" 1, ArityEntry "read_bytes" 1, ArityEntry "write_bytes" 2, ArityEntry "write_file" 2, ArityEntry "shell_exec" 1, ArityEntry "list_str_len" 1, ArityEntry "list_dir" 1, ArityEntry "file_lstat" 1, ArityEntry "sha256_file" 1, ArityEntry "sha256_str" 1, ArityEntry "sha256_raw" 1, ArityEntry "sha256_bytes" 1, ArityEntry "sys_os" 0, ArityEntry "sys_arch" 0, ArityEntry "sys_mkdir" 2, ArityEntry "sys_chmod" 2, ArityEntry "sys_exec" 3, ArityEntry "sys_chdir" 1, ArityEntry "sys_getcwd" 0, ArityEntry "sys_getenv" 1, ArityEntry "sys_setenv" 2, ArityEntry "sys_exit" 1, ArityEntry "sys_getuid" 0, ArityEntry "sys_getgid" 0, ArityEntry "sys_getpid" 0, ArityEntry "sys_time_ms" 0, ArityEntry "sys_time_ns" 0, ArityEntry "sys_wall_time_ms" 0, ArityEntry "crc32_range" 4, ArityEntry "siphash13_range" 4, ArityEntry "siphash13_range_low" 4, ArityEntry "tensor_from_str" 1, ArityEntry "tensor_u8_from_list" 1, ArityEntry "tensor_to_str" 1, ArityEntry "sha256_digest" 1, ArityEntry "sys_read_into" 4, ArityEntry "sys_write_from" 4, ArityEntry "sys_deadline_ms" 0, ArityEntry "sys_remaining_ms" 0, ArityEntry "sys_sleep_ms" 1, ArityEntry "sys_open_mode" 2, ArityEntry "sys_open" 3, ArityEntry "sys_close" 1, ArityEntry "sys_read_fd" 2, ArityEntry "sys_write_fd" 2, ArityEntry "sys_poll" 3, ArityEntry "sys_terminate" 2, ArityEntry "sys_kill" 2, ArityEntry "sys_call" 7, ArityEntry "sys_pipe" 0, ArityEntry "sys_waitpid" 2, ArityEntry "sys_username" 1, ArityEntry "sys_user_groups" 1, ArityEntry "sys_lookup_uid_gid" 1, ArityEntry "sys_setresgid" 1, ArityEntry "sys_setgroups" 1, ArityEntry "sys_setresuid" 1, ArityEntry "sys_execve" 3, ArityEntry "remove_file" 1, ArityEntry "remove_dir" 1, ArityEntry "rename_path" 2, ArityEntry "net_connect" 3, ArityEntry "net_listen" 3, ArityEntry "net_accept" 2, ArityEntry "net_send" 3, ArityEntry "net_recv_into" 5, ArityEntry "net_recv" 3, ArityEntry "net_shutdown" 2, ArityEntry "net_option" 3, ArityEntry "net_local_port" 1, ArityEntry "net_peer_ip" 1, ArityEntry "net_resolve" 1, ArityEntry "sys_read_pass" 1, ArityEntry "cli_args" 0, ArityEntry "cmm_live_blocks" 0, ArityEntry "cmm_cond_spared" 0, ArityEntry "cmm_cond_freed" 0, ArityEntry "cmm_same_ptr" 2, ArityEntry "seq_map" 2, ArityEntry "par_map" 2, ArityEntry "seq_filter" 2, ArityEntry "par_filter" 2]
 
 fn :: collect fn arities [RFnDef] => [RArityEntry]
       collect fn arities [] = builtin arity entries
@@ -3311,7 +3341,7 @@ fn :: can complete op [RArityEntry] String [RExpr] => Bool
       can complete op arities cand [] = (lookup arity arities cand) >= 0
       can complete op arities cand ((EVar w):rest)
         | (lookup arity arities cand) >= 0 = True
-        | has arity prefix arities (join op word cand w) = can complete op arities (join op word cand w) rest
+        | has word prefix arities (join op word cand w) = can complete op arities (join op word cand w) rest
         | otherwise = can complete op arities cand rest
       can complete op arities cand (_:rest)
         | (lookup arity arities cand) >= 0 = True
@@ -3328,7 +3358,7 @@ fn :: extract mixfix call String [RExpr] [RArityEntry] [RExpr] => String [RExpr]
         w_cands = filter arity prefix loop arities w (str len w)
         extract mixfix start w rest arities w_cands operands
       extract mixfix call cur_name ((EVar w):rest) arities operands
-        | (not ((is std builtin cur_name) and (expr list count operands) > 0)) and (has arity prefix arities (join op word cur_name w)) and (can complete op arities (join op word cur_name w) rest) = extract mixfix call (join op word cur_name w) rest arities operands
+        | (not ((is std builtin cur_name) and (expr list count operands) > 0)) and (has word prefix arities (join op word cur_name w)) and (can complete op arities (join op word cur_name w) rest) = extract mixfix call (join op word cur_name w) rest arities operands
         | otherwise = extract mixfix call cur_name rest arities (operands :: [EVar w])
       extract mixfix call cur_name (arg:rest) arities operands =
         extract mixfix call cur_name rest arities (operands :: [arg])
@@ -3416,6 +3446,8 @@ fn :: is std builtin String             => Bool
       is std builtin "sys_read_into"    =  True
       is std builtin "sys_write_from"   =  True
       is std builtin "crc32_range"      =  True
+      is std builtin "siphash13_range"  =  True
+      is std builtin "siphash13_range_low" =  True
       is std builtin "sys_deadline_ms"  =  True
       is std builtin "sys_remaining_ms" =  True
       is std builtin "sys_sleep_ms"     =  True
@@ -3497,6 +3529,8 @@ fn :: std builtin arity String     => Int
       std builtin arity "sys_read_into" = 4
       std builtin arity "sys_write_from" = 4
       std builtin arity "crc32_range" = 4
+      std builtin arity "siphash13_range" = 4
+      std builtin arity "siphash13_range_low" = 4
       std builtin arity "str_contains" = 2
       std builtin arity "str_starts_with" = 2
       std builtin arity "str_concat" = 2
@@ -3602,13 +3636,19 @@ fn :: std builtin arity String     => Int
 fn :: collapse fn ref args [RExpr] [RArityEntry] => [RExpr]
       collapse fn ref args [] _ = []
       collapse fn ref args ((EVar w1):(EVar w2):(EVar w3):(EVar w4):rest) arities
-        | (lookup arity arities (w1 + "_" + w2 + "_" + w3 + "_" + w4)) >= 0 = [EVar (w1 + "_" + w2 + "_" + w3 + "_" + w4)] :: (collapse fn ref args rest arities)
+        | (lookup word arity arities (w1 + "_" + w2 + "_" + w3 + "_" + w4)) >= 0 = [EVar (w1 + "_" + w2 + "_" + w3 + "_" + w4)] :: (collapse fn ref args rest arities)
       collapse fn ref args ((EVar w1):(EVar w2):(EVar w3):rest) arities
-        | (lookup arity arities (w1 + "_" + w2 + "_" + w3)) >= 0 = [EVar (w1 + "_" + w2 + "_" + w3)] :: (collapse fn ref args rest arities)
+        | (lookup word arity arities (w1 + "_" + w2 + "_" + w3)) >= 0 = [EVar (w1 + "_" + w2 + "_" + w3)] :: (collapse fn ref args rest arities)
       collapse fn ref args ((EVar w1):(EVar w2):rest) arities
-        | (lookup arity arities (w1 + "_" + w2)) >= 0 = [EVar (w1 + "_" + w2)] :: (collapse fn ref args rest arities)
+        | (lookup word arity arities (w1 + "_" + w2)) >= 0 = [EVar (w1 + "_" + w2)] :: (collapse fn ref args rest arities)
       collapse fn ref args (e:rest) arities =
         [e] :: (collapse fn ref args rest arities)
+
+-- The arity of a name made by joining words: a record field is not such a name (`has word prefix`).
+fn :: lookup word arity [RArityEntry] String => Int
+      lookup word arity arities name
+        | (lookup arity arities ("." + name)) >= 0 = 0 - 1
+        | otherwise = lookup arity arities name
 
 fn :: maybe collapse args [RExpr] Int [RArityEntry] => [RExpr]
       maybe collapse args args expected_ar arities
@@ -3618,7 +3658,7 @@ fn :: maybe collapse args [RExpr] Int [RArityEntry] => [RExpr]
 fn :: has longer arity in rest [RArityEntry] String [RExpr] Int => Bool
       has longer arity in rest _ _ [] _ = False
       has longer arity in rest arities fn_name ((EVar w):rest) idx
-        | (not (is upper ident w)) and (has arity prefix arities (fn_name + "_" + w)) and (can complete op arities (fn_name + "_" + w) rest) and (idx == 0 or (expr list count rest) > 0 or (lookup arity arities (fn_name + "_" + w)) == idx) = True
+        | (not (is upper ident w)) and (has word prefix arities (fn_name + "_" + w)) and (can complete op arities (fn_name + "_" + w) rest) and (idx == 0 or (expr list count rest) > 0 or (lookup arity arities (fn_name + "_" + w)) == idx) = True
         | otherwise = has longer arity in rest arities fn_name rest (idx + 1)
       has longer arity in rest arities fn_name (_:rest) idx =
         has longer arity in rest arities fn_name rest (idx + 1)
@@ -3718,7 +3758,7 @@ fn :: take one fn ref [RExpr] [RArityEntry] => RExpr [RExpr]
 
 fn :: consume op words String [RExpr] [RArityEntry] => String [RExpr]
       consume op words cur ((EVar w):rest) arities
-        | (not (str starts with w "__lambda_")) and (has arity prefix arities (cur + "_" + w)) and (can complete op arities (cur + "_" + w) rest) =
+        | (not (str starts with w "__lambda_")) and (has word prefix arities (cur + "_" + w)) and (can complete op arities (cur + "_" + w) rest) =
           consume op words (cur + "_" + w) rest arities
       consume op words cur rest _ = (cur, rest)
 
@@ -4821,7 +4861,7 @@ fn :: normalize program RProgram          => RProgram
         poly_arities = collect poly type arities tys
         fns0 = collapse fndef poly params fns poly_arities []
         fns1 = lift fndef list lambdas fns0 0 [] []
-        raw_arities = (collect fn arities fns1) :: (collect type arities tys)
+        raw_arities = (collect fn arities fns1) :: (collect type arities tys) :: (field marker arities tys (fn base name set fns1 StrSetEmpty))
         arities = (filter zero arities raw_arities) :: (filter nonzero arities raw_arities)
         pmap = build prep arity map arities PrepArityEmpty
         Program (fuse late fns (norm fndef list fns1 pmap)) tys
@@ -5454,10 +5494,17 @@ fn :: mod import marker String => String
       mod import marker "" = ""
       mod import marker mname = "\n@__rg_mod_import__ " + mname + "\n"
 
-fn :: append own rg after local String String String (String, [String]) => String [String]
-      append own rg after local clean_spec mname alias (acc2, seen2)
+-- The import of a file of the project says which file: two files of one base name in two folders
+-- (`store/db` and a library's `db`) are two modules, and the import is of that one alone.
+fn :: mod import marker at String String => String
+      mod import marker at "" _ = ""
+      mod import marker at mname "" = mod import marker mname
+      mod import marker at mname path = "\n@__rg_mod_import__ " + mname + " \"" + path + "\"\n"
+
+fn :: append own rg after local String String String String (String, [String]) => String [String]
+      append own rg after local clean_spec mname mod_path alias (acc2, seen2)
         | is core compiler mod clean_spec = (acc2 + "\n-- import " + clean_spec + "\n", seen2)
-        | otherwise = (acc2 + "\n@__rg_mod_exit__\n" + (mod import marker mname) + (mod alias marker alias mname) + "-- import " + clean_spec + "\n", seen2)
+        | otherwise = (acc2 + "\n@__rg_mod_exit__\n" + (mod import marker at mname mod_path) + (mod alias marker alias mname) + "-- import " + clean_spec + "\n", seen2)
 
 fn :: child pdir for spec String String => String
       child pdir for spec pdir spec =
@@ -5479,20 +5526,20 @@ fn :: append own rg local String String String String String [String] => String 
         | is core compiler mod clean_spec =
           sub_pdir = child pdir for spec pdir clean_spec
           res = scan own rg lines sub_pdir local_rg 0 (str len local_rg) 0 0 acc seen1
-          append own rg after local clean_spec clean_spec alias res
+          append own rg after local clean_spec clean_spec "" alias res
         | otherwise =
           mname = mod name of spec clean_spec
           mod_path = find local rg module path pdir clean_spec
           sub_pdir = child pdir for spec pdir clean_spec
           acc_enter = acc + "\n@__rg_mod_enter__ " + mname + " \"" + mod_path + "\"\n"
           res = scan own rg lines sub_pdir local_rg 0 (str len local_rg) 0 0 acc_enter seen1
-          append own rg after local clean_spec mname alias res
+          append own rg after local clean_spec mname mod_path alias res
 
 fn :: append own rg import pair String String (String, String) String [String] => String [String]
       append own rg import pair pdir _ (clean_spec, alias) acc seen
         | list contains seen clean_spec =
           mname = mod name of spec clean_spec
-          (acc + (mod import marker mname) + (mod alias marker alias mname), seen)
+          (acc + (mod import marker at mname (find local rg module path pdir clean_spec)) + (mod alias marker alias mname), seen)
         | has same dir rglib pdir clean_spec = (acc + (format deferred import clean_spec alias), [clean_spec] :: seen)
         | otherwise =
           local_rg = read local rg module pdir clean_spec
@@ -5712,6 +5759,20 @@ fn :: record enter rename [String] String [RModAlias] => [RModAlias]
         | (str starts with top_m ":") and (new_mod != "") =
           add mod rename (strip enter colon top_m) new_mod aliases
         | otherwise = aliases
+
+-- The module a file of the project turned out to be (its `module ::` line, or its base name).
+fn :: record file module String String [RModAlias] => [RModAlias]
+      record file module "" _ aliases = aliases
+      record file module _ "" aliases = aliases
+      record file module path m aliases =  add alias unique ("__file__:" + path) (strip enter colon m) aliases
+
+-- The import of a file whose module is known is of that module; the base name alone (`db`) may
+-- be the name of files of other packages too.
+fn :: add file import String String String [RModAlias] => [RModAlias]
+      add file import cur_mod target "" aliases =  add mod import cur_mod target aliases
+      add file import cur_mod _ m aliases
+        | (mod key of cur_mod) == m = aliases
+        | otherwise = add alias unique ("__imp__:" + (mod key of cur_mod)) m aliases
 
 fn :: has any str [String] => Bool
       has any str []    = False
@@ -6733,6 +6794,7 @@ fn :: resolve lower ident step String RModCtx [RModAlias] [RModAlias] => String
           in_fn = str map get (ctx fn bst ctx) v1
           in_fld = str map get (ctx field bst ctx) v1
           default if empty in_fn (default if empty in_fld (default if empty (name through module v1 aliases (ctx fn bst ctx)) (default if empty (name through module v1 aliases (ctx field bst ctx)) v1)))
+        | (head as written v1 ctx) != v1 = head as written v1 ctx
         | otherwise =
           in_scope = lookup scoped fn or field ctx v1 ctx
           resolve lower plain fallback v1 ctx fn_map in_scope
@@ -6858,7 +6920,7 @@ fn :: rewrite call expr String [RExpr] String [String] RModCtx [RModAlias] [RMod
         ECall "__record_update__" ([base_r] :: (rewrite rec update args rest cur_mod locals special_ff aliases ctor_map fn_map field_map))
       rewrite call expr fn_name args cur_mod locals special_ff aliases ctor_map fn_map field_map
         | is upper ident fn_name =
-          ECall (resolve ctor ident ctx fn_name cur_mod special_ff aliases) (rewrite expr list args cur_mod locals special_ff aliases ctor_map fn_map field_map)
+          ECall (resolve ctor ident ctx fn_name cur_mod special_ff aliases) (rewrite arg list args cur_mod locals special_ff aliases ctor_map fn_map field_map)
         | list contains locals fn_name =
           local head call fn_name args cur_mod locals special_ff aliases ctor_map fn_map field_map (try consume scoped words fn_name [] args special_ff)
         | otherwise =
@@ -6881,37 +6943,49 @@ fn :: rewrite call lower String [RExpr] String [String] RModCtx [RModAlias] [RMo
           m = ident mod prefix fn1
           base = ident base name fn1
           finish qual mod call fn1 orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map (try consume mod words m base [] orig_args special_ff)
+        | (head as written fn1 special_ff) != fn1 =
+          ECall (head as written fn1 special_ff) (rewrite arg list orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map)
         | not (call candidates in special set fn1 orig_args special_ff) =
-          ECall fn1 (rewrite expr list orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map)
+          ECall fn1 (rewrite arg list orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map)
         | otherwise =
           finish scoped mod call fn1 orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map (try consume scoped words fn1 [] orig_args special_ff)
 
+-- A name written with an underscore (`tk_name`) that another module has as a record field stays as
+-- written by the encoding pass, which cannot know the scope. Here the scope is known: when the
+-- field is not in scope and a function of that exact name is, the name is the function's
+-- (ColdGrid report 2026-11-19, case 1). The result is the resolved name of the function.
+fn :: head as written String RModCtx => String
+      head as written v ctx
+        | (not (str contains v "_")) or (str contains v "__") or (str contains v ".") = v
+        | (lookup scoped fn or field ctx v ctx) != "" = v
+        | otherwise = default if empty (lookup scoped fn or field ctx (encode literal underscores v) ctx) v
+
 fn :: finish qual mod call String [RExpr] String [String] RModCtx [RModAlias] [RModAlias] [RModAlias] [RModAlias] (String, [RExpr], [RExpr]) => RExpr
       finish qual mod call fn1 orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map ("", _, _) =
-        ECall fn1 (rewrite expr list orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map)
+        ECall fn1 (rewrite arg list orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map)
       finish qual mod call _ _ cur_mod locals special_ff aliases ctor_map fn_map field_map (resolved_fn, _, rem_args) =
-        ECall resolved_fn (rewrite expr list rem_args cur_mod locals special_ff aliases ctor_map fn_map field_map)
+        ECall resolved_fn (rewrite arg list rem_args cur_mod locals special_ff aliases ctor_map fn_map field_map)
 
 fn :: finish scoped mod call String [RExpr] String [String] RModCtx [RModAlias] [RModAlias] [RModAlias] [RModAlias] (String, [RExpr], [RExpr]) => RExpr
       finish scoped mod call fn1 orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map ("", _, _)
         | is mixfix reserved word fn1 =
-          ECall fn1 (rewrite expr list orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map)
+          ECall fn1 (rewrite arg list orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map)
         | otherwise =
           finish unimp mod call fn1 orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map (try consume unimported words fn1 [] orig_args special_ff)
       finish scoped mod call fn1 _ cur_mod locals special_ff aliases ctor_map fn_map field_map (resolved_fn, consumed_words, rem_args)
         | str contains resolved_fn "." =
-          ECall resolved_fn (rewrite expr list rem_args cur_mod locals special_ff aliases ctor_map fn_map field_map)
+          ECall resolved_fn (rewrite arg list rem_args cur_mod locals special_ff aliases ctor_map fn_map field_map)
         | otherwise =
-          ECall fn1 (consumed_words :: (rewrite expr list rem_args cur_mod locals special_ff aliases ctor_map fn_map field_map))
+          ECall fn1 (consumed_words :: (rewrite arg list rem_args cur_mod locals special_ff aliases ctor_map fn_map field_map))
 
 fn :: finish unimp mod call String [RExpr] String [String] RModCtx [RModAlias] [RModAlias] [RModAlias] [RModAlias] (String, [RExpr], [RExpr]) => RExpr
       finish unimp mod call fn1 orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map ("", _, _) =
-        ECall fn1 (rewrite expr list orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map)
+        ECall fn1 (rewrite arg list orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map)
       finish unimp mod call fn1 orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map (unimp_fn, _, rem_args)
         | scope has word part ctx special_ff fn1 fn_map =
-          ECall fn1 (rewrite expr list orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map)
+          ECall fn1 (rewrite arg list orig_args cur_mod locals special_ff aliases ctor_map fn_map field_map)
         | otherwise =
-          ECall unimp_fn (rewrite expr list rem_args cur_mod locals special_ff aliases ctor_map fn_map field_map)
+          ECall unimp_fn (rewrite arg list rem_args cur_mod locals special_ff aliases ctor_map fn_map field_map)
 
 fn :: rewrite expr RExpr String [String] RModCtx [RModAlias] [RModAlias] [RModAlias] [RModAlias] => RExpr
       rewrite expr (EVar v) cur_mod locals special_ff aliases _ fn_map field_map
@@ -6930,6 +7004,44 @@ fn :: rewrite expr RExpr String [String] RModCtx [RModAlias] [RModAlias] [RModAl
 fn :: rewrite expr list [RExpr] String [String] RModCtx [RModAlias] [RModAlias] [RModAlias] [RModAlias] => [RExpr]
       rewrite expr list es cur_mod locals special_ff aliases ctor_map fn_map field_map =
         map (e => rewrite expr e cur_mod locals special_ff aliases ctor_map fn_map field_map) es
+
+-- The arguments of a call. Words that together name a function in scope (`vkd capabilities` among
+-- the arguments of a constructor) are that one name: none of them is looked up alone, so a word
+-- that another module also has, as a function or a record field, does not split the name
+-- (ColdGrid report 2026-11-19, case 3). The words stay as written: the call may go on from the
+-- words before them (`cl list contains str xs s`), and the later pass joins the whole name.
+fn :: rewrite arg list [RExpr] String [String] RModCtx [RModAlias] [RModAlias] [RModAlias] [RModAlias] => [RExpr]
+      rewrite arg list [] _ _ _ _ _ _ _ = []
+      rewrite arg list ((EVar w):rest) cur_mod locals special_ff aliases ctor_map fn_map field_map
+        | (arg name words w rest locals special_ff 3) > 0 =
+          k = arg name words w rest locals special_ff 3
+          ([EVar w] :: (list take rest k)) :: (rewrite arg list (list drop rest k) cur_mod locals special_ff aliases ctor_map fn_map field_map)
+      rewrite arg list (e:rest) cur_mod locals special_ff aliases ctor_map fn_map field_map =
+        [rewrite expr e cur_mod locals special_ff aliases ctor_map fn_map field_map] :: (rewrite arg list rest cur_mod locals special_ff aliases ctor_map fn_map field_map)
+
+-- How many of the words after `w` (at most `k`) make with it the longest function name in scope; 0 for none.
+fn :: arg name words String [RExpr] [String] RModCtx Int => Int
+      arg name words w rest locals ctx k
+        | k <= 0 = 0
+        | (list contains locals w) or (is upper ident w) or (str contains w ".") or (str starts with w "__") = 0
+        | (arg words are plain (list take rest k) locals k) and (arg words name fn (join arg words w (list take rest k)) ctx) = k
+        | otherwise = arg name words w rest locals ctx (k - 1)
+
+fn :: arg words name fn String RModCtx => Bool
+      arg words name fn joined ctx =
+        ((lookup scoped fn or field ctx joined ctx) != "") and ((str map get (ctx field single ctx) joined) == "") and (not (is std builtin joined))
+
+fn :: arg words are plain [RExpr] [String] Int => Bool
+      arg words are plain [] _ k =  k == 0
+      arg words are plain ((EVar w):rest) locals k
+        | (list contains locals w) or (is upper ident w) or (str contains w ".") or (str starts with w "__") = False
+        | otherwise = arg words are plain rest locals (k - 1)
+      arg words are plain _ _ _ =  False
+
+fn :: join arg words String [RExpr] => String
+      join arg words acc [] =  acc
+      join arg words acc ((EVar w):rest) =  join arg words (acc + "_" + w) rest
+      join arg words acc (_:rest) =  join arg words acc rest
 
 fn :: is scoped pipe var target String [RStmt] [String] RModCtx => Bool
       is scoped pipe var target v ss locals ctx
@@ -7127,12 +7239,14 @@ fn :: collect root words set step RScopedFn [RScopedFn] RStrSet => RStrSet
       collect root words set step (ScopedFn _ _ (FnDef _ _ _ cs)) sfs acc =
         collect root words set sfs (collect cases words set cs acc)
 
+-- `reached` holds module and name: two modules may each have a function of one name (a library's
+-- `list len` and the prelude's), and the calls of both are followed.
 fn :: expand reachable words set pass [RScopedFn] RStrSet Bool RStrSet => RStrSet Bool RStrSet
       expand reachable words set pass [] wset changed reached = (wset, changed, reached)
-      expand reachable words set pass ((ScopedFn _ True (FnDef fname _ _ cs)):sfs) wset changed reached
-        | (not (str set has reached fname)) and (ident words all in set fname wset) =
+      expand reachable words set pass ((ScopedFn m True (FnDef fname _ _ cs)):sfs) wset changed reached
+        | (not (str set has reached (m + ":" + fname))) and (ident words all in set fname wset) =
           wset1 = collect cases words set cs wset
-          expand reachable words set pass sfs wset1 True (str set add reached fname)
+          expand reachable words set pass sfs wset1 True (str set add reached (m + ":" + fname))
         | otherwise =
           expand reachable words set pass sfs wset changed reached
       expand reachable words set pass (_:sfs) wset changed reached =
@@ -7148,7 +7262,7 @@ fn :: filter reachable scoped fns [RScopedFn] RStrSet => [RScopedFn]
       filter reachable scoped fns (sf:sfs) reached
         | is root scoped fn sf = [sf] :: (filter reachable scoped fns sfs reached)
       filter reachable scoped fns ((ScopedFn m True (FnDef fname ps ret cs)):sfs) reached
-        | str set has reached fname =
+        | str set has reached (m + ":" + fname) =
           [ScopedFn m True (FnDef fname ps ret cs)] :: (filter reachable scoped fns sfs reached)
         | otherwise = filter reachable scoped fns sfs reached
 
@@ -7910,8 +8024,11 @@ fn :: parse items loop [RToken] [RScopedFn] [RScopedType] [RModAlias] [String] B
         child_mod = cur mod of stack mod_stack
         rest_stack = pop mod stack mod_stack
         parent_mod = cur mod of stack rest_stack
-        aliases1 = record exit import in_lib rest_stack parent_mod child_mod aliases
+        aliases1 = record file module (cur file of stack mod_stack) child_mod (record exit import in_lib rest_stack parent_mod child_mod aliases)
         parse items loop (skip to newline rest) s_fns s_tys aliases1 rest_stack in_lib
+      parse items loop (TokAt:(TokIdent "__rg_mod_import__"):(TokIdent target):(TokStr path):rest) s_fns s_tys aliases mod_stack in_lib =
+        cur_mod = cur mod of stack mod_stack
+        parse items loop (skip to newline rest) s_fns s_tys (add file import cur_mod target (lookup str map aliases ("__file__:" + path)) aliases) mod_stack in_lib
       parse items loop (TokAt:(TokIdent "__rg_mod_import__"):(TokIdent target):rest) s_fns s_tys aliases mod_stack in_lib =
         cur_mod = cur mod of stack mod_stack
         parse items loop (skip to newline rest) s_fns s_tys (add mod import cur_mod target aliases) mod_stack in_lib
@@ -7928,6 +8045,10 @@ fn :: parse items loop [RToken] [RScopedFn] [RScopedType] [RModAlias] [String] B
         new_mod = cur mod of stack new_stack
         aliases1 = record enter rename mod_stack new_mod aliases
         parse items loop (skip to newline rest) s_fns s_tys aliases1 new_stack in_lib
+      parse items loop ((TokIdent "export"):(TokIdent _):TokSlash:rest) s_fns s_tys aliases mod_stack in_lib =
+        parse items loop ([TokIdent "export"] :: rest) s_fns s_tys aliases mod_stack in_lib
+      parse items loop ((TokIdent "export"):(TokStr spec):rest) s_fns s_tys aliases mod_stack in_lib =
+        parse items loop (skip to newline rest) s_fns s_tys (add mod export (cur mod of stack mod_stack) (mod name of spec spec) aliases) mod_stack in_lib
       parse items loop ((TokIdent "export"):(TokIdent target):rest) s_fns s_tys aliases mod_stack in_lib =
         parse items loop (skip to newline rest) s_fns s_tys (add mod export (cur mod of stack mod_stack) target aliases) mod_stack in_lib
       parse items loop (TokImport:rest)   s_fns s_tys aliases mod_stack in_lib =

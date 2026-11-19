@@ -12,6 +12,7 @@
 ;   21 sha256 str (s): hex digest      36 sha256 raw (s or bytes): 32 bytes
 ;   89 sha256 raw (a + b)
 ;   103 crc32 range (data, from, to, crc)
+;   148 siphash13 range (key, data, from, to), 149 siphash13 range low
 ;   104 new (fill, d1 .. dk)    105 t_(i ..) (i1 .. ik, t borrowed)
 ;   106 t_(i ..) = v (i1 .. ik, v, t borrowed)   107 dim (k, t borrowed)
 ;   108 from str  109 to str  110 to list  111 to words (for echo)
@@ -1382,6 +1383,175 @@ done:
   ret i64 %ri
 }
 
+; ── SipHash-1-3 (Aumasson and Bernstein; c = 1, d = 3) ───────
+
+declare i64 @llvm.fshl.i64(i64, i64, i64)
+
+; One SipRound over the state at v0 .. v3.
+define internal void @rg_sipround(ptr %v0, ptr %v1, ptr %v2, ptr %v3) alwaysinline {
+  %a0 = load i64, ptr %v0, align 8
+  %a1 = load i64, ptr %v1, align 8
+  %a2 = load i64, ptr %v2, align 8
+  %a3 = load i64, ptr %v3, align 8
+  %b0 = add i64 %a0, %a1
+  %b1 = call i64 @llvm.fshl.i64(i64 %a1, i64 %a1, i64 13)
+  %c1 = xor i64 %b1, %b0
+  %c0 = call i64 @llvm.fshl.i64(i64 %b0, i64 %b0, i64 32)
+  %b2 = add i64 %a2, %a3
+  %b3 = call i64 @llvm.fshl.i64(i64 %a3, i64 %a3, i64 16)
+  %c3 = xor i64 %b3, %b2
+  %d0 = add i64 %c0, %c3
+  %d3 = call i64 @llvm.fshl.i64(i64 %c3, i64 %c3, i64 21)
+  %e3 = xor i64 %d3, %d0
+  %d2 = add i64 %b2, %c1
+  %d1 = call i64 @llvm.fshl.i64(i64 %c1, i64 %c1, i64 17)
+  %e1 = xor i64 %d1, %d2
+  %e2 = call i64 @llvm.fshl.i64(i64 %d2, i64 %d2, i64 32)
+  store i64 %d0, ptr %v0, align 8
+  store i64 %e1, ptr %v1, align 8
+  store i64 %e2, ptr %v2, align 8
+  store i64 %e3, ptr %v3, align 8
+  ret void
+}
+
+; The 64-bit SipHash-1-3 of the n bytes at p with the key (k0, k1). Bytes are
+; read one by one, so the result is the same on every target.
+define i64 @rg_siphash13(i64 %k0, i64 %k1, i64 %p, i64 %n) {
+entry:
+  %v0 = alloca i64, align 8
+  %v1 = alloca i64, align 8
+  %v2 = alloca i64, align 8
+  %v3 = alloca i64, align 8
+  %i0 = xor i64 %k0, 8317987319222330741
+  %i1 = xor i64 %k1, 7237128888997146477
+  %i2 = xor i64 %k0, 7816392313619706465
+  %i3 = xor i64 %k1, 8387220255154660723
+  store i64 %i0, ptr %v0, align 8
+  store i64 %i1, ptr %v1, align 8
+  store i64 %i2, ptr %v2, align 8
+  store i64 %i3, ptr %v3, align 8
+  %whole = and i64 %n, -8
+  br label %blocks
+blocks:
+  %at = phi i64 [ 0, %entry ], [ %at1, %block ]
+  %more = icmp slt i64 %at, %whole
+  br i1 %more, label %block, label %tail
+block:
+  %ba = add i64 %p, %at
+  %m = call i64 @rg_sip_word(i64 %ba, i64 8)
+  %x3 = load i64, ptr %v3, align 8
+  %y3 = xor i64 %x3, %m
+  store i64 %y3, ptr %v3, align 8
+  call void @rg_sipround(ptr %v0, ptr %v1, ptr %v2, ptr %v3)
+  %x0 = load i64, ptr %v0, align 8
+  %y0 = xor i64 %x0, %m
+  store i64 %y0, ptr %v0, align 8
+  %at1 = add i64 %at, 8
+  br label %blocks
+tail:
+  %ta = add i64 %p, %whole
+  %left = sub i64 %n, %whole
+  %tw = call i64 @rg_sip_word(i64 %ta, i64 %left)
+  %top = shl i64 %n, 56
+  %b = or i64 %tw, %top
+  %t3 = load i64, ptr %v3, align 8
+  %u3 = xor i64 %t3, %b
+  store i64 %u3, ptr %v3, align 8
+  call void @rg_sipround(ptr %v0, ptr %v1, ptr %v2, ptr %v3)
+  %t0 = load i64, ptr %v0, align 8
+  %u0 = xor i64 %t0, %b
+  store i64 %u0, ptr %v0, align 8
+  %t2 = load i64, ptr %v2, align 8
+  %u2 = xor i64 %t2, 255
+  store i64 %u2, ptr %v2, align 8
+  call void @rg_sipround(ptr %v0, ptr %v1, ptr %v2, ptr %v3)
+  call void @rg_sipround(ptr %v0, ptr %v1, ptr %v2, ptr %v3)
+  call void @rg_sipround(ptr %v0, ptr %v1, ptr %v2, ptr %v3)
+  %f0 = load i64, ptr %v0, align 8
+  %f1 = load i64, ptr %v1, align 8
+  %f2 = load i64, ptr %v2, align 8
+  %f3 = load i64, ptr %v3, align 8
+  %g0 = xor i64 %f0, %f1
+  %g1 = xor i64 %f2, %f3
+  %h = xor i64 %g0, %g1
+  ret i64 %h
+}
+
+; The k bytes (0 .. 8) at a as a little-endian word.
+define internal i64 @rg_sip_word(i64 %a, i64 %k) {
+entry:
+  br label %loop
+loop:
+  %j = phi i64 [ 0, %entry ], [ %j1, %body ]
+  %w = phi i64 [ 0, %entry ], [ %w1, %body ]
+  %m = icmp slt i64 %j, %k
+  br i1 %m, label %body, label %done
+body:
+  %ba = add i64 %a, %j
+  %bp = inttoptr i64 %ba to ptr
+  %b8 = load i8, ptr %bp, align 1
+  %b = zext i8 %b8 to i64
+  %sh = shl i64 %j, 3
+  %bs = shl i64 %b, %sh
+  %w1 = or i64 %w, %bs
+  %j1 = add i64 %j, 1
+  br label %loop
+done:
+  ret i64 %w
+}
+
+; 148 (key, data, from, to): the 64 bits; 149: the low 32 bits. A key that is
+; not 16 bytes, or a range outside the data, gives 0.
+define i64 @rg_sip_b(i64 %slots, i64 %low) {
+entry:
+  %kp = alloca i64, align 8
+  %kl = alloca i64, align 8
+  %dp = alloca i64, align 8
+  %lp = alloca i64, align 8
+  %kv = call i64 @rg_slot_at(i64 %slots, i64 0)
+  %v = call i64 @rg_slot_at(i64 %slots, i64 1)
+  %fv = call i64 @rg_slot_at(i64 %slots, i64 2)
+  %tv = call i64 @rg_slot_at(i64 %slots, i64 3)
+  %from = call i64 @rg_int_arg(i64 %fv)
+  %to = call i64 @rg_int_arg(i64 %tv)
+  %kok = call i1 @rg_bytes_of(i64 %kv, ptr %kp, ptr %kl)
+  %ok = call i1 @rg_bytes_of(i64 %v, ptr %dp, ptr %lp)
+  %k = load i64, ptr %kp, align 8
+  %kn = load i64, ptr %kl, align 8
+  %d = load i64, ptr %dp, align 8
+  %l = load i64, ptr %lp, align 8
+  %k16 = icmp eq i64 %kn, 16
+  %neg = icmp slt i64 %from, 0
+  %rev = icmp sgt i64 %from, %to
+  %past = icmp sgt i64 %to, %l
+  %b1 = or i1 %neg, %rev
+  %b2 = or i1 %b1, %past
+  %g1 = and i1 %kok, %ok
+  %g2 = and i1 %g1, %k16
+  %nb = xor i1 %b2, true
+  %good = and i1 %g2, %nb
+  br i1 %good, label %go, label %zero
+zero:
+  %z = call i64 @rg_int(i64 0)
+  ret i64 %z
+go:
+  %k0 = call i64 @rg_sip_word(i64 %k, i64 8)
+  %ka = add i64 %k, 8
+  %k1 = call i64 @rg_sip_word(i64 %ka, i64 8)
+  %s = add i64 %d, %from
+  %len = sub i64 %to, %from
+  %h = call i64 @rg_siphash13(i64 %k0, i64 %k1, i64 %s, i64 %len)
+  %islow = icmp ne i64 %low, 0
+  br i1 %islow, label %lowr, label %full
+lowr:
+  %h32 = and i64 %h, 4294967295
+  %lr = call i64 @rg_int(i64 %h32)
+  ret i64 %lr
+full:
+  %fr = call i64 @rg_box_int(i64 %h)
+  ret i64 %fr
+}
+
 ; ── Dispatch ─────────────────────────────────────────────────
 
 define i64 @rg_builtin_bytes(i64 %id, i64 %slots, i64 %n) {
@@ -1412,7 +1582,17 @@ entry:
                                 i64 145, label %words32
                                 i64 144, label %ilv
                                 i64 146, label %putw
-                                i64 147, label %getw ]
+                                i64 147, label %getw
+                                i64 148, label %sip
+                                i64 149, label %siplow ]
+sip:
+  %r148 = call i64 @rg_sip_b(i64 %slots, i64 0)
+  call void @rg_drop_slots(i64 %slots, i64 %n)
+  ret i64 %r148
+siplow:
+  %r149 = call i64 @rg_sip_b(i64 %slots, i64 1)
+  call void @rg_drop_slots(i64 %slots, i64 %n)
+  ret i64 %r149
 putw:
   %r146 = call i64 @rg_put_words_b(i64 %slots)
   call void @rg_drop_slots(i64 %slots, i64 %n)

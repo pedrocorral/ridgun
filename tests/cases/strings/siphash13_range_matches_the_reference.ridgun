@@ -1,0 +1,58 @@
+-- @tests TS-COMP-033
+-- case: `siphash13 range key data from to` is SipHash-1-3 (c = 1, d = 3) of the bytes [from, to) with a 16-byte key; `siphash13 range low` is its low 32 bits; a key that is not 16 bytes or a range outside the data gives 0
+-- source: FR-COMP-033; vectors of libs `test hash` (key 00 01 .. 0f, input 00 01 .. n-1)
+-- expect-output:
+--   0 abac0158050fc4dc
+--   1 c9f49bf37d57ca93
+--   7 d3927d989bb11140
+--   8 369095118d299a8e
+--   15 d320d86d2a519956
+--   16 cc4fdd1a7d908b66
+--   25 45cd5928705b0979
+--   64 f17997ec4b4a6065
+--   middle 369095118d299a8e
+--   tensor 45cd5928705b0979
+--   low 705b0979
+--   bad key 0
+--   bad range 0 0
+
+fn :: bytes upto Int => Tensor[U8]
+      bytes upto n =  fill (Tensor[U8 * n]) 0 n
+
+fn :: fill Tensor[U8] Int Int => Tensor[U8]
+      fill t i n
+        | i >= n = t
+        | otherwise =
+          t_(i) = i
+          fill t (i + 1) n
+
+fn :: digit Int => String
+      digit d =  str slice "0123456789abcdef" d (d + 1)
+
+fn :: hex of Int Int String => String
+      hex of _ 0 acc =  acc
+      hex of v k acc =  hex of (v shr 4) (k - 1) ((digit (v and 15)) + acc)
+
+fn :: show Int => ()
+      show n =
+        key = tensor to str (bytes upto 16)
+        data = tensor to str (bytes upto n)
+        echo (int to str n) (hex of (siphash13 range key data 0 n) 16 "")
+
+fn :: main => ()
+      main =
+        show 0
+        show 1
+        show 7
+        show 8
+        show 15
+        show 16
+        show 25
+        show 64
+        key = tensor to str (bytes upto 16)
+        padded = "xx" + (tensor to str (bytes upto 8)) + "yy"
+        echo "middle" (hex of (siphash13 range key padded 2 10) 16 "")
+        echo "tensor" (hex of (siphash13 range (bytes upto 16) (bytes upto 25) 0 25) 16 "")
+        echo "low" (hex of (siphash13 range low key (bytes upto 25) 0 25) 8 "")
+        echo "bad key" (siphash13 range "short" "data" 0 4)
+        echo "bad range" (siphash13 range key "data" 0 5) (siphash13 range key "data" 3 2)

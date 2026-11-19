@@ -1190,6 +1190,7 @@ Ridgun provides standard sequential collection combinators (`map`, `filter`, `fo
    - `tensor from str : String => Tensor[U8]` and `tensor to str : Tensor[U8] => String` convert with one copy; any byte `0..255` is allowed.
    - `tensor u8 from list : [Int] => Tensor[U8]` makes a byte tensor from a list of values `0..255` in one allocation; a value outside `0..255` stops the program with `runtime error: U8 element out of 0..255`. (`tensor from list` of `[Int]` gives a `Tensor[Int]`.)
    - `crc32 range : data Int Int Int => Int` (`data` a `String` or a `Tensor[U8]`, then `from`, `to`, `crc`): the CRC-32 of the bytes `from .. to - 1`, chained through `crc` (`0` to start). A range outside the data stops the program with `runtime error: crc32 range: range out of bounds`.
+   - `siphash13 range : key data Int Int => Int` (`key` and `data` a `String` or a `Tensor[U8]`, then `from`, `to`): the SipHash-1-3 of the bytes `from .. to - 1` with a key of 16 bytes, 64 bits. `siphash13 range low` gives its low 32 bits. A key that is not 16 bytes, or a range outside the data, gives 0.
    - `sha256 raw` takes a `String` or a `Tensor[U8]` and returns the 32-byte digest as a `String`; `sha256 digest` returns it as a `Tensor[U8 * 32]`.
 2. **POSIX Filesystem, Process & Security Built-ins (`FR-VM-002`)**:
    - **Filesystem**: `list dir`, `file lstat`, `sha256 file`, `sys mkdir`, `sys chmod`.
