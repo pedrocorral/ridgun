@@ -1,0 +1,12 @@
+-- @tests TS-COMP-031
+-- case: tensor u32 from bytes of 5 bytes stops the program: they are not a whole number of elements
+-- source: FR-COMP-031 AC-18
+-- expect-output:
+--   runtime error: tensor u32 from bytes: the number of bytes is not a multiple of the element size
+-- expect-exit: 1
+
+fn :: main => ()
+      main =
+        odd = tensor from str "abcde"
+        bad = tensor u32 from bytes odd
+        echo bad

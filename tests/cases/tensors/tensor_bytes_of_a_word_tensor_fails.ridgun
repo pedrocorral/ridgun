@@ -1,0 +1,10 @@
+-- @tests TS-COMP-031
+-- case: tensor bytes of a Tensor[U64] is a compile error: it takes the packed types
+-- source: FR-COMP-031 AC-18
+-- expect-build-error: tensor bytes expects a Tensor[U8], Tensor[U16] or Tensor[U32]
+
+fn :: main => ()
+      main =
+        t = Tensor[U64 * 2]
+        b = tensor bytes t
+        echo b

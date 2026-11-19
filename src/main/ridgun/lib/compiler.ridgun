@@ -1465,6 +1465,10 @@ fn :: builtin call id String             => Int
       builtin call id "crc32_range"      =  103
       builtin call id "tensor_from_str"  =  108
       builtin call id "tensor_u8_from_list"  =  119
+      builtin call id "tensor_bytes"  =  142
+      builtin call id "tensor_u16_from_bytes"  =  143
+      builtin call id "tensor_interleave"  =  144
+      builtin call id "tensor_u32_from_bytes"  =  145
       builtin call id "tensor_to_str"    =  109
       builtin call id "sys_read_into"    =  114
       builtin call id "sys_write_from"   =  115
@@ -2784,6 +2788,10 @@ fn :: lower expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
         unpack_ins = build tuple unpack instrs sp arity 0
         ins_list = [NStoreSlot sp, NMatchTuple sp arity, NJumpIfZero part_lbl] :: unpack_ins :: [NClearLocals sp (sp + 1), NCallFn fid (sp + 1) arity, NJump done_lbl, NLabel part_lbl, NMoveSlot sp, NStoreSlot (sp + 1), NMakeList (sp + 1) 1, NStoreSlot (sp + 1), NLoadStrLit off slen, NStoreSlot sp, NMakeTuple sp 2, NLabel done_lbl]
         nc emit list st1 ins_list (sp + arity + 2)
+      lower expr env (ECall "tensor_interleave" (l:[])) bound_locals sp st =
+        -- builtin 144 (list, lg): the element size comes from the type the checker found
+        st1 = lower expr env l bound_locals sp st
+        nc emit list st1 [NStoreSlot sp, NLoadImmInt (fuse kind lg (interleave kind env l)), NStoreSlot (sp + 1), NCallBuiltin 144 sp 2] (sp + 3)
       lower expr env (ECall ":fuse:" ((EStr code):leaves)) bound_locals sp st =
         count = list len leaves
         prog = fuse rt code code
@@ -5103,6 +5111,20 @@ fn :: is u8 elem name String => Bool
 -- kinds are known here, from the facts of the type checker.
 fn :: fuse programs String => [String]
       fuse programs code =  [fuse rt code code]
+
+-- The kind of the tensors `tensor interleave` gets: that of the first one written in the list; for
+-- a list that comes from elsewhere, the kind the type checker found for the result (one per
+-- function).
+fn :: interleave kind RNativeEnv RExpr => String
+      interleave kind env (EList (e:_)) =  expr tensor raw kind env e
+      interleave kind env _ =  env tensor raw kind env "()tensor_interleave"
+
+-- The size of an element of a kind as a power of two (3: a 64-bit word).
+fn :: fuse kind lg String => Int
+      fuse kind lg "B" =  0
+      fuse kind lg "H" =  1
+      fuse kind lg "W" =  2
+      fuse kind lg _ =  3
 
 fn :: fuse kind digit String => Int
       fuse kind digit "R" =  2

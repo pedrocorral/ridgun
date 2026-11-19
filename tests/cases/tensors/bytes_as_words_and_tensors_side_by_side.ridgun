@@ -1,0 +1,40 @@
+-- @tests TS-COMP-031
+-- case: tensor u32 from bytes and tensor u16 from bytes read the bytes of a Tensor[U8] as elements (low byte first), tensor bytes gives them back, and tensor interleave puts several tensors side by side, element by element
+-- source: FR-COMP-031 AC-18
+-- expect-output:
+--   bytes as U32 (low byte first): Tensor(shape=[2], data=[1684234849, 1751606885])
+--   bytes as U16: Tensor(shape=[4], data=[25185, 25699, 26213, 26727])
+--   and back: abcdefgh
+--   three tensors side by side: Tensor(shape=[9], data=[1, 10, 67305985, 2, 20, 200, 3, 30, 300])
+--   its first 12 bytes: 1 10 1 2 3 4
+--   words: Tensor(shape=[4], data=[7, 9, 7, 9])
+
+fn :: main => ()
+      main =
+        b = tensor from str "abcdefgh"
+        w = tensor u32 from bytes b
+        echo "bytes as U32 (low byte first):" w
+        h = tensor u16 from bytes b
+        echo "bytes as U16:" h
+        back = tensor bytes w
+        echo "and back:" (tensor to str back)
+        x = Tensor[U32 * 3]
+        y = Tensor[U32 * 3]
+        z = Tensor[U32 * 3]
+        x_(0) = 1
+        x_(1) = 2
+        x_(2) = 3
+        y_(0) = 10
+        y_(1) = 20
+        y_(2) = 30
+        z_(0) = 0x04030201
+        z_(1) = 200
+        z_(2) = 300
+        all = tensor interleave [x, y, z]
+        echo "three tensors side by side:" all
+        raw = tensor bytes all
+        echo "its first 12 bytes: {raw_(0)} {raw_(4)} {raw_(8)} {raw_(9)} {raw_(10)} {raw_(11)}"
+        p = Tensor[U64 * 2] with 7
+        q = Tensor[U64 * 2] with 9
+        pq = tensor interleave [p, q]
+        echo "words:" pq

@@ -24,6 +24,9 @@
 
 declare i64 @rg_ld(i64)
 declare i64 @rg_fuse_get(i64, i64, i64)
+declare i64 @rg_fuse_leaf(i64)
+declare i64 @rg_fuse_len(i64, i64)
+declare i64 @rg_fuse_data(i64, i64)
 declare void @rg_fuse_put(i64, i64, i64, i64)
 declare void @rg_st(i64, i64)
 declare i64 @rg_ldb(i64)
@@ -65,6 +68,9 @@ declare i64 @__rg_pal_write(i64, i64, i64)
 declare i32 @llvm.fshr.i32(i32, i32, i32)
 
 @rg_msg_u8 = private constant [24 x i8] c"U8 element out of 0..255"
+@rg_msg_words = private constant [80 x i8] c"tensor u32 from bytes: the number of bytes is not a multiple of the element size"
+@rg_msg_ilv = private constant [65 x i8] c"tensor interleave: the tensors differ in their number of elements"
+@rg_msg_ilv0 = private constant [32 x i8] c"tensor interleave: an empty list"
 @rg_msg_u16 = private constant [27 x i8] c"U16 element out of 0..65535"
 @rg_msg_u32 = private constant [32 x i8] c"U32 element out of 0..4294967295"
 @rg_msg_crc = private constant [32 x i8] c"crc32 range: range out of bounds"
@@ -367,6 +373,122 @@ done:
   call void @rg_drop_slots(i64 %slots, i64 %n)
   %t = call i64 @rg_pk_new(i64 %k, i64 %dp, i64 %fill, i64 %lg)
   ret i64 %t
+}
+
+; ── Bytes and words, and tensors side by side (FR-COMP-031) ───
+; The elements of a packed tensor are stored in the order of their bytes
+; (the low byte first), so its bytes and its words are the same memory.
+
+; 142: a Tensor[U8] of one dimension with the bytes of a packed tensor.
+define i64 @rg_pk_bytes(i64 %t) {
+  %lg = call i64 @rg_u8_lg(i64 %t)
+  %n = call i64 @rg_u8_count(i64 %t)
+  %nb = shl i64 %n, %lg
+  %dims = alloca i64, align 8
+  store i64 %nb, ptr %dims, align 8
+  %dp = ptrtoint ptr %dims to i64
+  %r = call i64 @rg_u8_new(i64 1, i64 %dp, i64 0)
+  %dst = call i64 @rg_u8_bytes(i64 %r)
+  %src = call i64 @rg_u8_bytes(i64 %t)
+  call void @rg_copy(i64 %dst, i64 %src, i64 %nb)
+  ret i64 %r
+}
+
+; 143, 145: a packed tensor of one dimension, of elements of 2^lg bytes, with
+; the bytes of a Tensor[U8]; stops when the bytes are not a whole number of
+; elements.
+define i64 @rg_pk_words(i64 %b, i64 %lg) {
+entry:
+  %nb = call i64 @rg_u8_count(i64 %b)
+  %size = shl i64 1, %lg
+  %mask = sub i64 %size, 1
+  %rest = and i64 %nb, %mask
+  %whole = icmp eq i64 %rest, 0
+  br i1 %whole, label %make, label %bad
+make:
+  %n = lshr i64 %nb, %lg
+  %dims = alloca i64, align 8
+  store i64 %n, ptr %dims, align 8
+  %dp = ptrtoint ptr %dims to i64
+  %r = call i64 @rg_pk_new(i64 1, i64 %dp, i64 0, i64 %lg)
+  %dst = call i64 @rg_u8_bytes(i64 %r)
+  %src = call i64 @rg_u8_bytes(i64 %b)
+  call void @rg_copy(i64 %dst, i64 %src, i64 %nb)
+  ret i64 %r
+bad:
+  call void @rg_fatal(ptr @rg_msg_words, i64 80)
+  unreachable
+}
+
+; 144 (list, lg): the k tensors of the list (each of n elements of 2^lg
+; bytes; lg 3: words) side by side: a tensor of one dimension of n * k
+; elements, element i * k + j the element i of tensor j.
+define i64 @rg_interleave(i64 %xs, i64 %lg) {
+entry:
+  %isl = call i1 @rg_has_tag(i64 %xs, i64 2)
+  %k0 = call i64 @rg_list_len(i64 %xs)
+  %k = select i1 %isl, i64 %k0, i64 0
+  %none = icmp eq i64 %k, 0
+  br i1 %none, label %empty, label %first
+empty:
+  call void @rg_fatal(ptr @rg_msg_ilv0, i64 32)
+  unreachable
+first:
+  %fa = call i64 @rg_list_at(i64 %xs, i64 0)
+  %f0 = call i64 @rg_ld(i64 %fa)
+  %f = call i64 @rg_fuse_leaf(i64 %f0)
+  %n = call i64 @rg_fuse_len(i64 %f, i64 %lg)
+  %total = mul i64 %n, %k
+  %dims = alloca i64, align 8
+  store i64 %total, ptr %dims, align 8
+  %dp = ptrtoint ptr %dims to i64
+  %packed = icmp ult i64 %lg, 3
+  br i1 %packed, label %pk, label %wd
+pk:
+  %rp = call i64 @rg_pk_new(i64 1, i64 %dp, i64 0, i64 %lg)
+  br label %fill
+wd:
+  %rw = call i64 @rg_t_new(i64 1, i64 %total)
+  %rwd = call i64 @rg_t_dims(i64 %rw)
+  call void @rg_st(i64 %rwd, i64 %total)
+  br label %fill
+fill:
+  %r = phi i64 [ %rp, %pk ], [ %rw, %wd ]
+  %dst = call i64 @rg_fuse_data(i64 %r, i64 %lg)
+  br label %each
+each:
+  %j = phi i64 [ 0, %fill ], [ %j1, %next ]
+  %jm = icmp ult i64 %j, %k
+  br i1 %jm, label %one, label %done
+one:
+  %ta = call i64 @rg_list_at(i64 %xs, i64 %j)
+  %t0 = call i64 @rg_ld(i64 %ta)
+  %t = call i64 @rg_fuse_leaf(i64 %t0)
+  %tn = call i64 @rg_fuse_len(i64 %t, i64 %lg)
+  %same = icmp eq i64 %tn, %n
+  br i1 %same, label %copy, label %differ
+copy:
+  %src = call i64 @rg_fuse_data(i64 %t, i64 %lg)
+  br label %elem
+elem:
+  %i = phi i64 [ 0, %copy ], [ %i1, %put ]
+  %im = icmp ult i64 %i, %n
+  br i1 %im, label %put, label %next
+put:
+  %v = call i64 @rg_fuse_get(i64 %src, i64 %i, i64 %lg)
+  %at0 = mul i64 %i, %k
+  %at = add i64 %at0, %j
+  call void @rg_fuse_put(i64 %dst, i64 %at, i64 %lg, i64 %v)
+  %i1 = add i64 %i, 1
+  br label %elem
+next:
+  %j1 = add i64 %j, 1
+  br label %each
+differ:
+  call void @rg_fatal(ptr @rg_msg_ilv, i64 65)
+  unreachable
+done:
+  ret i64 %r
 }
 
 ; 105 (i1 .. ik, t borrowed)
@@ -1107,7 +1229,33 @@ entry:
                                 i64 114, label %range
                                 i64 115, label %range
                                 i64 119, label %fromlist
-                                i64 141, label %pknew ]
+                                i64 141, label %pknew
+                                i64 142, label %bytesof
+                                i64 143, label %words16
+                                i64 145, label %words32
+                                i64 144, label %ilv ]
+bytesof:
+  %v142 = call i64 @rg_slot_at(i64 %slots, i64 0)
+  %r142 = call i64 @rg_pk_bytes(i64 %v142)
+  call void @rg_drop_slots(i64 %slots, i64 %n)
+  ret i64 %r142
+words16:
+  %v143 = call i64 @rg_slot_at(i64 %slots, i64 0)
+  %r143 = call i64 @rg_pk_words(i64 %v143, i64 1)
+  call void @rg_drop_slots(i64 %slots, i64 %n)
+  ret i64 %r143
+words32:
+  %v145 = call i64 @rg_slot_at(i64 %slots, i64 0)
+  %r145 = call i64 @rg_pk_words(i64 %v145, i64 2)
+  call void @rg_drop_slots(i64 %slots, i64 %n)
+  ret i64 %r145
+ilv:
+  %v144 = call i64 @rg_slot_at(i64 %slots, i64 0)
+  %l144v = call i64 @rg_slot_at(i64 %slots, i64 1)
+  %l144 = call i64 @rg_int_arg(i64 %l144v)
+  %r144 = call i64 @rg_interleave(i64 %v144, i64 %l144)
+  call void @rg_drop_slots(i64 %slots, i64 %n)
+  ret i64 %r144
 pknew:
   %r141 = call i64 @rg_pk_new_b(i64 %slots, i64 %n)
   ret i64 %r141

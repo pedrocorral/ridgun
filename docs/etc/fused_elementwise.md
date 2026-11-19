@@ -45,6 +45,9 @@ The first time every leaf is read where it is. After it, a leaf that a result fe
 ## Packed tensors
 `Tensor[U16]` and `Tensor[U32]` use the layout of `Tensor[U8]` (`runtime_ext.md`): the first data word is `rank + (lg << 32)`, `lg` the element size as a power of two, so a `Tensor[U8]` is unchanged. Builtin 141 `(lg, fill, d1 .. dk)` makes one; reads and writes are builtins 105 and 106, which take the size from the tensor. The lowering treats the kinds `H` and `W` as `B` everywhere but in a fused program (`packed as b`).
 
+## Bytes, words and tensors side by side
+Builtins of the runtime (`bytes.ll`), not fused programs: 142 `tensor bytes`, 143 and 145 `tensor u16 from bytes` and `tensor u32 from bytes` (one copy of the bytes), 144 `tensor interleave` (list, element size). The element size of `tensor interleave` is the kind of the first tensor written in the list; for a list that comes from elsewhere, the kind the type checker found for the result, one per function.
+
 ## The LLVM function
 - Elements are loaded and stored with the machine type of the kind (`i8`, `i16`, `i32`, `i64`, `double`); rotations are `llvm.fshl` and `llvm.fshr`.
 - Loads and stores carry `!llvm.access.group` and the loop `llvm.loop.parallel_accesses`: elements at different indices never depend on each other, so the vectoriser needs no overlap checks, however many tensors a program reads and writes.
@@ -65,6 +68,7 @@ The first time every leaf is read where it is. After it, a leaf that a result fe
 | of which: the ten double rounds | 5.4 µs as ten calls; 1.75 µs as one loop run ten times |
 | of which: adding the first state (16 statements, one loop) | 1.1 µs |
 | The same at CPU level 2 (plain x86-64), 1.0.39 | 6.4 µs |
+| A whole page of 4096 bytes encrypted, 1.0.40: the key stream, `tensor interleave` of the 16 tensors, `tensor bytes`, `xor` with the message | 5.6 µs (7.5 µs at level 2) |
 | The same with the runtime routine (pure x86-64 encoder) | about 600 µs |
 
 In 1.0.38 the time was in the fixed cost of ten fused calls with 16 results each (a tuple of 16, its unpacking, a call of 17 arguments). Running the step ten times inside one call removed it.
