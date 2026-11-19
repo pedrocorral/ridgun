@@ -1,0 +1,11 @@
+-- @tests TS-COMP-031
+-- case: an element-wise index made of a tensor of Real is a compile error
+-- source: FR-COMP-031 AC-12
+-- expect-build-error: an element-wise index needs tensors of integers, got a tensor of Real
+
+fn :: pick Tensor[U8 * n] Tensor[Real * m] => Tensor[U8 * m]
+      pick t x =  t_(x_i)
+
+fn :: main => ()
+      main =
+        echo (pick (Tensor[U8 * 4]) (Tensor[Real * 2]))

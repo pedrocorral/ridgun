@@ -16,7 +16,7 @@ verified_by: []
 # FR-COMP-031 — An element-wise expression on tensors is one loop over machine words
 
 ## Statement
-1. **The expression.** An element-wise expression is built from tensor reads with subscripts (`a_ij`, `a_i`), numbers (an `Int` or a `Real`, the same for every element) and the operators `+ - * / %`, `and or xor`, `shl shr rotl rotr`, with any depth and parentheses: `((a_i + b_i) xor d_i) rotl 16`. Its value is a new tensor with the operators applied to each element.
+1. **The expression.** An element-wise expression is built from tensor reads with subscripts (`a_ij`, `a_i`), numbers (an `Int` or a `Real`, the same for every element) and the operators `+ - * / %`, `and or xor`, `shl shr rotl rotr`, `mulhi clmul clmulhi`, with any depth and parentheses: `((a_i + b_i) xor d_i) rotl 16`. Its value is a new tensor with the operators applied to each element.
 2. **Subscripts.** One letter is enough for a tensor of one dimension (`a_i`; the letters are `i j k l`). Every tensor read has the subscripts of the result, its first ones or its last ones: `a_ij + b_j` uses `b` along the first dimension, `a_ij * c_i` uses `c` along the last. Other combinations keep the older form of two tensors (`a_ij + b_ji`).
 3. **Element types.** All the tensors of one expression have the same element type. The type gives the width and the arithmetic:
    - `Int`, `U64`, `I64`, `Usize`: 64 bits; `+ - *` wrap at 2^64, `/` and `%` are signed.
@@ -28,7 +28,13 @@ verified_by: []
 6. **Several statements, one loop.** Consecutive statements of a block that each bind an element-wise expression, over tensors of one element type and with the same subscripts, run as one loop with several results; a value one statement gives to a later one is not stored in between. The element type must be known from the text: a parameter typed `Tensor[U32 * n]`, a tensor made with `Tensor[U32 * n]`, or a result of such a statement.
 7. **In place.** A tensor that the expression reads for the last time, and that nothing else holds, takes a result instead of a new tensor. A tensor with another name or another owner is never written.
 8. **The instructions of the machine.** With the LLVM back end the loop is in the program itself, on untagged elements of the machine type, in three versions: plain x86-64, AVX2 and AVX-512. The program runs the widest the machine has; `RIDGUN_CPU=2` or `RIDGUN_CPU=3` in the environment keeps it at the plain or the AVX2 version. The other back ends (the pure x86-64 encoder, WebAssembly) run the same expression in the runtime, element by element: the same result, slower.
-9. **Errors.** At compile time: tensors of different element types, a tensor of a type that is not a number, a `Real` tensor with an `Int` number or with an operator other than `+ - * /`, subscripts that do not fit. At run time: tensors whose numbers of elements differ stop the program with `runtime error: element-wise expression: the shapes differ`.
+9. **Wide and carry-less products.** Three operators on integers, on plain `Int`s and element-wise:
+   - `a mulhi b`: the high half of the product of the two numbers taken as unsigned, at the width of the type (64 bits for `Int`). With `*`, which gives the low half, it is the whole product.
+   - `a clmul b` and `a clmulhi b`: the low and the high half of the product without carries (the product of two polynomials over GF(2)), at the width of the type.
+   - With the LLVM back end `clmul` on 64 bits uses the instruction of the processor when it has one (PCLMULQDQ); elsewhere it is computed bit by bit.
+10. **Selection by index.** Inside an element-wise expression `t_(index)`, with an element-wise expression as the index, reads `t` at the index each element gives: `t_(x_i)`, `t_((x_i shr 4) and 15)`. `t` has any shape and is read as one row of elements. The tensors of the index are integers and may have another element type than `t`; the result has the element type of `t` and the shape of the index. An index outside `t` stops the program (`runtime error: tensor index out of range`).
+11. **One number from all the elements.** `tensor sum e`, `tensor min e` and `tensor max e`, where `e` is an element-wise expression or a tensor, run in the loop of the expression and give one number: an `Int` for integer tensors (elements are joined as 64-bit numbers: a sum of bytes is not cut to a byte; `min` and `max` compare `Int` elements as signed), a `Real` for `Real` tensors. With no elements the result is 0.
+12. **Errors.** At compile time: tensors of different element types, a tensor of a type that is not a number, a `Real` tensor with an `Int` number or with an operator other than `+ - * /`, subscripts that do not fit. At run time: tensors whose numbers of elements differ stop the program with `runtime error: element-wise expression: the shapes differ`.
 
 ## Rationale
 The cryptography of the libraries used tensors as arrays and did every step element by element on `Int`, because an operator on tensors was a call to the runtime that read two tensors and allocated a third, and because every element had 64 bits. Hand-written kernel code for the same algorithms is fast for reasons a compiler can give to any tensor expression: elements of the width of their type, values kept in registers across operations, one instruction for many elements, and no call or allocation in the loop. None of this is special to cryptography: the same rule serves linear algebra, filters on columns, images, hashes and counting.
@@ -43,12 +49,18 @@ The cryptography of the libraries used tensors as arrays and did every step elem
 7. **AC-7**: the eight statements of the ChaCha20 quarter round on four `Tensor[U32 * n]` give the result of RFC 8439 section 2.1.1 in every element.
 8. **AC-8**: after `kept = x` and `s = add x y`, `x` and `kept` keep their values; `add s y`, where `s` is not used again, gives the sum.
 9. **AC-9**: `a_i * 2` on a `Tensor[Real]` and `a_i xor b_i` on a `Tensor[U32]` and a `Tensor[U8]` do not build.
-10. **AC-10**: tensors of 3 and 4 elements in `a_i + b_i` stop the program with the message of point 9.
-11. **AC-11**: every case above prints the same with the LLVM back end at levels 2, 3 and 4 (`tests/runtime/run-fuse-levels.sh`), with the pure x86-64 encoder and with WebAssembly.
+10. **AC-10**: tensors of 3 and 4 elements in `a_i + b_i` stop the program with the message of point 12.
+11. **AC-11**: every case here prints the same with the LLVM back end at levels 2, 3 and 4 (`tests/runtime/run-fuse-levels.sh`), with the pure x86-64 encoder and with WebAssembly.
+12. **AC-12**: `t_(x_i)` on a table of 4 bytes and indices `3 0 2 1 3` gives the bytes in that order; `(t_(p_i + 1) xor k_i) rotl 8` with `t` a `Tensor[U32]` and `p` a `Tensor[U8]` builds; an index 4 into 4 elements stops the program; an index made of a `Real` tensor does not build.
+13. **AC-13**: `tensor sum (a_i * b_i)` on `Real` tensors is the dot product; `tensor sum` of 1000 bytes of 255 is 255000; `tensor max (a_i xor b_i)` is 0 for equal tensors; `tensor sum`, `tensor min` and `tensor max` of a tensor of no elements are 0.
+14. **AC-14**: `(0 - 1) mulhi (0 - 1)` is `-2` (2^64 - 2), `0x100000000 mulhi 0x100000000` is 1; on `Tensor[U32]`, `0xFFFFFFFF mulhi 0x10000` is `65535`.
+15. **AC-15**: `3 clmul 3` is 5, `7 clmul 5` is 27, `0x8000000000000000 clmulhi 2` is 1; element-wise on `U64` and `U8` the results are those of the bit-by-bit definition, with and without the instruction of the processor.
+16. **AC-16**: every integer operator on `U8`, `U16`, `U32` and `U64` tensors gives the value of its definition (`src/test/ridgun/test operator matrix.ridgun`, rows `E`).
 
 ## Not in scope
 - Signed packed types (`I8`, `I16`, `I32`): they keep 64 bits per element.
-- Comparisons and reductions (sum, minimum) inside an element-wise expression.
-- Selection by a tensor of indices, products wider than the element, and carry-less multiplication.
+- Comparisons inside an element-wise expression; reductions other than sum, smallest and largest.
+- Statements that select by index or give one number are not joined with their neighbours into one loop.
+- A copy of a `Tensor[U8]` as a `Tensor[U32]` (the bytes of a block as words): element by element for now.
 - Statements joined across function calls: a loop is made of statements written one after the other in one block.
 - ARM64, Windows and macOS: their runtime is not the IR runtime yet (TASK-0096).

@@ -51,7 +51,9 @@ declare i64 @__rg_rt_drop_val(i64)
 declare i64 @__rg_rt_make_tuple(i64, i64)
 declare void @rg_fatal(ptr, i64) noreturn
 declare i64 @rg_builtin_bytes(i64, i64, i64)
-declare i64 @rg_fuse(i64, i64, i64)
+declare i64 @rg_fuse(i64, i64, i64, i64)
+declare i64 @rg_mulhi(i64, i64)
+declare i64 @rg_clmul_soft(i64, i64, i64)
 
 @rg_msg_oob = private constant [25 x i8] c"tensor index out of range"
 @rg_msg_sortlen = private constant [41 x i8] c"sort by: the lists have different lengths"
@@ -1171,6 +1173,9 @@ entry:
                                i64 18, label %shr
                                i64 19, label %rotr
                                i64 20, label %rotl
+                               i64 21, label %mulhi
+                               i64 22, label %clmul
+                               i64 23, label %clmulhi
                                i64 100, label %fadd
                                i64 101, label %fsub
                                i64 102, label %fmul
@@ -1195,6 +1200,15 @@ rem:
   %rbad = or i1 %rz, %rm1
   %rres = select i1 %rbad, i64 0, i64 %rq
   ret i64 %rres
+mulhi:
+  %hr = call i64 @rg_mulhi(i64 %a, i64 %b)
+  ret i64 %hr
+clmul:
+  %cl = call i64 @rg_clmul_soft(i64 %a, i64 %b, i64 0)
+  ret i64 %cl
+clmulhi:
+  %ch = call i64 @rg_clmul_soft(i64 %a, i64 %b, i64 1)
+  ret i64 %ch
 rotr:
   %tr = call i64 @llvm.fshr.i64(i64 %a, i64 %a, i64 %b)
   ret i64 %tr
@@ -2036,11 +2050,13 @@ other:
 ; others broadcast.
 define i64 @__rg_rt_hadamard(i64 %op, i64 %lslot, i64 %b, i64 %subs, i64 %len) {
 pre:
-  ; op 99: a fused element-wise program (fuse.ll); its leaves start at the slot
-  %isfuse = icmp eq i64 %op, 99
+  ; op 1000 and up: a fused element-wise program (fuse.ll); its leaves start
+  ; at the slot, and op - 1000 holds the element kinds of its tensors
+  %isfuse = icmp sge i64 %op, 1000
   br i1 %isfuse, label %fuse, label %entry
 fuse:
-  %fused = call i64 @rg_fuse(i64 %lslot, i64 %subs, i64 %len)
+  %fkinds = sub i64 %op, 1000
+  %fused = call i64 @rg_fuse(i64 %lslot, i64 %subs, i64 %len, i64 %fkinds)
   ret i64 %fused
 entry:
   %dimt = alloca [256 x i64], align 8

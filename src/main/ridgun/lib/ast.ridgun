@@ -15,7 +15,7 @@ type RPattern = PatInt Int | PatReal String | PatStr String | PatBool Bool | Pat
 
 -- 3. Binary Operators
 -- @implements FR-COMP-010
-type RBinOp = OpAdd | OpSub | OpMul | OpDiv | OpMod | OpEq | OpNeq | OpGt | OpLt | OpGtEq | OpLtEq | OpAnd | OpOr | OpXor | OpConcat | OpFlatJoin | OpMatMul | OpShl | OpShr | OpRotr | OpRotl
+type RBinOp = OpAdd | OpSub | OpMul | OpDiv | OpMod | OpEq | OpNeq | OpGt | OpLt | OpGtEq | OpLtEq | OpAnd | OpOr | OpXor | OpConcat | OpFlatJoin | OpMatMul | OpShl | OpShr | OpRotr | OpRotl | OpMulHi | OpClmul | OpClmulHi
 
 -- 4. Statements inside an indented block
 type RStmt = StmtLet String RExpr | StmtMut String RExpr | StmtExpr RExpr | StmtIndexAssign String [RExpr] RExpr
@@ -179,14 +179,19 @@ fn :: where map exprs one RWhereBind (RExpr => RExpr) => RWhereBind
 --   t<subs>   the next leaf: a tensor read with those subscripts
 --   s         the next leaf: a number, the same for every element
 --   c<n>      the integer n
---   x<id>     a binary operator (`binop id`)
+--   x<id>     a binary operator (`binop id`; 21 is `mulhi`, the high half of the product; 22 `clmul`
+--             and 23 `clmulhi`, the low and the high half of the product without carries)
 --   w<k>      take the value on top as value k        (several statements in one loop:
 --   l<k>      value k                                  `fuse blocks`, parser.ridgun)
 --   o         take the value on top as the next result
+--   r<id>     the last token: all the elements joined into one number (`tensor sum`, id 0;
+--             `tensor min`, 30; `tensor max`, 31)
+--   b ... g   `t_(index)`: the tokens between are the index; `g` takes the next leaf, a tensor, and
+--             gives its element at that index (the tensors of the index may be of another type)
 -- A program with `o` gives a tuple of tensors, one for each `o`.
 -- Leaves are taken in the order of their tokens. The parser builds the node, the type checker types
--- it, lowering puts the element kind in front (`W|code`) and every back end reads the same text.
-type RFuseTok = FtTensor String | FtScalar | FtConst Int | FtOp Int | FtSet Int | FtGet Int | FtOut
+-- it, lowering finds the element kind of each tensor and every back end reads the same text.
+type RFuseTok = FtTensor String | FtScalar | FtConst Int | FtOp Int | FtSet Int | FtGet Int | FtOut | FtIdx | FtGather | FtReduce Int
 
 fn :: fuse toks String => [RFuseTok]
       fuse toks code =  fuse toks loop code 0 0 (str len code) []
@@ -206,6 +211,9 @@ fn :: fuse tok String => RFuseTok
         | (str char at s 0) == 119 = FtSet (fuse int s 1)
         | (str char at s 0) == 108 = FtGet (fuse int s 1)
         | (str char at s 0) == 111 = FtOut
+        | (str char at s 0) == 98 = FtIdx
+        | (str char at s 0) == 103 = FtGather
+        | (str char at s 0) == 114 = FtReduce (fuse int s 1)
         | otherwise = FtOp (fuse int s 1)
 
 fn :: fuse int String Int => Int
@@ -260,6 +268,9 @@ fn :: binop id RBinOp     => Int
       binop id OpShr      =  18
       binop id OpRotr     =  19
       binop id OpRotl     =  20
+      binop id OpMulHi    =  21
+      binop id OpClmul    =  22
+      binop id OpClmulHi  =  23
 
 -- The program the runtime reads (src/main/runtime/core/fuse.ll): each tensor read says how it lies
 -- in the result: `e` the same shape, `p` its first dimensions, `u` its last ones.
@@ -273,6 +284,7 @@ fn :: fuse rt toks [RFuseTok] String String => String
       fuse rt toks (t:ts) out acc =  fuse rt toks ts out (fuse rt add acc (fuse rt tok t out))
 
 fn :: fuse rt add String String => String
+      fuse rt add acc "" =  acc
       fuse rt add "" tok =  tok
       fuse rt add acc tok =  acc + " " + tok
 
@@ -287,6 +299,19 @@ fn :: fuse rt tok RFuseTok String => String
       fuse rt tok (FtSet k) _ =  "w" + (int to str k)
       fuse rt tok (FtGet k) _ =  "l" + (int to str k)
       fuse rt tok FtOut _ =  "o"
+      fuse rt tok FtIdx _ =  ""
+      fuse rt tok FtGather _ =  "g"
+      fuse rt tok (FtReduce id) _ =  "r" + (int to str id)
+
+fn :: fuse reduces [RFuseTok] => Bool
+      fuse reduces [] =  False
+      fuse reduces ((FtReduce _):_) =  True
+      fuse reduces (_:ts) =  fuse reduces ts
+
+fn :: fuse has gather [RFuseTok] => Bool
+      fuse has gather [] =  False
+      fuse has gather (FtGather:_) =  True
+      fuse has gather (_:ts) =  fuse has gather ts
 
 -- The number of results of a program (0: one tensor, not a tuple).
 fn :: fuse outs [RFuseTok] Int => Int

@@ -142,6 +142,68 @@ define i1 @rg_int_op_known(i64 %op) {
   ret i1 %r
 }
 
+; The product of two words without carries (polynomials over GF(2)): its low
+; 64 bits (hi = 0) or its high 64 bits. One bit of b at a time: the meaning
+; of `clmul` and `clmulhi` on every target; where the machine has an
+; instruction for it the LLVM back end uses that (abi/helpers.ll).
+define i64 @rg_clmul_soft(i64 %a, i64 %b, i64 %hi) {
+entry:
+  br label %loop
+loop:
+  %i = phi i64 [ 0, %entry ], [ %i1, %next ]
+  %lo = phi i64 [ 0, %entry ], [ %lo2, %next ]
+  %h = phi i64 [ 0, %entry ], [ %h2, %next ]
+  %more = icmp ult i64 %i, 64
+  br i1 %more, label %body, label %done
+body:
+  %bit0 = lshr i64 %b, %i
+  %bit = and i64 %bit0, 1
+  %on = icmp ne i64 %bit, 0
+  %sl = shl i64 %a, %i
+  %inv = sub i64 64, %i
+  %z = icmp eq i64 %i, 0
+  %invs = select i1 %z, i64 1, i64 %inv
+  %sr0 = lshr i64 %a, %invs
+  %sr = select i1 %z, i64 0, i64 %sr0
+  %lo1 = xor i64 %lo, %sl
+  %h1 = xor i64 %h, %sr
+  br label %next
+next:
+  %lo2 = select i1 %on, i64 %lo1, i64 %lo
+  %h2 = select i1 %on, i64 %h1, i64 %h
+  %i1 = add i64 %i, 1
+  br label %loop
+done:
+  %wanthi = icmp ne i64 %hi, 0
+  %r = select i1 %wanthi, i64 %h, i64 %lo
+  ret i64 %r
+}
+
+; The high 64 bits of the product of two words taken as unsigned, from their
+; 32-bit halves (no 128-bit product: wasm32 has none without a library).
+define i64 @rg_mulhi(i64 %a, i64 %b) {
+  %al = and i64 %a, 4294967295
+  %ah = lshr i64 %a, 32
+  %bl = and i64 %b, 4294967295
+  %bh = lshr i64 %b, 32
+  %ll = mul i64 %al, %bl
+  %lh = mul i64 %al, %bh
+  %hl = mul i64 %ah, %bl
+  %hh = mul i64 %ah, %bh
+  %llh = lshr i64 %ll, 32
+  %lhl = and i64 %lh, 4294967295
+  %hll = and i64 %hl, 4294967295
+  %m1 = add i64 %llh, %lhl
+  %mid = add i64 %m1, %hll
+  %lhh = lshr i64 %lh, 32
+  %hlh = lshr i64 %hl, 32
+  %midh = lshr i64 %mid, 32
+  %r1 = add i64 %hh, %lhh
+  %r2 = add i64 %r1, %hlh
+  %r = add i64 %r2, %midh
+  ret i64 %r
+}
+
 define i64 @rg_int_op(i64 %op, i64 %x, i64 %y) {
 entry:
   switch i64 %op, label %zero [ i64 0, label %add
@@ -155,7 +217,19 @@ entry:
                                 i64 17, label %shl
                                 i64 18, label %shr
                                 i64 19, label %rotr
-                                i64 20, label %rotl ]
+                                i64 20, label %rotl
+                                i64 21, label %mulhi
+                                i64 22, label %clmul
+                                i64 23, label %clmulhi ]
+clmul:
+  %rcl = call i64 @rg_clmul_soft(i64 %x, i64 %y, i64 0)
+  br label %box
+clmulhi:
+  %rch = call i64 @rg_clmul_soft(i64 %x, i64 %y, i64 1)
+  br label %box
+mulhi:
+  %rh = call i64 @rg_mulhi(i64 %x, i64 %y)
+  br label %box
 add:
   %ra = add i64 %x, %y
   br label %box
@@ -212,7 +286,7 @@ rotl:
 zero:
   br label %box
 box:
-  %raw = phi i64 [ %ra, %add ], [ %rs, %sub ], [ %rm, %mul ], [ %rdb, %div_bad ], [ %rd, %div_ok ], [ %rmo, %mod_ok ], [ %rn, %and ], [ %ro, %or ], [ %rx, %xor ], [ %rl, %shl ], [ %rr, %shr ], [ %rtr, %rotr ], [ %rtl, %rotl ], [ 0, %zero ]
+  %raw = phi i64 [ %ra, %add ], [ %rs, %sub ], [ %rm, %mul ], [ %rdb, %div_bad ], [ %rd, %div_ok ], [ %rmo, %mod_ok ], [ %rn, %and ], [ %ro, %or ], [ %rx, %xor ], [ %rl, %shl ], [ %rr, %shr ], [ %rtr, %rotr ], [ %rtl, %rotl ], [ %rh, %mulhi ], [ %rcl, %clmul ], [ %rch, %clmulhi ], [ 0, %zero ]
   %v = call i64 @rg_box_int(i64 %raw)
   ret i64 %v
 }

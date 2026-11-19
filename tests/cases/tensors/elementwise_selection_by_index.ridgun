@@ -1,0 +1,60 @@
+-- @tests TS-COMP-031
+-- case: t_(index) in an element-wise expression reads the tensor at the index of each element: a table of bytes, an index of another element type, a permutation, an index that is an expression
+-- source: FR-COMP-031 AC-12
+-- expect-output:
+--   table of bytes Tensor(shape=[5], data=[123, 99, 119, 124, 123])
+--   index of another type Tensor(shape=[5], data=[10496, 257, 65024, 768, 10496])
+--   permutation Tensor(shape=[4], data=[40, 30, 20, 10])
+--   index from an expression Tensor(shape=[2], data=[1515, 7])
+
+fn :: sbox Tensor[U8 * n] Tensor[U8 * m] => Tensor[U8 * m]
+      sbox t x =  t_(x_i)
+
+fn :: pick Tensor[U32 * n] Tensor[U8 * m] Tensor[U32 * m] => Tensor[U32 * m]
+      pick t p k =  (t_(p_i + 1) xor k_i) rotl 8
+
+fn :: perm Tensor[U64 * n] Tensor[U64 * n] => Tensor[U64 * n]
+      perm a p =  a_(p_i)
+
+fn :: nibble Tensor[U32 * n] Tensor[U8 * m] => Tensor[U32 * m]
+      nibble t x =  t_((x_i shr 4) and 15)
+
+fn :: main => ()
+      main =
+        t = Tensor[U8 * 4]
+        t_(0) = 99
+        t_(1) = 124
+        t_(2) = 119
+        t_(3) = 123
+        x = Tensor[U8 * 5]
+        x_(0) = 3
+        x_(1) = 0
+        x_(2) = 2
+        x_(3) = 1
+        x_(4) = 3
+        echo "table of bytes" (sbox t x)
+        w = Tensor[U32 * 16]
+        w_(0) = 7
+        w_(1) = 0x01000000
+        w_(2) = 2
+        w_(3) = 0xFF
+        w_(4) = 40
+        w_(15) = 1515
+        k = Tensor[U32 * 5] with 1
+        r = pick w x k
+        echo "index of another type" r
+        a = Tensor[U64 * 4]
+        a_(0) = 10
+        a_(1) = 20
+        a_(2) = 30
+        a_(3) = 40
+        p = Tensor[U64 * 4]
+        p_(0) = 3
+        p_(1) = 2
+        p_(2) = 1
+        p_(3) = 0
+        echo "permutation" (perm a p)
+        h = Tensor[U8 * 2]
+        h_(0) = 0xF7
+        h_(1) = 0x0F
+        echo "index from an expression" (nibble w h)

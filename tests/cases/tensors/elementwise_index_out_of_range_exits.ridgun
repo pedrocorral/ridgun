@@ -1,0 +1,16 @@
+-- @tests TS-COMP-031
+-- case: an index outside the tensor it reads, in an element-wise expression, stops the program
+-- source: FR-COMP-031 AC-12
+-- expect-output:
+--   runtime error: tensor index out of range
+-- expect-exit: 1
+
+fn :: sbox Tensor[U8 * n] Tensor[U8 * m] => Tensor[U8 * m]
+      sbox t x =  t_(x_i)
+
+fn :: main => ()
+      main =
+        t = Tensor[U8 * 4]
+        x = Tensor[U8 * 5]
+        x_(2) = 4
+        echo (sbox t x)

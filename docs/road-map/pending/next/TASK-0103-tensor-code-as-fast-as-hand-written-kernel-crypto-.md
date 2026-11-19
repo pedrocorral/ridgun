@@ -58,6 +58,7 @@ Its points 1 to 5 are implemented as D1 + D2 (one fused loop in the program), no
 ## Progress log (append-only, newest last)
 - 2026-11-18: design written by reasoning from what the kernel code is; nothing implemented.
 - 2026-11-19: D1, D2, D4, D8 and the joining of statements implemented in 1.0.37 (FR-COMP-031, `docs/etc/fused_elementwise.md`). Measured: the ChaCha20 quarter round on 64 blocks, 97 ns as one loop (360 ns as eight calls). The fixed cost of a fused call is 24 ns; with several results the tuple adds to it.
+- 2026-11-19: 1.0.38 adds `mulhi`, `clmul`, `clmulhi`, selection by index and `tensor sum/min/max`. ChaCha20 (20 rounds) on 64 blocks at once, written with 16 `Tensor[U32 * n]` and each double round as one block of statements: 8.8 µs for the key stream of a 4096-byte page, the result of RFC 8439 2.3.2. The loops are no longer the cost: about 5 µs are the fixed cost of ten fused calls with 16 results each. Next for this task: that fixed cost (open the leaves and give the results without a tuple), and D3.
 ## Decisions / open questions
 - D7 depends on TASK-0082.
 - D8: host features or portable baseline as the default of `stable build`.

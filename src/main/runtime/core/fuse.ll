@@ -3,29 +3,50 @@
 ; Fused element-wise expressions (FR-COMP-031, ADR-0013).
 ;
 ; `((a_ij + b_ij) xor d_ij) rotl 16` is one program and one pass over the
-; elements. The compiler gives the program as text, `K|code`:
-;   K     the element kind of every tensor: N 64-bit integers, R Reals,
-;         B U8, H U16, W U32 (packed tensors, bytes.ll)
-;   code  the expression in postfix, tokens separated by one space:
-;           e      the next leaf: a tensor of the shape of the result
-;           p      the next leaf: a tensor of the first dimensions of the
-;                  result (the same along the others)
-;           u      the next leaf: a tensor of the last dimensions
-;           s      the next leaf: a number, the same for every element
-;           c<n>   the integer n
-;           x<id>  a binary operator: 0 + 1 - 2 * 3 / 4 % 11 and 12 or
-;                  13 xor 17 shl 18 shr 19 rotr 20 rotl
+; elements. The compiler gives the program as text, the expression in
+; postfix, its tokens separated by one space:
+;   e      the next leaf: a tensor of the shape of the result
+;   p      the next leaf: a tensor of the first dimensions of the result
+;          (the same along the others)
+;   u      the next leaf: a tensor of the last dimensions
+;   s      the next leaf: a number, the same for every element
+;   c<n>   the integer n
+;   x<id>  a binary operator: 0 + 1 - 2 * 3 / 4 % 11 and 12 or 13 xor
+;          17 shl 18 shr 19 rotr 20 rotl 21 mulhi (the high half of the
+;          product at the width of the kind) 22 clmul 23 clmulhi (the
+;          low and the high half of the product without carries)
+;   g      the next leaf: a tensor of any shape; the value on top is an
+;          index into its elements, and its element there replaces it
+;   w<k>   take the value on top as value k
+;   l<k>   value k
+;   o      take the value on top as the next result
+;   r<id>  the last token: the program gives one number, the values of all
+;          the elements joined: 0 their sum, 30 the smallest, 31 the largest
+;          (0 when there is no element). Integers are joined as 64-bit
+;          numbers (the sum wraps at 2^64), Reals as Reals.
 ; The leaves are in consecutive slots, in the order of their tokens, and
-; are taken. The result is a new tensor of the shape and kind of the first
-; `e` leaf.
+; are taken. A program without `o` gives one tensor, the value left; with
+; `o`, a tuple of tensors. A result has the shape of the first `e` leaf.
+;
+; The element kind of each tensor leaf comes apart, as a number: one digit
+; of 3 bits per tensor leaf, the first leaf lowest: 1 N (64-bit integers),
+; 2 R (Reals), 3 B (U8), 4 H (U16), 5 W (U32) (B, H, W: packed tensors,
+; bytes.ll). Leaves after the 20th have the kind of the 20th. A value has the
+; kind of the tensor it was read from; a number takes the kind of the value
+; it meets; the result of an operator has the kind of its operands.
 ;
 ; Integers wrap at the width of the kind. A shift or rotation count is taken
 ; modulo the width; shr is logical; / and % by zero give 0; on N, / and %
-; are signed. Reals take + - * / (IEEE 754).
+; are signed. Reals take + - * / (IEEE 754). An index outside its tensor
+; stops the program.
+;
+; Every program reads element i of each `e` leaf before it writes element i
+; of any result (every `o` comes after the last read), so a result may be
+; one of those tensors (rg_fuse_take).
 ;
 ; rg_fuse is the meaning of a program on every target. The LLVM back end
 ; writes the same loop in the program itself (llvm.ridgun), where it is
-; specialised and vectorised; it uses rg_fuse_like and the accessors below.
+; specialised and vectorised; it uses rg_fuse_take and the accessors below.
 ; ============================================================
 
 declare i64 @rg_ld(i64)
@@ -48,6 +69,11 @@ declare i64 @rg_u8_rank(i64)
 declare i64 @rg_u8_count(i64)
 declare i64 @rg_u8_bytes(i64)
 declare i64 @rg_rc(i64)
+declare i64 @rg_pk_new(i64, i64, i64, i64)
+declare void @rg_oob() noreturn
+declare i64 @rg_real(double)
+declare i64 @rg_box_int(i64)
+declare i64 @rg_clmul_soft(i64, i64, i64)
 declare i64 @rg_w2(i64)
 declare i64 @__rg_rt_make_tuple(i64, i64)
 
@@ -55,12 +81,13 @@ declare i64 @__rg_rt_make_tuple(i64, i64)
 @rg_msg_fuse_s = private constant [42 x i8] c"element-wise expression: the shapes differ"
 @rg_msg_fuse_p = private constant [36 x i8] c"element-wise expression: bad program"
 
-; The size of an element of kind k as a power of two: B 0, H 1, W 2, else 3.
-define i64 @rg_fuse_lg(i64 %k) {
+; The size of an element of kind code k as a power of two: 3 B 0, 4 H 1,
+; 5 W 2, else 3.
+define i64 @rg_fuse_klg(i64 %k) {
 entry:
-  switch i64 %k, label %w8 [ i64 66, label %w1
-                             i64 72, label %w2
-                             i64 87, label %w4 ]
+  switch i64 %k, label %w8 [ i64 3, label %w1
+                             i64 4, label %w2
+                             i64 5, label %w4 ]
 w1:
   ret i64 0
 w2:
@@ -201,20 +228,87 @@ no:
   ret i1 false
 }
 
-; A tensor for a result, of the shape of model: a leaf that nothing else holds
-; and that has that shape is taken from its slot and written in place; without
-; one, a new tensor. A program reads element i of every leaf before it writes
-; element i of any result (every `o` comes after the last read), so a result
-; may be one of the tensors it reads.
-define i64 @rg_fuse_take(i64 %slots, i64 %nl, i64 %model, i64 %lg) {
+; The rank of tensor t and the address of its dimensions (lg < 3: packed).
+define i64 @rg_fuse_rank(i64 %t, i64 %lg) {
 entry:
-  br label %loop
+  %packed = icmp ult i64 %lg, 3
+  br i1 %packed, label %pk, label %wd
+pk:
+  %k = call i64 @rg_u8_rank(i64 %t)
+  ret i64 %k
+wd:
+  %r = call i64 @rg_t_rank(i64 %t)
+  ret i64 %r
+}
+
+define i64 @rg_fuse_dims(i64 %t, i64 %lg) {
+entry:
+  %packed = icmp ult i64 %lg, 3
+  br i1 %packed, label %pk, label %wd
+pk:
+  %d = call i64 @rg_t_data(i64 %t)
+  %a = add i64 %d, 8
+  ret i64 %a
+wd:
+  %s = call i64 @rg_t_dims(i64 %t)
+  ret i64 %s
+}
+
+; A new tensor of the shape of model (of element size lgm) with elements of
+; size lg; they are not set.
+define i64 @rg_fuse_make(i64 %model, i64 %lgm, i64 %lg) {
+entry:
+  %same = icmp eq i64 %lgm, %lg
+  %pm = icmp ult i64 %lgm, 3
+  %pr = icmp ult i64 %lg, 3
+  %both = and i1 %pm, %pr
+  %bothw = or i1 %pm, %pr
+  %neither = xor i1 %bothw, true
+  %like0 = and i1 %same, %both
+  %like = or i1 %like0, %neither
+  br i1 %like, label %copy, label %other
+copy:
+  %r = call i64 @rg_fuse_like(i64 %model, i64 %lg)
+  ret i64 %r
+other:
+  %rank = call i64 @rg_fuse_rank(i64 %model, i64 %lgm)
+  %dims = call i64 @rg_fuse_dims(i64 %model, i64 %lgm)
+  br i1 %pr, label %pack, label %words
+pack:
+  %t = call i64 @rg_pk_new(i64 %rank, i64 %dims, i64 0, i64 %lg)
+  ret i64 %t
+words:
+  %n = call i64 @rg_fuse_len(i64 %model, i64 %lgm)
+  %w = call i64 @rg_t_new(i64 %rank, i64 %n)
+  %wd = call i64 @rg_t_dims(i64 %w)
+  %rb = shl i64 %rank, 3
+  call void @rg_copy(i64 %wd, i64 %dims, i64 %rb)
+  ret i64 %w
+}
+
+; A tensor for a result of kind kr, of the shape of model: a leaf that nothing
+; else holds, that has that shape and that kind and is read element by
+; element (its entry in lkinds is kr; other leaves have 0) is taken from its
+; slot and written in place; without one, a new tensor. *from is the first
+; leaf to look at: a leaf that was taken moves it on, so the results of one
+; program look at each leaf once.
+define i64 @rg_fuse_take(i64 %slots, i64 %nl, i64 %lkinds, i64 %kr, i64 %model, i64 %lgm, ptr %from) {
+entry:
+  %lg = call i64 @rg_fuse_klg(i64 %kr)
+  %samelg = icmp eq i64 %lg, %lgm
+  %start = load i64, ptr %from, align 8
+  br i1 %samelg, label %loop, label %fresh
 loop:
-  %i = phi i64 [ 0, %entry ], [ %i1, %next ]
+  %i = phi i64 [ %start, %entry ], [ %i1, %next ]
   %more = icmp ult i64 %i, %nl
   br i1 %more, label %body, label %fresh
 body:
   %off = shl i64 %i, 3
+  %ka = add i64 %lkinds, %off
+  %lk = call i64 @rg_ld(i64 %ka)
+  %elig = icmp eq i64 %lk, %kr
+  br i1 %elig, label %tag, label %next
+tag:
   %a = add i64 %slots, %off
   %v = call i64 @rg_ld(i64 %a)
   %ist = call i1 @rg_has_tag(i64 %v, i64 5)
@@ -227,12 +321,14 @@ shape:
   br i1 %s, label %take, label %next
 take:
   call void @rg_st(i64 %a, i64 0)
+  %after = add i64 %i, 1
+  store i64 %after, ptr %from, align 8
   ret i64 %v
 next:
   %i1 = add i64 %i, 1
   br label %loop
 fresh:
-  %r = call i64 @rg_fuse_like(i64 %model, i64 %lg)
+  %r = call i64 @rg_fuse_make(i64 %model, i64 %lgm, i64 %lg)
   ret i64 %r
 }
 
@@ -358,7 +454,7 @@ cut:
 ; One operator on two elements of kind k (lg its size).
 define i64 @rg_fuse_op(i64 %op, i64 %a, i64 %b, i64 %k, i64 %lg) {
 entry:
-  %real = icmp eq i64 %k, 82
+  %real = icmp eq i64 %k, 2
   br i1 %real, label %fl, label %int
 fl:
   %fop = add i64 %op, 100
@@ -378,7 +474,24 @@ narrow:
   switch i64 %op, label %plain [ i64 17, label %shl
                                  i64 18, label %shr
                                  i64 19, label %rotr
-                                 i64 20, label %rotl ]
+                                 i64 20, label %rotl
+                                 i64 21, label %mulhi
+                                 i64 22, label %clmul
+                                 i64 23, label %clmulhi ]
+clmul:
+  ; both are below 2^bits: the whole product fits a word
+  %cp = call i64 @rg_clmul_soft(i64 %a, i64 %b, i64 0)
+  %cpw = call i64 @rg_fuse_wrap(i64 %cp, i64 %lg)
+  ret i64 %cpw
+clmulhi:
+  %cq = call i64 @rg_clmul_soft(i64 %a, i64 %b, i64 0)
+  %cqh = lshr i64 %cq, %bits
+  ret i64 %cqh
+mulhi:
+  ; both are below 2^bits: the product fits a word, its high half is the result
+  %mp = mul i64 %a, %b
+  %mh = lshr i64 %mp, %bits
+  ret i64 %mh
 shl:
   %s1 = shl i64 %a, %c
   %s1w = call i64 @rg_fuse_wrap(i64 %s1, i64 %lg)
@@ -435,114 +548,275 @@ done:
   ret i64 %r
 }
 
-; fuse (slots, program, length): run the program on its leaves.
-; Token tables (at most 2048 tokens and values, 96 results): kind 0 e, 1 p, 2 u (arg: the address of
-; the elements, len: their number), 3 a number (arg: its word), 4 an
-; operator (arg: its id), 5 w (arg: the value to set), 6 l (arg: the value to
-; read), 7 o (arg: the result to write).
-define i64 @rg_fuse(i64 %slots, i64 %prog, i64 %plen) {
+; The value v of kind k joined with acc, the values before it (first: there
+; are none): id 0 the sum, 30 the smaller, 31 the larger. Integers of the
+; packed kinds are below 2^32, so every integer is compared as signed.
+define i64 @rg_fuse_join(i64 %id, i64 %acc, i64 %v, i64 %k, i1 %first) {
 entry:
-  %kinds = alloca [2048 x i64], align 8
+  %real = icmp eq i64 %k, 2
+  %lg = call i64 @rg_fuse_klg(i64 %k)
+  %w = call i64 @rg_fuse_wrap(i64 %v, i64 %lg)
+  br i1 %first, label %one, label %more
+one:
+  ret i64 %w
+more:
+  br i1 %real, label %fl, label %int
+fl:
+  %fa = bitcast i64 %acc to double
+  %fv = bitcast i64 %w to double
+  switch i64 %id, label %fsum [ i64 30, label %fmin
+                                i64 31, label %fmax ]
+fsum:
+  %fs = fadd double %fa, %fv
+  %fsw = bitcast double %fs to i64
+  ret i64 %fsw
+fmin:
+  %fl1 = fcmp olt double %fv, %fa
+  %fmn = select i1 %fl1, i64 %w, i64 %acc
+  ret i64 %fmn
+fmax:
+  %fg1 = fcmp ogt double %fv, %fa
+  %fmx = select i1 %fg1, i64 %w, i64 %acc
+  ret i64 %fmx
+int:
+  switch i64 %id, label %isum [ i64 30, label %imin
+                                i64 31, label %imax ]
+isum:
+  %is = add i64 %acc, %w
+  ret i64 %is
+imin:
+  %il = icmp slt i64 %w, %acc
+  %imn = select i1 %il, i64 %w, i64 %acc
+  ret i64 %imn
+imax:
+  %ig = icmp sgt i64 %w, %acc
+  %imx = select i1 %ig, i64 %w, i64 %acc
+  ret i64 %imx
+}
+
+; The number a reduction gives: an Int, or a Real for kind 2.
+define i64 @rg_fuse_number(i64 %w, i64 %k) {
+entry:
+  %real = icmp eq i64 %k, 2
+  br i1 %real, label %fl, label %int
+fl:
+  %d = bitcast i64 %w to double
+  %r = call i64 @rg_real(double %d)
+  ret i64 %r
+int:
+  %i = call i64 @rg_box_int(i64 %w)
+  ret i64 %i
+}
+
+; The kind of tensor leaf number n: digit n of kinds (the 20th for later ones).
+define i64 @rg_fuse_kind_of(i64 %kinds, i64 %n) alwaysinline {
+  %far = icmp ugt i64 %n, 19
+  %d = select i1 %far, i64 19, i64 %n
+  %sh = mul i64 %d, 3
+  %x = lshr i64 %kinds, %sh
+  %k = and i64 %x, 7
+  %z = icmp eq i64 %k, 0
+  %r = select i1 %z, i64 1, i64 %k
+  ret i64 %r
+}
+
+; fuse (slots, program, length, kinds): run the program on its leaves.
+; Token tables (at most 2048 tokens and values, 96 results): type 0 e, 1 p,
+; 2 u, 8 g (arg: the address of the elements, len: their number), 3 a number
+; (arg: its word), 4 an operator (arg: its id), 5 w, 6 l (arg: the value),
+; 7 o (arg: the result). vk: the kind of the value the token makes (0: a
+; number that has not met a tensor yet), found once by running the kinds
+; through the program.
+define i64 @rg_fuse(i64 %slots, i64 %prog, i64 %plen, i64 %kinds) {
+entry:
+  %types = alloca [2048 x i64], align 8
   %args = alloca [2048 x i64], align 8
   %lens = alloca [2048 x i64], align 8
-  %stack = alloca [96 x i64], align 8
+  %vks = alloca [2048 x i64], align 8
   %locals = alloca [2048 x i64], align 8
+  %lockinds = alloca [2048 x i64], align 8
+  %leafkinds = alloca [2048 x i64], align 8
+  %stack = alloca [96 x i64], align 8
+  %kstack = alloca [96 x i64], align 8
   %outs = alloca [96 x i64], align 8
   %outd = alloca [96 x i64], align 8
+  %outk = alloca [96 x i64], align 8
   %endp = alloca i64, align 8
-  %kd = ptrtoint ptr %kinds to i64
+  %fromp = alloca i64, align 8
+  store i64 0, ptr %fromp, align 8
+  %redp = alloca i64, align 8
+  %redkp = alloca i64, align 8
+  %accp = alloca i64, align 8
+  store i64 0, ptr %redp, align 8
+  store i64 1, ptr %redkp, align 8
+  store i64 0, ptr %accp, align 8
+  %ty = ptrtoint ptr %types to i64
   %ar = ptrtoint ptr %args to i64
   %ln = ptrtoint ptr %lens to i64
-  %sk = ptrtoint ptr %stack to i64
+  %vk = ptrtoint ptr %vks to i64
   %lc = ptrtoint ptr %locals to i64
+  %lck = ptrtoint ptr %lockinds to i64
+  %lfk = ptrtoint ptr %leafkinds to i64
+  %sk = ptrtoint ptr %stack to i64
+  %ks = ptrtoint ptr %kstack to i64
   %ot = ptrtoint ptr %outs to i64
   %od = ptrtoint ptr %outd to i64
-  %k = call i64 @rg_ldb(i64 %prog)
-  %lg = call i64 @rg_fuse_lg(i64 %k)
+  %ok = ptrtoint ptr %outk to i64
   %end = add i64 %prog, %plen
-  %first = add i64 %prog, 2
   br label %scan
 scan:
-  ; p: the address in the program, nt: tokens read, nl: leaves read, no:
-  ; results, model: the first `e` tensor (0: none yet)
-  %p = phi i64 [ %first, %entry ], [ %pn, %next ]
+  ; p: the address in the program, nt: tokens, nl: leaves, ntn: tensor
+  ; leaves, no: results, ksp: values on the kind stack, model: the first `e`
+  ; tensor (0: none yet), mlg: its element size
+  %p = phi i64 [ %prog, %entry ], [ %pn, %next ]
   %nt = phi i64 [ 0, %entry ], [ %nt1, %next ]
   %nl = phi i64 [ 0, %entry ], [ %nln, %next ]
+  %ntn = phi i64 [ 0, %entry ], [ %ntnn, %next ]
   %no = phi i64 [ 0, %entry ], [ %non, %next ]
+  %ksp = phi i64 [ 0, %entry ], [ %kspn, %next ]
   %model = phi i64 [ 0, %entry ], [ %modeln, %next ]
+  %mlg = phi i64 [ 3, %entry ], [ %mlgn, %next ]
   %more = icmp ult i64 %p, %end
   br i1 %more, label %tok, label %scanned
 tok:
   %room = icmp ult i64 %nt, 2048
-  br i1 %room, label %tok1, label %bad
+  %kroom = icmp ult i64 %ksp, 94
+  %rooms = and i1 %room, %kroom
+  br i1 %rooms, label %tok1, label %bad
 tok1:
   %ch = call i64 @rg_ldb(i64 %p)
   %p1 = add i64 %p, 1
   %ka = shl i64 %nt, 3
-  %kp = add i64 %kd, %ka
+  %tp = add i64 %ty, %ka
   %ap = add i64 %ar, %ka
   %lp = add i64 %ln, %ka
+  %vp = add i64 %vk, %ka
   %lo = shl i64 %nl, 3
   %ls = add i64 %slots, %lo
+  %lka = add i64 %lfk, %lo
+  %kto = shl i64 %ksp, 3
+  %ktop = add i64 %ks, %kto
+  %kt1 = sub i64 %ktop, 8
+  %kt2 = sub i64 %ktop, 16
+  call void @rg_st(i64 %lka, i64 0)
   switch i64 %ch, label %bad [ i64 101, label %te
-                               i64 112, label %tp
+                               i64 112, label %tp_
                                i64 117, label %tu
+                               i64 103, label %tg
                                i64 115, label %ts
                                i64 99, label %tc
                                i64 120, label %tx
                                i64 119, label %tw
                                i64 108, label %tl
-                               i64 111, label %to ]
+                               i64 111, label %to
+                               i64 114, label %tr ]
+tr:
+  %rv9 = call i64 @rg_fuse_num(i64 %p1, i64 %end, ptr %endp)
+  %pr = load i64, ptr %endp, align 8
+  %rhas = icmp uge i64 %ksp, 1
+  br i1 %rhas, label %tr1, label %bad
+tr1:
+  %rdk0 = call i64 @rg_ld(i64 %kt1)
+  %rkz = icmp eq i64 %rdk0, 0
+  %rkk = select i1 %rkz, i64 1, i64 %rdk0
+  %rid1 = add i64 %rv9, 1
+  store i64 %rid1, ptr %redp, align 8
+  store i64 %rkk, ptr %redkp, align 8
+  call void @rg_st(i64 %tp, i64 9)
+  call void @rg_st(i64 %ap, i64 %rv9)
+  call void @rg_st(i64 %vp, i64 %rkk)
+  %kspr = sub i64 %ksp, 1
+  br label %next
 te:
   br label %tens
-tp:
+tp_:
   br label %tens
 tu:
   br label %tens
+tg:
+  %ghas = icmp uge i64 %ksp, 1
+  br i1 %ghas, label %tens, label %bad
 tens:
-  %tk = phi i64 [ 0, %te ], [ 1, %tp ], [ 2, %tu ]
+  %tk = phi i64 [ 0, %te ], [ 1, %tp_ ], [ 2, %tu ], [ 8, %tg ]
+  %kd = call i64 @rg_fuse_kind_of(i64 %kinds, i64 %ntn)
+  %klg = call i64 @rg_fuse_klg(i64 %kd)
   %tv0 = call i64 @rg_ld(i64 %ls)
   %tv = call i64 @rg_fuse_leaf(i64 %tv0)
-  %td = call i64 @rg_fuse_data(i64 %tv, i64 %lg)
-  %tlen = call i64 @rg_fuse_len(i64 %tv, i64 %lg)
-  call void @rg_st(i64 %kp, i64 %tk)
+  %td = call i64 @rg_fuse_data(i64 %tv, i64 %klg)
+  %tlen = call i64 @rg_fuse_len(i64 %tv, i64 %klg)
+  call void @rg_st(i64 %tp, i64 %tk)
   call void @rg_st(i64 %ap, i64 %td)
   call void @rg_st(i64 %lp, i64 %tlen)
+  call void @rg_st(i64 %vp, i64 %kd)
   %ise = icmp eq i64 %tk, 0
+  %isg = icmp eq i64 %tk, 8
+  ; only an `e` leaf can take a result
+  %lkv = select i1 %ise, i64 %kd, i64 0
+  call void @rg_st(i64 %lka, i64 %lkv)
   %nomodel = icmp eq i64 %model, 0
   %take = and i1 %ise, %nomodel
   %model1 = select i1 %take, i64 %tv, i64 %model
+  %mlg1 = select i1 %take, i64 %klg, i64 %mlg
+  ; a gather replaces the index on the kind stack; another tensor is pushed
+  %gat = select i1 %isg, i64 %kt1, i64 %ktop
+  call void @rg_st(i64 %gat, i64 %kd)
+  %ksp1 = add i64 %ksp, 1
+  %kspt = select i1 %isg, i64 %ksp, i64 %ksp1
   %nl1 = add i64 %nl, 1
+  %ntn1 = add i64 %ntn, 1
   br label %next
 ts:
   %sv = call i64 @rg_ld(i64 %ls)
   %sw = call i64 @rg_raw_word(i64 %sv)
-  %sww = call i64 @rg_fuse_wrap(i64 %sw, i64 %lg)
-  call void @rg_st(i64 %kp, i64 3)
-  call void @rg_st(i64 %ap, i64 %sww)
+  call void @rg_st(i64 %tp, i64 3)
+  call void @rg_st(i64 %ap, i64 %sw)
+  call void @rg_st(i64 %vp, i64 0)
+  call void @rg_st(i64 %ktop, i64 0)
+  %ksps = add i64 %ksp, 1
   %nl2 = add i64 %nl, 1
   br label %next
 tc:
   %cv = call i64 @rg_fuse_num(i64 %p1, i64 %end, ptr %endp)
-  %cvw = call i64 @rg_fuse_wrap(i64 %cv, i64 %lg)
   %pc = load i64, ptr %endp, align 8
-  call void @rg_st(i64 %kp, i64 3)
-  call void @rg_st(i64 %ap, i64 %cvw)
+  call void @rg_st(i64 %tp, i64 3)
+  call void @rg_st(i64 %ap, i64 %cv)
+  call void @rg_st(i64 %vp, i64 0)
+  call void @rg_st(i64 %ktop, i64 0)
+  %kspc = add i64 %ksp, 1
   br label %next
 tx:
   %xv = call i64 @rg_fuse_num(i64 %p1, i64 %end, ptr %endp)
   %px = load i64, ptr %endp, align 8
-  call void @rg_st(i64 %kp, i64 4)
+  %xhas = icmp uge i64 %ksp, 2
+  br i1 %xhas, label %tx1, label %bad
+tx1:
+  %xa = call i64 @rg_ld(i64 %kt2)
+  %xb = call i64 @rg_ld(i64 %kt1)
+  %xaz = icmp eq i64 %xa, 0
+  %xbz = icmp eq i64 %xb, 0
+  %xk0 = select i1 %xbz, i64 1, i64 %xb
+  %xk = select i1 %xaz, i64 %xk0, i64 %xa
+  call void @rg_st(i64 %tp, i64 4)
   call void @rg_st(i64 %ap, i64 %xv)
+  call void @rg_st(i64 %vp, i64 %xk)
+  call void @rg_st(i64 %kt2, i64 %xk)
+  %kspx = sub i64 %ksp, 1
   br label %next
 tw:
   %wv = call i64 @rg_fuse_num(i64 %p1, i64 %end, ptr %endp)
   %pw = load i64, ptr %endp, align 8
   %wok = icmp ult i64 %wv, 2048
-  br i1 %wok, label %tw1, label %bad
+  %whas0 = icmp uge i64 %ksp, 1
+  %wboth = and i1 %wok, %whas0
+  br i1 %wboth, label %tw1, label %bad
 tw1:
-  call void @rg_st(i64 %kp, i64 5)
+  %wk = call i64 @rg_ld(i64 %kt1)
+  %wko = shl i64 %wv, 3
+  %wka = add i64 %lck, %wko
+  call void @rg_st(i64 %wka, i64 %wk)
+  call void @rg_st(i64 %tp, i64 5)
   call void @rg_st(i64 %ap, i64 %wv)
+  %kspw = sub i64 %ksp, 1
   br label %next
 tl:
   %lv = call i64 @rg_fuse_num(i64 %p1, i64 %end, ptr %endp)
@@ -550,22 +824,39 @@ tl:
   %lok = icmp ult i64 %lv, 2048
   br i1 %lok, label %tl1, label %bad
 tl1:
-  call void @rg_st(i64 %kp, i64 6)
+  %llo = shl i64 %lv, 3
+  %lla = add i64 %lck, %llo
+  %llk = call i64 @rg_ld(i64 %lla)
+  call void @rg_st(i64 %tp, i64 6)
   call void @rg_st(i64 %ap, i64 %lv)
+  call void @rg_st(i64 %ktop, i64 %llk)
+  %kspl = add i64 %ksp, 1
   br label %next
 to:
   %ook = icmp ult i64 %no, 96
-  br i1 %ook, label %to1, label %bad
+  %ohas0 = icmp uge i64 %ksp, 1
+  %oboth = and i1 %ook, %ohas0
+  br i1 %oboth, label %to1, label %bad
 to1:
-  call void @rg_st(i64 %kp, i64 7)
+  %ok0 = call i64 @rg_ld(i64 %kt1)
+  %okz = icmp eq i64 %ok0, 0
+  %okk = select i1 %okz, i64 1, i64 %ok0
+  %oko = shl i64 %no, 3
+  %oka = add i64 %ok, %oko
+  call void @rg_st(i64 %oka, i64 %okk)
+  call void @rg_st(i64 %tp, i64 7)
   call void @rg_st(i64 %ap, i64 %no)
   %no1 = add i64 %no, 1
+  %kspo = sub i64 %ksp, 1
   br label %next
 next:
-  %pa = phi i64 [ %p1, %tens ], [ %p1, %ts ], [ %pc, %tc ], [ %px, %tx ], [ %pw, %tw1 ], [ %pl, %tl1 ], [ %p1, %to1 ]
-  %nln = phi i64 [ %nl1, %tens ], [ %nl2, %ts ], [ %nl, %tc ], [ %nl, %tx ], [ %nl, %tw1 ], [ %nl, %tl1 ], [ %nl, %to1 ]
-  %non = phi i64 [ %no, %tens ], [ %no, %ts ], [ %no, %tc ], [ %no, %tx ], [ %no, %tw1 ], [ %no, %tl1 ], [ %no1, %to1 ]
-  %modeln = phi i64 [ %model1, %tens ], [ %model, %ts ], [ %model, %tc ], [ %model, %tx ], [ %model, %tw1 ], [ %model, %tl1 ], [ %model, %to1 ]
+  %pa = phi i64 [ %p1, %tens ], [ %p1, %ts ], [ %pc, %tc ], [ %px, %tx1 ], [ %pw, %tw1 ], [ %pl, %tl1 ], [ %p1, %to1 ], [ %pr, %tr1 ]
+  %nln = phi i64 [ %nl1, %tens ], [ %nl2, %ts ], [ %nl, %tc ], [ %nl, %tx1 ], [ %nl, %tw1 ], [ %nl, %tl1 ], [ %nl, %to1 ], [ %nl, %tr1 ]
+  %ntnn = phi i64 [ %ntn1, %tens ], [ %ntn, %ts ], [ %ntn, %tc ], [ %ntn, %tx1 ], [ %ntn, %tw1 ], [ %ntn, %tl1 ], [ %ntn, %to1 ], [ %ntn, %tr1 ]
+  %non = phi i64 [ %no, %tens ], [ %no, %ts ], [ %no, %tc ], [ %no, %tx1 ], [ %no, %tw1 ], [ %no, %tl1 ], [ %no1, %to1 ], [ %no, %tr1 ]
+  %kspn = phi i64 [ %kspt, %tens ], [ %ksps, %ts ], [ %kspc, %tc ], [ %kspx, %tx1 ], [ %kspw, %tw1 ], [ %kspl, %tl1 ], [ %kspo, %to1 ], [ %kspr, %tr1 ]
+  %modeln = phi i64 [ %model1, %tens ], [ %model, %ts ], [ %model, %tc ], [ %model, %tx1 ], [ %model, %tw1 ], [ %model, %tl1 ], [ %model, %to1 ], [ %model, %tr1 ]
+  %mlgn = phi i64 [ %mlg1, %tens ], [ %mlg, %ts ], [ %mlg, %tc ], [ %mlg, %tx1 ], [ %mlg, %tw1 ], [ %mlg, %tl1 ], [ %mlg, %to1 ], [ %mlg, %tr1 ]
   %nt1 = add i64 %nt, 1
   ; skip the space after the token
   %pn = add i64 %pa, 1
@@ -574,17 +865,39 @@ scanned:
   %hasm = icmp ne i64 %model, 0
   br i1 %hasm, label %shapes, label %bad
 shapes:
-  %total = call i64 @rg_fuse_len(i64 %model, i64 %lg)
+  %total = call i64 @rg_fuse_len(i64 %model, i64 %mlg)
+  ; a program without `o` has one result: the value left on the kind stack
+  ; (none when it ends in `r`: the result is a number)
+  %single = icmp eq i64 %no, 0
+  %red = load i64, ptr %redp, align 8
+  %redk = load i64, ptr %redkp, align 8
+  %reduces = icmp ne i64 %red, 0
+  %redid = sub i64 %red, 1
+  br i1 %reduces, label %chk0, label %sres
+sres:
+  br i1 %single, label %one_res, label %chk0
+one_res:
+  %left = icmp eq i64 %ksp, 1
+  br i1 %left, label %one_res1, label %bad
+one_res1:
+  %lk0 = call i64 @rg_ld(i64 %ks)
+  %lkz = icmp eq i64 %lk0, 0
+  %lk1 = select i1 %lkz, i64 1, i64 %lk0
+  call void @rg_st(i64 %ok, i64 %lk1)
+  br label %chk0
+chk0:
+  %nres0 = select i1 %single, i64 1, i64 %no
+  %nres = select i1 %reduces, i64 0, i64 %nres0
   br label %chk
 chk:
-  %ci = phi i64 [ 0, %shapes ], [ %ci1, %chknext ]
+  %ci = phi i64 [ 0, %chk0 ], [ %ci1, %chknext ]
   %cm = icmp ult i64 %ci, %nt
-  br i1 %cm, label %chkone, label %alloc
+  br i1 %cm, label %chkone, label %mk
 chkone:
   %co = shl i64 %ci, 3
-  %ckp = add i64 %kd, %co
+  %ctp = add i64 %ty, %co
   %clp = add i64 %ln, %co
-  %ck = call i64 @rg_ld(i64 %ckp)
+  %ck = call i64 @rg_ld(i64 %ctp)
   %cl = call i64 @rg_ld(i64 %clp)
   switch i64 %ck, label %chknext [ i64 0, label %ceq
                                    i64 1, label %cdiv
@@ -610,19 +923,17 @@ chknext:
 differ:
   call void @rg_fuse_shapes()
   unreachable
-alloc:
-  ; one result tensor for each `o`, or one for the value left on the stack
-  %single = icmp eq i64 %no, 0
-  %nres = select i1 %single, i64 1, i64 %no
-  br label %mk
 mk:
-  %mi = phi i64 [ 0, %alloc ], [ %mi1, %mkone ]
+  %mi = phi i64 [ 0, %chk ], [ %mi1, %mkone ]
   %mm = icmp ult i64 %mi, %nres
   br i1 %mm, label %mkone, label %elem
 mkone:
-  %mr = call i64 @rg_fuse_take(i64 %slots, i64 %nl, i64 %model, i64 %lg)
-  %md = call i64 @rg_fuse_data(i64 %mr, i64 %lg)
   %mo = shl i64 %mi, 3
+  %mka = add i64 %ok, %mo
+  %mkk = call i64 @rg_ld(i64 %mka)
+  %mklg = call i64 @rg_fuse_klg(i64 %mkk)
+  %mr = call i64 @rg_fuse_take(i64 %slots, i64 %nl, i64 %lfk, i64 %mkk, i64 %model, i64 %mlg, ptr %fromp)
+  %md = call i64 @rg_fuse_data(i64 %mr, i64 %mklg)
   %mta = add i64 %ot, %mo
   %mda = add i64 %od, %mo
   call void @rg_st(i64 %mta, i64 %mr)
@@ -642,43 +953,56 @@ step:
   br i1 %tm, label %one, label %store
 one:
   %tof = shl i64 %ti, 3
-  %okp = add i64 %kd, %tof
+  %otp = add i64 %ty, %tof
   %oap = add i64 %ar, %tof
   %olp = add i64 %ln, %tof
-  %ok = call i64 @rg_ld(i64 %okp)
+  %ovp = add i64 %vk, %tof
+  %oty = call i64 @rg_ld(i64 %otp)
   %oa = call i64 @rg_ld(i64 %oap)
   %ol = call i64 @rg_ld(i64 %olp)
+  %ovk = call i64 @rg_ld(i64 %ovp)
+  %olg = call i64 @rg_fuse_klg(i64 %ovk)
   %topi = sub i64 %sp, 1
   %topo = shl i64 %topi, 3
   %topa = add i64 %sk, %topo
   %vo = shl i64 %oa, 3
-  switch i64 %ok, label %oop [ i64 0, label %oe
-                               i64 1, label %op_
-                               i64 2, label %ou
-                               i64 3, label %on
-                               i64 5, label %ow
-                               i64 6, label %olg
-                               i64 7, label %oo ]
+  switch i64 %oty, label %oop [ i64 0, label %oe
+                                i64 1, label %op_
+                                i64 2, label %ou
+                                i64 3, label %on
+                                i64 5, label %ow
+                                i64 6, label %olget
+                                i64 7, label %oo
+                                i64 8, label %og
+                                i64 9, label %ored ]
+ored:
+  ; join the value on top with the ones before
+  %dv = call i64 @rg_ld(i64 %topa)
+  %dacc = load i64, ptr %accp, align 8
+  %dfirst = icmp eq i64 %e, 0
+  %dnew = call i64 @rg_fuse_join(i64 %redid, i64 %dacc, i64 %dv, i64 %ovk, i1 %dfirst)
+  store i64 %dnew, ptr %accp, align 8
+  br label %pushed
 oe:
-  %ve = call i64 @rg_fuse_get(i64 %oa, i64 %e, i64 %lg)
+  %ve = call i64 @rg_fuse_get(i64 %oa, i64 %e, i64 %olg)
   br label %push
 op_:
   %per = udiv i64 %total, %ol
   %pi = udiv i64 %e, %per
-  %vp = call i64 @rg_fuse_get(i64 %oa, i64 %pi, i64 %lg)
+  %vpv = call i64 @rg_fuse_get(i64 %oa, i64 %pi, i64 %olg)
   br label %push
 ou:
   %ui = urem i64 %e, %ol
-  %vu = call i64 @rg_fuse_get(i64 %oa, i64 %ui, i64 %lg)
+  %vu = call i64 @rg_fuse_get(i64 %oa, i64 %ui, i64 %olg)
   br label %push
 on:
   br label %push
-olg:
+olget:
   %lga = add i64 %lc, %vo
   %vl = call i64 @rg_ld(i64 %lga)
   br label %push
 push:
-  %pv = phi i64 [ %ve, %oe ], [ %vp, %op_ ], [ %vu, %ou ], [ %oa, %on ], [ %vl, %olg ]
+  %pv = phi i64 [ %ve, %oe ], [ %vpv, %op_ ], [ %vu, %ou ], [ %oa, %on ], [ %vl, %olget ]
   %full = icmp uge i64 %sp, 96
   br i1 %full, label %bad, label %push1
 push1:
@@ -687,51 +1011,69 @@ push1:
   call void @rg_st(i64 %sa, i64 %pv)
   %sp1 = add i64 %sp, 1
   br label %pushed
+og:
+  ; the index on top gives way to the element there
+  %gix = call i64 @rg_ld(i64 %topa)
+  %gin = icmp ult i64 %gix, %ol
+  br i1 %gin, label %og1, label %oob
+og1:
+  %gv = call i64 @rg_fuse_get(i64 %oa, i64 %gix, i64 %olg)
+  call void @rg_st(i64 %topa, i64 %gv)
+  br label %pushed
+oob:
+  call void @rg_oob()
+  unreachable
 ow:
-  %whas = icmp uge i64 %sp, 1
-  br i1 %whas, label %ow1, label %bad
-ow1:
   %wtop = call i64 @rg_ld(i64 %topa)
   %wla = add i64 %lc, %vo
   call void @rg_st(i64 %wla, i64 %wtop)
   br label %pushed
 oo:
-  %ohas = icmp uge i64 %sp, 1
-  br i1 %ohas, label %oo1, label %bad
-oo1:
   %otop = call i64 @rg_ld(i64 %topa)
   %oda = add i64 %od, %vo
   %odp = call i64 @rg_ld(i64 %oda)
-  call void @rg_fuse_put(i64 %odp, i64 %e, i64 %lg, i64 %otop)
+  %oka2 = add i64 %ok, %vo
+  %okk2 = call i64 @rg_ld(i64 %oka2)
+  %oklg = call i64 @rg_fuse_klg(i64 %okk2)
+  call void @rg_fuse_put(i64 %odp, i64 %e, i64 %oklg, i64 %otop)
   br label %pushed
 oop:
-  %two = icmp uge i64 %sp, 2
-  br i1 %two, label %oop1, label %bad
-oop1:
   %ai = sub i64 %sp, 2
   %ao = shl i64 %ai, 3
   %aa = add i64 %sk, %ao
-  %bv = call i64 @rg_ld(i64 %topa)
-  %av = call i64 @rg_ld(i64 %aa)
-  %rv = call i64 @rg_fuse_op(i64 %oa, i64 %av, i64 %bv, i64 %k, i64 %lg)
+  %bv0 = call i64 @rg_ld(i64 %topa)
+  %av0 = call i64 @rg_ld(i64 %aa)
+  %bv = call i64 @rg_fuse_wrap(i64 %bv0, i64 %olg)
+  %av = call i64 @rg_fuse_wrap(i64 %av0, i64 %olg)
+  %rv = call i64 @rg_fuse_op(i64 %oa, i64 %av, i64 %bv, i64 %ovk, i64 %olg)
   call void @rg_st(i64 %aa, i64 %rv)
   br label %pushed
 pushed:
-  %spn = phi i64 [ %sp1, %push1 ], [ %topi, %ow1 ], [ %topi, %oo1 ], [ %topi, %oop1 ]
+  %spn = phi i64 [ %sp1, %push1 ], [ %sp, %og1 ], [ %topi, %ow ], [ %topi, %oo ], [ %topi, %oop ], [ %topi, %ored ]
   %ti1 = add i64 %ti, 1
   br label %step
 store:
-  br i1 %single, label %store1, label %stored
+  %keeps = xor i1 %reduces, true
+  %stores = and i1 %single, %keeps
+  br i1 %stores, label %store1, label %stored
 store1:
   %top = call i64 @rg_ld(i64 %sk)
   %rd0 = call i64 @rg_ld(i64 %od)
-  call void @rg_fuse_put(i64 %rd0, i64 %e, i64 %lg, i64 %top)
+  %rk0 = call i64 @rg_ld(i64 %ok)
+  %rlg0 = call i64 @rg_fuse_klg(i64 %rk0)
+  call void @rg_fuse_put(i64 %rd0, i64 %e, i64 %rlg0, i64 %top)
   br label %stored
 stored:
   %e1 = add i64 %e, 1
   br label %elem
 finish:
   call void @rg_drop_slots(i64 %slots, i64 %nl)
+  br i1 %reduces, label %retr, label %rets
+retr:
+  %facc = load i64, ptr %accp, align 8
+  %fnum = call i64 @rg_fuse_number(i64 %facc, i64 %redk)
+  ret i64 %fnum
+rets:
   br i1 %single, label %ret1, label %retn
 ret1:
   %res = call i64 @rg_ld(i64 %ot)
@@ -747,8 +1089,8 @@ bad:
 ; ── The vector instructions of this machine ──────────────────
 ; The LLVM back end writes each fused loop three times, for the plain
 ; x86-64 instructions, for AVX2 and for AVX-512, and calls the widest one the
-; machine has. cpu_level says which: 2 plain, 3 AVX2, 4 AVX-512 (F, BW, DQ and
-; VL). It is read once from the flags the system lists in /proc/cpuinfo (the
+; machine has. cpu_level says which: 2 plain, 3 AVX2 with PCLMULQDQ (the
+; product without carries), 4 also AVX-512 (F, BW, DQ and VL). It is read once from the flags the system lists in /proc/cpuinfo (the
 ; system lists a flag only when it also saves those registers); where the
 ; file cannot be read the answer is 2.
 declare i64 @__rg_pal_open(i64, i64, i64, i64)
@@ -758,6 +1100,7 @@ declare i64 @__rg_pal_close(i64)
 @rg_cpu = internal global i64 0
 @rg_cpuinfo = private constant [13 x i8] c"/proc/cpuinfo"
 @rg_flag_avx2 = private constant [6 x i8] c" avx2 "
+@rg_flag_pcl = private constant [11 x i8] c" pclmulqdq "
 @rg_flag_512f = private constant [9 x i8] c" avx512f "
 @rg_flag_512bw = private constant [10 x i8] c" avx512bw "
 @rg_flag_512dq = private constant [10 x i8] c" avx512dq "
@@ -862,7 +1205,9 @@ read:
   br i1 %none, label %plain, label %look
 look:
   %a2 = call i64 @rg_has_bytes(i64 %buf, i64 %n, ptr @rg_flag_avx2, i64 6)
-  %hasa2 = icmp ne i64 %a2, 0
+  %pcl = call i64 @rg_has_bytes(i64 %buf, i64 %n, ptr @rg_flag_pcl, i64 11)
+  %a2p = and i64 %a2, %pcl
+  %hasa2 = icmp ne i64 %a2p, 0
   br i1 %hasa2, label %wide, label %plain
 wide:
   %f = call i64 @rg_has_bytes(i64 %buf, i64 %n, ptr @rg_flag_512f, i64 9)

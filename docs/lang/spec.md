@@ -578,6 +578,10 @@ m = (a_ij shr 4) and 0xFF
 - A shift or rotation count is taken modulo the width; `shr` is logical; `/` and `%` by zero give 0.
 - A tensor read has the subscripts of the result, its first ones (`c_i` in `a_ij * c_i`) or its last ones (`b_j` in `a_ij + b_j`).
 - Consecutive statements that bind such expressions over tensors of one type run as one loop. A tensor read for the last time, with no other owner, takes the result in place.
+- `t_(index)`, with an element-wise index, reads `t` at the index of each element: `sbox_(x_i)`, `t_((x_i shr 4) and 15)`. The index tensors are integers of any element type; an index outside `t` stops the program.
+- `tensor sum e`, `tensor min e` and `tensor max e` give one number from all the elements of an element-wise expression or of a tensor: `tensor sum (a_i * b_i)` is a dot product. The result is an `Int` (a `Real` for `Real` tensors); 0 when there are no elements.
+
+**Wide and carry-less products:** `a mulhi b` is the high half of the product of two integers taken as unsigned (`*` gives the low half); `a clmul b` and `a clmulhi b` are the low and the high half of the product without carries. They work on `Int`s (64 bits) and element-wise at the width of the element type.
 
 **GPU variant:** `Tensor_GPU` places the tensor on GPU memory for accelerated computation.
 

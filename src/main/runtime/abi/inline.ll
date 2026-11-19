@@ -369,6 +369,9 @@ entry:
     i64 18, label %op_shr
     i64 19, label %op_rotr
     i64 20, label %op_rotl
+    i64 21, label %op_mulhi
+    i64 22, label %op_clmul
+    i64 23, label %op_clmulhi
   ]
 op_add:
   %r_add = add i64 %x, %y
@@ -445,6 +448,19 @@ op_shr:
   %sh_b = and i64 %y, 63
   %r_shr = lshr i64 %x, %sh_b
   br label %box_res
+op_clmul:
+  %r_clmul = call i64 @__rg_clmul(i64 %x, i64 %y, i64 0)
+  br label %box_res
+op_clmulhi:
+  %r_clmulhi = call i64 @__rg_clmul(i64 %x, i64 %y, i64 1)
+  br label %box_res
+op_mulhi:
+  %mh_x = zext i64 %x to i128
+  %mh_y = zext i64 %y to i128
+  %mh_p = mul i128 %mh_x, %mh_y
+  %mh_s = lshr i128 %mh_p, 64
+  %r_mulhi = trunc i128 %mh_s to i64
+  br label %box_res
 op_rotr:
   %r_rotr = call i64 @llvm.fshr.i64(i64 %x, i64 %x, i64 %y)
   br label %box_res
@@ -454,7 +470,7 @@ op_rotl:
 op_default:
   br label %box_res
 box_res:
-  %raw_res = phi i64 [ %r_add, %op_add ], [ %r_sub, %op_sub ], [ %r_mul, %op_mul ], [ %r_div_z, %div_zero ], [ %r_div, %div_ok ], [ 0, %mod_zero ], [ %r_mod, %mod_ok ], [ %r_and, %op_and ], [ %r_or, %op_or ], [ %r_xor, %op_xor ], [ %r_shl, %op_shl ], [ %r_shr, %op_shr ], [ %r_rotr, %op_rotr ], [ %r_rotl, %op_rotl ], [ 0, %op_default ]
+  %raw_res = phi i64 [ %r_add, %op_add ], [ %r_sub, %op_sub ], [ %r_mul, %op_mul ], [ %r_div_z, %div_zero ], [ %r_div, %div_ok ], [ 0, %mod_zero ], [ %r_mod, %mod_ok ], [ %r_and, %op_and ], [ %r_or, %op_or ], [ %r_xor, %op_xor ], [ %r_shl, %op_shl ], [ %r_shr, %op_shr ], [ %r_rotr, %op_rotr ], [ %r_rotl, %op_rotl ], [ %r_mulhi, %op_mulhi ], [ %r_clmul, %op_clmul ], [ %r_clmulhi, %op_clmulhi ], [ 0, %op_default ]
   %boxed = call i64 @__rg_box_i64(i64 %raw_res)
   ret i64 %boxed
 }

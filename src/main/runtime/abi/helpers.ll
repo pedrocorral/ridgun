@@ -2270,3 +2270,35 @@ write_out_body:
 done_all:
   ret void
 }
+
+; The product without carries of two words: its low (hi = 0) or its high
+; 64 bits. With the instruction for it (PCLMULQDQ, at CPU level 3 and up:
+; core/fuse.ll) or bit by bit (core/binop.ll).
+declare i64 @rg_cpu_level()
+declare i64 @rg_clmul_soft(i64, i64, i64)
+declare <2 x i64> @llvm.x86.pclmulqdq(<2 x i64>, <2 x i64>, i8)
+
+define i64 @__rg_clmul_hw(i64 %a, i64 %b, i64 %hi) noinline nounwind "target-features"="+sse2,+pclmul" {
+entry:
+  %va = insertelement <2 x i64> zeroinitializer, i64 %a, i32 0
+  %vb = insertelement <2 x i64> zeroinitializer, i64 %b, i32 0
+  %p = call <2 x i64> @llvm.x86.pclmulqdq(<2 x i64> %va, <2 x i64> %vb, i8 0)
+  %lo = extractelement <2 x i64> %p, i32 0
+  %h = extractelement <2 x i64> %p, i32 1
+  %wanthi = icmp ne i64 %hi, 0
+  %r = select i1 %wanthi, i64 %h, i64 %lo
+  ret i64 %r
+}
+
+define i64 @__rg_clmul(i64 %a, i64 %b, i64 %hi) nounwind {
+entry:
+  %l = call i64 @rg_cpu_level()
+  %has = icmp uge i64 %l, 3
+  br i1 %has, label %hw, label %soft
+hw:
+  %r1 = call i64 @__rg_clmul_hw(i64 %a, i64 %b, i64 %hi)
+  ret i64 %r1
+soft:
+  %r2 = call i64 @rg_clmul_soft(i64 %a, i64 %b, i64 %hi)
+  ret i64 %r2
+}

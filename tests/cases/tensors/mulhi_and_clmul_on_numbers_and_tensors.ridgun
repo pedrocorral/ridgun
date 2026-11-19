@@ -1,0 +1,59 @@
+-- @tests TS-COMP-031
+-- case: mulhi gives the high half of the product at the width of the type; clmul and clmulhi the low and the high half of the product without carries; on Ints and element-wise
+-- source: FR-COMP-031 AC-14, AC-15
+-- expect-output:
+--   scalar: -2 1 0 2
+--   U64 Tensor(shape=[3], data=[-2, 1, 0])
+--   U32 Tensor(shape=[3], data=[4294967295, 65536, 1])
+--   numbers: 5 27 0 1 6148914691236517205
+--   low Tensor(shape=[3], data=[5, 6148914691236517205, 4656854609615655152])
+--   high Tensor(shape=[3], data=[0, 6148914691236517205, 63112896901042352])
+--   bytes Tensor(shape=[2], data=[85, 1]) Tensor(shape=[2], data=[85, 1])
+
+fn :: high Tensor[U64 * n] Tensor[U64 * n] => Tensor[U64 * n]
+      high a b =  a_i mulhi b_i
+
+fn :: hi32 Tensor[U32 * n] Tensor[U32 * n] => Tensor[U32 * n]
+      hi32 a b =  (a_i mulhi b_i) + 1
+
+fn :: lo Tensor[U64 * n] Tensor[U64 * n] => Tensor[U64 * n]
+      lo a b =  a_i clmul b_i
+
+fn :: hi Tensor[U64 * n] Tensor[U64 * n] => Tensor[U64 * n]
+      hi a b =  a_i clmulhi b_i
+
+fn :: lo8 Tensor[U8 * n] Tensor[U8 * n] => Tensor[U8 * n]
+      lo8 a b =  a_i clmul b_i
+
+fn :: hi8 Tensor[U8 * n] Tensor[U8 * n] => Tensor[U8 * n]
+      hi8 a b =  a_i clmulhi b_i
+
+fn :: main => ()
+      main =
+        x = 0 - 1
+        echo "scalar: {x mulhi x} {0x100000000 mulhi 0x100000000} {7 mulhi 9} {0x8000000000000000 mulhi 4}"
+        a = Tensor[U64 * 3] with 0 - 1
+        b = Tensor[U64 * 3] with 0 - 1
+        b_(1) = 2
+        b_(2) = 0
+        echo "U64" (high a b)
+        c = Tensor[U32 * 3] with 0xFFFFFFFF
+        d = Tensor[U32 * 3] with 0xFFFFFFFF
+        d_(1) = 0x10000
+        d_(2) = 1
+        echo "U32" (hi32 c d)
+        echo "numbers: {3 clmul 3} {7 clmul 5} {0x8000000000000000 clmul 2} {0x8000000000000000 clmulhi 2} {(0 - 1) clmulhi (0 - 1)}"
+        p = Tensor[U64 * 3]
+        q = Tensor[U64 * 3]
+        p_(0) = 3
+        q_(0) = 3
+        p_(1) = 0 - 1
+        q_(1) = 0 - 1
+        p_(2) = 0x0123456789ABCDEF
+        q_(2) = 0xFEDCBA9876543210
+        echo "low" (lo p q)
+        echo "high" (hi p q)
+        e = Tensor[U8 * 2] with 0xFF
+        f = Tensor[U8 * 2] with 0xFF
+        f_(1) = 0x03
+        echo "bytes" (lo8 e f) (hi8 e f)

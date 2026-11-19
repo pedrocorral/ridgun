@@ -107,6 +107,9 @@ fn :: compile binop RBinOp     => RInstr
       compile binop OpShl      =  BMul
       compile binop OpShr      =  BDiv
       compile binop OpRotr     =  BXor
+      compile binop OpMulHi    =  BMul
+      compile binop OpClmul    =  BMul
+      compile binop OpClmulHi  =  BMul
       compile binop OpRotl     =  BXor
 
 fn :: compile rexpr RExpr              [String] => [RInstr] [String]
@@ -537,6 +540,9 @@ fn :: is pure arith binop RBinOp => Bool
       is pure arith binop OpShl  =  True
       is pure arith binop OpShr  =  True
       is pure arith binop OpRotr =  True
+      is pure arith binop OpMulHi =  True
+      is pure arith binop OpClmul =  True
+      is pure arith binop OpClmulHi =  True
       is pure arith binop OpRotl =  True
       is pure arith binop OpEq   =  True
       is pure arith binop OpNeq  =  True
@@ -1339,6 +1345,9 @@ fn :: binop op tag RBinOp => String
       binop op tag OpShl  =  "shl"
       binop op tag OpShr  =  "shr"
       binop op tag OpRotr =  "rotr"
+      binop op tag OpMulHi =  "mulhi"
+      binop op tag OpClmul =  "clmul"
+      binop op tag OpClmulHi =  "clmulhi"
       binop op tag OpRotl =  "rotl"
       binop op tag _      =  "+"
 
@@ -2777,9 +2786,9 @@ fn :: lower expr RNativeEnv RExpr [String] Int RNativeCode => RNativeCode
         nc emit list st1 ins_list (sp + arity + 2)
       lower expr env (ECall ":fuse:" ((EStr code):leaves)) bound_locals sp st =
         count = list len leaves
-        prog = (fuse kind letter (fuse leaves kind env (fuse toks code) leaves)) + "|" + (fuse rt code code)
+        prog = fuse rt code code
         st1 = lower expr list to slots env leaves bound_locals sp 0 st
-        nc emit st1 (NHadamard 99 sp (env str off env prog) (str len prog)) (sp + count + 1)
+        nc emit st1 (NHadamard (1000 + (fuse kinds code env (fuse toks code) leaves 1 0)) sp (env str off env prog) (str len prog)) (sp + count + 1)
       lower expr env (ECall fname args) bound_locals sp st =
         lower call expr env fname args bound_locals sp st
       lower expr env (EEcho raw_args) bound_locals sp st =
@@ -5088,29 +5097,69 @@ fn :: is u8 elem name String => Bool
       is u8 elem name s =  s == "U8" or s == "Byte"
 
 -- ── Fused element-wise expressions (FR-COMP-031, ast.ridgun) ──
--- `NHadamard 99 slot off len`: the leaves are in the slots from `slot` on and the text at `off` is
--- the program, `K|code`: K is the element kind of its tensors, N (64-bit integers), R (Real), B (U8),
--- H (U16) or W (U32). The kind is known here, from the facts of the type checker, so the string pool
--- holds the program with each of them.
+-- `NHadamard (1000 + kinds) slot off len`: the leaves are in the slots from `slot` on, the text at
+-- `off` is the program, and `kinds` holds the element kind of each tensor it reads: one digit of 3
+-- bits per tensor, the first lowest (1 N, 2 R, 3 B, 4 H, 5 W: src/main/runtime/core/fuse.ll). The
+-- kinds are known here, from the facts of the type checker.
 fn :: fuse programs String => [String]
-      fuse programs code =  fuse programs of (fuse rt code code)
+      fuse programs code =  [fuse rt code code]
 
-fn :: fuse programs of String => [String]
-      fuse programs of rt =  ["N|" + rt, "R|" + rt, "B|" + rt, "H|" + rt, "W|" + rt]
+fn :: fuse kind digit String => Int
+      fuse kind digit "R" =  2
+      fuse kind digit "B" =  3
+      fuse kind digit "H" =  4
+      fuse kind digit "W" =  5
+      fuse kind digit _ =  1
 
-fn :: fuse kind letter String => String
-      fuse kind letter "R" =  "R"
-      fuse kind letter "B" =  "B"
-      fuse kind letter "H" =  "H"
-      fuse kind letter "W" =  "W"
-      fuse kind letter _ =  "N"
+-- `place` is 8 to the number of tensors read so far; after the 20th the digits do not grow (a
+-- later tensor has the kind of the 20th: fuse.ll).
+fn :: fuse kinds code RNativeEnv [RFuseTok] [RExpr] Int Int => Int
+      fuse kinds code _ [] _ _ acc =  acc
+      fuse kinds code env ((FtTensor _):ts) (leaf:ls) place acc =  fuse kinds code env ts ls (fuse next place place) (acc + ((fuse place digit place (expr tensor raw kind env leaf))))
+      fuse kinds code env (FtGather:ts) (leaf:ls) place acc =  fuse kinds code env ts ls (fuse next place place) (acc + ((fuse place digit place (expr tensor raw kind env leaf))))
+      fuse kinds code env (FtScalar:ts) (_:ls) place acc =  fuse kinds code env ts ls place acc
+      fuse kinds code env (_:ts) ls place acc =  fuse kinds code env ts ls place acc
 
--- The kind of the first tensor a fused expression reads.
+fn :: fuse next place Int => Int
+      fuse next place place
+        | place >= 1152921504606846976 = 0
+        | otherwise = place * 8
+
+fn :: fuse place digit Int String => Int
+      fuse place digit 0 _ =  0
+      fuse place digit place kind =  place * (fuse kind digit kind)
+
+-- The kind of the tensor a fused expression gives: the kinds of its values, followed through it.
+-- `stack`: the kinds of the values, the last first ("" for a number); `vals`: those set by `w`.
 fn :: fuse leaves kind RNativeEnv [RFuseTok] [RExpr] => String
-      fuse leaves kind env ((FtTensor _):_) (leaf:_) =  expr tensor raw kind env leaf
-      fuse leaves kind env (FtScalar:ts) (_:ls) =  fuse leaves kind env ts ls
-      fuse leaves kind env (_:ts) ls =  fuse leaves kind env ts ls
-      fuse leaves kind _ _ _ =  "U"
+      fuse leaves kind env toks leaves =  fuse result kind env toks leaves [] []
+
+fn :: fuse result kind RNativeEnv [RFuseTok] [RExpr] [String] [(Int, String)] => String
+      fuse result kind _ [] _ (top:_) _ =  fuse kind or n top
+      fuse result kind _ [] _ [] _ =  "U"
+      fuse result kind env ((FtTensor _):ts) (leaf:ls) stack vals =  fuse result kind env ts ls ([expr tensor raw kind env leaf] :: stack) vals
+      fuse result kind env (FtScalar:ts) (_:ls) stack vals =  fuse result kind env ts ls ([""] :: stack) vals
+      fuse result kind env ((FtConst _):ts) ls stack vals =  fuse result kind env ts ls ([""] :: stack) vals
+      fuse result kind env ((FtOp _):ts) ls (b:a:stack) vals =  fuse result kind env ts ls ([fuse kind of two a b] :: stack) vals
+      fuse result kind env (FtGather:ts) (leaf:ls) (_:stack) vals =  fuse result kind env ts ls ([expr tensor raw kind env leaf] :: stack) vals
+      fuse result kind env ((FtSet k):ts) ls (top:stack) vals =  fuse result kind env ts ls stack ([(k, top)] :: vals)
+      fuse result kind env ((FtGet k):ts) ls stack vals =  fuse result kind env ts ls ([fuse val kind vals k] :: stack) vals
+      fuse result kind _ (FtOut:_) _ (top:_) _ =  fuse kind or n top
+      fuse result kind env (_:ts) ls stack vals =  fuse result kind env ts ls stack vals
+
+fn :: fuse kind of two String String => String
+      fuse kind of two "" b =  b
+      fuse kind of two a _ =  a
+
+fn :: fuse kind or n String => String
+      fuse kind or n "" =  "N"
+      fuse kind or n k =  k
+
+fn :: fuse val kind [(Int, String)] Int => String
+      fuse val kind [] _ =  ""
+      fuse val kind ((k, kind):vs) want
+        | k == want = kind
+        | otherwise = fuse val kind vs want
 
 fn :: expr tensor kind RNativeEnv RExpr => String
       expr tensor kind env e =  packed as b (expr tensor raw kind env e)

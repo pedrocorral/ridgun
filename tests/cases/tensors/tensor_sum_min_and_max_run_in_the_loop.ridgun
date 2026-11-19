@@ -1,0 +1,43 @@
+-- @tests TS-COMP-031
+-- case: tensor sum, tensor min and tensor max of an element-wise expression or of a tensor give one number: an Int for integer tensors (a sum of bytes is not cut to a byte), a Real for Real tensors, 0 for no elements
+-- source: FR-COMP-031 AC-13
+-- expect-output:
+--   dot product: -0.5  largest: 2.0  smallest: -4.0
+--   sum of bytes is an Int: 255000
+--   equal bytes: 0  one differs: 5
+--   smallest of a - k: -2  sum of a tensor: 53
+--   no elements: 0 0 0
+
+fn :: dot Tensor[Real * n] Tensor[Real * n] => Real
+      dot a b =  tensor sum (a_i * b_i)
+
+fn :: bytes sum Tensor[U8 * n] => Int
+      bytes sum t =  tensor sum t
+
+fn :: diff Tensor[U8 * n] Tensor[U8 * n] => Int
+      diff a b =  tensor max (a_i xor b_i)
+
+fn :: lowest Tensor[U64 * r * c] Int => Int
+      lowest a k =  tensor min (a_ij - k)
+
+fn :: main => ()
+      main =
+        x = Tensor[Real * 3]
+        y = Tensor[Real * 3]
+        x_(0) = 1.5
+        x_(1) = 2.0
+        x_(2) = 0.0 - 4.0
+        y_(0) = 2.0
+        y_(1) = 0.25
+        y_(2) = 1.0
+        echo "dot product: {dot x y}  largest: {tensor max x}  smallest: {tensor min x}"
+        b = Tensor[U8 * 1000] with 255
+        echo "sum of bytes is an Int: {bytes sum b}"
+        c = Tensor[U8 * 1000] with 255
+        c_(500) = 250
+        echo "equal bytes: {diff b b}  one differs: {diff b c}"
+        m = Tensor[U64 * 2 * 3] with 10
+        m_(1, 1) = 3
+        echo "smallest of a - k: {lowest m 5}  sum of a tensor: {tensor sum m}"
+        e = Tensor[U64 * 0]
+        echo "no elements: {tensor sum e} {tensor min e} {tensor max e}"
